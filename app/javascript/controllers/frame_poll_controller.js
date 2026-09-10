@@ -1,7 +1,9 @@
 import { Controller } from "@hotwired/stimulus"
 
-// Keeps a lazy turbo-frame current without ever reloading the page. It builds no DOM: it
-// only asks the frame it is attached to to refetch its own src.
+// Keeps a turbo-frame current without ever reloading the page. It builds no DOM: it only
+// asks the frame it is attached to to refetch its own src. The frame must not be
+// loading="lazy": Turbo drops a lazy frame's reload() until its first load has settled, so
+// an early refetch would silently do nothing.
 export default class extends Controller {
   static values = { interval: { type: Number, default: 30000 } }
 
