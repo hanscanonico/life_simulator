@@ -1,0 +1,138 @@
+# Basic RuboCop configuration for Rails projects
+
+plugins:
+  - rubocop-rails
+
+require:
+  - ./lib/rubocop/cop/rspec/no_when_in_it
+  - ./lib/rubocop/cop/rails/service_class_suffix
+
+RSpec/NoWhenInIt:
+  Enabled: true
+  Include:
+    - "spec/**/*"
+
+Rails/ServiceClassSuffix:
+  Enabled: true
+  Include:
+    - "app/services/**/*"
+
+AllCops:
+  TargetRubyVersion: 3.3
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - 'db/**/*'
+    - 'config/**/*'
+    - 'script/**/*'
+    - 'bin/**/*'
+    - 'vendor/**/*'
+    - 'node_modules/**/*'
+    - 'tmp/**/*'
+    - 'log/**/*'
+    - 'storage/**/*'
+
+# Layout rules
+Layout/LineLength:
+  Max: 120
+  Exclude:
+    - 'spec/**/*'
+
+Layout/IndentationWidth:
+  Width: 2
+
+Layout/FirstHashElementIndentation:
+  EnforcedStyle: consistent
+
+Layout/FirstArrayElementIndentation:
+  EnforcedStyle: consistent
+
+Layout/FirstArgumentIndentation:
+  EnforcedStyle: consistent
+
+Layout/FirstParameterIndentation:
+  EnforcedStyle: consistent
+
+# Lint rules
+Lint/UnusedMethodArgument:
+  Enabled: true
+
+Lint/UnusedBlockArgument:
+  Enabled: true
+
+Lint/UnreachableCode:
+  Enabled: true
+
+# Style rules
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/HashSyntax:
+  EnforcedStyle: ruby19_no_mixed_keys
+
+Style/SymbolArray:
+  EnforcedStyle: percent
+  MinSize: 3
+
+Style/WordArray:
+  EnforcedStyle: percent
+  MinSize: 3
+
+Style/IfUnlessModifier:
+  Enabled: true
+
+Style/WhileUntilModifier:
+  Enabled: true
+
+Style/UnlessElse:
+  Enabled: false
+
+Style/GuardClause:
+  Enabled: true
+
+Style/SafeNavigation:
+  Enabled: true
+
+Style/Documentation:
+  Enabled: false
+
+# Metrics rules
+Metrics/MethodLength:
+  Max: 30
+
+Metrics/AbcSize:
+  Max: 30
+
+Metrics/ClassLength:
+  Max: 200
+
+Metrics/ModuleLength:
+  Max: 150
+
+Metrics/ParameterLists:
+  Max: 10
+
+Metrics/CyclomaticComplexity:
+  Max: 10
+
+Metrics/BlockLength:
+  Exclude:
+    - 'spec/**/*'
+    - 'config/routes.rb'
+    - 'lib/tasks/**/*'
+
+# Security rules
+Security/YAMLLoad:
+  Enabled: true
+
+Security/JSONLoad:
+  Enabled: true
+
+# Bundler rules
+Bundler/OrderedGems:
+  Enabled: true
+
+# Rails rules
+Rails/Output:
+  Exclude:
+    - 'lib/tasks/**/*'

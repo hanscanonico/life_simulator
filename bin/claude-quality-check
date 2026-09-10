@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Stop hook for Claude Code: run RuboCop + targeted specs on the working-tree
+# changes before a turn ends. A blocking exit (2) feeds the offenses/failures
+# back to the agent so it fixes them instead of handing off broken code.
+#
+# Scoped to files changed vs HEAD (plus untracked), mirroring bin/rspec-auto,
+# so a pre-existing unrelated failure elsewhere never blocks the turn.
+set -uo pipefail
+
+# Claude Code passes the hook payload as JSON on stdin.
+payload="$(cat 2>/dev/null || true)"
+
+# Avoid an infinite re-prompt loop: if this Stop hook already fired and blocked,
+# let the turn end.
+if printf '%s' "$payload" | grep -q '"stop_hook_active"[[:space:]]*:[[:space:]]*true'; then
+  exit 0
+fi
+
+# Collect changed Ruby files (tracked vs HEAD + untracked), like bin/rspec-auto.
+ruby_files=()
+while IFS= read -r path; do
+  [[ -z "$path" ]] && continue
+  [[ "$path" =~ \.(rb|rake)$|(^|/)Gemfile$|(^|/)Rakefile$ ]] || continue
+  [[ -f "$path" ]] && ruby_files+=("$path")
+done < <(
+  git diff HEAD --name-only --diff-filter=ACMR
+  git ls-files --others --exclude-standard
+)
+
+# Dedupe (portable; avoids mapfile, absent in bash 3.2).
+if [[ ${#ruby_files[@]} -gt 0 ]]; then
+  deduped=()
+  while IFS= read -r line; do deduped+=("$line"); done < <(printf '%s\n' "${ruby_files[@]}" | sort -u)
+  ruby_files=("${deduped[@]}")
+fi
+
+failed=0
+
+if [[ ${#ruby_files[@]} -gt 0 ]]; then
+  echo "[claude-quality-check] RuboCop on changed files: ${ruby_files[*]}" >&2
+  bundle exec rubocop --force-exclusion "${ruby_files[@]}" >&2 || failed=1
+else
+  echo "[claude-quality-check] No changed Ruby files to lint." >&2
+fi
+
+echo "[claude-quality-check] Targeted specs (rspec-auto)..." >&2
+bin/rspec-auto >&2 || failed=1
+
+if [[ $failed -ne 0 ]]; then
+  echo "[claude-quality-check] Quality checks failed — fix the offenses/failures above before finishing." >&2
+  exit 2
+fi
+
+exit 0

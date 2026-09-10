@@ -1,0 +1,224 @@
+/*
+ * Design System — Structural Tokens
+ * =================================
+ * Brand-agnostic layer: type scale, spacing, borders, radii, shadows,
+ * motion, z-index, layout widths, and component tokens. Colors and font
+ * stacks come from the brand layer (00-tokens-brand.css).
+ */
+
+:root {
+  /* ==========================================
+   * TYPE SCALE
+   * ========================================== */
+
+  --font-size-micro: 0.625rem;   /* 10 — micro labels (eyebrows, returns labels) */
+  --font-size-2xs:   0.6875rem;  /* 11 — small mono captions */
+  --font-size-xs:    0.75rem;    /* 12 */
+  --font-size-tight: 0.8125rem;  /* 13 — pills, dense table cells */
+  --font-size-sm:    0.875rem;   /* 14 */
+  --font-size-base:  1rem;       /* 16 */
+  --font-size-lg:    1.125rem;   /* 18 */
+  --font-size-xl:    1.25rem;    /* 20 */
+  --font-size-2xl:   1.5rem;     /* 24 */
+  --font-size-3xl:   1.875rem;   /* 30 */
+  --font-size-4xl:   2.25rem;    /* 36 */
+  --font-size-5xl:   3rem;       /* 48 */
+  --font-size-6xl:   4rem;       /* 64 — price hero */
+
+  --font-weight-normal:   400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+
+  --line-height-tight:   1.1;
+  --line-height-snug:    1.25;
+  --line-height-normal:  1.5;
+  --line-height-relaxed: 1.625;
+  --line-height-loose:   2;
+
+  --letter-spacing-tight:    -0.02em;
+  --letter-spacing-display:  -0.025em;
+  --letter-spacing-normal:   0;
+  --letter-spacing-wide:     0.025em;
+  --letter-spacing-wider:    0.05em;
+  --letter-spacing-widest:   0.15em;
+
+  /* ==========================================
+   * SPACING — base-4
+   * ========================================== */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* ==========================================
+   * BORDERS, RADII, SHADOWS, MOTION
+   * Editorial leans on hairlines and rules rather than shadows.
+   * ========================================== */
+  --border-width-0: 0;
+  --border-width-1: 1px;
+  --border-width-2: 2px;
+  --border-width-3: 3px;
+
+  --radius-none:    0;
+  --radius-sm:      2px;
+  --radius-xs:      3px;     /* rectilinear badge / pill corners */
+  --radius-default: 4px;
+  --radius-md:      6px;
+  --radius-lg:      8px;
+  --radius-xl:      12px;
+  --radius-full:    9999px;
+
+  --shadow-none:    none;
+  --shadow-xs:      0 1px 0 rgba(0,0,0,0.04);
+  --shadow-sm:      0 1px 2px rgba(0,0,0,0.05);
+  --shadow-soft:    0 1px 2px rgba(0,0,0,0.05);
+  --shadow-default: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md:      0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg:      0 12px 28px rgba(0,0,0,0.10);
+  --shadow-card:    0 1px 3px rgba(0,0,0,0.06);
+
+  /* Motion — calm and brisk */
+  --transition-fast:    120ms ease;
+  --transition-default: 180ms ease;
+  --transition-slow:    240ms ease;
+  --transition-slower:  400ms ease;
+
+  /* Z-index */
+  --z-dropdown:       100;
+  --z-sticky:         200;
+  --z-fixed:          500;
+  --z-modal-backdrop: 900;
+  --z-modal:         1000;
+  --z-toast:         1100;
+  --z-tooltip:       1200;
+
+  /* Layout */
+  --container-max-width:    1300px;
+  --container-max-width-lg: 1600px;
+  --navbar-height:          72px;
+  --navbar-height-mobile:   60px;
+
+  /* ==========================================
+   * COMPONENT TOKENS
+   * ========================================== */
+
+  --btn-padding-x:    var(--space-5);
+  --btn-padding-y:    var(--space-3);
+  --btn-padding-x-sm: var(--space-4);
+  --btn-padding-y-sm: var(--space-2);
+  --btn-padding-x-lg: var(--space-6);
+  --btn-padding-y-lg: var(--space-4);
+  --btn-border-radius: var(--radius-default);
+  --btn-font-weight:   var(--font-weight-medium);
+  --btn-font-size:     var(--font-size-sm);
+  --btn-font-size-sm:  var(--font-size-sm);
+
+  --input-padding-x:        var(--space-4);
+  --input-padding-y:        var(--space-3);
+  --input-border-width:     var(--border-width-1);
+  --input-border-radius:    var(--radius-default);
+  --input-border-color:     var(--line-strong);
+  --input-border-color-focus: var(--ink);
+  --input-bg:               var(--paper-soft);
+  --input-font-size:        var(--font-size-base);
+
+  --card-padding:        var(--space-6);
+  --card-padding-sm:     var(--space-5);
+  --card-border-radius:  var(--radius-md);
+  --card-border-color:   var(--line);
+  --card-shadow:         var(--shadow-none);
+  --card-shadow-hover:   var(--shadow-sm);
+  --card-accent-height:  0px;
+
+  --table-cell-padding-x: var(--space-4);
+  --table-cell-padding-y: var(--space-3);
+  --table-header-bg:      var(--paper-warm);
+  --table-border-color:   var(--line);
+  --table-hover-bg:       var(--paper-warm);
+
+  --toast-padding-x:      var(--space-6);
+  --toast-padding-y:      var(--space-4);
+  --toast-border-radius:  var(--radius-default);
+  --toast-min-width:      300px;
+  --toast-max-width:      500px;
+}
+
+/* Responsive overrides */
+@media (max-width: 768px) {
+  :root {
+    --navbar-height: var(--navbar-height-mobile);
+    --card-padding:  var(--space-5);
+    --btn-padding-x: var(--space-4);
+    --btn-padding-y: var(--space-2);
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --card-padding: var(--space-4);
+  }
+}
+
+/* ==========================================
+ * UTILITY CLASSES
+ * ========================================== */
+
+.text-accent    { color: var(--accent); }
+.text-secondary { color: var(--ink-secondary); }
+.text-muted     { color: var(--ink-muted); }
+.text-success   { color: var(--positive); }
+.text-error     { color: var(--negative); }
+.text-warning   { color: var(--premium); }
+
+.bg-accent    { background-color: var(--accent); }
+.bg-secondary { background-color: var(--paper); }
+.bg-success   { background-color: var(--positive); }
+.bg-error     { background-color: var(--negative); }
+
+/* Positive / negative numeric values — mono, semibold, brand-aligned */
+.positive {
+  color: var(--positive);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.negative {
+  color: var(--negative);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Eyebrow — used above section headlines */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--letter-spacing-widest);
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Italic editorial caption */
+.editorial-caption {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--font-size-sm);
+  color: var(--ink-muted);
+}
+
+/* Mono utility — for any numeric run */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

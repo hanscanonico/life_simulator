@@ -1,0 +1,423 @@
+/*
+ * Unified Form Component System
+ * ==============================
+ * A consistent form system with inputs, selects, textareas, and form layouts.
+ *
+ * Usage:
+ *   <div class="form-group">
+ *     <label class="form-label">Email</label>
+ *     <input type="email" class="form-input" placeholder="you@example.com">
+ *   </div>
+ *
+ *   <div class="form-group">
+ *     <label class="form-label">Country</label>
+ *     <select class="form-select">
+ *       <option>Choose...</option>
+ *     </select>
+ *   </div>
+ *
+ * Layouts:
+ *   <div class="form-row">
+ *     <div class="form-group">...</div>
+ *     <div class="form-group">...</div>
+ *   </div>
+ *
+ * With hints/errors:
+ *   <div class="form-group">
+ *     <label class="form-label">Password <span class="form-hint">(6 characters min)</span></label>
+ *     <input type="password" class="form-input">
+ *     <span class="form-error">Password is too short</span>
+ *   </div>
+ */
+
+/* ==========================================
+ * FORM LAYOUT
+ * ========================================== */
+
+/* Form Group - Container for label + input */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Form Row - Horizontal layout for multiple form groups */
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.form-row > .form-group {
+  flex: 1 1 calc(50% - var(--space-4));
+  min-width: 200px;
+  margin-right: var(--space-6);
+  margin-bottom: var(--space-4);
+}
+
+.form-row > .form-group:last-child {
+  margin-right: 0;
+}
+
+/* Form Actions - Container for submit buttons */
+.form-actions {
+  margin-top: var(--space-4);
+}
+
+/* ==========================================
+ * FORM LABELS
+ * ========================================== */
+
+.form-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--ink-secondary);
+  line-height: var(--line-height-tight);
+}
+
+/* Hint text - inline with label or below input */
+.form-hint {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  color: var(--ink-faint);
+}
+
+/* Required indicator */
+.form-label-required::after {
+  content: ' *';
+  color: var(--negative);
+}
+
+/* ==========================================
+ * BASE INPUT STYLES
+ * ========================================== */
+
+.form-input,
+.form-select,
+.form-textarea {
+  /* Layout */
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--input-padding-y) var(--input-padding-x);
+
+  /* Typography */
+  font-family: var(--font-sans);
+  font-size: var(--input-font-size);
+  line-height: var(--line-height-normal);
+  color: var(--ink);
+
+  /* Appearance */
+  background: var(--input-bg);
+  border: var(--input-border-width) solid var(--input-border-color);
+  border-radius: var(--input-border-radius);
+
+  /* Transitions */
+  transition:
+    border-color var(--transition-default),
+    box-shadow var(--transition-default),
+    background-color var(--transition-default);
+}
+
+/* Placeholder text */
+.form-input::placeholder,
+.form-textarea::placeholder {
+  color: var(--ink-disabled);
+}
+
+/* ==========================================
+ * INPUT STATES
+ * ========================================== */
+
+/* Focus State — ink hairline, no glow */
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--ink);
+  box-shadow: none;
+}
+
+/* Hover State */
+.form-input:hover:not(:focus):not(:disabled),
+.form-select:hover:not(:focus):not(:disabled),
+.form-textarea:hover:not(:focus):not(:disabled) {
+  border-color: var(--ink-faint);
+}
+
+/* Disabled State */
+.form-input:disabled,
+.form-select:disabled,
+.form-textarea:disabled {
+  background-color: var(--paper-sunken);
+  color: var(--ink-disabled);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Read-only State */
+.form-input:read-only,
+.form-textarea:read-only {
+  background-color: var(--paper);
+  cursor: default;
+}
+
+/* Error State */
+.form-input.is-invalid,
+.form-select.is-invalid,
+.form-textarea.is-invalid,
+.form-group.has-error .form-input,
+.form-group.has-error .form-select,
+.form-group.has-error .form-textarea {
+  border-color: var(--negative);
+}
+
+.form-input.is-invalid:focus,
+.form-select.is-invalid:focus,
+.form-textarea.is-invalid:focus,
+.form-group.has-error .form-input:focus,
+.form-group.has-error .form-select:focus,
+.form-group.has-error .form-textarea:focus {
+  box-shadow: none;
+  border-color: var(--negative);
+}
+
+/* Success State */
+.form-input.is-valid,
+.form-select.is-valid,
+.form-textarea.is-valid {
+  border-color: var(--positive);
+}
+
+.form-input.is-valid:focus,
+.form-select.is-valid:focus,
+.form-textarea.is-valid:focus {
+  box-shadow: none;
+  border-color: var(--positive);
+}
+
+/* ==========================================
+ * SELECT SPECIFIC STYLES
+ * ========================================== */
+
+.form-select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: var(--space-10);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 20 20' fill='none'%3E%3Cpath stroke='%235A5752' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
+  background-size: 18px;
+}
+
+.form-select:focus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 20 20' fill='none'%3E%3Cpath stroke='%230A0A0A' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+}
+
+/* ==========================================
+ * TEXTAREA SPECIFIC STYLES
+ * ========================================== */
+
+.form-textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.form-textarea-sm {
+  min-height: 80px;
+}
+
+.form-textarea-lg {
+  min-height: 200px;
+}
+
+/* ==========================================
+ * CHECKBOX & RADIO
+ * ========================================== */
+
+.form-group-checkbox,
+.form-group-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.form-checkbox,
+.form-radio {
+  width: var(--space-5);
+  height: var(--space-5);
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.form-checkbox-label,
+.form-radio-label {
+  font-size: var(--font-size-sm);
+  color: var(--ink-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ==========================================
+ * ERROR & HELPER MESSAGES
+ * ========================================== */
+
+.form-error {
+  font-size: var(--font-size-xs);
+  color: var(--negative-strong);
+  margin-top: var(--space-1);
+}
+
+.form-help {
+  font-size: var(--font-size-xs);
+  color: var(--ink-faint);
+  margin-top: var(--space-1);
+}
+
+/* ==========================================
+ * FORM NOTICE / ALERT BOXES
+ * ========================================== */
+
+.form-notice {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-default);
+  font-size: var(--font-size-sm);
+}
+
+.form-notice-info {
+  background: var(--info-bg);
+  border: var(--border-width-1) solid var(--info-tint);
+  color: var(--info-strong);
+}
+
+.form-notice-warning {
+  background: var(--premium-tint);
+  border: var(--border-width-1) solid var(--premium);
+  color: var(--premium-strong);
+}
+
+.form-notice-error {
+  background: var(--negative-tint);
+  border: var(--border-width-1) solid var(--negative-tint);
+  color: var(--negative-strong);
+}
+
+.form-notice-success {
+  background: var(--positive-tint);
+  border: var(--border-width-1) solid var(--positive-border);
+  color: var(--positive-text);
+}
+
+/* ==========================================
+ * INPUT SIZES
+ * ========================================== */
+
+/* Small inputs */
+.form-input-sm,
+.form-select-sm {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+/* Large inputs */
+.form-input-lg,
+.form-select-lg {
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--font-size-lg);
+}
+
+/* ==========================================
+ * INPUT GROUP (with icons or addons)
+ * ========================================== */
+
+.input-group {
+  display: flex;
+  align-items: stretch;
+}
+
+.input-group .form-input {
+  flex: 1;
+  border-radius: 0;
+}
+
+.input-group .form-input:first-child {
+  border-radius: var(--input-border-radius) 0 0 var(--input-border-radius);
+}
+
+.input-group .form-input:last-child {
+  border-radius: 0 var(--input-border-radius) var(--input-border-radius) 0;
+}
+
+.input-group-addon {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  background: var(--paper);
+  border: var(--input-border-width) solid var(--input-border-color);
+  color: var(--ink-muted);
+  font-size: var(--font-size-sm);
+}
+
+.input-group-addon:first-child {
+  border-right: 0;
+  border-radius: var(--input-border-radius) 0 0 var(--input-border-radius);
+}
+
+.input-group-addon:last-child {
+  border-left: 0;
+  border-radius: 0 var(--input-border-radius) var(--input-border-radius) 0;
+}
+
+/* ==========================================
+ * BROWSER AUTOFILL OVERRIDE
+ * ========================================== */
+
+/* Override browser autofill background color */
+.form-input:-webkit-autofill,
+.form-input:-webkit-autofill:hover,
+.form-input:-webkit-autofill:focus,
+.form-input:-webkit-autofill:active,
+.form-select:-webkit-autofill,
+.form-select:-webkit-autofill:hover,
+.form-select:-webkit-autofill:focus,
+.form-select:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  -webkit-text-fill-color: var(--ink);
+  box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* ==========================================
+ * INPUT TYPE MODIFIERS
+ * ========================================== */
+
+/*
+ * These are modifier classes to be used WITH .form-input
+ * They only adjust specific properties, not redefine the entire input
+ */
+
+/* Search input - slightly more horizontal padding */
+.search-input {
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
+}
+
+/* Date input - uses base .form-input styles, no overrides needed */
+.date-input {
+  /* Inherits all styles from .form-input */
+  /* Add specific date input overrides here if needed */
+}
+
+/* ==========================================
+ * RESPONSIVE ADJUSTMENTS
+ * ========================================== */
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .form-input,
+  .form-select,
+  .form-textarea {
+    font-size: var(--font-size-base); /* Prevent zoom on iOS */
+  }
+}

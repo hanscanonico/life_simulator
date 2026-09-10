@@ -1,0 +1,219 @@
+/*
+ * Reusable Components
+ * ===================
+ * Small, utility-style UI components built on design tokens.
+ * Larger components (cards, toasts, etc.) have dedicated files.
+ */
+
+/* ==========================================
+ * BADGES — monochrome chip with leading taxonomy dot
+ * ========================================== */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--letter-spacing-wider);
+  text-transform: uppercase;
+  border: var(--border-width-1) solid var(--line-strong);
+  border-radius: var(--radius-xs);
+  background: var(--paper);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  margin-right: 6px;
+  background: var(--ink-faint);
+  flex-shrink: 0;
+}
+
+.badge-primary::before   { background: var(--accent); }
+.badge-secondary::before { background: var(--ink-faint); }
+.badge-success::before   { background: var(--positive); }
+.badge-error::before     { background: var(--negative); }
+.badge-warning::before   { background: var(--premium); }
+.badge-info::before      { background: var(--info); }
+
+/* Pro badge — solid ink, no leading dot */
+.badge-pro {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+  font-weight: var(--font-weight-semibold);
+}
+.badge-pro::before { display: none; }
+
+/* ==========================================
+ * ALERTS
+ * ========================================== */
+
+.alert {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-default);
+  border: var(--border-width-1) solid;
+  font-size: var(--font-size-base);
+}
+
+.alert-success {
+  background-color: var(--positive-tint);
+  border-color: var(--positive-border);
+  color: var(--positive-text);
+}
+
+.alert-error {
+  background-color: var(--negative-tint);
+  border-color: var(--negative-tint);
+  color: var(--negative-strong);
+}
+
+.alert-warning {
+  background-color: var(--premium-tint);
+  border-color: var(--premium-tint);
+  color: var(--premium-strong);
+}
+
+.alert-info {
+  background-color: var(--info-bg);
+  border-color: var(--info-tint);
+  color: var(--info-strong);
+}
+
+/* ==========================================
+ * DIVIDERS
+ * ========================================== */
+
+.divider {
+  height: var(--border-width-1);
+  background-color: var(--line-strong);
+  border: none;
+  margin: var(--space-6) 0;
+}
+
+.divider-light {
+  background-color: var(--line);
+}
+
+.divider-gradient {
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
+}
+
+/* ==========================================
+ * CODE
+ * ========================================== */
+
+.code {
+  background: var(--paper);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--accent);
+  border: var(--border-width-1) solid var(--line-strong);
+}
+
+/* ==========================================
+ * SPINNERS
+ * ========================================== */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: var(--space-5);
+  height: var(--space-5);
+  border: var(--border-width-2) solid var(--color-gray-200);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-full);
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner-sm {
+  width: var(--space-4);
+  height: var(--space-4);
+}
+
+.spinner-lg {
+  width: var(--space-8);
+  height: var(--space-8);
+  border-width: 3px;
+}
+
+/* ==========================================
+ * PROGRESS BARS
+ * ========================================== */
+
+.progress {
+  height: var(--space-2);
+  background-color: var(--color-gray-200);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--ink);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-slow);
+}
+
+.progress-bar-success {
+  background: var(--accent);
+}
+
+/* ==========================================
+ * TOOLTIPS (CSS-only)
+ * ========================================== */
+
+.tooltip {
+  position: relative;
+}
+
+.tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-gray-800);
+  color: var(--paper);
+  font-size: var(--font-size-sm);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
+  z-index: var(--z-tooltip);
+  pointer-events: none;
+}
+
+.tooltip:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ==========================================
+ * GATE NOTICE
+ * ========================================== */
+
+.gate-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-gray-50);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-default);
+  font-size: var(--font-size-sm);
+  color: var(--ink-muted);
+}

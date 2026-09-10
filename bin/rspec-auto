@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+spec_files=()
+no_spec=()
+
+while IFS=$'\t' read -r status old new; do
+  # For renames (R100, R075, etc.) the new path is in $new; otherwise it's in $old
+  if [[ "$status" == R* ]]; then
+    path="$new"
+  else
+    path="$old"
+  fi
+
+  # Already a spec file
+  if [[ "$path" =~ ^spec/.*_spec\.rb$ ]] && [[ -f "$path" ]]; then
+    spec_files+=("$path")
+    continue
+  fi
+
+  # Map app/ source to spec/
+  if [[ "$path" =~ ^app/(.+)\.rb$ ]]; then
+    inner="${BASH_REMATCH[1]}"
+    candidate="spec/${inner}_spec.rb"
+    if [[ -f "$candidate" ]]; then
+      spec_files+=("$candidate")
+    else
+      no_spec+=("$path")
+    fi
+    continue
+  fi
+
+  # Map lib/ source to spec/lib/
+  if [[ "$path" =~ ^lib/(.+)\.rb$ ]]; then
+    inner="${BASH_REMATCH[1]}"
+    candidate="spec/lib/${inner}_spec.rb"
+    if [[ -f "$candidate" ]]; then
+      spec_files+=("$candidate")
+    else
+      no_spec+=("$path")
+    fi
+    continue
+  fi
+
+  # Everything else (CSS, ERB, JS, config, etc.) — skip silently
+done < <(
+  # Staged and unstaged changes to tracked files (vs HEAD)
+  git diff HEAD --name-status --diff-filter=ACMR
+  # Untracked files (not yet added) — emit with an "A" status, tab-separated
+  git ls-files --others --exclude-standard | sed 's/^/A\t/'
+)
+
+# Dedupe (portable; avoids mapfile, which is absent in bash 3.2)
+if [[ ${#spec_files[@]} -gt 0 ]]; then
+  deduped=()
+  while IFS= read -r line; do
+    deduped+=("$line")
+  done < <(printf '%s\n' "${spec_files[@]}" | sort -u)
+  spec_files=("${deduped[@]}")
+fi
+
+# Report files with no matching spec
+if [[ ${#no_spec[@]} -gt 0 ]]; then
+  echo "--- No matching spec for:" >&2
+  for f in "${no_spec[@]}"; do
+    echo "  $f" >&2
+  done
+  echo "---" >&2
+fi
+
+if [[ ${#spec_files[@]} -eq 0 ]]; then
+  echo "No matching specs for current changes."
+  exit 0
+fi
+
+echo "Running specs: ${spec_files[*]}"
+exec bundle exec rspec "${spec_files[@]}" "$@"

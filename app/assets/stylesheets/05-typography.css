@@ -1,0 +1,191 @@
+/*
+ * Typography Utilities
+ * ====================
+ * Text styling utilities built on design tokens.
+ */
+
+/* ==========================================
+ * FONT SIZES
+ * ========================================== */
+
+.text-xs { font-size: var(--font-size-xs); }
+.text-sm { font-size: var(--font-size-sm); }
+.text-base { font-size: var(--font-size-base); }
+.text-lg { font-size: var(--font-size-lg); }
+.text-xl { font-size: var(--font-size-xl); }
+.text-2xl { font-size: var(--font-size-2xl); }
+.text-3xl { font-size: var(--font-size-3xl); }
+.text-4xl { font-size: var(--font-size-4xl); }
+.text-5xl { font-size: var(--font-size-5xl); }
+
+/* ==========================================
+ * FONT WEIGHTS
+ * ========================================== */
+
+.font-normal { font-weight: var(--font-weight-normal); }
+.font-medium { font-weight: var(--font-weight-medium); }
+.font-semibold { font-weight: var(--font-weight-semibold); }
+.font-bold { font-weight: var(--font-weight-bold); }
+
+/* ==========================================
+ * LINE HEIGHTS
+ * ========================================== */
+
+.leading-tight { line-height: var(--line-height-tight); }
+.leading-snug { line-height: var(--line-height-snug); }
+.leading-normal { line-height: var(--line-height-normal); }
+.leading-relaxed { line-height: var(--line-height-relaxed); }
+.leading-loose { line-height: var(--line-height-loose); }
+
+/* ==========================================
+ * LETTER SPACING
+ * ========================================== */
+
+.tracking-tight { letter-spacing: var(--letter-spacing-tight); }
+.tracking-normal { letter-spacing: var(--letter-spacing-normal); }
+.tracking-wide { letter-spacing: var(--letter-spacing-wide); }
+.tracking-wider { letter-spacing: var(--letter-spacing-wider); }
+.tracking-widest { letter-spacing: var(--letter-spacing-widest); }
+
+/* ==========================================
+ * TEXT TRANSFORM
+ * ========================================== */
+
+.uppercase { text-transform: uppercase; }
+.lowercase { text-transform: lowercase; }
+.capitalize { text-transform: capitalize; }
+.normal-case { text-transform: none; }
+
+/* ==========================================
+ * TEXT DECORATION
+ * ========================================== */
+
+.underline { text-decoration: underline; }
+.line-through { text-decoration: line-through; }
+.no-underline { text-decoration: none; }
+
+/* ==========================================
+ * TEXT OVERFLOW
+ * ========================================== */
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ==========================================
+ * FONT STYLE
+ * ========================================== */
+
+.italic { font-style: italic; }
+.not-italic { font-style: normal; }
+
+/* ==========================================
+ * WHITESPACE
+ * ========================================== */
+
+.whitespace-normal { white-space: normal; }
+.whitespace-nowrap { white-space: nowrap; }
+.whitespace-pre { white-space: pre; }
+.whitespace-pre-wrap { white-space: pre-wrap; }
+
+/* ==========================================
+ * WORD BREAK
+ * ========================================== */
+
+.break-normal { word-break: normal; overflow-wrap: normal; }
+.break-words { overflow-wrap: break-word; }
+.break-all { word-break: break-all; }
+
+/* ==========================================
+ * FONT FAMILY
+ * ========================================== */
+
+.font-sans    { font-family: var(--font-sans); }
+.font-mono    { font-family: var(--font-mono); }
+.font-display { font-family: var(--font-display); }
+
+/* ==========================================
+ * EDITORIAL BASE TYPOGRAPHY
+ * ========================================== */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: var(--line-height-normal);
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Display headlines — serif, light weight, tight tracking */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-normal);
+  letter-spacing: var(--letter-spacing-display);
+  line-height: var(--line-height-tight);
+  color: var(--ink);
+  margin: 0 0 var(--space-4);
+}
+h1 { font-size: var(--font-size-5xl); }
+h2 { font-size: var(--font-size-4xl); }
+h3 { font-size: var(--font-size-3xl); }
+
+/* h4–h6 are UI titles — sans, semibold */
+h4, h5, h6 {
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-snug);
+  color: var(--ink);
+  margin: 0 0 var(--space-3);
+}
+h4 { font-size: var(--font-size-xl); }
+h5 { font-size: var(--font-size-lg); }
+h6 {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wider);
+  color: var(--ink-muted);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Italic accent inside display headlines — emerald serif italic */
+h1 em, h2 em, h3 em,
+.headline-accent {
+  color: var(--accent);
+  font-style: italic;
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-normal);
+}
+
+p { margin: 0 0 var(--space-4); }
+small { font-size: var(--font-size-sm); color: var(--ink-muted); }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--transition-default);
+}
+a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

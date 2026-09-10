@@ -1,0 +1,139 @@
+/*
+ * Brand Tokens — "Editorial" example brand
+ * ========================================
+ * Brand layer of the design system: colors, font stacks, wordmark.
+ * THIS IS THE PER-APP LAYER — replace its values (keeping the semantic
+ * names) to rebrand. The structural layer and component files only
+ * reference the semantic names defined here; see README for the contract.
+ *
+ * Example brand (VantageLedger): cream paper, ink black, forest-emerald
+ * accent. Newsreader headlines, Inter UI, IBM Plex Mono numerals.
+ * Read: Bloomberg Businessweek meets a private bank statement.
+ */
+
+:root {
+  /* ==========================================
+   * SURFACES — paper, not gray
+   * ========================================== */
+  --paper:        #F2EFE8;   /* page background — cream/bone */
+  --paper-soft:   #FFFEFA;   /* card surface — warm white */
+  --paper-sunken: #E9E4D7;   /* sunken / disabled */
+  --paper-warm:   #F7F3EA;   /* hover tint */
+
+  /* ==========================================
+   * INK — text + iconography
+   * ========================================== */
+  --ink:           #0A0A0A;
+  --ink-secondary: #2A2A2A;
+  --ink-muted:     #5A5752;
+  --ink-faint:     #8E8B85;
+  --ink-disabled:  #B5B0A4;
+  --ink-inverse:   #F2EFE8;
+
+  /* ==========================================
+   * LINES
+   * ========================================== */
+  --line:        #D8D3C8;
+  --line-strong: #B5B0A4;
+  --line-rule:   var(--ink);
+
+  /* ==========================================
+   * ACCENT — forest emerald
+   * Sparingly used: wordmark accent, CTAs, links, eyebrows.
+   * Positive change reuses the same hue — growth is the brand color.
+   * ========================================== */
+  --emerald-50:  #E7F0EC;
+  --emerald-100: #C9DDD2;
+  --emerald-200: #A4C5B2;
+  --emerald-300: #7BAA8E;
+  --emerald-400: #4F8C68;
+  --emerald-500: #0E5C3A;   /* MAIN */
+  --emerald-600: #0A4A2E;
+  --emerald-700: #073621;
+  --emerald-800: #052918;
+  --emerald-900: #031A0F;
+
+  --accent:         var(--emerald-500);
+  --accent-hover:   var(--emerald-600);
+  --accent-pressed: var(--emerald-700);
+  --accent-soft:    var(--emerald-50);
+  --accent-tint:    var(--emerald-100);
+
+  /* ==========================================
+   * SIGNALS — positive / negative / premium / info
+   * ========================================== */
+
+  --positive:     #0E5C3A;
+  --positive-bg:  rgba(14, 92, 58, 0.10);
+  --positive-tint:#E7F0EC;
+  --positive-strong: #0A4A2E;
+  --positive-pressed: #073621;
+  --positive-border: var(--emerald-200);
+  --positive-text:   var(--emerald-800);
+
+  --negative:     #A93226;
+  --negative-bg:  rgba(169, 50, 38, 0.10);
+  --negative-tint:#F6E4E1;
+  --negative-strong: #8B2820;
+  --negative-pressed: #6E1F19;
+
+  --premium:      #B8884B;
+  --premium-bg:   rgba(184, 136, 75, 0.12);
+  --premium-tint: #F1E7D2;
+  --premium-strong: #966D39;
+  --premium-pressed: #74532B;
+
+  --info:         #2C5282;
+  --info-bg:      rgba(44, 82, 130, 0.10);
+  --info-tint:    #DCE6F2;
+  --info-strong:  #1A3450;
+
+  /* Dark surfaces — accent and quiet text tuned for the ink footer. */
+  --accent-on-dark:    #5BB68A;
+  --ink-on-dark-muted: #A5A2A0;
+  --ink-pressed:       #000000;
+
+  /* ==========================================
+   * WARM NEUTRAL RAMP — desaturated paper, not cold gray
+   * ========================================== */
+  --color-gray-50:  #F5F2EA;
+  --color-gray-100: #E9E4D7;
+  --color-gray-200: #D8D3C8;
+  --color-gray-300: #B5B0A4;
+  --color-gray-400: #8E8B85;
+  --color-gray-500: #6E6B66;
+  --color-gray-600: #514E49;
+  --color-gray-700: #3A3833;
+  --color-gray-800: #25231F;
+  --color-gray-900: #14130F;
+
+  /* ==========================================
+   * FONT STACKS
+   * ========================================== */
+
+  /* Display — Newsreader (Google). Headlines, wordmark, italic accents. */
+  --font-display: 'Newsreader', 'Source Serif Pro', 'Source Serif 4', Georgia, 'Times New Roman', serif;
+
+  /* Sans — Inter. UI labels, body copy, buttons, eyebrows. */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Mono — IBM Plex Mono. Every numeric value: prices, %, volume, tickers. */
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* ==========================================
+ * WORDMARK — Newsreader serif, "Ledger" in emerald
+ * ========================================== */
+
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-tight);
+  color: var(--ink);
+  font-style: normal;
+}
+.wordmark-accent { color: var(--accent); }
+.wordmark-italic {
+  font-style: italic;
+  font-weight: var(--font-weight-normal);
+}
