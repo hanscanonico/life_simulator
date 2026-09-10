@@ -7,8 +7,9 @@
 # Ignore bundler config.
 /.bundle
 
-# Ignore all environment files.
+# Ignore all environment files, including the deploy stack's secrets.
 /.env*
+/deploy/.env*
 
 # Ignore all default key files.
 /config/master.key
@@ -38,6 +39,10 @@
 
 # Ignore CI service files.
 /.github
+
+# Ignore agent worktrees and Rust build output.
+/.claude/worktrees/
+/engine/target/
 
 # Ignore Kamal files.
 /config/deploy*.yml

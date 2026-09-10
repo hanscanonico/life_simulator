@@ -1,0 +1,12 @@
+#!/bin/bash -e
+# Nightly Postgres backup with 14-day rotation. Run from the systemd timer in
+# deploy/systemd/.
+cd "$(dirname "$0")"
+BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
+mkdir -p "$BACKUP_DIR"
+STAMP=$(date +%Y-%m-%d_%H%M)
+DUMP="$BACKUP_DIR/life_simulator_$STAMP.dump"
+docker compose -f docker-compose.yml exec -T db \
+  pg_dump -U life_simulator --format=custom life_simulator_production > "$DUMP"
+find "$BACKUP_DIR" -name 'life_simulator_*.dump' -mtime +14 -delete
+echo "Backup written: $DUMP ($(du -h "$DUMP" | cut -f1))"

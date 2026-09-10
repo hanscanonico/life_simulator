@@ -26,7 +26,9 @@ module LifeSimulator
     # Please, add to the `ignore` list any other `lib` subdirectories that do
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
     # Common ones are `templates`, `generators`, or `middleware`, for example.
-    config.autoload_lib(ignore: %w[assets tasks])
+    # `rubocop` holds our custom cops: they subclass RuboCop::Cop::Base, which is
+    # not there in production, so eager loading them would break boot.
+    config.autoload_lib(ignore: %w[assets rubocop tasks])
 
     # Configuration for the application, engines, and railties goes here.
     #
