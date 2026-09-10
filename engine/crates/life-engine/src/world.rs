@@ -552,6 +552,21 @@ mod tests {
     }
 
     #[test]
+    fn a_blinker_oscillates_across_the_wrap_of_a_non_square_torus() {
+        let params = life(5, 9);
+        let mut world = World::new(&params, 0).unwrap();
+        let vertical = [(0, 8), (0, 0), (0, 1)];
+        for (x, y) in vertical {
+            world.set_cell(x, y, &[1]);
+        }
+
+        world.step();
+        assert_eq!(alive_cells(&world), vec![(0, 0), (1, 0), (4, 0)]);
+        world.step();
+        assert_eq!(alive_cells(&world), vec![(0, 0), (0, 1), (0, 8)]);
+    }
+
+    #[test]
     fn a_life_world_restored_from_a_snapshot_steps_identically() {
         let params = Params {
             init: Init::Random,
