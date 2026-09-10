@@ -133,6 +133,13 @@ Bundler/OrderedGems:
   Enabled: true
 
 # Rails rules
+Rails/SkipsModelValidations:
+  # The runner streams metric samples in batches and re-posts them on retry; the bulk
+  # upsert on the `[run_id, epoch]` unique index is what makes that idempotent, and the
+  # database constraints are the ones that matter for those rows.
+  AllowedMethods:
+    - upsert_all
+
 Rails/Output:
   Exclude:
     - 'lib/tasks/**/*'

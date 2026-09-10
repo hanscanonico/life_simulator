@@ -1,0 +1,76 @@
+# This file is auto-generated from the current state of the database. Instead
+# of editing this file, please use the migrations feature of Active Record to
+# incrementally modify your database, and then regenerate this schema definition.
+#
+# This file is the source Rails uses to define your schema when running `bin/rails
+# db:schema:load`. When creating a new database, `bin/rails db:schema:load` tends to
+# be faster and is potentially less error prone than running all of your
+# migrations from scratch. Old migrations may fail to apply correctly if those
+# migrations use external dependencies or application code.
+#
+# It's strongly recommended that you check this file into your version control system.
+
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_120004) do
+  # These are extensions that must be enabled in order to support this database
+  enable_extension "pg_catalog.plpgsql"
+
+  create_table "experiments", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.integer "epochs", null: false
+    t.string "name", null: false
+    t.jsonb "param_grid", default: {}, null: false
+    t.integer "runs_count", default: 0, null: false
+    t.jsonb "seeds", default: [], null: false
+    t.string "slug", null: false
+    t.string "status", default: "draft", null: false
+    t.string "substrate", default: "soup", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_experiments_on_name", unique: true
+    t.index ["slug"], name: "index_experiments_on_slug", unique: true
+  end
+
+  create_table "runs", force: :cascade do |t|
+    t.datetime "claimed_at"
+    t.datetime "created_at", null: false
+    t.integer "epochs", null: false
+    t.integer "epochs_done", default: 0, null: false
+    t.text "error"
+    t.bigint "experiment_id", null: false
+    t.datetime "finished_at"
+    t.datetime "heartbeat_at"
+    t.jsonb "params", default: {}, null: false
+    t.string "runner_id"
+    t.bigint "seed", null: false
+    t.datetime "started_at"
+    t.string "status", default: "pending", null: false
+    t.jsonb "summary", default: {}, null: false
+    t.integer "transition_epoch"
+    t.datetime "updated_at", null: false
+    t.index ["experiment_id"], name: "index_runs_on_experiment_id"
+    t.index ["status", "id"], name: "index_runs_on_status_and_id"
+  end
+
+  create_table "samples", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "epoch", null: false
+    t.bigint "run_id", null: false
+    t.datetime "updated_at", null: false
+    t.jsonb "values", default: {}, null: false
+    t.index ["run_id", "epoch"], name: "index_samples_on_run_id_and_epoch", unique: true
+  end
+
+  create_table "snapshots", force: :cascade do |t|
+    t.binary "blob"
+    t.datetime "created_at", null: false
+    t.integer "epoch", null: false
+    t.binary "png"
+    t.bigint "run_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["run_id", "epoch"], name: "index_snapshots_on_run_id_and_epoch", unique: true
+  end
+
+  add_foreign_key "runs", "experiments"
+  add_foreign_key "samples", "runs"
+  add_foreign_key "snapshots", "runs"
+end
