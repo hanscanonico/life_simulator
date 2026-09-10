@@ -42,9 +42,16 @@ RSpec.describe Experiments::Axis do
   end
 
   describe "#log?" do
-    it "leaves the well-mixed arm out of the span it measures" do
+    it "keeps the radius sweep on a linear axis" do
       axis = described_class.new(name: "radius", values: [1, 2, 4, 0])
 
+      expect(axis.log?).to be(false)
+    end
+
+    it "leaves the well-mixed arm out of the span it measures" do
+      axis = described_class.new(name: "radius", values: [1, 60, 0])
+
+      expect(axis.position_of(0) / axis.position_of(1)).to be > 100
       expect(axis.log?).to be(false)
     end
 
