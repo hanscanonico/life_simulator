@@ -15,6 +15,8 @@ RSpec.describe Runs::ShowPage do
     end
 
     it "draws one chart per DESIGN observable" do
+      expect(described_class::METRICS.keys)
+        .to eq(%w[compress_ratio distinct_tapes top_share replicator_count op_density entropy_bits copy_rate])
       expect(page.charts.map(&:title)).to eq(described_class::METRICS.values)
     end
 
@@ -32,6 +34,40 @@ RSpec.describe Runs::ShowPage do
       create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
 
       expect(page.charts.last).to be_empty
+    end
+  end
+
+  describe "#transition_label" do
+    it "delimits the epoch of a run that transitioned" do
+      expect(page.transition_label).to eq("200")
+    end
+
+    context "with no transition yet on a running run" do
+      let(:run) { create(:run, status: "running", transition_epoch: nil) }
+
+      it "leaves the door open" do
+        expect(page.transition_label).to eq("no emergence yet")
+      end
+    end
+
+    context "with no transition on a finished run" do
+      let(:run) { create(:run, status: "finished", transition_epoch: nil) }
+
+      it "settles the question" do
+        expect(page.transition_label).to eq("no emergence")
+      end
+    end
+  end
+
+  describe "#charts_empty?" do
+    it "is true for a run that has not run an epoch" do
+      expect(described_class.build(run: create(:run, epochs_done: 0))).to be_charts_empty
+    end
+
+    it "is false once a metric has points" do
+      create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+
+      expect(page).not_to be_charts_empty
     end
   end
 

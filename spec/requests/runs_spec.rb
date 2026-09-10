@@ -16,12 +16,31 @@ RSpec.describe "Runs", type: :request do
       expect(response.body).to include("Compression ratio", "Copy rate", "<svg", "4242", "mutation_rate")
     end
 
+    it "draws one chart per observable of a run that reported samples" do
+      create(:sample, run: run, epoch: 100, values: Runs::ShowPage::METRICS.keys.index_with(0.5))
+
+      get run_path(run)
+
+      expect(response.body.scan("chart-line").size).to eq(Runs::ShowPage::METRICS.size)
+    end
+
     context "with no sample" do
-      it "says the charts are empty instead of failing" do
+      it "says the run has not reported yet instead of drawing empty charts" do
         get run_path(run)
 
         expect(response).to have_http_status(:ok)
-        expect(response.body).to include("No samples recorded yet")
+        expect(response.body).to include("This run has not reported a sample yet")
+        expect(response.body).not_to include("No samples recorded yet")
+      end
+    end
+
+    context "with a claimed run" do
+      let(:run) { create(:run, :claimed, heartbeat_at: 2.minutes.ago) }
+
+      it "dates the last heartbeat of the runner" do
+        get run_path(run)
+
+        expect(response.body).to include("runner-1", "last heartbeat 2 minutes ago")
       end
     end
 
