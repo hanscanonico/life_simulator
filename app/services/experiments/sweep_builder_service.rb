@@ -28,7 +28,8 @@ module Experiments
     def build_run(params, seed)
       return if existing_keys.include?([params, seed])
 
-      @experiment.runs.create!(params: params, seed: seed, epochs: @experiment.epochs)
+      @experiment.runs.create!(params: params, seed: seed, epochs: @experiment.epochs,
+                               priority: @experiment.priority)
       existing_keys << [params, seed]
     end
 

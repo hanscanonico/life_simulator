@@ -25,6 +25,9 @@ module Runs
     def run_attributes
       attributes = { status: @error.present? ? "failed" : "finished", finished_at: Time.current,
                      error: @error.presence }
+      # A finished run burned its whole budget: the last heartbeat is always a little
+      # behind the end, and a run reported as 19,342 of 20,000 reads as incomplete.
+      attributes[:epochs_done] = @run.epochs if @error.blank?
       attributes[:summary] = @summary if @summary.present?
       attributes[:transition_epoch] = @transition_epoch unless @transition_epoch.nil?
       attributes

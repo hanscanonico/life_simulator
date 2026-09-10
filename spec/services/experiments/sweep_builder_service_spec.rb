@@ -25,6 +25,14 @@ RSpec.describe Experiments::SweepBuilderService do
     expect(experiment.runs.pluck(:epochs).uniq).to eq([experiment.epochs])
   end
 
+  it "copies the experiment's priority onto every run" do
+    experiment.update!(priority: 5)
+
+    build_sweep
+
+    expect(experiment.runs.pluck(:priority).uniq).to eq([5])
+  end
+
   it "walks the grid in a deterministic order, seeds innermost" do
     build_sweep
 

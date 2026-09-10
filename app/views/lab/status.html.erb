@@ -43,7 +43,8 @@
     <% if @status.oldest_pending %>
       <p>
         <%= link_to "Run ##{@status.oldest_pending.id}", run_path(@status.oldest_pending) %>,
-        queued <%= time_ago_in_words(@status.oldest_pending.created_at) %> ago.
+        queued <%= time_ago_in_words(@status.oldest_pending.created_at) %> ago,
+        priority <%= @status.oldest_pending.priority %>.
       </p>
     <% else %>
       <p class="text-muted">The queue is empty.</p>
