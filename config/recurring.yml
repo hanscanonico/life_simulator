@@ -16,3 +16,6 @@ production:
   release_stale_runs:
     class: Runs::ReleaseStaleJob
     schedule: every 5 minutes
+  prune_snapshots:
+    class: Runs::PruneSnapshotsJob
+    schedule: every 30 minutes
