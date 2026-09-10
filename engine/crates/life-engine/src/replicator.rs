@@ -67,6 +67,14 @@ mod tests {
     }
 
     #[test]
+    fn the_handwritten_tape_stops_replicating_when_its_copy_op_is_ablated() {
+        let tape = handwritten_replicator();
+        let without_copy_to_head1 = OpSet::parse("<>{}+-,[]").expect("a legal set");
+        let mut rng = rng::seeded(7, 0, 0);
+        assert!(!is_replicator(&tape, 8192, without_copy_to_head1, &mut rng));
+    }
+
+    #[test]
     fn it_copies_itself_over_a_random_partner() {
         let tape = handwritten_replicator();
         let mut rng = rng::seeded(7, 0, 0);

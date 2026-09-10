@@ -16,6 +16,10 @@ RSpec.describe Lab do
       expect(Lab::SWEEPS.fetch("radius")[:param_grid]["radius"]).to eq([1, 2, 4, 0])
     end
 
+    it "cuts the ablations from the instruction set the engine declares" do
+      expect(Lab::FULL_INSTRUCTION_SET).to eq(Lab::Schema.defaults.fetch("ops"))
+    end
+
     it "ablates one family of ops per arm of the instruction-set sweep" do
       arms = Lab::SWEEPS.fetch("ops")[:param_grid]["ops"]
 

@@ -322,14 +322,19 @@ mod tests {
     #[test]
     fn a_soup_without_loops_runs_straight_through_its_brackets() {
         let without_loops = OpSet::parse("<>{}+-.,").expect("a legal set");
-        let mut tape = vec![1, b'[', b'-', b']', b'+'];
+        let mut tape = vec![3, b'[', b'-', b']'];
         let outcome = run_with(&mut tape, 100, without_loops);
-        assert_eq!(
-            tape[0], 1,
-            "the loop body ran once, back to where it started"
-        );
+        assert_eq!(tape[0], 2, "the body ran once, with no jump back to it");
         assert_eq!(outcome.halt, Halt::EndOfTape);
-        assert_eq!(outcome.steps, 5);
+        assert_eq!(outcome.steps, 4);
+
+        let mut tape = vec![3, b'[', b'-', b']'];
+        let outcome = run(&mut tape, 100);
+        assert_eq!(
+            tape[0], 0,
+            "the same loop runs to zero when `[]` is enabled"
+        );
+        assert_eq!(outcome.steps, 8);
     }
 
     #[test]

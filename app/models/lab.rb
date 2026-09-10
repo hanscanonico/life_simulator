@@ -6,8 +6,9 @@ module Lab
   # emergence: the later sweeps hold the rate there so their arms are comparable to it.
   EMERGENT_MUTATION_RATE = 2.0**-13
 
-  # The instruction sets of DESIGN §1.3's ablation sweep: the whole BFF set, then one arm
-  # per family of ops removed. A byte whose op is not enabled is a no-op in the engine.
+  # The whole BFF instruction set, the arm DESIGN §1.3's ablations are cut from — the same
+  # ten bytes the engine declares as the default of its `ops` parameter, where a byte whose
+  # op is left out of the set is a no-op.
   FULL_INSTRUCTION_SET = "<>{}+-.,[]"
 
   # The sweeps of DESIGN.md §1.3, as data: `rake lab:sweep[mutation_rate]` turns one entry

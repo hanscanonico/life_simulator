@@ -563,6 +563,23 @@ mod tests {
     }
 
     #[test]
+    fn metrics_read_no_replicator_when_the_run_ablates_the_op_it_copies_with() {
+        let params = Params {
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ops: "<>{}+-,[]".to_string(),
+            ..soup(4, 4)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let tape = replicator::handwritten_replicator();
+        for x in 0..3 {
+            world.set_cell(x, 0, &tape);
+        }
+        assert_eq!(world.metrics().replicator_count, 0);
+    }
+
+    #[test]
     fn copy_rate_catches_a_replicator_copying_in_situ() {
         let params = Params {
             tape_len: 256,
