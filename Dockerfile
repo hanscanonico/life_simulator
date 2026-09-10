@@ -2,8 +2,8 @@
 # check=error=true
 
 # This Dockerfile is designed for production, not development. Use with Kamal or build'n'run by hand:
-# docker build -t life_simulator .
-# docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name life_simulator life_simulator
+# docker build -t life-simulator-app .
+# docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name life-simulator life-simulator-app
 
 # For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
 
@@ -56,6 +56,20 @@ RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
 
 
+# Throw-away stage that builds the Rust runner. The engine workspace does not
+# exist yet, so the copy uses a wildcard (with the always-present Makefile to
+# keep it from matching nothing) and the build is skipped when Cargo.toml is
+# absent. /out is the handoff: empty when there is no engine, so the final
+# stage can copy it unconditionally.
+FROM docker.io/library/rust:1-slim-bookworm AS rust-build
+
+WORKDIR /src
+COPY Makefile engine* /src/engine/
+RUN mkdir -p /out && \
+    if [ -f /src/engine/Cargo.toml ]; then \
+      cd /src/engine && cargo build --release -p runner && cp target/release/runner /out/; \
+    fi
+
 
 # Final stage for app image
 FROM base
@@ -69,9 +83,14 @@ USER 1000:1000
 COPY --chown=rails:rails --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --chown=rails:rails --from=build /rails /rails
 
+# The simulation runner, when the engine workspace was there to build it.
+COPY --from=rust-build /out/ /usr/local/bin/
+
 # Entrypoint prepares the database.
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 
-# Start server via Thruster by default, this can be overwritten at runtime
-EXPOSE 80
+# Start server via Thruster by default, this can be overwritten at runtime.
+# HTTP_PORT is set to 8080 in deploy/docker-compose.yml: the unprivileged user
+# cannot bind Thruster's default port 80.
+EXPOSE 8080
 CMD ["./bin/thrust", "./bin/rails", "server"]

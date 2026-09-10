@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly Life Simulator Postgres backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=mini-pc
+ExecStart=/home/mini-pc/Documents/life_simulator/deploy/backup_db
