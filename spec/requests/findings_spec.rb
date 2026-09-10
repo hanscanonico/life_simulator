@@ -57,6 +57,61 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the interim mutation-rate numbers" do
+      it "marks the section partial and held on the positive control" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("Result (interim)", "Partial, and not yet a result.",
+                      "held until the high arms and run 45 finish",
+                      "positive control has not transitioned yet")
+      end
+
+      it "reports the one run that transitioned, with its numbers" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("1 of 9 finished runs — run 41, seed 1.",
+                      "sits at 0.94 until about epoch 5000, then falls 0.725 → 0.526 → 0.052 " \
+                      "within 100 epochs and ends at 0.26 at 20 000 epochs",
+                      "drops from 7.9 to 6.2 across the same window",
+                      "is 538 at epoch 5000 and peaks at 867, then is back to 0 after epoch 5500")
+      end
+
+      it "counts the arms that have finished and the run still going" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("the count is 0 of 10 transitions in each arm, seeds 1 to 10",
+                      "median 0.91 to 0.93 at 20 000 epochs", "0 of 4 finished runs have transitioned at",
+                      "Run 45 (seed 5, same arm) is still running with a peak")
+      end
+
+      it "flags the transition epoch its samples disagree with" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("recorded for run 41 is 9900, while its own samples first fall below 0.6 at epoch 5030")
+      end
+    end
+
+    context "with the positive control" do
+      it "states the falsifier" do
+        get finding_path(Findings::Registry.find("bff-control"))
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body)
+          .to include("suspect the interpreter or the pairing rule, not the hypothesis")
+      end
+
+      it "states the sparse cadences its runs carry" do
+        get finding_path(Findings::Registry.find("bff-control"))
+
+        expect(response.body.squish).to include("Sampling is sparse for a world this size",
+                                                "25 full-world snapshots per run")
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

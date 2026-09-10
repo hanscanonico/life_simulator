@@ -26,15 +26,27 @@ module Experiments
     private
 
     def build_run(params, seed)
-      return if existing_keys.include?([params, seed])
+      return if existing_keys.include?(identity(params, seed))
 
       @experiment.runs.create!(params: params, seed: seed, epochs: @experiment.epochs,
                                priority: @experiment.priority)
-      existing_keys << [params, seed]
+      existing_keys << identity(params, seed)
     end
 
     def existing_keys
-      @existing_keys ||= @experiment.runs.pluck(:params, :seed).to_set
+      @existing_keys ||= @experiment.runs.pluck(:params, :seed)
+                                    .to_set { |params, seed| identity(params, seed) }
+    end
+
+    # Two runs are the same run when they resolve to the same parameters, not when their
+    # `params` columns look alike: a parameter left out of a run's params takes the engine
+    # default (Lab::Schema::NON_RUN_PARAMS, and any parameter the engine grew after the run
+    # was built), and JSON has a single number type, so a hand-written 0 and a grid's 0.0
+    # are one value. Without both, rebuilding a sweep duplicates the runs it already has.
+    def identity(params, seed)
+      resolved = Lab::Schema.defaults.merge(params)
+                            .transform_values { |value| value.is_a?(Numeric) ? value.to_f : value }
+      [resolved, seed]
     end
 
     def param_sets

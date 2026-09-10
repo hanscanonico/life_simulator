@@ -54,6 +54,28 @@ RSpec.describe Experiments::SweepBuilderService do
     end
   end
 
+  context "with a run whose params omit a parameter the engine defaults" do
+    let(:experiment) { create(:experiment, param_grid: { "mutation_rate" => [0.0] }, seeds: [1]) }
+
+    it "reads the absent parameter as its default instead of as another run" do
+      experiment.runs.create!(seed: 1, epochs: experiment.epochs,
+                              params: Lab::Schema.run_defaults.except("tape_len").merge("mutation_rate" => 0.0))
+
+      expect { build_sweep }.not_to change(Run, :count)
+    end
+  end
+
+  context "with a run whose params hold an integer where the grid holds a float" do
+    let(:experiment) { create(:experiment, param_grid: { "mutation_rate" => [0.0] }, seeds: [1]) }
+
+    it "treats the two numbers as one parameter value" do
+      experiment.runs.create!(seed: 1, epochs: experiment.epochs,
+                              params: Lab::Schema.run_defaults.merge("mutation_rate" => 0))
+
+      expect { build_sweep }.not_to change(Run, :count)
+    end
+  end
+
   context "with an axis whose values are parameter bundles" do
     let(:experiment) do
       create(:experiment, param_grid: { "world_size" => [{ "width" => 32, "height" => 32 },
