@@ -20,13 +20,9 @@ module Experiments
       end
     end
 
-    def diagrams = @diagrams ||= axes.map { |axis| diagram_for(axis) }
+    def diagrams = diagrams_by_axis.values
 
-    def diagram_for(axis)
-      diagrams_by_axis[axis] ||= Charts::PhaseDiagram.new(groups: groups_for(axis), title: axis.title,
-                                                          x_label: axis.name.to_s.humanize,
-                                                          epochs: experiment.epochs, log_x: axis.log?)
-    end
+    def diagram_for(axis) = diagrams_by_axis.fetch(axis)
 
     # One summary per grid value, per axis: the numbers the phase diagram draws.
     def arms = @arms ||= axes.index_with { |axis| arms_for(axis) }
@@ -49,7 +45,12 @@ module Experiments
 
     private
 
-    def diagrams_by_axis = @diagrams_by_axis ||= {}
+    def diagrams_by_axis
+      @diagrams_by_axis ||= axes.index_with do |axis|
+        Charts::PhaseDiagram.new(groups: groups_for(axis), title: axis.title, x_label: axis.name.to_s.humanize,
+                                 epochs: experiment.epochs, log_x: axis.log?)
+      end
+    end
 
     def arms_for(axis)
       axis.values.map do |value|
