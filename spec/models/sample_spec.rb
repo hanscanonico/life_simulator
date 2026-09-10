@@ -16,4 +16,10 @@ RSpec.describe Sample, type: :model do
 
     expect(build(:sample, run: sample.run, epoch: sample.epoch)).not_to be_valid
   end
+
+  it "indexes created_at for the status page's throughput window" do
+    columns = described_class.connection.indexes(described_class.table_name).map(&:columns)
+
+    expect(columns).to include(["created_at"])
+  end
 end
