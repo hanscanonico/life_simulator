@@ -22,7 +22,5 @@ module Findings
     def self.all = ALL.sort_by(&:date).reverse
 
     def self.find(slug) = ALL.find { |finding| finding.slug == slug }
-
-    def self.any? = ALL.any?
   end
 end

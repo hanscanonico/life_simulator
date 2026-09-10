@@ -44,4 +44,17 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     expect(viewport_and_content_width).to eq([phone_width, phone_width])
     expect(gutter).to be >= 16
   end
+
+  it "keeps a finding inside the viewport, diagram and runs table included" do
+    sweep = create(:experiment, slug: "mutation-rate", epochs: 20_000,
+                                param_grid: { "mutation_rate" => [0.0, 0.001] })
+    create(:run, experiment: sweep, status: "finished", transition_epoch: 3_000, epochs_done: 20_000,
+                 params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.0))
+
+    visit finding_path(Findings::Registry.find("mutation-rate-window"))
+
+    expect(page).to have_css("svg.chart-svg")
+    expect(viewport_and_content_width).to eq([phone_width, phone_width])
+    expect(gutter).to be >= 16
+  end
 end
