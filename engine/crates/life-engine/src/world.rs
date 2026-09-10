@@ -23,6 +23,8 @@ pub struct World {
     epoch: u64,
     cells: Vec<u8>,
     transition: TransitionTracker,
+    /// The `copy_rate` of the most recently counted epoch; see `step_soup`.
+    copy_rate: f64,
 }
 
 impl World {
@@ -34,6 +36,7 @@ impl World {
             epoch: 0,
             cells: vec![0; params.cell_count() * params.stride()],
             transition: TransitionTracker::default(),
+            copy_rate: 0.0,
         };
         if params.init == Init::Random {
             let mut rng = rng::seeded(seed, STREAM_INIT, 0);
@@ -128,6 +131,7 @@ impl World {
             epoch: header.epoch,
             cells,
             transition: TransitionTracker::default(),
+            copy_rate: 0.0,
         })
     }
 
@@ -158,13 +162,20 @@ impl World {
         y * self.params.width as usize + x
     }
 
+    /// One epoch of the soup, and — on the epochs a sample will read — the `copy_rate`
+    /// of those interactions. Counting costs one extra `2 × stride` copy and at most three
+    /// comparisons per interaction, so it is off on every other epoch.
     fn step_soup(&mut self, rng: &mut Rng) {
         let stride = self.params.stride();
         let max_steps = self.params.max_steps;
+        let counting = self.counts_copies();
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
 
         let mut pair = vec![0u8; stride * 2];
+        let mut before = vec![0u8; stride * 2];
+        let mut interactions: u64 = 0;
+        let mut copies: u64 = 0;
         for cell in &order {
             let a = *cell as usize;
             let b = self.pick_partner(a, rng);
@@ -173,10 +184,36 @@ impl World {
             }
             pair[..stride].copy_from_slice(&self.cells[a * stride..a * stride + stride]);
             pair[stride..].copy_from_slice(&self.cells[b * stride..b * stride + stride]);
+            if counting {
+                before.copy_from_slice(&pair);
+            }
             bff::run(&mut pair, max_steps);
+            if counting {
+                interactions += 1;
+                // Two halves that arrived identical cannot show a copy: they already end
+                // equal to each other's pre-execution tape whether or not anything ran, and
+                // counting them reads 1.0 on a frozen monoculture.
+                let copied = before[..stride] != before[stride..]
+                    && (pair[stride..] == before[..stride] || pair[..stride] == before[stride..]);
+                copies += u64::from(copied);
+            }
             self.cells[a * stride..a * stride + stride].copy_from_slice(&pair[..stride]);
             self.cells[b * stride..b * stride + stride].copy_from_slice(&pair[stride..]);
         }
+        if counting {
+            self.copy_rate = if interactions == 0 {
+                0.0
+            } else {
+                copies as f64 / interactions as f64
+            };
+        }
+    }
+
+    /// True when the epoch this step is about to produce is one `sample_every` will read,
+    /// so `copy_rate` always describes the interactions immediately before the sample.
+    fn counts_copies(&self) -> bool {
+        let sample_every = self.params.sample_every as u64;
+        sample_every > 0 && (self.epoch + 1).is_multiple_of(sample_every)
     }
 
     /// A uniformly chosen other cell within `radius`, or anywhere in the world when the
@@ -264,6 +301,7 @@ impl World {
             op_density: metrics::op_density(&self.cells),
             replicator_count: self.count_replicators(&ranked),
             entropy_bits: metrics::entropy_bits(&self.cells),
+            copy_rate: self.copy_rate,
         }
     }
 
@@ -479,6 +517,7 @@ mod tests {
         );
         assert_eq!(measured.distinct_tapes, 256);
         assert_eq!(measured.replicator_count, 0);
+        assert_eq!(measured.copy_rate, 0.0, "nothing has interacted yet");
         assert!((measured.top_share - 1.0 / 256.0).abs() < 1e-9);
     }
 
@@ -501,6 +540,86 @@ mod tests {
             (measured.top_share - 13.0 / 16.0).abs() < 1e-9,
             "{measured:?}"
         );
+    }
+
+    #[test]
+    fn copy_rate_catches_a_replicator_copying_in_situ() {
+        let params = Params {
+            tape_len: 256,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            ..soup(4, 4)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        assert_eq!(world.metrics().copy_rate, 0.0, "no interaction has run yet");
+
+        let tape = replicator::handwritten_replicator();
+        for x in 0..4 {
+            world.set_cell(x, 0, &tape);
+        }
+        world.step();
+        let seeded = world.metrics().copy_rate;
+        assert!(seeded > 0.0, "{seeded}");
+
+        let mut control = World::new(&params, 3).unwrap();
+        control.step();
+        assert!(control.metrics().copy_rate < seeded, "{seeded}");
+    }
+
+    #[test]
+    fn copy_rate_is_counted_only_on_the_epochs_a_sample_reads() {
+        let params = Params {
+            tape_len: 256,
+            mutation_rate: 0.0,
+            sample_every: 3,
+            ..soup(4, 4)
+        };
+        let tape = replicator::handwritten_replicator();
+        let mut world = World::new(&params, 3).unwrap();
+        for x in 0..4 {
+            world.set_cell(x, 0, &tape);
+        }
+
+        world.step();
+        assert_eq!(world.metrics().copy_rate, 0.0, "epoch 1 is not sampled");
+        world.step();
+        world.step();
+        assert!(world.metrics().copy_rate > 0.0, "epoch 3 is");
+    }
+
+    #[test]
+    fn a_frozen_monoculture_reports_no_copies() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let before = world.world_hash();
+        world.step();
+
+        assert_eq!(world.world_hash(), before, "nothing moved");
+        assert_eq!(
+            world.metrics().copy_rate,
+            0.0,
+            "identical halves are not a copy"
+        );
+    }
+
+    #[test]
+    fn life_reports_no_copies() {
+        let mut world = World::new(
+            &Params {
+                init: Init::Random,
+                sample_every: 1,
+                ..life(8, 8)
+            },
+            2,
+        )
+        .unwrap();
+        world.step();
+        assert_eq!(world.metrics().copy_rate, 0.0);
     }
 
     #[test]

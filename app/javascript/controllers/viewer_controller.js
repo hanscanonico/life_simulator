@@ -16,7 +16,8 @@ export default class extends Controller {
     "epoch",
     "compressRatio",
     "replicatorCount",
-    "distinctTapes"
+    "distinctTapes",
+    "copyRate"
   ]
 
   static values = {
@@ -159,6 +160,7 @@ export default class extends Controller {
     this.compressRatioTarget.textContent = metrics.compress_ratio.toFixed(3)
     this.replicatorCountTarget.textContent = metrics.replicator_count.toLocaleString(LOCALE)
     this.distinctTapesTarget.textContent = metrics.distinct_tapes.toLocaleString(LOCALE)
+    this.copyRateTarget.textContent = metrics.copy_rate.toFixed(3)
   }
 
   fail(message) {

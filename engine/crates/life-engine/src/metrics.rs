@@ -20,6 +20,10 @@ pub struct Metrics {
     pub op_density: f64,
     pub replicator_count: u64,
     pub entropy_bits: f64,
+    /// Share of the sampled epoch's interactions that ended with one tape byte-exactly
+    /// copied over the other half, counting only the pairs that started out different —
+    /// replication caught in situ, whoever the partner was.
+    pub copy_rate: f64,
 }
 
 /// `zlib(all tapes).len / raw.len` — the BFF paper's headline signal.

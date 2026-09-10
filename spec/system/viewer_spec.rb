@@ -41,6 +41,7 @@ RSpec.describe "The home page viewer", :js, type: :system do
     wait_until { readout("compressRatio") != "\u2014" }
     expect(readout("compressRatio").to_f).to be_between(0.1, 2.0)
     expect(readout("distinctTapes").delete(",").to_i).to be > 1
+    expect(readout("copyRate")).to match(/\A[01]\.\d{3}\z/)
 
     click_on "Pause"
     stopped = epoch

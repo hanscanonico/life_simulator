@@ -57,6 +57,12 @@ claim rests on it.
 - `op_density`: fraction of bytes that are one of the 10 instructions (random ≈ 10/256).
 - `replicator_count`: how many cells pass the replicator test (below).
 - `entropy_bits`: Shannon entropy of the byte distribution.
+- `copy_rate`: share of the sampled epoch's interactions that ended with one tape copied
+  byte-exactly over the other half (either direction), among the pairs whose two halves
+  started out different — halves that arrive identical end that way whatever runs, so
+  they are not a copy. Replication caught in situ, so it sees the replicators the
+  replicator test misses — those that only copy with a kin partner or into a particular
+  layout. Counted only on the epochs a sample reads; the life substrate reports 0.
 - `transition_epoch` (per run, once): first sampled epoch at which `compress_ratio` drops
   below `0.6` and stays below it for the next 3 samples. Null until it happens. The
   primary dependent variable of every sweep is this number.

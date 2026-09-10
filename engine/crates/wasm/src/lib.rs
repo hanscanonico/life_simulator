@@ -82,6 +82,10 @@ mod tests {
 
         let metrics: serde_json::Value = serde_json::from_str(&world.metrics_json()).unwrap();
         assert!(metrics["compress_ratio"].as_f64().unwrap() > 0.0);
+        assert!(
+            metrics["copy_rate"].is_f64(),
+            "the readout formats the engine's own copy_rate: {metrics}"
+        );
     }
 
     #[test]

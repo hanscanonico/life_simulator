@@ -105,6 +105,7 @@ mod tests {
             op_density: 0.04,
             replicator_count: 0,
             entropy_bits: 7.9,
+            copy_rate: 0.0,
         }
     }
 
