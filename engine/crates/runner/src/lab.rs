@@ -289,6 +289,22 @@ mod tests {
         assert_eq!(mock.count("POST /api/runs/1/finish"), 1);
     }
 
+    /// Restarting the world from `(params, seed)` when its snapshot cannot be fetched
+    /// would silently throw away the epochs already computed, so the run fails instead.
+    #[test]
+    fn a_snapshot_that_cannot_be_fetched_fails_the_run_rather_than_starting_it_over() {
+        let mock = MockLab::start();
+        mock.set_latest_snapshot(4, World::new(&MockLab::params(), 7).unwrap().snapshot());
+        mock.fail_next(crate::api::MAX_ATTEMPTS);
+
+        lab(&mock).execute("runner-1", &claimed(MockLab::params(), 6, 4));
+
+        let failure = mock.request("POST /api/runs/1/finish");
+        let error = failure["error"].as_str().unwrap_or_default();
+        assert!(error.contains("/api/runs/1/snapshots/latest"), "{failure}");
+        assert_eq!(mock.count("POST /api/runs/1/samples"), 0);
+    }
+
     #[test]
     fn a_stop_leaves_the_run_heartbeated_but_unfinished() {
         let mock = MockLab::start();

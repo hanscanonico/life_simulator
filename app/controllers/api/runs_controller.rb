@@ -31,8 +31,10 @@ module Api
     end
 
     # Where a resumed run picks up: the newest world the runner posted for this run.
+    # Only the blob and its epoch travel — the runner restores world bytes and never the
+    # PNG, which would double a large world's already multi-megabyte answer.
     def latest_snapshot
-      snapshot = @run.snapshots.restorable.order(epoch: :desc).first
+      snapshot = @run.snapshots.restorable.order(epoch: :desc).select(:id, :epoch, :blob).first
       return head :no_content if snapshot.nil?
 
       render json: { epoch: snapshot.epoch, blob: Base64.strict_encode64(snapshot.blob) }

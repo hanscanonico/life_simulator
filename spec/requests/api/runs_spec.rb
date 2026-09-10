@@ -220,6 +220,14 @@ RSpec.describe "Api::Runs", type: :request do
       expect(response.parsed_body).to eq("epoch" => 300, "blob" => Base64.strict_encode64("newest"))
     end
 
+    it "omits the png the runner has no use for, keeping the answer small" do
+      create(:snapshot, run: run, epoch: 300, blob: "newest", png: "a png the runner never restores")
+
+      get latest_snapshot_api_run_path(run), params: { runner_id: "runner-1" }, headers: headers, as: :json
+
+      expect(response.parsed_body.keys).to contain_exactly("epoch", "blob")
+    end
+
     it "ignores a snapshot with no world bytes to restore" do
       create(:snapshot, run: run, epoch: 100, blob: "restorable")
       create(:snapshot, run: run, epoch: 300, blob: nil)
