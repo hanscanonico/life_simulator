@@ -46,6 +46,7 @@ module Charts
       @max = (log? ? positive.max : @values.max) || 0.0
       @min /= 10 if zero_slot?
       pad_degenerate
+      round_to_ticks
     end
 
     def pad_degenerate
@@ -53,11 +54,33 @@ module Charts
 
       if log?
         @max = @min * 10
+      elsif @max.zero?
+        # A flat zero series reads as a floor, not as a band around zero.
+        @max = 1.0
       else
-        margin = @max.zero? ? 1.0 : @max.abs * 0.1
+        margin = @max.abs * 0.1
         @min -= margin
         @max += margin
       end
+    end
+
+    # The bounds are pushed out to the enclosing pair of ticks, so the topmost value sits
+    # under a labelled gridline instead of hugging the frame.
+    def round_to_ticks
+      return if log?
+
+      step = nice_step((@max - @min) / DEFAULT_TICKS)
+      @min = snap(@min, step, :floor)
+      @max = snap(@max, step, :ceil)
+    end
+
+    # Rounded to the step's own precision: a bound of 5.6000000000000005 would push the
+    # last tick a fraction of a pixel off the frame.
+    def snap(value, step, direction)
+      steps = (value / step).round(9).public_send(direction)
+      return 0.0 if steps.zero?
+
+      (steps * step).round(9 - Math.log10(step.abs).floor)
     end
 
     def fraction(value)

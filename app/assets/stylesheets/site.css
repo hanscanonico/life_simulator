@@ -30,13 +30,25 @@
 }
 
 .site-main {
-  padding: var(--space-8) 0;
+  /* padding-block only: the shorthand would zero the .container inline gutter. */
+  padding-block: var(--space-8);
+}
+
+/* A container nested in the page container keeps a single gutter. */
+.site-main > .container-narrow,
+.site-main > .container-wide {
+  padding-inline: 0;
 }
 
 .site-footer {
   border-top: 1px solid var(--line);
   padding: var(--space-5) 0;
   color: var(--ink-muted);
+}
+
+/* Wide tables scroll inside their own box so the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
 }
 
 .data-table {
@@ -97,6 +109,7 @@
 
 .chart-svg {
   width: 100%;
+  max-width: 100%;
   height: auto;
   background: var(--paper-soft);
   border: 1px solid var(--line);
@@ -166,7 +179,8 @@
 
 .chart-grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  /* min() keeps the column from forcing a track wider than a narrow viewport. */
+  grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr));
   gap: var(--space-5);
 }
 

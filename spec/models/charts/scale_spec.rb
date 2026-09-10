@@ -54,7 +54,15 @@ RSpec.describe Charts::Scale do
       it "still produces a usable axis" do
         scale = described_class.new(values: [], length: 100)
 
-        expect([scale.min, scale.max, scale.position(0)]).to eq([-1.0, 1.0, 50.0])
+        expect([scale.min, scale.max, scale.position(0)]).to eq([0.0, 1.0, 0.0])
+      end
+    end
+
+    context "with a flat zero series" do
+      it "runs the axis from zero up to one" do
+        scale = described_class.new(values: [0, 0, 0], length: 100)
+
+        expect(scale).to have_attributes(min: 0.0, max: 1.0)
       end
     end
   end
@@ -69,7 +77,20 @@ RSpec.describe Charts::Scale do
     it "rounds a step that would otherwise land on ragged values" do
       ticks = described_class.new(values: [0, 7], length: 100).ticks
 
-      expect(ticks.map(&:label)).to eq(%w[0 2 4 6])
+      expect(ticks.map(&:label)).to eq(%w[0 2 4 6 8])
+    end
+
+    it "extends the bounds to the ticks that enclose the values" do
+      scale = described_class.new(values: [0, 16_384], length: 100)
+
+      expect(scale).to have_attributes(min: 0.0, max: 20_000.0)
+      expect(scale.ticks.map(&:label)).to eq(%w[0 5000 10000 15000 20000])
+    end
+
+    it "extends a negative lower bound down to the tick below it" do
+      scale = described_class.new(values: [-3, 42], length: 100)
+
+      expect(scale).to have_attributes(min: -10.0, max: 50.0)
     end
 
     it "labels ticks through the shared formatter" do

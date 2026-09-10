@@ -61,5 +61,20 @@ RSpec.describe Charts::LineChart do
     it "anchors the y axis at zero so series are comparable" do
       expect(build([[0, 0.8], [1, 0.9]]).y_scale.min).to eq(0.0)
     end
+
+    it "reaches past the largest value so the line never hugs the frame" do
+      chart = build([[0, 16_384], [1, 16_000]])
+
+      expect(chart.y_scale.max).to be >= 16_384
+      expect(chart.y_pixel(16_384)).to be > chart.plot_top
+    end
+
+    context "with a flat zero series" do
+      it "runs the axis from zero up to one" do
+        chart = build([[0, 0], [1, 0]])
+
+        expect(chart.y_scale).to have_attributes(min: 0.0, max: 1.0)
+      end
+    end
   end
 end

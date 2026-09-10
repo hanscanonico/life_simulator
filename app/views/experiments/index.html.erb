@@ -7,30 +7,32 @@
 </p>
 
 <% if @index.any? %>
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>Sweep</th>
-        <th>Substrate</th>
-        <th>Status</th>
-        <th class="numeric">Runs done</th>
-        <th class="numeric">Transition rate</th>
-      </tr>
-    </thead>
-    <tbody>
-      <% @index.rows.each do |row| %>
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
         <tr>
-          <td><%= link_to row.experiment.name, experiment_path(row.experiment) %></td>
-          <td><%= row.experiment.substrate %></td>
-          <td><span class="badge"><%= row.experiment.status %></span></td>
-          <td class="numeric"><%= row.runs_done %> / <%= row.runs_total %></td>
-          <td class="numeric">
-            <%= row.transition_rate ? number_to_percentage(row.transition_rate * 100, precision: 0) : "—" %>
-          </td>
+          <th>Sweep</th>
+          <th>Substrate</th>
+          <th>Status</th>
+          <th class="numeric">Runs done</th>
+          <th class="numeric">Transition rate</th>
         </tr>
-      <% end %>
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        <% @index.rows.each do |row| %>
+          <tr>
+            <td><%= link_to row.experiment.name, experiment_path(row.experiment) %></td>
+            <td><%= row.experiment.substrate %></td>
+            <td><span class="badge"><%= row.experiment.status %></span></td>
+            <td class="numeric"><%= row.runs_done %> / <%= row.runs_total %></td>
+            <td class="numeric">
+              <%= row.transition_rate ? number_to_percentage(row.transition_rate * 100, precision: 0) : "—" %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
 <% else %>
   <p class="text-muted">No experiment has been queued yet.</p>
 <% end %>
