@@ -35,6 +35,29 @@ namespace :lab do
     puts "#{experiment.name}: priority #{priority}, #{pending} pending runs"
   end
 
+  desc "Recompute transition_epoch from the stored samples of terminal runs (one experiment, or all)"
+  task :backfill_transitions, [:slug] => :environment do |_task, args|
+    runs = Run.terminal.order(:id)
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+      runs = runs.where(experiment: experiment)
+    end
+
+    terminal = runs.to_a
+    backfilled = terminal.count do |run|
+      recomputed = Runs::TransitionEpochService.call(run: run)
+      next false if recomputed == run.transition_epoch
+
+      puts "run #{run.id}: #{run.transition_epoch || 'none'} → #{recomputed || 'none'}"
+      run.update!(transition_epoch: recomputed)
+      true
+    end
+
+    puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
+  end
+
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"
   task prune_snapshots: :environment do
     deleted = Run.terminal.find_each.sum { |run| Runs::PruneSnapshotsService.call(run: run) }

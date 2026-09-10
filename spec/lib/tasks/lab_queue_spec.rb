@@ -76,6 +76,72 @@ RSpec.describe "the lab queue tasks" do
     end
   end
 
+  describe "lab:backfill_transitions" do
+    let(:experiment) { create(:experiment, slug: "bff-control", status: "finished") }
+
+    def run_with_drop(**attributes)
+      create(:run, experiment: experiment, status: "finished", **attributes).tap do |run|
+        [0.94, 0.5, 0.4, 0.3, 0.2].each_with_index do |ratio, index|
+          create(:sample, run: run, epoch: index * 10, values: { "compress_ratio" => ratio })
+        end
+      end
+    end
+
+    it "rewrites the transition epoch of a terminal run measured before the resume fix" do
+      run = run_with_drop(transition_epoch: 40)
+
+      invoke("lab:backfill_transitions", "bff-control")
+
+      expect(run.reload.transition_epoch).to eq(10)
+    end
+
+    it "clears a transition epoch the samples do not support" do
+      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 900)
+
+      invoke("lab:backfill_transitions", "bff-control")
+
+      expect(run.reload.transition_epoch).to be_nil
+    end
+
+    it "leaves a run whose recorded epoch already matches its samples alone" do
+      run = run_with_drop(transition_epoch: 10)
+      output = nil
+
+      expect { output = invoke("lab:backfill_transitions", "bff-control") }
+        .not_to(change { run.reload.updated_at })
+      expect(output).to eq("backfilled 0 of 1 terminal runs\n")
+    end
+
+    it "leaves the runs still in the queue alone" do
+      run = create(:run, :claimed, experiment: experiment, transition_epoch: 900)
+
+      invoke("lab:backfill_transitions", "bff-control")
+
+      expect(run.reload.transition_epoch).to eq(900)
+    end
+
+    it "prints each run's old and new epoch and a total" do
+      run = run_with_drop(transition_epoch: 40)
+
+      expect(invoke("lab:backfill_transitions", "bff-control"))
+        .to include("run #{run.id}: 40 → 10", "backfilled 1 of 1 terminal runs")
+    end
+
+    it "covers every experiment with no slug given" do
+      run = run_with_drop(transition_epoch: 40)
+      other = create(:run, experiment: create(:experiment, slug: "radius"), status: "finished",
+                           transition_epoch: 900)
+
+      invoke("lab:backfill_transitions")
+
+      expect([run.reload.transition_epoch, other.reload.transition_epoch]).to eq([10, nil])
+    end
+
+    it "refuses an experiment it does not know" do
+      expect { invoke("lab:backfill_transitions", "colour") }.to raise_error(/Unknown experiment "colour"/)
+    end
+  end
+
   describe "lab:sweep" do
     it "carries a sweep definition's priority to the experiment and its runs" do
       stub_const("Lab::SWEEPS", { "control" => sweep_definition })

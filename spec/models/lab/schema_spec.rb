@@ -11,6 +11,10 @@ RSpec.describe Lab::Schema do
     expect(described_class.defaults).to include("substrate" => "soup", "width" => 128, "tape_len" => 64)
   end
 
+  it "reads the transition rule the engine measures by" do
+    expect(described_class.transition).to eq("threshold" => 0.6, "hold_samples" => 3)
+  end
+
   it "exposes an enum's values" do
     expect(described_class.values_for("substrate")).to eq(%w[soup life])
   end
