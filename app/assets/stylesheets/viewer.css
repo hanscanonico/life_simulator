@@ -1,9 +1,5 @@
 /* The home page viewer: a canvas driven by the wasm engine (docs/DESIGN.md §2). */
 
-.viewer-page {
-  padding-block: var(--space-8);
-}
-
 .viewer-title {
   margin-block: 0 var(--space-6);
 }

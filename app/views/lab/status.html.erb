@@ -10,26 +10,28 @@
 
     <h2>Runners seen in the last 5 minutes</h2>
     <% if @status.runners.any? %>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Runner</th>
-            <th class="numeric">Runs</th>
-            <th class="numeric">Epochs done</th>
-            <th>Last heartbeat</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% @status.runners.each do |runner| %>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
             <tr>
-              <td class="mono"><%= runner.id %></td>
-              <td class="numeric"><%= runner.runs %></td>
-              <td class="numeric"><%= number_with_delimiter runner.epochs_done %></td>
-              <td><%= time_ago_in_words(runner.last_seen) %> ago</td>
+              <th>Runner</th>
+              <th class="numeric">Runs</th>
+              <th class="numeric">Epochs done</th>
+              <th>Last heartbeat</th>
             </tr>
-          <% end %>
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            <% @status.runners.each do |runner| %>
+              <tr>
+                <td class="mono"><%= runner.id %></td>
+                <td class="numeric"><%= runner.runs %></td>
+                <td class="numeric"><%= number_with_delimiter runner.epochs_done %></td>
+                <td><%= time_ago_in_words(runner.last_seen) %> ago</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
     <% else %>
       <p class="text-muted">No runner has heartbeated in the last 5 minutes.</p>
     <% end %>
