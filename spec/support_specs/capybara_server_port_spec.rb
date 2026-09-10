@@ -20,12 +20,27 @@ RSpec.describe CapybaraServerPort do
       expect(described_class.choose({ "CAPYBARA_SERVER_PORT" => "4567", "TEST_ENV_NUMBER" => "2" })).to eq(4567)
     end
 
-    it "ignores an empty CAPYBARA_SERVER_PORT" do
-      expect(described_class.choose({ "CAPYBARA_SERVER_PORT" => "" })).not_to eq(0)
+    it "ignores an empty CAPYBARA_SERVER_PORT and falls through to a free port" do
+      port = described_class.choose({ "CAPYBARA_SERVER_PORT" => "" })
+
+      expect(port).to be > 1024
+      expect(port).not_to eq(described_class::BASE_PORT)
     end
 
     it "offsets the base port by TEST_ENV_NUMBER, that being the only override" do
       expect(described_class.choose({ "TEST_ENV_NUMBER" => "2" })).to eq(described_class::BASE_PORT + 2)
+    end
+  end
+
+  # Without this, spec/support/capybara.rb could go back to pinning the port and every
+  # example above would still pass.
+  describe "the port Capybara actually serves on" do
+    let(:pinned_by_env) { %w[CAPYBARA_SERVER_PORT TEST_ENV_NUMBER].any? { |name| ENV.fetch(name, nil).present? } }
+
+    it "comes from the chooser, not the pinned base" do
+      skip "a port is pinned by the environment" if pinned_by_env
+
+      expect(Capybara.server_port).not_to eq(described_class::BASE_PORT)
     end
   end
 end
