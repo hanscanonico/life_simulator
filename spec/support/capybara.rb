@@ -3,6 +3,8 @@
 require "capybara/rspec"
 require "selenium/webdriver"
 
+require_relative "capybara_server_port"
+
 Capybara.register_driver :selenium_chrome_headless do |app|
   options = Selenium::WebDriver::Chrome::Options.new
   options.add_argument("--headless")
@@ -19,9 +21,9 @@ end
 Capybara.default_max_wait_time = 5
 
 Capybara.server_host = "localhost"
-# Offset by TEST_ENV_NUMBER so parallel workers (each booting their own
-# headless Chrome) don't collide on the same port.
-Capybara.server_port = 3001 + ENV.fetch("TEST_ENV_NUMBER", "0").to_i
+# A free port picked at boot, unless CAPYBARA_SERVER_PORT or TEST_ENV_NUMBER pins one.
+# See spec/support/capybara_server_port.rb.
+Capybara.server_port = CapybaraServerPort.choose
 
 RSpec.configure do |config|
   config.before(:each, type: :system) do
