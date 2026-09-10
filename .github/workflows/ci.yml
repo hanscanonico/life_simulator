@@ -1,9 +1,19 @@
+# The merge gate, run for us instead of remembered: the jobs below are the
+# targets `make verify` chains, split so a red one names what broke.
 name: CI
 
 on:
   pull_request:
   push:
     branches: [ main ]
+  # The Actions "Run workflow" button, for a redeploy without a commit.
+  workflow_dispatch:
+
+# A second push to a branch supersedes the first: the gate only ever answers for
+# the tip. Main is exempt, because cancelling it could kill a deploy mid-swap.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   scan_ruby:
@@ -20,10 +30,10 @@ jobs:
 
       - name: Scan for common Rails security vulnerabilities using static analysis
         run: bin/brakeman --no-pager
-      
+
       - name: Scan for known security vulnerabilities in gems used
         run: bin/bundler-audit
-      
+
   scan_js:
     runs-on: ubuntu-latest
 
@@ -65,3 +75,108 @@ jobs:
       - name: Lint code for consistent style
         run: bin/rubocop -f github
 
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # Headless Chrome for the `js: true` system specs (spec/support/capybara.rb).
+      - name: Install packages
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y google-chrome-stable curl libjemalloc2 libvips postgresql-client
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Run tests
+        env:
+          RAILS_ENV: test
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432
+        run: |
+          bin/rails db:prepare
+          bundle exec rspec
+
+      - name: Keep screenshots from failed system tests
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: screenshots
+          path: ${{ github.workspace }}/tmp/screenshots
+          if-no-files-found: ignore
+
+  # The engine's own gate — `make engine-verify`, plus the wasm build. Skipped
+  # cleanly while engine/ is not in the tree yet, the same way the Makefile does.
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Look for the engine
+        id: engine
+        run: echo "present=${{ hashFiles('engine/Cargo.toml') != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Rust
+        if: steps.engine.outputs.present == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.engine.outputs.present == 'true'
+        with:
+          workspaces: engine
+
+      - name: Check formatting
+        if: steps.engine.outputs.present == 'true'
+        working-directory: engine
+        run: cargo fmt --all -- --check
+
+      - name: Lint the workspace
+        if: steps.engine.outputs.present == 'true'
+        working-directory: engine
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test the workspace
+        if: steps.engine.outputs.present == 'true'
+        working-directory: engine
+        run: cargo test --workspace
+
+      # The browser's copy of the rules: it has to build for wasm too.
+      - name: Build the wasm crate
+        if: steps.engine.outputs.present == 'true'
+        run: make wasm
+
+  # The site follows green main by itself. It runs on the mini-pc's own runner
+  # and acts on that machine's live checkout, so there is no actions/checkout
+  # step here: the deploy script fast-forwards the checkout to the tested commit.
+  deploy:
+    name: Deploy to the mini-pc
+    runs-on: [self-hosted, life-prod]
+    needs: [scan_ruby, scan_js, lint, test, engine]
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    concurrency: deploy-life
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Deploy the tested commit on the host
+        working-directory: /home/mini-pc/Documents/life_simulator
+        run: |
+          git fetch origin
+          git merge --ff-only "$GITHUB_SHA"
+          deploy/deploy --no-pull
