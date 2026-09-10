@@ -27,6 +27,12 @@ RSpec.describe Runs::ReleaseStaleService do
     expect(run.reload.status).to eq("claimed")
   end
 
+  it "timestamps the row it released" do
+    run = create(:run, :stale, updated_at: 1.hour.ago)
+
+    expect { described_class.call }.to(change { run.reload.updated_at })
+  end
+
   it "reports how many runs it released" do
     create(:run, :stale)
 
