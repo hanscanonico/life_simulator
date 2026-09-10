@@ -18,6 +18,13 @@ RSpec.describe "lab:sweep" do
         .to eq([0.0, *(8..16).reverse_each.map { |exponent| 2.0**-exponent }])
     end
 
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("mutation_rate")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("mutation_rate" => 0.0, "width" => 128, "height" => 128))
+    end
+
     it "holds the world at 128 by 128" do
       build_sweep("mutation_rate")
 
@@ -46,6 +53,13 @@ RSpec.describe "lab:sweep" do
       expect(Experiment.find_by(slug: "world-size").runs_count).to eq(40)
     end
 
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("world_size")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("width" => 32, "height" => 32))
+    end
+
     it "keeps every world square" do
       build_sweep("world_size")
 
@@ -59,6 +73,13 @@ RSpec.describe "lab:sweep" do
       build_sweep("radius")
 
       expect(Experiment.find_by(slug: "radius").runs_count).to eq(40)
+    end
+
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("radius")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("radius" => 1, "width" => 128, "height" => 128))
     end
   end
 

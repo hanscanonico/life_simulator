@@ -38,10 +38,10 @@ module Experiments
 
     def param_sets
       axes = @experiment.param_grid.map { |name, values| values.map { |value| axis_params(name, value) } }
-      return [Lab::ENGINE_DEFAULTS.dup] if axes.empty?
+      return [Lab::Schema.run_defaults.dup] if axes.empty?
 
       head, *tail = axes
-      head.product(*tail).map { |parts| parts.reduce(Lab::ENGINE_DEFAULTS.dup, :merge) }
+      head.product(*tail).map { |parts| parts.reduce(Lab::Schema.run_defaults.dup, :merge) }
     end
 
     def axis_params(name, value)

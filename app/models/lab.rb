@@ -2,21 +2,6 @@
 
 # Namespace for lab-wide constants shared by the sweep tasks and the runner API.
 module Lab
-  # Substrate parameter defaults from DESIGN.md §1.1. The engine's `runner schema` is the
-  # authority on the parameter set, its defaults and its ranges; a later task loads the
-  # schema from the engine and this constant goes away. Parameters DESIGN leaves without a
-  # default (`sample_every`) are deliberately absent: the engine decides them.
-  ENGINE_DEFAULTS = {
-    "width" => 128,
-    "height" => 128,
-    "tape_len" => 64,
-    "radius" => 1,
-    "max_steps" => 2**13,
-    "mutation_rate" => 1.0 / 4096,
-    "init" => "random",
-    "top_k" => 16
-  }.freeze
-
   # The sweeps of DESIGN.md §1.3, as data: `rake lab:sweep[mutation_rate]` turns one entry
   # into an Experiment and its runs. Sweeps 4 and 5 land with the experiments they need.
   SWEEPS = {

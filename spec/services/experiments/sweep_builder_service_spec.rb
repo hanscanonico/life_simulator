@@ -16,7 +16,7 @@ RSpec.describe Experiments::SweepBuilderService do
   it "resolves each run's parameters against the engine defaults" do
     build_sweep
 
-    expect(experiment.runs.first.params).to eq(Lab::ENGINE_DEFAULTS.merge("mutation_rate" => 0.0, "radius" => 1))
+    expect(experiment.runs.first.params).to eq(Lab::Schema.run_defaults.merge("mutation_rate" => 0.0, "radius" => 1))
   end
 
   it "gives every run the experiment's epoch budget" do
@@ -66,7 +66,7 @@ RSpec.describe Experiments::SweepBuilderService do
     it "creates one default run per seed" do
       build_sweep
 
-      expect(experiment.runs.pluck(:params).uniq).to eq([Lab::ENGINE_DEFAULTS])
+      expect(experiment.runs.pluck(:params).uniq).to eq([Lab::Schema.run_defaults])
     end
   end
 end

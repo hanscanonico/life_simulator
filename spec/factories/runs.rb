@@ -3,7 +3,7 @@
 FactoryBot.define do
   factory :run do
     experiment
-    params { Lab::ENGINE_DEFAULTS }
+    params { Lab::Schema.run_defaults }
     sequence(:seed) { |n| n }
     epochs { 1_000 }
     status { "pending" }
