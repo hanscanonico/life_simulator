@@ -95,6 +95,24 @@ mod tests {
     }
 
     #[test]
+    fn a_sparse_tape_reads_grey_and_a_dense_one_reads_saturated() {
+        let tape = b"re+pli-cate.me";
+        let saturation = |pixel: [u8; 4]| {
+            let high = *pixel[0..3].iter().max().unwrap() as f64;
+            let low = *pixel[0..3].iter().min().unwrap() as f64;
+            (high - low) / high
+        };
+        assert!(
+            saturation(soup_pixel(tape, 0.025)) < 0.4,
+            "random soup is grey"
+        );
+        assert!(
+            saturation(soup_pixel(tape, 0.25)) > 0.9,
+            "a colony is vivid"
+        );
+    }
+
+    #[test]
     fn tapes_differing_only_in_non_op_bytes_share_a_hue() {
         let one = b"aa+bb[cc]dd-ee";
         let other = b"zz+ZZ[qq]QQ-ww";
