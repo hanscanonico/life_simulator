@@ -18,9 +18,10 @@ RSpec.describe Run, type: :model do
     end
 
     it "indexes finished_at for the terminal runs the pruner walks" do
-      index = indexes.find { |i| i.name == "index_runs_on_finished_at_terminal" }
+      index = indexes.find { |candidate| candidate.name == "index_runs_on_finished_at_terminal" }
+      terminal = Run::TERMINAL_STATUSES.map { |status| a_string_including("'#{status}'") }
 
-      expect(index).to have_attributes(columns: ["finished_at"], where: a_string_including("finished"))
+      expect(index).to have_attributes(columns: ["finished_at"], where: terminal.reduce(:and))
     end
   end
 
