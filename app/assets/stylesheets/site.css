@@ -210,3 +210,37 @@
   color: var(--accent);
   font-weight: 600;
 }
+
+/* The findings log: one card per published claim. */
+.finding-list {
+  list-style: none;
+  margin: var(--space-6) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-6);
+}
+
+.finding-card {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-5);
+}
+
+.finding-title {
+  margin: var(--space-2) 0;
+}
+
+.finding-title a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.finding-title a:hover {
+  color: var(--accent);
+}
+
+.finding-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+}

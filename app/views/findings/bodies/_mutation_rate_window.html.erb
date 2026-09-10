@@ -1,0 +1,24 @@
+<h2>Hypothesis</h2>
+<p>
+  Mutation is the only source of novelty in the soup: nothing else writes bytes a program
+  did not already contain. DESIGN §1.3 sweep 1 predicts a window. At
+  <span class="mono">mutation_rate = 0</span> the soup can only shuffle what randomness
+  handed it, so emergence is delayed; far above the error threshold — Eigen's
+  quasispecies bound — a replicator's copies are corrupted faster than it can make them,
+  and nothing persists. Between the two there should be a band of rates where the time to
+  emergence is shortest.
+</p>
+
+<h2>Method</h2>
+<p>
+  A 128×128 torus of 64-byte tapes, 20 000 epochs per run, ten mutation rates from
+  <span class="mono">0</span> up to <span class="mono">2<sup>-8</sup></span>, ten seeds
+  each. Every other parameter is at its default. The dependent variable is
+  <em>transition epoch</em> as defined in DESIGN §1.2: the first sampled epoch at which
+  <span class="mono">compress_ratio</span> falls below 0.6 and stays below it for the next
+  three samples. A run that never crosses that line is censored, not zero, and appears as
+  a hollow marker along the top of the phase diagram.
+</p>
+
+<h2>Result</h2>
+<p>Pending — the sweep is in progress; this section is rewritten when it completes.</p>

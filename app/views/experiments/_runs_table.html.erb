@@ -1,0 +1,38 @@
+<%# The runs behind a sweep, seeds first: shared by the experiment page and any finding
+    that rests on it. `page` is an Experiments::ShowPage. %>
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th class="numeric">Seed</th>
+        <% page.varying_keys.each do |key| %>
+          <th class="numeric"><%= key.humanize %></th>
+        <% end %>
+        <th>Status</th>
+        <th class="numeric">Priority</th>
+        <th class="numeric">Epochs done</th>
+        <th class="numeric">Transition epoch</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% page.runs.each do |run| %>
+        <tr>
+          <td class="numeric mono"><%= run.seed %></td>
+          <% page.varying_keys.each do |key| %>
+            <td class="numeric mono"><%= param_value(run.params[key]) %></td>
+          <% end %>
+          <td><span class="badge"><%= run.status %></span></td>
+          <td class="numeric"><%= run.priority %></td>
+          <td class="numeric"><%= number_with_delimiter run.epochs_done %></td>
+          <td class="numeric"><%= run.transition_epoch ? number_with_delimiter(run.transition_epoch) : "—" %></td>
+          <td><%= link_to "Run", run_path(run) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+
+<% if page.pagy.pages > 1 %>
+  <nav class="pagination"><%== page.pagy.series_nav %></nav>
+<% end %>
