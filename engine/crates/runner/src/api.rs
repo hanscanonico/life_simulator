@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use std::thread;
 use std::time::Duration;
 
-const MAX_ATTEMPTS: u32 = 5;
+pub(crate) const MAX_ATTEMPTS: u32 = 5;
 const BACKOFF: Duration = Duration::from_secs(2);
 const TIMEOUT: Duration = Duration::from_secs(60);
 /// How much of an answer the runner is willing to read. `ureq` defaults to 10 MiB, which
