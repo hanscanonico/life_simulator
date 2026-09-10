@@ -25,6 +25,18 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     page.evaluate_script("[document.documentElement.clientWidth, document.documentElement.scrollWidth]")
   end
 
+  # One line box per entry: an entry that broke mid-phrase would report two. The rects come
+  # from a range over the text, because a flex item reports one box however its text wraps.
+  def nav_entry_line_boxes
+    page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll('.site-nav a'), (link) => {
+        const range = document.createRange();
+        range.selectNodeContents(link);
+        return range.getClientRects().length;
+      })
+    JS
+  end
+
   def gutter
     page.evaluate_script("document.querySelector('h1').getBoundingClientRect().left")
   end
@@ -43,6 +55,21 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     expect(page).to have_css("svg.chart-svg", minimum: 5)
     expect(viewport_and_content_width).to eq([phone_width, phone_width])
     expect(gutter).to be >= 16
+  end
+
+  it "keeps how-it-works inside the viewport, instruction table included" do
+    visit how_it_works_path
+
+    expect(page).to have_css("table.data-table")
+    expect(viewport_and_content_width).to eq([phone_width, phone_width])
+    expect(gutter).to be >= 16
+  end
+
+  it "wraps the site nav by whole entries" do
+    visit how_it_works_path
+
+    expect(nav_entry_line_boxes).to all(eq(1))
+    expect(viewport_and_content_width).to eq([phone_width, phone_width])
   end
 
   it "keeps a finding inside the viewport, diagram and runs table included" do

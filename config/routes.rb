@@ -16,6 +16,8 @@ Rails.application.routes.draw do
     get :png, on: :member
   end
 
+  get "how-it-works" => "pages#how_it_works", as: :how_it_works
+
   get "lab" => "lab#show", as: :lab
   get "lab/status" => "lab#status", as: :lab_status
 

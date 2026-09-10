@@ -1,0 +1,139 @@
+<%# keep in sync with docs/DESIGN.md §1.1–1.3 %>
+<% content_for :title, "How it works" %>
+<% content_for :description,
+               "The substrate, the ten-instruction language and the observables behind " \
+               "simulator-life.com: a soup of programs that execute each other, with no " \
+               "fitness function and no reproduction rule." %>
+
+<div class="container-narrow">
+  <h1>How it works</h1>
+  <p class="text-muted">
+    Everything on this site rests on one substrate, one small language and a handful of
+    numbers. This page defines them, so a visitor watching the viewer knows what a tape,
+    an epoch and a compression ratio are.
+  </p>
+
+  <h2>The world</h2>
+  <p>
+    The world is a 2D torus of <span class="mono">width × height</span> cells. Every cell
+    holds one <strong>tape</strong> of <span class="mono">tape_len</span> bytes, 64 by
+    default, and tapes are the only state there is.
+  </p>
+  <p>
+    An <strong>epoch</strong> is one interaction per cell, cells visited in a random
+    order. A cell picks a random neighbour within <span class="mono">radius</span> (a
+    Moore neighbourhood, 1 by default); the two tapes are concatenated,
+    <span class="mono">A ++ B</span>, 2×<span class="mono">tape_len</span> bytes; the
+    concatenation is executed as a program for at most
+    <span class="mono">max_steps</span> instructions (2<sup>13</sup> by default); the
+    result is split back into the two cells. Execution mutates the tapes in place: the
+    program <em>is</em> the data.
+  </p>
+  <p>
+    There is no energy, no fitness function and no reproduction rule. Any copying that
+    happens is done by the programs themselves. After each epoch every byte is replaced by
+    a uniformly random one with probability <span class="mono">mutation_rate</span>, and a
+    run is fully determined by its parameters and its seed. The substrate is the "BFF" soup
+    of Agüera y Arcas et al.,
+    <a href="https://arxiv.org/abs/2406.19108">"Computational Life"</a> (2024), made
+    spatial so that it looks and behaves like a cellular automaton.
+  </p>
+
+  <h2>The instruction set</h2>
+  <p>
+    Ten byte values are instructions; every other byte is a no-op. Both heads start at 0,
+    the instruction pointer starts at 0, and execution stops at the end of the tape, at
+    <span class="mono">max_steps</span>, or on an unmatched bracket. The heads wrap modulo
+    the length of the concatenation.
+  </p>
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Byte</th>
+          <th>Meaning</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">&lt;</td><td>move head0 −1</td></tr>
+        <tr><td class="mono">&gt;</td><td>move head0 +1</td></tr>
+        <tr><td class="mono">{</td><td>move head1 −1</td></tr>
+        <tr><td class="mono">}</td><td>move head1 +1</td></tr>
+        <tr><td class="mono">+</td><td>increment the byte at head0</td></tr>
+        <tr><td class="mono">-</td><td>decrement the byte at head0</td></tr>
+        <tr><td class="mono">.</td><td>copy the byte at head0 → head1</td></tr>
+        <tr><td class="mono">,</td><td>copy the byte at head1 → head0</td></tr>
+        <tr><td class="mono">[</td><td>jump forward past the matching <span class="mono">]</span> if the byte at head0 is 0</td></tr>
+        <tr><td class="mono">]</td><td>jump back to the matching <span class="mono">[</span> if the byte at head0 is non-zero</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>What we measure</h2>
+  <p>
+    Every <span class="mono">sample_every</span> epochs a run records these observables.
+    The engine computes all of them: nothing on this site re-derives a metric.
+  </p>
+  <dl class="facts facts-prose">
+    <dt class="mono">compress_ratio</dt>
+    <dd>
+      <span class="mono">zlib(all tapes).len / raw.len</span>. A random soup sits near 1.0;
+      a soup of replicators collapses well below 0.5. This is the headline signal.
+    </dd>
+
+    <dt class="mono">distinct_tapes</dt>
+    <dd>How many distinct tape values the world holds.</dd>
+
+    <dt class="mono">top_share</dt>
+    <dd>The fraction of cells holding the single most common tape.</dd>
+
+    <dt class="mono">op_density</dt>
+    <dd>
+      The fraction of bytes that are one of the ten instructions — about 10/256 in a
+      random soup.
+    </dd>
+
+    <dt class="mono">replicator_count</dt>
+    <dd>How many cells pass the replicator test below.</dd>
+
+    <dt class="mono">entropy_bits</dt>
+    <dd>The Shannon entropy of the byte distribution.</dd>
+
+    <dt class="mono">copy_rate</dt>
+    <dd>
+      The share of the sampled epoch's interactions that ended with one tape copied
+      byte-exactly over the other half, among the pairs whose halves started out
+      different. It catches replication in situ, including replicators that only copy with
+      a particular partner.
+    </dd>
+
+    <dt class="mono">transition_epoch</dt>
+    <dd>
+      Recorded once per run: the first sampled epoch at which
+      <span class="mono">compress_ratio</span> drops below 0.6 and stays below it for the
+      next 3 samples. Null until it happens. It is the primary dependent variable of every
+      sweep — the moment we call emergence.
+    </dd>
+  </dl>
+  <p>
+    <strong>The replicator test</strong>: a tape <span class="mono">T</span> is a
+    replicator if executing <span class="mono">T ++ R</span> for a fresh random tape
+    <span class="mono">R</span> yields <span class="mono">T</span> in the second half in at
+    least 3 of 4 trials. It runs on the <span class="mono">top_k</span> most common tapes
+    of each sample, 16 by default, and
+    <span class="mono">replicator_count</span> counts the cells holding a tape that passed.
+  </p>
+
+  <h2>The programme</h2>
+  <p>
+    Each sweep varies one property of the substrate and asks how the time to emergence
+    responds. They run in this order in <%= link_to "the experiments", experiments_path %>.
+  </p>
+  <ol>
+    <li><strong>Mutation rate</strong> — is there a window, with zero mutation delaying emergence and too much destroying it?</li>
+    <li><strong>World size</strong> — does the time to emergence scale with the cell count, or is it a per-cell rate?</li>
+    <li><strong>Neighbourhood radius</strong> — does spatial locality speed emergence and stabilise the diversity that follows it?</li>
+    <li><strong>Max steps per interaction</strong> — how much execution does a replicator need to assemble itself?</li>
+    <li><strong>Instruction set ablations</strong> — which of the ten ops are necessary for abiogenesis?</li>
+  </ol>
+</div>

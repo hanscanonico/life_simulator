@@ -3,6 +3,9 @@
   <head>
     <title><%= content_for(:title) || "Life Simulator" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <% if content_for?(:description) %>
+      <meta name="description" content="<%= content_for(:description) %>">
+    <% end %>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="application-name" content="Life Simulator">
     <meta name="mobile-web-app-capable" content="yes">
@@ -33,6 +36,7 @@
         <a class="site-wordmark" href="/">Life Simulator</a>
         <nav class="site-nav">
           <a href="/">Home</a>
+          <%= link_to "How it works", how_it_works_path %>
           <%= link_to "Experiments", experiments_path %>
           <%= link_to "Findings", findings_path %>
           <%= link_to "Lab", lab_path %>
