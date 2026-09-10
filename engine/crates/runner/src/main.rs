@@ -1,13 +1,19 @@
-//! `runner` — executes simulation jobs. Local mode writes files; lab mode (HTTP to
-//! Rails) is a later task and shares `run::execute` through the `RunSink` trait.
+//! `runner` — executes simulation jobs. Local mode writes files, lab mode talks HTTP to
+//! Rails; both share `run::execute_world` through the `RunSink` trait.
 
+mod api;
 mod file_sink;
+mod http_sink;
+mod lab;
+#[cfg(test)]
+mod mock_lab;
 mod run;
 mod sink;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use file_sink::FileSink;
+use lab::Lab;
 use life_engine::Params;
 use sink::NullSink;
 use std::io::Read;
@@ -37,6 +43,21 @@ enum Command {
         epochs: u64,
         #[arg(long)]
         out: PathBuf,
+    },
+    /// Claim runs from the Rails lab API and execute them until stopped.
+    Lab {
+        /// Base URL of the app, e.g. `http://app:8080`.
+        #[arg(long, env = "RUNNER_API")]
+        api: String,
+        /// The shared secret the API expects as a bearer token.
+        #[arg(long, env = "RUNNER_TOKEN")]
+        token: String,
+        /// Runs executed at once; defaults to the cores the site does not keep.
+        #[arg(long)]
+        parallelism: Option<usize>,
+        /// Identifies this runner to the app; defaults to the host and pid.
+        #[arg(long, env = "RUNNER_ID")]
+        runner_id: Option<String>,
     },
     /// Report epochs per second for a short run.
     Bench {
@@ -71,6 +92,16 @@ fn main() -> Result<()> {
                     .map_or_else(|| "none".to_string(), |e| e.to_string())
             );
         }
+        Command::Lab {
+            api,
+            token,
+            parallelism,
+            runner_id,
+        } => {
+            let parallelism = parallelism.unwrap_or_else(lab::default_parallelism);
+            let runner_id = runner_id.unwrap_or_else(default_runner_id);
+            Lab::new(&api, &token, &runner_id, parallelism).work()?;
+        }
         Command::Bench {
             params,
             seed,
@@ -90,6 +121,12 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Distinct per host and per process, so two runners never claim as one another.
+fn default_runner_id() -> String {
+    let host = std::env::var("HOSTNAME").unwrap_or_else(|_| "runner".to_string());
+    format!("{host}-{}", std::process::id())
 }
 
 fn read_params(source: &str) -> Result<Params> {

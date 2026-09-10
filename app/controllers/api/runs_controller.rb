@@ -30,6 +30,14 @@ module Api
       head :no_content
     end
 
+    # Where a resumed run picks up: the newest world the runner posted for this run.
+    def latest_snapshot
+      snapshot = @run.snapshots.restorable.order(epoch: :desc).first
+      return head :no_content if snapshot.nil?
+
+      render json: { epoch: snapshot.epoch, blob: Base64.strict_encode64(snapshot.blob) }
+    end
+
     def finish
       Runs::FinishService.call(run: @run, transition_epoch: params[:transition_epoch],
                                summary: body_params["summary"], error: params[:error])

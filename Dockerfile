@@ -27,6 +27,34 @@ ENV RAILS_ENV="production" \
     BUNDLE_WITHOUT="development" \
     LD_PRELOAD="/usr/local/lib/libjemalloc.so"
 
+# Throw-away stage that builds the Rust side: the lab runner the `runner`
+# service executes, and the wasm bundle the viewer loads.
+FROM docker.io/library/rust:1-slim-bookworm AS rust-build
+
+WORKDIR /src
+COPY Makefile /src/
+COPY engine /src/engine/
+
+# The mini-pc is x86-64-v3 (AVX2); the flag is skipped elsewhere so the image
+# still builds on an arm64 laptop.
+RUN mkdir -p /out && \
+    if [ "$(uname -m)" = "x86_64" ]; then export RUSTFLAGS="-C target-cpu=x86-64-v3"; fi && \
+    cd /src/engine && cargo build --release -p runner && cp target/release/runner /out/
+
+# wasm-bindgen-cli must match the wasm-bindgen crate the engine links, or the
+# generated glue rejects the module: read the version out of the lockfile.
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y build-essential && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives && \
+    rustup target add wasm32-unknown-unknown && \
+    cargo install wasm-bindgen-cli --locked \
+      --version "$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;q;}' /src/engine/Cargo.lock)"
+
+# Whatever `make wasm` emits into app/assets/wasm is what the image ships; the
+# directory is created first so the copy out of this stage never misses.
+RUN mkdir -p /src/app/assets/wasm && make -C /src wasm
+
+
 # Throw-away build stage to reduce size of final image
 FROM base AS build
 
@@ -47,28 +75,16 @@ RUN bundle install && \
 # Copy application code
 COPY . .
 
+# The wasm bundle is a build artifact, not a committed one: take the freshly
+# built copy before precompiling, so the asset digests cover it.
+COPY --from=rust-build /src/app/assets/wasm/ /rails/app/assets/wasm/
+
 # Precompile bootsnap code for faster boot times.
 # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
 RUN bundle exec bootsnap precompile -j 1 app/ lib/
 
 # Precompiling assets for production without requiring secret RAILS_MASTER_KEY
 RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
-
-
-
-# Throw-away stage that builds the Rust runner. The engine workspace does not
-# exist yet, so the copy uses a wildcard (with the always-present Makefile to
-# keep it from matching nothing) and the build is skipped when Cargo.toml is
-# absent. /out is the handoff: empty when there is no engine, so the final
-# stage can copy it unconditionally.
-FROM docker.io/library/rust:1-slim-bookworm AS rust-build
-
-WORKDIR /src
-COPY Makefile engine* /src/engine/
-RUN mkdir -p /out && \
-    if [ -f /src/engine/Cargo.toml ]; then \
-      cd /src/engine && cargo build --release -p runner && cp target/release/runner /out/; \
-    fi
 
 
 # Final stage for app image
@@ -83,8 +99,8 @@ USER 1000:1000
 COPY --chown=rails:rails --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --chown=rails:rails --from=build /rails /rails
 
-# The simulation runner, when the engine workspace was there to build it.
-COPY --from=rust-build /out/ /usr/local/bin/
+# The simulation runner: `runner lab` is the command of the runner service.
+COPY --from=rust-build /out/runner /usr/local/bin/runner
 
 # Entrypoint prepares the database.
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]

@@ -31,10 +31,13 @@ RSpec.describe "Api::Runs", type: :request do
         },
         "finish" => lambda { |sent|
           post finish_api_run_path(run), params: { runner_id: "runner-1" }, headers: sent, as: :json
+        },
+        "latest_snapshot" => lambda { |sent|
+          get latest_snapshot_api_run_path(run), params: { runner_id: "runner-1" }, headers: sent, as: :json
         } }
     end
 
-    %w[claim heartbeat samples snapshots finish].each do |endpoint|
+    %w[claim heartbeat samples snapshots finish latest_snapshot].each do |endpoint|
       context "for #{endpoint}" do
         it "rejects a request with no token" do
           requests.fetch(endpoint).call({})
@@ -200,6 +203,42 @@ RSpec.describe "Api::Runs", type: :request do
 
     it "rejects a runner that does not hold the run" do
       post snapshots_api_run_path(run), params: { runner_id: "runner-9", epoch: 300 }, headers: headers, as: :json
+
+      expect(response).to have_http_status(:conflict)
+    end
+  end
+
+  describe "GET /api/runs/:id/snapshots/latest" do
+    let(:run) { create(:run, :claimed, experiment: experiment) }
+
+    it "hands back the newest world the run snapshotted" do
+      create(:snapshot, run: run, epoch: 100, blob: "old")
+      create(:snapshot, run: run, epoch: 300, blob: "newest")
+
+      get latest_snapshot_api_run_path(run), params: { runner_id: "runner-1" }, headers: headers, as: :json
+
+      expect(response.parsed_body).to eq("epoch" => 300, "blob" => Base64.strict_encode64("newest"))
+    end
+
+    it "ignores a snapshot with no world bytes to restore" do
+      create(:snapshot, run: run, epoch: 100, blob: "restorable")
+      create(:snapshot, run: run, epoch: 300, blob: nil)
+
+      get latest_snapshot_api_run_path(run), params: { runner_id: "runner-1" }, headers: headers, as: :json
+
+      expect(response.parsed_body["epoch"]).to eq(100)
+    end
+
+    context "with no snapshot yet" do
+      it "answers no content, so the runner starts the run fresh" do
+        get latest_snapshot_api_run_path(run), params: { runner_id: "runner-1" }, headers: headers, as: :json
+
+        expect(response).to have_http_status(:no_content)
+      end
+    end
+
+    it "rejects a runner that does not hold the run" do
+      get latest_snapshot_api_run_path(run), params: { runner_id: "runner-9" }, headers: headers, as: :json
 
       expect(response).to have_http_status(:conflict)
     end

@@ -1,9 +1,49 @@
 //! The execution loop, shared by every sink.
 
 use crate::sink::{RunResult, RunSink};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use life_engine::{Params, World};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
+
+/// How far a run has got and whether it has been asked to stop. Lab mode reads the
+/// progress from its heartbeat thread and sets the stop flag from SIGTERM; local mode
+/// uses the default, which never stops.
+#[derive(Debug, Default)]
+pub struct Progress {
+    epochs_done: AtomicU64,
+    stop: Arc<AtomicBool>,
+}
+
+impl Progress {
+    pub fn new(epochs_done: u64, stop: Arc<AtomicBool>) -> Self {
+        Self {
+            epochs_done: AtomicU64::new(epochs_done),
+            stop,
+        }
+    }
+
+    pub fn epochs_done(&self) -> u64 {
+        self.epochs_done.load(Ordering::Relaxed)
+    }
+
+    fn record(&self, epochs_done: u64) {
+        self.epochs_done.store(epochs_done, Ordering::Relaxed);
+    }
+
+    fn stopped(&self) -> bool {
+        self.stop.load(Ordering::Relaxed)
+    }
+}
+
+/// How the loop left the world: with the run complete and `finish` written to the sink,
+/// or interrupted, in which case nothing was finished and the run can be resumed.
+#[derive(Debug)]
+pub enum Completion {
+    Finished(Box<RunResult>),
+    Stopped { epochs_done: u64 },
+}
 
 pub fn execute(
     params: &Params,
@@ -11,18 +51,34 @@ pub fn execute(
     epochs: u64,
     sink: &mut dyn RunSink,
 ) -> Result<RunResult> {
-    let mut world = World::new(params, seed).map_err(anyhow::Error::msg)?;
+    let world = World::new(params, seed).map_err(anyhow::Error::msg)?;
+    match execute_world(world, epochs, sink, &Progress::default())? {
+        Completion::Finished(result) => Ok(*result),
+        Completion::Stopped { epochs_done } => bail!("the run stopped at epoch {epochs_done}"),
+    }
+}
+
+/// Runs `world` — fresh or restored from a snapshot — up to `epochs`, reporting through
+/// `progress` and giving up as soon as it is asked to stop.
+pub fn execute_world(
+    mut world: World,
+    epochs: u64,
+    sink: &mut dyn RunSink,
+    progress: &Progress,
+) -> Result<Completion> {
+    let params = world.params().clone();
+    let seed = world.seed();
     let sample_every = params.sample_every as u64;
     let snapshot_every = params.snapshot_every as u64;
     let started = Instant::now();
 
     loop {
         let epoch = world.epoch();
-        if epoch % sample_every == 0 {
+        if epoch.is_multiple_of(sample_every) {
             let metrics = world.metrics();
             sink.sample(epoch, &metrics)?;
         }
-        if epoch % snapshot_every == 0 {
+        if epoch.is_multiple_of(snapshot_every) {
             let raw = world.snapshot();
             sink.snapshot(epoch, &raw, &render_png(&world)?)?;
         }
@@ -30,11 +86,17 @@ pub fn execute(
             break;
         }
         world.step();
+        progress.record(world.epoch());
+        if progress.stopped() {
+            return Ok(Completion::Stopped {
+                epochs_done: world.epoch(),
+            });
+        }
     }
 
     let wall_seconds = started.elapsed().as_secs_f64();
     let result = RunResult {
-        params: params.clone(),
+        params,
         seed,
         epochs,
         transition_epoch: world.transition_epoch(),
@@ -46,7 +108,7 @@ pub fn execute(
         },
     };
     sink.finish(&result)?;
-    Ok(result)
+    Ok(Completion::Finished(Box::new(result)))
 }
 
 /// A PNG of the world at its native size, coloured by the engine.
@@ -134,6 +196,35 @@ mod tests {
         .unwrap();
         let png = render_png(&world).unwrap();
         assert_eq!(&png[1..4], b"PNG");
+    }
+
+    #[test]
+    fn a_restored_world_carries_on_from_its_own_epoch() {
+        let mut world = World::new(&params(), 1).unwrap();
+        for _ in 0..4 {
+            world.step();
+        }
+        let restored = World::from_snapshot(&params(), 1, &world.snapshot()).unwrap();
+        let mut sink = RecordingSink::default();
+
+        execute_world(restored, 6, &mut sink, &Progress::default()).unwrap();
+
+        assert_eq!(sink.samples, vec![4, 6]);
+        assert!(sink.finished);
+    }
+
+    #[test]
+    fn a_stop_ends_the_run_without_finishing_it() {
+        let stop = Arc::new(AtomicBool::new(true));
+        let progress = Progress::new(0, stop);
+        let mut sink = RecordingSink::default();
+
+        let completion =
+            execute_world(World::new(&params(), 1).unwrap(), 6, &mut sink, &progress).unwrap();
+
+        assert!(matches!(completion, Completion::Stopped { epochs_done: 1 }));
+        assert!(!sink.finished);
+        assert_eq!(progress.epochs_done(), 1);
     }
 
     #[test]
