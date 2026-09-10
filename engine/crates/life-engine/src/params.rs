@@ -2,6 +2,7 @@
 //! reads, all in one place (`docs/DESIGN.md` §3, "parameters are data").
 
 use crate::bff::OpSet;
+use crate::metrics::{TRANSITION_HOLD_SAMPLES, TRANSITION_THRESHOLD};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -263,7 +264,8 @@ impl Params {
     }
 
     /// A JSON description of every parameter — name, type, default, range and doc — for
-    /// Rails to build forms and validations from (`runner schema`).
+    /// Rails to build forms and validations from (`runner schema`), plus the transition
+    /// rule Rails needs to read a stored series the way the tracker read it live.
     pub fn schema_json() -> String {
         let defaults = serde_json::to_value(Params::default()).expect("Params always serialises");
         let fields: Vec<serde_json::Value> = FIELDS
@@ -297,8 +299,14 @@ impl Params {
                 entry
             })
             .collect();
-        serde_json::to_string_pretty(&serde_json::json!({ "fields": fields }))
-            .expect("schema always serialises")
+        serde_json::to_string_pretty(&serde_json::json!({
+            "fields": fields,
+            "transition": {
+                "threshold": TRANSITION_THRESHOLD,
+                "hold_samples": TRANSITION_HOLD_SAMPLES,
+            },
+        }))
+        .expect("schema always serialises")
     }
 
     /// The instruction set this run executes. Only call on validated params: an `ops`
@@ -464,6 +472,16 @@ mod tests {
         let substrate = fields.iter().find(|f| f["name"] == "substrate").unwrap();
         assert_eq!(substrate["type"], "enum");
         assert_eq!(substrate["values"], serde_json::json!(["soup", "life"]));
+    }
+
+    #[test]
+    fn schema_carries_the_transition_rule_the_engine_measures_by() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        let transition = &schema["transition"];
+        assert_eq!(transition["threshold"], TRANSITION_THRESHOLD);
+        assert_eq!(transition["hold_samples"], TRANSITION_HOLD_SAMPLES);
+        assert_eq!(transition["threshold"], 0.6);
+        assert_eq!(transition["hold_samples"], 3);
     }
 
     #[test]
