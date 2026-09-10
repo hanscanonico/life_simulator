@@ -23,6 +23,27 @@ namespace :lab do
     puts "#{experiment.name}: #{requeued} failed runs back to pending"
   end
 
+  desc "Delete the pending runs of an experiment whose parameter holds a given value"
+  task :discard_pending, %i[slug param value] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+    raise "Give a parameter and a value, as lab:discard_pending[radius,radius,64]." if args[:value].nil?
+
+    discarded = Runs::DiscardPendingService.call(experiment: experiment, param: args[:param], value: args[:value])
+
+    puts "#{experiment.name}: discarded #{discarded.size} pending runs #{discarded.join(', ')}"
+  end
+
+  desc "Delete the duplicate pending runs of an experiment, keeping one run per (params, seed)"
+  task :discard_duplicates, [:slug] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+    discarded = Runs::DiscardDuplicatesService.call(experiment: experiment)
+
+    puts "#{experiment.name}: discarded #{discarded.size} duplicate pending runs #{discarded.join(', ')}"
+  end
+
   desc "Set the queue priority of an experiment and of its pending runs"
   task :prioritise, [:slug, :priority] => :environment do |_task, args|
     experiment = Experiment.find_by(slug: args[:slug])
