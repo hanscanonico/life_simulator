@@ -38,7 +38,8 @@ cd ~/Documents/life_simulator && deploy/deploy
 It fast-forwards to `origin/main` (`DEPLOY_REF=<sha> deploy/deploy` pins another
 commit), tags the image currently serving `:previous`, rebuilds, brings the stack up
 and waits for `http://127.0.0.1:8070/up`. `bin/docker-entrypoint` runs `db:prepare`
-on boot, so migrations apply themselves.
+on boot, so migrations apply themselves. A healthy deploy ends by pruning untagged
+images older than a week; `:previous` is tagged, so it always survives.
 
 ## Runner
 
@@ -113,7 +114,16 @@ docker compose -f deploy/docker-compose.yml up -d app
 ```sh
 docker compose -f deploy/docker-compose.yml logs -f app
 deploy/backup_db     # on demand; the timer does this at 01:45
-ls ~/backups         # 14 days of pg_dump custom-format dumps
+ls ~/backups         # 14 days of custom-format dumps, two per night
 docker compose -f deploy/docker-compose.yml exec -T db \
   pg_restore -U life_simulator -d life_simulator_production --clean < ~/backups/<dump>
 ```
+
+Every service logs to `json-file` capped at 5 x 10 MB, so `logs` only reaches back
+that far. Each backup run writes `life_simulator_<stamp>.dump` (everything) beside
+`life_simulator_meta_<stamp>.dump`, the same dump without the `snapshots` rows —
+small enough to restore casually while snapshots are almost the whole database. Both
+are verified with `pg_restore -l` before they take their final name, so a run that
+fails leaves the previous backups untouched and exits non-zero:
+`systemctl status life-simulator-backup` and `journalctl -u life-simulator-backup`
+show it.

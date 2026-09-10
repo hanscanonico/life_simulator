@@ -41,7 +41,11 @@ if ! write_dump "$meta" --exclude-table-data=public.snapshots; then
   exit 1
 fi
 
-find "$BACKUP_DIR" -name 'life_simulator_*.dump' -mtime +14 -delete
+# .part files are cleaned up by the run that wrote them, but a machine that
+# dies mid-dump leaves one behind that nothing else would ever remove.
+find "$BACKUP_DIR" \
+  \( -name 'life_simulator_*.dump' -o -name 'life_simulator_*.dump.part' \) \
+  -mtime +14 -delete
 
 echo "Backup written: $full ($(du -h "$full" | cut -f1))"
 echo "Metadata backup written: $meta ($(du -h "$meta" | cut -f1))"

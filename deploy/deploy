@@ -47,7 +47,10 @@ $compose build app
 if $compose up -d && wait_healthy; then
   echo "Deployed and healthy."
   # Never -a: that would collect $previous, which the rollback branch needs.
-  docker image prune -f --filter "until=168h" >/dev/null
+  # Housekeeping must not turn a healthy deploy into a failed one, so a prune
+  # that cannot run is only reported.
+  docker image prune -f --filter "until=168h" >/dev/null ||
+    echo "Image prune failed; superseded images were not reclaimed." >&2
   exit 0
 fi
 
