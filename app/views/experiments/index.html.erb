@@ -34,5 +34,15 @@
     </table>
   </div>
 <% else %>
-  <p class="text-muted">No experiment has been queued yet.</p>
+  <p class="text-muted">No sweep has been queued yet; the programme below is what is planned.</p>
+<% end %>
+
+<% if @index.planned.any? %>
+  <h2>Not queued yet</h2>
+  <dl class="facts">
+    <% @index.planned.each do |sweep| %>
+      <dt><%= sweep.name %></dt>
+      <dd><%= sweep.description %></dd>
+    <% end %>
+  </dl>
 <% end %>
