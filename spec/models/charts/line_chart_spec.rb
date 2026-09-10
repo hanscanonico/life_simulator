@@ -10,10 +10,10 @@ RSpec.describe Charts::LineChart do
 
   describe "#path" do
     it "draws one segment per point, in epoch order" do
-      path = build([[200, 0.5], [0, 1.0]]).path
+      chart = build([[200, 0.5], [0, 1.0]])
 
-      expect(path).to start_with("M").and include(" L")
-      expect(path.scan(/[ML]/).size).to eq(2)
+      expect(chart.path).to start_with("M").and include(" L")
+      expect(chart.path.scan(/[ML]([\d.]+),/).flatten.map(&:to_f)).to eq([chart.x_pixel(0), chart.x_pixel(200)])
     end
 
     it "puts the first and the last point on the ends of the x axis" do

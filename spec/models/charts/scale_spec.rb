@@ -66,6 +66,12 @@ RSpec.describe Charts::Scale do
       expect(ticks.map(&:value)).to eq([0.0, 20.0, 40.0, 60.0, 80.0, 100.0])
     end
 
+    it "rounds a step that would otherwise land on ragged values" do
+      ticks = described_class.new(values: [0, 7], length: 100).ticks
+
+      expect(ticks.map(&:label)).to eq(%w[0 2 4 6])
+    end
+
     it "labels ticks through the shared formatter" do
       ticks = described_class.new(values: [0, 1], length: 100).ticks
 

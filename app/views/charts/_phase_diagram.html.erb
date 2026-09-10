@@ -23,9 +23,10 @@
         <% end %>
       </g>
     </svg>
-    <figcaption class="chart-legend text-sm text-muted">
+    <%# A figure carries at most one figcaption, and it is the title above the plot. %>
+    <p class="chart-legend text-sm text-muted">
       Filled dots are runs that transitioned; the line joins the median per value. Hollow
       markers at the top are runs with no emergence in <%= phase_diagram.epochs %> epochs.
-    </figcaption>
+    </p>
   <% end %>
 </figure>
