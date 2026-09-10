@@ -3,8 +3,12 @@
 require "rails_helper"
 
 RSpec.describe "The home page viewer", :js, type: :system do
+  def readout(target)
+    find("[data-viewer-target='#{target}']").text
+  end
+
   def epoch
-    find("[data-viewer-target='epoch']").text.delete(",").to_i
+    readout("epoch").delete(",").to_i
   end
 
   def canvas_has_colour?
@@ -32,6 +36,11 @@ RSpec.describe "The home page viewer", :js, type: :system do
 
     wait_until { canvas_has_colour? }
     wait_until { epoch.positive? }
+
+    # The readout prints the engine's own metrics_json; nothing computes them in JS.
+    wait_until { readout("compressRatio") != "\u2014" }
+    expect(readout("compressRatio").to_f).to be_between(0.1, 2.0)
+    expect(readout("distinctTapes").delete(",").to_i).to be > 1
 
     click_on "Pause"
     stopped = epoch
