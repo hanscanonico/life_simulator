@@ -9,6 +9,11 @@ pub const TRIALS: u32 = 4;
 pub const TRIALS_TO_PASS: u32 = 3;
 
 pub fn is_replicator(tape: &[u8], max_steps: u32, rng: &mut Rng) -> bool {
+    trials_passed(tape, max_steps, rng) >= TRIALS_TO_PASS
+}
+
+/// How many of the `TRIALS` trials left `tape` in the second half.
+fn trials_passed(tape: &[u8], max_steps: u32, rng: &mut Rng) -> u32 {
     let len = tape.len();
     let mut buf = vec![0u8; len * 2];
     let mut passes = 0;
@@ -22,7 +27,7 @@ pub fn is_replicator(tape: &[u8], max_steps: u32, rng: &mut Rng) -> bool {
             passes += 1;
         }
     }
-    passes >= TRIALS_TO_PASS
+    passes
 }
 
 /// A 256-byte tape that copies itself over its partner — written by hand, so the test
@@ -71,6 +76,50 @@ mod tests {
         assert_eq!(&buf[tape.len()..], &tape[..]);
         assert_eq!(outcome.halt, bff::Halt::UnmatchedBracket);
         assert!(outcome.steps < 8192, "{}", outcome.steps);
+    }
+
+    /// The hand-written copier with a parity gate in front of the copy: `<` walks head0
+    /// onto the partner's last byte and `[--]` decrements it by two, which reaches zero on
+    /// an even byte and wraps forever on an odd one. So the tape copies itself for half
+    /// the partners and burns the whole step budget for the other half — which is what
+    /// puts the three-of-four boundary itself under test.
+    fn parity_gated_replicator() -> Vec<u8> {
+        const LEN: usize = 256;
+        let mut tape = vec![b'a'; LEN];
+        let program: &[u8] = &[
+            0, b'-', b'[', b'}', b'-', b']', b'}', // head1 onto the partner's first byte
+            b'<', b'[', b'-', b'-', b']', b'>', // even partner tail: through; odd: spin
+            b'.', b'>', b'}', b'[', b'.', b'>', b'}', b']', b'[',
+        ];
+        tape[..program.len()].copy_from_slice(program);
+        tape
+    }
+
+    #[test]
+    fn the_parity_gate_decides_a_single_trial() {
+        let tape = parity_gated_replicator();
+        for (tail, expected) in [(200u8, true), (201, false)] {
+            let mut buf = tape.clone();
+            buf.extend(std::iter::repeat_n(b'z', tape.len()));
+            *buf.last_mut().expect("the buffer is not empty") = tail;
+            bff::run(&mut buf, 8192);
+            assert_eq!(
+                buf[tape.len()..] == tape[..],
+                expected,
+                "partner tail {tail}"
+            );
+        }
+    }
+
+    #[test]
+    fn two_passing_trials_of_four_are_not_enough() {
+        let tape = parity_gated_replicator();
+
+        assert_eq!(trials_passed(&tape, 8192, &mut rng::seeded(0, 0, 0)), 3);
+        assert!(is_replicator(&tape, 8192, &mut rng::seeded(0, 0, 0)));
+
+        assert_eq!(trials_passed(&tape, 8192, &mut rng::seeded(2, 0, 0)), 2);
+        assert!(!is_replicator(&tape, 8192, &mut rng::seeded(2, 0, 0)));
     }
 
     #[test]

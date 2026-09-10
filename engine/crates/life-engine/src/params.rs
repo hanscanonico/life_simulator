@@ -119,7 +119,8 @@ const FIELDS: &[Field] = &[
     Field {
         name: "mutation_rate",
         kind: Kind::Float { min: 0.0, max: 1.0 },
-        doc: "Probability a byte is replaced by a random byte, per byte per epoch.",
+        doc: "Probability a byte is replaced by a random byte, per byte per epoch. \
+              Applies to every substrate: the ordinary Game of Life needs 0.",
     },
     Field {
         name: "init",
