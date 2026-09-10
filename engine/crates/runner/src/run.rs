@@ -76,7 +76,7 @@ pub fn execute_world(
         let epoch = world.epoch();
         if epoch.is_multiple_of(sample_every) {
             let metrics = world.metrics();
-            sink.sample(epoch, &metrics)?;
+            sink.sample(epoch, &metrics, world.transition_epoch())?;
         }
         if epoch.is_multiple_of(snapshot_every) {
             let raw = world.snapshot();
@@ -153,7 +153,12 @@ mod tests {
     }
 
     impl RunSink for RecordingSink {
-        fn sample(&mut self, epoch: u64, _metrics: &Metrics) -> Result<()> {
+        fn sample(
+            &mut self,
+            epoch: u64,
+            _metrics: &Metrics,
+            _transition_epoch: Option<u64>,
+        ) -> Result<()> {
             self.samples.push(epoch);
             Ok(())
         }

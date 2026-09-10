@@ -1,6 +1,7 @@
 //! The snapshot container: a small header plus the zlib-compressed cell bytes. Rails
 //! stores these verbatim, so the header carries enough to reject a mismatched restore.
 
+use crate::metrics::TransitionState;
 use crate::params::{Params, Substrate};
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
@@ -9,8 +10,12 @@ use std::fmt;
 use std::io::{Read, Write};
 
 pub const MAGIC: [u8; 4] = *b"LSNP";
-pub const VERSION: u8 = 1;
-pub const HEADER_LEN: usize = 26;
+pub const VERSION: u8 = 2;
+pub const HEADER_LEN: usize = 54;
+/// Version 1 carried no transition tracker; Postgres still holds those blobs and every
+/// run they belong to must stay resumable.
+const HEADER_LEN_V1: usize = 26;
+const NO_EPOCH: i64 = -1;
 
 #[derive(Debug)]
 pub enum SnapshotError {
@@ -41,6 +46,15 @@ pub struct Header {
     pub height: u32,
     pub tape_len: u32,
     pub epoch: u64,
+    pub transition: TransitionState,
+}
+
+fn epoch_field(epoch: Option<u64>) -> i64 {
+    epoch.map_or(NO_EPOCH, |epoch| epoch as i64)
+}
+
+fn epoch_from_field(field: i64) -> Option<u64> {
+    (field >= 0).then_some(field as u64)
 }
 
 pub fn encode(header: &Header, cells: &[u8]) -> Vec<u8> {
@@ -55,6 +69,10 @@ pub fn encode(header: &Header, cells: &[u8]) -> Vec<u8> {
     out.extend_from_slice(&header.height.to_le_bytes());
     out.extend_from_slice(&header.tape_len.to_le_bytes());
     out.extend_from_slice(&header.epoch.to_le_bytes());
+    out.extend_from_slice(&epoch_field(header.transition.candidate).to_le_bytes());
+    out.extend_from_slice(&header.transition.held.to_le_bytes());
+    out.extend_from_slice(&epoch_field(header.transition.settled).to_le_bytes());
+    out.extend_from_slice(&epoch_field(header.transition.last_epoch).to_le_bytes());
 
     let mut encoder = ZlibEncoder::new(out, Compression::default());
     encoder
@@ -65,14 +83,19 @@ pub fn encode(header: &Header, cells: &[u8]) -> Vec<u8> {
 
 /// Reads a snapshot back, checking it describes the world `params` describes.
 pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), SnapshotError> {
-    if bytes.len() < HEADER_LEN {
+    if bytes.len() < HEADER_LEN_V1 {
         return Err(SnapshotError::Truncated);
     }
     if bytes[..4] != MAGIC {
         return Err(SnapshotError::BadMagic);
     }
-    if bytes[4] != VERSION {
-        return Err(SnapshotError::UnsupportedVersion(bytes[4]));
+    let header_len = match bytes[4] {
+        1 => HEADER_LEN_V1,
+        VERSION => HEADER_LEN,
+        version => return Err(SnapshotError::UnsupportedVersion(version)),
+    };
+    if bytes.len() < header_len {
+        return Err(SnapshotError::Truncated);
     }
     let substrate = match bytes[5] {
         0 => Substrate::Soup,
@@ -81,12 +104,24 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), Snapsh
     };
     let word =
         |at: usize| u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+    let signed = |at: usize| i64::from_le_bytes(bytes[at..at + 8].try_into().expect("eight bytes"));
+    let transition = if header_len == HEADER_LEN {
+        TransitionState {
+            candidate: epoch_from_field(signed(26)),
+            held: word(34),
+            settled: epoch_from_field(signed(38)),
+            last_epoch: epoch_from_field(signed(46)),
+        }
+    } else {
+        TransitionState::default()
+    };
     let header = Header {
         substrate,
         width: word(6),
         height: word(10),
         tape_len: word(14),
         epoch: u64::from_le_bytes(bytes[18..26].try_into().expect("eight bytes")),
+        transition,
     };
 
     if header.substrate != params.substrate {
@@ -103,7 +138,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), Snapsh
     }
 
     let mut cells = Vec::new();
-    ZlibDecoder::new(&bytes[HEADER_LEN..])
+    ZlibDecoder::new(&bytes[header_len..])
         .read_to_end(&mut cells)
         .map_err(SnapshotError::Corrupt)?;
     if cells.len() != params.cell_count() * params.stride() {
@@ -134,7 +169,23 @@ mod tests {
             height: params.height,
             tape_len: params.tape_len,
             epoch,
+            transition: TransitionState::default(),
         }
+    }
+
+    /// A snapshot as the first released engine wrote it: the 26-byte header, version 1.
+    fn v1_blob(params: &Params, epoch: u64, cells: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&MAGIC);
+        out.push(1);
+        out.push(0);
+        out.extend_from_slice(&params.width.to_le_bytes());
+        out.extend_from_slice(&params.height.to_le_bytes());
+        out.extend_from_slice(&params.tape_len.to_le_bytes());
+        out.extend_from_slice(&epoch.to_le_bytes());
+        let mut encoder = ZlibEncoder::new(out, Compression::default());
+        encoder.write_all(cells).unwrap();
+        encoder.finish().unwrap()
     }
 
     #[test]
@@ -148,6 +199,39 @@ mod tests {
         assert_eq!(decoded, cells);
         assert_eq!(header.epoch, 99);
         assert_eq!(header.width, 4);
+    }
+
+    #[test]
+    fn round_trips_the_transition_tracker() {
+        let params = params();
+        let cells = vec![0u8; 128];
+        let transition = TransitionState {
+            candidate: Some(400),
+            held: 2,
+            settled: Some(400),
+            last_epoch: Some(500),
+        };
+        let bytes = encode(
+            &Header {
+                transition,
+                ..header(&params, 500)
+            },
+            &cells,
+        );
+
+        let (header, _) = decode(&params, &bytes).unwrap();
+        assert_eq!(header.transition, transition);
+    }
+
+    #[test]
+    fn version_one_blobs_still_decode_with_a_fresh_tracker() {
+        let params = params();
+        let cells: Vec<u8> = (0..128).map(|i| i as u8).collect();
+
+        let (header, decoded) = decode(&params, &v1_blob(&params, 7, &cells)).unwrap();
+        assert_eq!(decoded, cells);
+        assert_eq!(header.epoch, 7);
+        assert_eq!(header.transition, TransitionState::default());
     }
 
     #[test]
@@ -171,6 +255,13 @@ mod tests {
         assert!(matches!(
             decode(&params, &[b'x'; 64]),
             Err(SnapshotError::BadMagic)
+        ));
+
+        let mut future = bytes.clone();
+        future[4] = 3;
+        assert!(matches!(
+            decode(&params, &future),
+            Err(SnapshotError::UnsupportedVersion(3))
         ));
     }
 }

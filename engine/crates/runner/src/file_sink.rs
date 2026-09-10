@@ -26,7 +26,12 @@ impl FileSink {
 }
 
 impl RunSink for FileSink {
-    fn sample(&mut self, epoch: u64, metrics: &Metrics) -> Result<()> {
+    fn sample(
+        &mut self,
+        epoch: u64,
+        metrics: &Metrics,
+        _transition_epoch: Option<u64>,
+    ) -> Result<()> {
         let mut line = serde_json::to_value(metrics)?;
         line["epoch"] = serde_json::json!(epoch);
         writeln!(self.samples, "{}", serde_json::to_string(&line)?)?;
