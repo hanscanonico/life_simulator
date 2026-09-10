@@ -1,0 +1,55 @@
+<% content_for :title, @show.experiment.name %>
+
+<h1><%= @show.experiment.name %></h1>
+<p class="text-muted"><%= @show.experiment.description %></p>
+
+<dl class="facts">
+  <dt>Substrate</dt><dd><%= @show.experiment.substrate %></dd>
+  <dt>Status</dt><dd><%= @show.experiment.status %></dd>
+  <dt>Epochs per run</dt><dd><%= number_with_delimiter @show.experiment.epochs %></dd>
+  <dt>Runs finished</dt><dd><%= @show.runs_done %> / <%= @show.experiment.runs_count %></dd>
+  <dt>Transition rate</dt>
+  <dd><%= @show.transition_rate ? number_to_percentage(@show.transition_rate * 100, precision: 0) : "—" %></dd>
+</dl>
+
+<% if @show.diagrams.any? %>
+  <% @show.diagrams.each do |diagram| %>
+    <%= render diagram %>
+  <% end %>
+<% else %>
+  <p class="text-muted">This experiment sweeps no parameter, so it has no phase diagram.</p>
+<% end %>
+
+<h2>Runs</h2>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th class="numeric">Seed</th>
+      <% @show.varying_keys.each do |key| %>
+        <th class="numeric"><%= key.humanize %></th>
+      <% end %>
+      <th>Status</th>
+      <th class="numeric">Epochs done</th>
+      <th class="numeric">Transition epoch</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @show.runs.each do |run| %>
+      <tr>
+        <td class="numeric mono"><%= run.seed %></td>
+        <% @show.varying_keys.each do |key| %>
+          <td class="numeric mono"><%= param_value(run.params[key]) %></td>
+        <% end %>
+        <td><span class="badge"><%= run.status %></span></td>
+        <td class="numeric"><%= number_with_delimiter run.epochs_done %></td>
+        <td class="numeric"><%= run.transition_epoch ? number_with_delimiter(run.transition_epoch) : "—" %></td>
+        <td><%= link_to "Run", run_path(run) %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<% if @show.pagy.pages > 1 %>
+  <nav class="pagination"><%== @show.pagy.series_nav %></nav>
+<% end %>

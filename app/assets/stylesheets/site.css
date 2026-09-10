@@ -1,0 +1,198 @@
+/* Site chrome, lab tables and the server-rendered SVG charts. App-specific: never
+   vendored back into the numbered design-system core. */
+
+.site-header {
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-soft);
+  padding: var(--space-4) 0;
+}
+
+.site-wordmark {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.site-nav {
+  display: flex;
+  gap: var(--space-5);
+}
+
+.site-nav a {
+  color: var(--ink-secondary);
+  text-decoration: none;
+}
+
+.site-nav a:hover {
+  color: var(--accent);
+}
+
+.site-main {
+  padding: var(--space-8) 0;
+}
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding: var(--space-5) 0;
+  color: var(--ink-muted);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-4) 0;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+}
+
+.data-table th {
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+}
+
+.data-table .numeric {
+  text-align: right;
+}
+
+.data-table tbody tr:hover {
+  background: var(--paper-warm);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-5);
+  margin: var(--space-4) 0;
+}
+
+.facts dt {
+  color: var(--ink-muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.chart {
+  margin: var(--space-6) 0;
+}
+
+.chart-title {
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.chart-svg {
+  width: 100%;
+  height: auto;
+  background: var(--paper-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-default);
+}
+
+.chart-grid line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart-axis line {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.chart-tick-label text,
+.chart-axis-label text {
+  fill: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.chart-axis-label text {
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.chart-median {
+  stroke-dasharray: 6 3;
+}
+
+.chart-dots circle {
+  fill: var(--accent);
+  fill-opacity: 0.65;
+}
+
+.chart-censored circle {
+  fill: none;
+  stroke: var(--ink-muted);
+  stroke-width: 1.5;
+}
+
+.chart-censored text {
+  fill: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.chart-marker line {
+  stroke: var(--negative);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.chart-marker text {
+  fill: var(--negative);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.chart-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  gap: var(--space-5);
+}
+
+.snapshot-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-4);
+}
+
+.snapshot img {
+  width: 100%;
+  image-rendering: pixelated;
+  border: 1px solid var(--line);
+  background: var(--paper-sunken);
+}
+
+.pagination {
+  margin: var(--space-5) 0;
+}
+
+.pagination a {
+  padding: var(--space-1) var(--space-2);
+  color: var(--ink-secondary);
+}
+
+.pagination a[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}

@@ -1,0 +1,15 @@
+{
+  "ignored_warnings": [
+    {
+      "fingerprint": "57847813511884497122bc4e51eaf480d286ef1d396c4b45ebc6b29769d45386",
+      "warning_type": "Cross-Site Scripting",
+      "warning_code": 2,
+      "check_name": "CrossSiteScripting",
+      "message": "Unescaped model attribute",
+      "file": "app/views/experiments/show.html.erb",
+      "line": 54,
+      "note": "Pagy builds the pagination nav itself out of page numbers and the request path; the experiment never reaches it."
+    }
+  ],
+  "brakeman_version": "8.0.6"
+}
