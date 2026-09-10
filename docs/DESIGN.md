@@ -99,6 +99,11 @@ docs/              this file, design_record.md, findings
 - **The engine is the single authority** on rules, metrics and rendering colours. Rails
   never re-implements a rule; the browser never re-implements a metric. The same crate
   compiles natively for the lab and to wasm for the viewer.
+  A soup cell's colour is HSV: hue from an FNV-1a hash of the tape's *instruction
+  skeleton* (its BFF ops in order, non-op bytes dropped), saturation and brightness from
+  its op density, dark and grey below 25 % ops. Tapes that differ only where the
+  interpreter does not look share a colour, so a colony of near-identical replicators
+  reads as one hue against a near-black random soup.
 - **Rails owns experiments, runs, results and the public pages.** Postgres holds
   `experiments`, `runs`, `samples` (one row per metric sample, `values jsonb`),
   `snapshots` (compressed world bytes + a PNG thumbnail rendered by the engine).
