@@ -39,6 +39,37 @@ commit), tags the image currently serving `:previous`, rebuilds, brings the stac
 and waits for `http://127.0.0.1:8070/up`. `bin/docker-entrypoint` runs `db:prepare`
 on boot, so migrations apply themselves.
 
+## Automatic deployment
+
+Green main deploys itself: the `deploy` job of `.github/workflows/ci.yml` runs on the
+mini-pc's own self-hosted runner once every other job of the run is green, and does
+what a routine deploy does — fast-forward the checkout in
+`/home/mini-pc/Documents/life_simulator` to the tested commit, then
+`deploy/deploy --no-pull`.
+
+Installing the runner, once, on the mini-pc:
+
+```sh
+gh api -X POST repos/hanscanonico/life_simulator/actions/runners/registration-token --jq .token
+ssh mini-pc@192.168.1.37
+cd ~/Documents/life_simulator
+deploy/setup_runner <token>          # registers mini-pc-life with the life-prod label
+sudo ~/actions-runner-life/svc.sh install $USER
+sudo ~/actions-runner-life/svc.sh start
+```
+
+The registration token is short-lived — take it just before running the script. Docker
+has to be usable by the runner's user (`sudo usermod -aG docker $USER`, then re-login).
+
+To redeploy without a commit — the current main again, say after editing `deploy/.env` —
+use the Actions tab: CI → Run workflow → `main`. The full gate runs first, then the
+deploy job.
+
+A failed deploy leaves the site up: `deploy/deploy` rolls back to the `:previous` image
+when the new build never turns healthy, and exits non-zero, so the job goes red while
+the previous build keeps serving. The job's log is the deploy log; `docker compose -f
+deploy/docker-compose.yml logs app` on the host has the rest.
+
 ## Rollback
 
 A deploy that never turns healthy rolls itself back to `:previous` and exits non-zero.
