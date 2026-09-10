@@ -11,7 +11,12 @@ export const meta = {
 	],
 }
 
-// args: { tasks: [{ slug, task, reviewNote? }, ...], trailers?: string, footer?: string }
+// args: { tasks: [{ slug, task, reviewNote? }, ...], trailers?: string, footer?: string,
+//         roles?: { implementer, reviewer } }
+//   roles      optional inline system prompts (the bodies of .claude/agents/*.md). When
+//              present the agents run as plain Opus subagents with the prompt prepended
+//              and effort set here — needed when the session started before the agent
+//              files existed (the registry only loads at startup).
 //   slug       names the worktree (improve-<slug>) and branch (improve/<slug>)
 //   task       the full task brief (may point at a spec file the orchestrator wrote)
 //   reviewNote extra context for the reviewer (what to independently verify)
@@ -59,6 +64,17 @@ const REVIEW = {
 const trailers = input.trailers || ''
 const footer = input.footer || ''
 const REPO = '/Users/hanscanonico/Projets/life_simulator'
+const roles = input.roles || null
+const EFFORT = { implementer: 'medium', reviewer: 'high' }
+// One place decides how a role runs: registry agent type, or inline prompt + opus + effort.
+const run = (role, brief, opts) => {
+	if (!roles) return agent(brief, { ...opts, agentType: role })
+	return agent(`${roles[role]}\n\n---\n\n${brief}`, {
+		...opts,
+		model: 'opus',
+		effort: opts.effort || EFFORT[role],
+	})
+}
 
 const trailerNote = trailers
 	? 'Commit trailers to use (end the commit message with these lines):\n\n' + trailers
@@ -97,7 +113,7 @@ const reviewBrief = (t, impl, prior) =>
 const reviewable = (impl) => Boolean(impl && impl.verify_pass && !impl.abandoned)
 
 const review = (t, impl, prior, phaseName, label) =>
-	agent(reviewBrief(t, impl, prior), { label, phase: phaseName, agentType: 'reviewer', schema: REVIEW })
+	run('reviewer', reviewBrief(t, impl, prior), { label, phase: phaseName, schema: REVIEW })
 
 // One retry, never more. A null impl means the user skipped the agent or it died on a
 // terminal API error — not something a second attempt should override.
@@ -120,7 +136,7 @@ phase('Implement')
 const results = await pipeline(
 	input.tasks,
 	(t) =>
-		agent(implBrief(t), { label: `impl:${t.slug}`, phase: 'Implement', agentType: 'implementer', schema: IMPL }),
+		run('implementer', implBrief(t), { label: `impl:${t.slug}`, phase: 'Implement', schema: IMPL }),
 	(impl, t) => {
 		if (!reviewable(impl)) return { impl, review: null }
 		return review(t, impl, null, 'Review', `review:${t.slug}`).then((rev) => ({ impl, review: rev }))
@@ -128,10 +144,9 @@ const results = await pipeline(
 	async (first, t) => {
 		if (!needsRetry(first.impl, first.review)) return { ...first, retry: null }
 		log(`${t.slug}: ${first.review ? 'rejected' : 'gate red'} — retrying once at high effort`)
-		const impl = await agent(retryBrief(t, first.impl, first.review), {
+		const impl = await run('implementer', retryBrief(t, first.impl, first.review), {
 			label: `retry:${t.slug}`,
 			phase: 'Retry',
-			agentType: 'implementer',
 			effort: 'high',
 			schema: IMPL,
 		})
