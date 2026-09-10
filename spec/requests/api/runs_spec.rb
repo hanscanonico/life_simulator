@@ -15,26 +15,48 @@ RSpec.describe "Api::Runs", type: :request do
   end
 
   describe "authentication" do
-    it "rejects a request with no token" do
-      post claim_api_runs_path, params: { runner_id: "runner-1" }
-
-      expect(response).to have_http_status(:unauthorized)
+    # The bearer token guards the whole API, so every endpoint is checked: an
+    # `authenticate_runner!` narrowed to one action would leave the rest wide open.
+    let(:run) { create(:run, :claimed, experiment: experiment) }
+    let(:requests) do
+      { "claim" => ->(sent) { post claim_api_runs_path, params: { runner_id: "runner-1" }, headers: sent, as: :json },
+        "heartbeat" => lambda { |sent|
+          post heartbeat_api_run_path(run), params: { runner_id: "runner-1", epochs_done: 1 }, headers: sent, as: :json
+        },
+        "samples" => lambda { |sent|
+          post samples_api_run_path(run), params: { runner_id: "runner-1", samples: [] }, headers: sent, as: :json
+        },
+        "snapshots" => lambda { |sent|
+          post snapshots_api_run_path(run), params: { runner_id: "runner-1", epoch: 1 }, headers: sent, as: :json
+        },
+        "finish" => lambda { |sent|
+          post finish_api_run_path(run), params: { runner_id: "runner-1" }, headers: sent, as: :json
+        } }
     end
 
-    it "rejects a request with the wrong token" do
-      post claim_api_runs_path, params: { runner_id: "runner-1" },
-                                headers: { "Authorization" => "Bearer nope" }
+    %w[claim heartbeat samples snapshots finish].each do |endpoint|
+      context "for #{endpoint}" do
+        it "rejects a request with no token" do
+          requests.fetch(endpoint).call({})
 
-      expect(response).to have_http_status(:unauthorized)
-    end
+          expect(response).to have_http_status(:unauthorized)
+        end
 
-    context "with no token configured" do
-      it "rejects every request rather than standing open" do
-        ENV["RUNNER_TOKEN"] = nil
+        it "rejects a request with the wrong token" do
+          requests.fetch(endpoint).call("Authorization" => "Bearer nope")
 
-        post claim_api_runs_path, params: { runner_id: "runner-1" }, headers: headers, as: :json
+          expect(response).to have_http_status(:unauthorized)
+        end
 
-        expect(response).to have_http_status(:unauthorized)
+        context "with no token configured" do
+          it "rejects the request rather than standing open" do
+            ENV["RUNNER_TOKEN"] = nil
+
+            requests.fetch(endpoint).call(headers)
+
+            expect(response).to have_http_status(:unauthorized)
+          end
+        end
       end
     end
   end
