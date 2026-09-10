@@ -38,6 +38,7 @@ RSpec.describe "Experiments", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Transition epoch vs radius", "<svg", "Runs")
+      expect(response.body).to include("Download CSV", experiment_path(experiment, format: :csv))
     end
 
     it "shows each run's queue priority" do
@@ -87,6 +88,26 @@ RSpec.describe "Experiments", type: :request do
         get experiment_path(experiment)
 
         expect(response.body).to include("series-nav")
+      end
+    end
+
+    context "as CSV" do
+      it "streams one row per run with its seed and its swept parameters" do
+        create(:run, experiment: experiment, seed: 7, status: "finished", epochs: 20_000, epochs_done: 20_000,
+                     transition_epoch: 900, params: Lab::Schema.run_defaults.merge("radius" => 2),
+                     summary: { "compress_ratio" => 0.42 })
+        create(:run, experiment: experiment, seed: 8, status: "finished", epochs: 20_000, epochs_done: 20_000,
+                     params: Lab::Schema.run_defaults.merge("radius" => 4))
+
+        get experiment_path(experiment, format: :csv)
+
+        lines = response.body.lines.map(&:chomp)
+        expect(response.media_type).to eq("text/csv")
+        expect(response.headers["Content-Disposition"]).to include("attachment", "radius-runs.csv")
+        expect(lines.first).to eq("run_id,seed,status,epochs,epochs_done,transition_epoch,radius,#{Sample::OBSERVABLES.join(',')}")
+        expect(lines.size).to eq(3)
+        expect(lines.second).to include(",7,finished,20000,20000,900,2,0.42")
+        expect(lines.third).to include(",8,finished,20000,20000,,4,")
       end
     end
 

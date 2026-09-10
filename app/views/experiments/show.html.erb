@@ -24,4 +24,5 @@
 <% end %>
 
 <h2>Runs</h2>
+<p><%= link_to "Download CSV", experiment_path(@show.experiment, format: :csv), class: "btn btn-sm btn-outline" %></p>
 <%= render "experiments/runs_table", page: @show %>

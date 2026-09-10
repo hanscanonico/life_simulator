@@ -11,7 +11,9 @@ Rails.application.routes.draw do
 
   resources :experiments, only: %i[index show]
   resources :findings, only: %i[index show]
-  resources :runs, only: :show
+  resources :runs, only: :show do
+    get :samples, on: :member, defaults: { format: :csv }
+  end
   resources :snapshots, only: [] do
     get :png, on: :member
   end
