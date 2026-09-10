@@ -28,8 +28,13 @@ RSpec.describe Lab::Schema do
       .to eq(%w[width height tape_len radius max_steps mutation_rate init top_k])
   end
 
+  # Pinned by value rather than derived from the schema: an engine default moving under
+  # `make schema` would otherwise silently change the params of every sweep queued after it.
   it "keeps the engine's own value for every default a sweep starts from" do
-    expect(described_class.run_defaults).to eq(described_class.defaults.except(*Lab::Schema::NON_RUN_PARAMS))
+    expect(described_class.run_defaults).to eq(
+      "width" => 128, "height" => 128, "tape_len" => 64, "radius" => 1, "max_steps" => 2**13,
+      "mutation_rate" => 1.0 / 4096, "init" => "random", "top_k" => 16
+    )
   end
 
   it "knows a parameter the engine declares" do
