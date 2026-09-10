@@ -1,3 +1,7 @@
+# Named explicitly: compose would otherwise derive the project name from this
+# directory ("deploy"), which every other stack on the mini-pc could also claim.
+name: life-simulator
+
 services:
   db:
     image: postgres:17
