@@ -32,4 +32,17 @@ RSpec.describe Runs::ReleaseStaleService do
 
     expect(described_class.call).to eq(1)
   end
+
+  it "releases the whole batch in one statement, since every claim poll calls it" do
+    create_list(:run, 3, :stale)
+    updates = []
+    subscription = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+      updates << payload[:sql] if payload[:sql].start_with?("UPDATE")
+    end
+
+    described_class.call
+    ActiveSupport::Notifications.unsubscribe(subscription)
+
+    expect(updates.size).to eq(1)
+  end
 end

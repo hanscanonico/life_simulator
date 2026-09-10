@@ -23,4 +23,12 @@ class Run < ApplicationRecord
   def terminal? = TERMINAL_STATUSES.include?(status)
 
   def claimed_by?(other_runner_id) = runner_id.present? && runner_id == other_runner_id
+
+  # The transition is the FIRST qualifying epoch (DESIGN.md §2), so a resumed runner
+  # reporting a later one — or a retried batch — never replaces an epoch already recorded.
+  def earlier_transition_epoch?(epoch)
+    return false if epoch.blank?
+
+    transition_epoch.nil? || epoch.to_i < transition_epoch
+  end
 end

@@ -12,8 +12,14 @@ module Api
       render json: run.slice(:id, :params, :seed, :epochs, :epochs_done)
     end
 
+    # The runner's heartbeat thread can have a request in flight when `finish` posts, so a
+    # heartbeat that lands after the end must not resurrect the run — and progress only ever
+    # moves forward, whatever a delayed heartbeat reports.
     def heartbeat
-      @run.update!(status: "running", heartbeat_at: Time.current, epochs_done: params.fetch(:epochs_done),
+      return head :no_content if @run.terminal?
+
+      @run.update!(status: "running", heartbeat_at: Time.current,
+                   epochs_done: [@run.epochs_done, params.fetch(:epochs_done).to_i].max,
                    started_at: @run.started_at || Time.current)
       head :no_content
     end
