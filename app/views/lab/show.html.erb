@@ -7,8 +7,10 @@
 </p>
 
 <%# The frame refetches itself: nothing outside it moves, so the poll controller is scoped
-    to the frame and only ever calls its reload(). %>
-<turbo-frame id="lab_status" src="<%= lab_status_path %>" loading="lazy"
+    to the frame and only ever calls its reload(). Eager, not lazy: Turbo drops a lazy
+    frame's reload() until its very first load has settled, so an early refetch — the tab
+    coming back moments after the page opened — would silently do nothing. %>
+<turbo-frame id="lab_status" src="<%= lab_status_path %>"
              data-controller="frame-poll" data-frame-poll-interval-value="30000">
   <p class="text-muted">Loading status…</p>
 </turbo-frame>

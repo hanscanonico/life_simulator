@@ -4,12 +4,13 @@ require "rails_helper"
 
 RSpec.describe "Lab", type: :request do
   describe "GET /lab" do
-    it "lazily loads the status frame and polls it in place" do
+    it "loads the status frame and polls it in place" do
       get lab_path
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include(%(src="#{lab_status_path}"), 'loading="lazy"',
+      expect(response.body).to include(%(src="#{lab_status_path}"),
                                        %(data-controller="frame-poll"))
+      expect(response.body).not_to include('loading="lazy"')
     end
 
     it "never reloads itself" do
