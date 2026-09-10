@@ -35,7 +35,7 @@ if Rails.env.development?
       transition = radius == 64 && seed > 2 ? nil : (centre / sample_every).round * sample_every
 
       run = experiment.runs.create!(
-        params: Lab::ENGINE_DEFAULTS.merge("radius" => radius, "width" => 128, "height" => 128),
+        params: Lab::Schema.run_defaults.merge("radius" => radius, "width" => 128, "height" => 128),
         seed: seed, epochs: epochs, epochs_done: epochs, status: "finished",
         transition_epoch: transition, started_at: 2.days.ago, finished_at: 1.day.ago,
         heartbeat_at: 1.day.ago, runner_id: "demo-runner-#{(seed % 2) + 1}"

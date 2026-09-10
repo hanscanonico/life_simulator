@@ -12,7 +12,7 @@ RSpec.describe Experiments::ShowPage do
 
   def finished_run(radius:, transition_epoch: nil)
     create(:run, experiment: experiment, status: "finished", transition_epoch: transition_epoch,
-                 params: Lab::ENGINE_DEFAULTS.merge("radius" => radius))
+                 params: Lab::Schema.run_defaults.merge("radius" => radius))
   end
 
   describe "#axes" do
@@ -32,7 +32,7 @@ RSpec.describe Experiments::ShowPage do
 
       it "matches a run through the paired parameters" do
         run = create(:run, experiment: experiment, status: "finished", transition_epoch: 700,
-                           params: Lab::ENGINE_DEFAULTS.merge("width" => 64, "height" => 64))
+                           params: Lab::Schema.run_defaults.merge("width" => 64, "height" => 64))
 
         group = page.diagrams.sole.groups.find { |candidate| candidate.label == "64" }
 
@@ -64,7 +64,7 @@ RSpec.describe Experiments::ShowPage do
         finished_run(radius: 1, transition_epoch: 100)
         finished_run(radius: 1, transition_epoch: 300)
         finished_run(radius: 2)
-        create(:run, experiment: experiment, params: Lab::ENGINE_DEFAULTS.merge("radius" => 4))
+        create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 4))
 
         groups = page.diagrams.sole.groups
 

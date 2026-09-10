@@ -32,7 +32,7 @@ RSpec.describe "Experiments", type: :request do
   describe "GET /experiments/:slug" do
     it "draws the phase diagram and the runs table" do
       create(:run, experiment: experiment, seed: 7, status: "finished", transition_epoch: 900,
-                   params: Lab::ENGINE_DEFAULTS.merge("radius" => 2))
+                   params: Lab::Schema.run_defaults.merge("radius" => 2))
 
       get experiment_path(experiment)
 
@@ -43,7 +43,7 @@ RSpec.describe "Experiments", type: :request do
     context "with runs that never transitioned" do
       it "says so on the chart" do
         create(:run, experiment: experiment, status: "finished",
-                     params: Lab::ENGINE_DEFAULTS.merge("radius" => 1))
+                     params: Lab::Schema.run_defaults.merge("radius" => 1))
 
         get experiment_path(experiment)
 
