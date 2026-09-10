@@ -12,6 +12,20 @@ RSpec.describe Runs::ClaimService do
     expect(claim).to eq(oldest)
   end
 
+  it "hands out the highest priority pending run first" do
+    create(:run)
+    urgent = create(:run, priority: 5)
+
+    expect(claim).to eq(urgent)
+  end
+
+  it "hands out the oldest run of the highest priority" do
+    oldest_urgent = create(:run, priority: 5)
+    create(:run, priority: 5)
+
+    expect(claim).to eq(oldest_urgent)
+  end
+
   it "marks the run claimed by the calling runner" do
     create(:run)
 

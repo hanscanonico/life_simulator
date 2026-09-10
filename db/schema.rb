@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_120004) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_120005) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -20,6 +20,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_120004) do
     t.integer "epochs", null: false
     t.string "name", null: false
     t.jsonb "param_grid", default: {}, null: false
+    t.integer "priority", default: 0, null: false
     t.integer "runs_count", default: 0, null: false
     t.jsonb "seeds", default: [], null: false
     t.string "slug", null: false
@@ -40,6 +41,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_120004) do
     t.datetime "finished_at"
     t.datetime "heartbeat_at"
     t.jsonb "params", default: {}, null: false
+    t.integer "priority", default: 0, null: false
     t.string "runner_id"
     t.bigint "seed", null: false
     t.datetime "started_at"
@@ -49,6 +51,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_120004) do
     t.datetime "updated_at", null: false
     t.index ["experiment_id"], name: "index_runs_on_experiment_id"
     t.index ["status", "id"], name: "index_runs_on_status_and_id"
+    t.index ["status", "priority", "id"], name: "index_runs_on_status_and_priority_and_id", order: { priority: :desc }
   end
 
   create_table "samples", force: :cascade do |t|

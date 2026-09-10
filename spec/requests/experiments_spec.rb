@@ -40,6 +40,14 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to include("Transition epoch vs radius", "<svg", "Runs")
     end
 
+    it "shows each run's queue priority" do
+      create(:run, experiment: experiment, priority: 5)
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include("Priority", %(<td class="numeric">5</td>))
+    end
+
     context "with runs that never transitioned" do
       it "says so on the chart" do
         create(:run, experiment: experiment, status: "finished",

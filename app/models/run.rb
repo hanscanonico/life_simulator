@@ -15,6 +15,7 @@ class Run < ApplicationRecord
   validates :seed, numericality: { only_integer: true }
   validates :epochs, numericality: { only_integer: true, greater_than: 0 }
   validates :epochs_done, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :priority, numericality: { only_integer: true }
 
   scope :terminal, -> { where(status: TERMINAL_STATUSES) }
   scope :stale, -> { where(status: %w[claimed running]).where(heartbeat_at: ...STALE_AFTER.ago) }
