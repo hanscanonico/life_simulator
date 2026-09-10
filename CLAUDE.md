@@ -14,8 +14,9 @@ Rust toolchain: `export PATH="$HOME/.cargo/bin:$PATH"` (rustup via Homebrew).
 
 Fable orchestrates and does not implement, research or review a PR itself. Workers are the
 Opus agents in `.claude/agents/`, effort set by role: `scout` low, `implementer` medium (the
-`improve` workflow retries once at high on a red gate or a reject), `reviewer` high, `qa` low.
-`/improve` and `/orchestrate` carry the full loop.
+`improve` workflow retries once at high on a red gate or a reject), `reviewer` high, `qa` low,
+`lab` low (science operations on the mini-pc). `/improve` and `/orchestrate` carry the full
+loop; `/autonomous_improvements <until>` runs it unattended until a deadline.
 
 # Rails Project Guide
 
