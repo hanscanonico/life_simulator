@@ -10,6 +10,8 @@ module Lab
 
     def self.build = new
 
+    def fetched_at = @fetched_at ||= Time.current
+
     def counts_by_status
       @counts_by_status ||= Run::STATUSES.index_with { |status| status_counts[status].to_i }
     end
