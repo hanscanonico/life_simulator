@@ -13,6 +13,28 @@ namespace :lab do
     puts "#{experiment.name}: #{experiment.reload.runs_count} runs"
   end
 
+  desc "Send the failed runs of an experiment back to the pending queue"
+  task :requeue_failed, [:slug] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+    requeued = Runs::RequeueFailedService.call(experiment: experiment)
+
+    puts "#{experiment.name}: #{requeued} failed runs back to pending"
+  end
+
+  desc "Set the queue priority of an experiment and of its pending runs"
+  task :prioritise, [:slug, :priority] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+    raise "Priority #{args[:priority].inspect} is not an integer." unless /\A-?\d+\z/.match?(args[:priority].to_s)
+
+    priority = args[:priority].to_i
+    pending = Experiments::SetPriorityService.call(experiment: experiment, priority: priority)
+
+    puts "#{experiment.name}: priority #{priority}, #{pending} pending runs"
+  end
+
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"
   task prune_snapshots: :environment do
     deleted = Run.terminal.find_each.sum { |run| Runs::PruneSnapshotsService.call(run: run) }
