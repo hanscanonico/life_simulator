@@ -27,7 +27,7 @@ namespace :lab do
   task :discard_pending, %i[slug param value] => :environment do |_task, args|
     experiment = Experiment.find_by(slug: args[:slug])
     raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
-    raise "Give a parameter and a value, as lab:discard_pending[radius,64]." if args[:value].nil?
+    raise "Give a parameter and a value, as lab:discard_pending[radius,radius,64]." if args[:value].nil?
 
     discarded = Runs::DiscardPendingService.call(experiment: experiment, param: args[:param], value: args[:value])
 

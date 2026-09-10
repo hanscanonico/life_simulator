@@ -8,11 +8,17 @@ module DiscardsPendingRuns
   private
 
   def discard!(runs)
-    discardable = runs.to_a
+    discardable = locked(runs)
     refuse!(discardable.reject(&:pending?), "are not pending")
     refuse!(discardable.select { |run| measured?(run) }, "carry samples or snapshots")
     discardable.each(&:destroy!)
     discardable.map(&:id).sort
+  end
+
+  # A runner claims with FOR UPDATE SKIP LOCKED, so the status has to be re-read under a
+  # lock: a claim can land between the query that chose these runs and their deletion.
+  def locked(runs)
+    Run.where(id: runs.map(&:id)).order(:id).lock.to_a
   end
 
   def refuse!(runs, reason)

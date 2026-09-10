@@ -26,9 +26,9 @@ grid gained an arm seeds that arm only. When a grid *loses* an arm, its queued r
 behind: `"lab:discard_pending[<slug>,<param>,<value>]"` deletes the pending runs of the
 experiment whose parameter holds that value (`"lab:discard_pending[radius,radius,64]"`),
 and `"lab:discard_duplicates[<slug>]"` deletes the pending duplicates an older,
-non-idempotent seeding created, keeping one run per (params, seed). Both refuse the whole
-batch rather than touch a claimed, running or terminal run, and print the ids they removed
-— quote the whole task name in zsh, brackets and commas included.
+non-idempotent seeding created, keeping one run per (params, seed). Both delete pending
+runs only — a claimed, running or terminal run is left where it is — and print the ids they
+removed; quote the whole task name in zsh, brackets and commas included.
 `lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes
 `transition_epoch` from the stored samples of terminal runs, for runs measured before the
 tracker survived a snapshot resume. `lab:db_size` and `lab:prune_snapshots` are the
