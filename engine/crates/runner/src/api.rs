@@ -15,6 +15,10 @@ use std::time::Duration;
 const MAX_ATTEMPTS: u32 = 5;
 const BACKOFF: Duration = Duration::from_secs(2);
 const TIMEOUT: Duration = Duration::from_secs(60);
+/// How much of an answer the runner is willing to read. `ureq` defaults to 10 MiB, which
+/// a large world's snapshot blows through: a 512x256 world resumes from a base64 blob of
+/// tens of megabytes.
+const MAX_BODY: u64 = 256 * 1024 * 1024;
 
 /// A run handed over by `POST /api/runs/claim`.
 #[derive(Debug, Clone, PartialEq)]
@@ -156,10 +160,8 @@ impl LabClient {
                 .post(&url)
                 .header("Authorization", self.bearer())
                 .send_json(body)?;
-            Ok((
-                response.status().as_u16(),
-                response.body_mut().read_to_string()?,
-            ))
+            let status = response.status().as_u16();
+            Ok((status, read_body(&mut response, &url)?))
         })
     }
 
@@ -172,10 +174,8 @@ impl LabClient {
                 .header("Authorization", self.bearer())
                 .query("runner_id", runner_id)
                 .call()?;
-            Ok((
-                response.status().as_u16(),
-                response.body_mut().read_to_string()?,
-            ))
+            let status = response.status().as_u16();
+            Ok((status, read_body(&mut response, &url)?))
         })
     }
 
@@ -203,6 +203,17 @@ impl LabClient {
         }
         unreachable!("the last attempt always returns")
     }
+}
+
+/// Reads an answer whole, up to `MAX_BODY`. Naming the endpoint and the limit keeps a
+/// body that is genuinely too big from reading as an unexplained transport failure.
+fn read_body(response: &mut ureq::http::Response<ureq::Body>, url: &str) -> Result<String> {
+    response
+        .body_mut()
+        .with_config()
+        .limit(MAX_BODY)
+        .read_to_string()
+        .with_context(|| format!("reading the answer of {url} (limit {MAX_BODY} bytes)"))
 }
 
 /// The app answers every runner call with 2xx; anything else is a hard failure the
@@ -305,6 +316,24 @@ mod tests {
             .unwrap();
 
         assert_eq!((epoch, blob), (60, b"restored".to_vec()));
+    }
+
+    /// A 512x256 world's snapshot travels as a base64 blob well past `ureq`'s default
+    /// 10 MiB body limit; reading it must not turn a resumable run into a failed one.
+    #[test]
+    fn a_snapshot_larger_than_the_default_body_limit_still_comes_back() {
+        let lab = MockLab::start();
+        let raw = vec![0xab_u8; 9 * 1024 * 1024];
+        lab.set_latest_snapshot(60, raw.clone());
+
+        let (epoch, blob) = client(&lab)
+            .latest_snapshot(1, "runner-1")
+            .unwrap()
+            .unwrap();
+
+        assert!(BASE64.encode(&raw).len() > 10 * 1024 * 1024);
+        assert_eq!(epoch, 60);
+        assert_eq!(blob, raw);
     }
 
     #[test]
