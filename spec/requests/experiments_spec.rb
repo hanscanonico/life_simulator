@@ -90,6 +90,17 @@ RSpec.describe "Experiments", type: :request do
 
         expect(response.body).not_to include("Arms of radius")
       end
+
+      it "says the rate has no denominator yet" do
+        create(:run, experiment: experiment, status: "running", transition_epoch: 300,
+                     params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("no finished run yet",
+                                         "+1 run still under way already transitioned")
+        expect(response.body).not_to include("finished runs transitioned")
+      end
     end
 
     context "with runs that never transitioned" do
