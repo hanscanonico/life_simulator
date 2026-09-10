@@ -14,6 +14,7 @@ pub mod rng;
 pub mod snapshot;
 pub mod world;
 
+pub use bff::OpSet;
 pub use metrics::Metrics;
 pub use params::{Init, ParamError, Params, Substrate};
 pub use replicator::is_replicator;

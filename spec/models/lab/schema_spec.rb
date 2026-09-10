@@ -25,7 +25,7 @@ RSpec.describe Lab::Schema do
 
   it "drops the parameters a run never carries from the defaults a sweep starts from" do
     expect(described_class.run_defaults.keys)
-      .to eq(%w[width height tape_len radius max_steps mutation_rate init top_k])
+      .to eq(%w[width height tape_len radius max_steps ops mutation_rate init top_k])
   end
 
   # Pinned by value rather than derived from the schema: an engine default moving under
@@ -33,7 +33,7 @@ RSpec.describe Lab::Schema do
   it "keeps the engine's own value for every default a sweep starts from" do
     expect(described_class.run_defaults).to eq(
       "width" => 128, "height" => 128, "tape_len" => 64, "radius" => 1, "max_steps" => 2**13,
-      "mutation_rate" => 1.0 / 4096, "init" => "random", "top_k" => 16
+      "ops" => "<>{}+-.,[]", "mutation_rate" => 1.0 / 4096, "init" => "random", "top_k" => 16
     )
   end
 

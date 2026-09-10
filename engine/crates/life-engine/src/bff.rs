@@ -30,6 +30,61 @@ pub fn is_op(byte: u8) -> bool {
     OPS.contains(&byte)
 }
 
+/// The enabled instruction set of a run (`Params::ops`, DESIGN §1.3 sweep 5): a bit per
+/// entry of `OPS`. A byte whose op is disabled is a no-op, exactly like a byte that is
+/// not an op at all — it still costs a step. Bracket *matching* keeps reading every `[`
+/// and `]` byte, disabled or not: the structure of a program does not depend on which
+/// jumps are executable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpSet(u16);
+
+impl OpSet {
+    /// All ten ops — the default substrate of DESIGN §1.1.
+    pub const ALL: Self = Self((1 << 10) - 1);
+
+    /// The set named by `ops`, or the reason it is not a legal instruction set: a
+    /// non-empty subset of the ten op bytes, each named at most once.
+    pub fn parse(ops: &str) -> Result<Self, &'static str> {
+        let mut bits = 0u16;
+        for byte in ops.bytes() {
+            let index = OPS
+                .iter()
+                .position(|op| *op == byte)
+                .ok_or("every character must be one of <>{}+-.,[]")?;
+            if bits & (1 << index) != 0 {
+                return Err("no instruction may be named twice");
+            }
+            bits |= 1 << index;
+        }
+        if bits == 0 {
+            return Err("at least one instruction must be enabled");
+        }
+        Ok(Self(bits))
+    }
+
+    pub fn enables(self, byte: u8) -> bool {
+        OPS.iter()
+            .position(|op| *op == byte)
+            .is_some_and(|index| self.0 & (1 << index) != 0)
+    }
+
+    /// A byte-indexed lookup, built once per execution so the interpreter's inner loop
+    /// pays one array read instead of a scan over `OPS`.
+    fn table(self) -> [bool; 256] {
+        let mut table = [false; 256];
+        for (index, op) in OPS.iter().enumerate() {
+            table[*op as usize] = self.0 & (1 << index) != 0;
+        }
+        table
+    }
+}
+
+impl Default for OpSet {
+    fn default() -> Self {
+        Self::ALL
+    }
+}
+
 /// Why an execution stopped. Kept because the runner and the tests care about the
 /// difference between "ran out of budget" and "the program ended".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,10 +100,17 @@ pub struct Outcome {
     pub steps: u32,
 }
 
-/// Executes `tape` in place. The instruction pointer starts at 0 and runs forward; both
-/// heads start at 0 and wrap modulo `tape.len()`. Bracket matches are scanned at
-/// execution time, not precomputed, because the program rewrites itself as it runs.
+/// Executes `tape` in place with every op enabled.
 pub fn run(tape: &mut [u8], max_steps: u32) -> Outcome {
+    run_with(tape, max_steps, OpSet::ALL)
+}
+
+/// Executes `tape` in place, running only the ops `enabled` names. The instruction
+/// pointer starts at 0 and runs forward; both heads start at 0 and wrap modulo
+/// `tape.len()`. Bracket matches are scanned at execution time, not precomputed, because
+/// the program rewrites itself as it runs.
+pub fn run_with(tape: &mut [u8], max_steps: u32, enabled: OpSet) -> Outcome {
+    let enabled = enabled.table();
     let len = tape.len();
     if len == 0 {
         return Outcome {
@@ -72,6 +134,7 @@ pub fn run(tape: &mut [u8], max_steps: u32) -> Outcome {
         steps += 1;
 
         match tape[ip] {
+            byte if !enabled[byte as usize] => {}
             HEAD0_LEFT => head0 = (head0 + len - 1) % len,
             HEAD0_RIGHT => head0 = (head0 + 1) % len,
             HEAD1_LEFT => head1 = (head1 + len - 1) % len,
@@ -239,6 +302,62 @@ mod tests {
         let outcome = run(&mut tape, 100);
         assert_eq!(tape, before);
         assert_eq!(outcome.steps, 4);
+    }
+
+    #[test]
+    fn a_disabled_op_is_a_no_op_and_the_enabled_ones_still_run() {
+        // `>+` walks head0 onto the `+` and increments it; without `>` the increment
+        // lands on the first byte instead, and the `>` byte itself costs its step.
+        let without_move = OpSet::parse("+").expect("a legal set");
+        let mut tape = vec![b'>', b'+', 0];
+        let outcome = run_with(&mut tape, 100, without_move);
+        assert_eq!(tape, vec![b'>'.wrapping_add(1), b'+', 0]);
+        assert_eq!(outcome.steps, 3);
+
+        let mut tape = vec![b'>', b'+', 0];
+        run(&mut tape, 100);
+        assert_eq!(tape, vec![b'>', b'+'.wrapping_add(1), 0]);
+    }
+
+    #[test]
+    fn a_soup_without_loops_runs_straight_through_its_brackets() {
+        let without_loops = OpSet::parse("<>{}+-.,").expect("a legal set");
+        let mut tape = vec![3, b'[', b'-', b']'];
+        let outcome = run_with(&mut tape, 100, without_loops);
+        assert_eq!(tape[0], 2, "the body ran once, with no jump back to it");
+        assert_eq!(outcome.halt, Halt::EndOfTape);
+        assert_eq!(outcome.steps, 4);
+
+        let mut tape = vec![3, b'[', b'-', b']'];
+        let outcome = run(&mut tape, 100);
+        assert_eq!(
+            tape[0], 0,
+            "the same loop runs to zero when `[]` is enabled"
+        );
+        assert_eq!(outcome.steps, 8);
+    }
+
+    #[test]
+    fn an_op_set_is_a_non_empty_subset_named_once_each() {
+        assert_eq!(OpSet::parse("<>{}+-.,[]"), Ok(OpSet::ALL));
+        assert!(OpSet::parse("+-").expect("a legal set").enables(b'+'));
+        assert!(!OpSet::parse("+-").expect("a legal set").enables(b'.'));
+        assert!(!OpSet::ALL.enables(b'a'));
+
+        assert!(OpSet::parse("").is_err());
+        assert!(OpSet::parse("++").is_err());
+        assert!(OpSet::parse("+a").is_err());
+    }
+
+    #[test]
+    fn the_whole_instruction_set_runs_exactly_as_before() {
+        let mut with_all = vec![3, b'[', b'}', b'-', b']', b'.', b',', b'<', 0];
+        let mut by_default = with_all.clone();
+        assert_eq!(
+            run_with(&mut with_all, 100, OpSet::ALL),
+            run(&mut by_default, 100)
+        );
+        assert_eq!(with_all, by_default);
     }
 
     #[test]

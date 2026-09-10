@@ -83,6 +83,57 @@ RSpec.describe "lab:sweep" do
     end
   end
 
+  describe "max_steps" do
+    it "builds four instruction budgets times ten seeds" do
+      build_sweep("max_steps")
+
+      expect(Experiment.find_by(slug: "max-steps").runs_count).to eq(40)
+    end
+
+    it "sweeps the budgets DESIGN 1.3 names" do
+      build_sweep("max_steps")
+
+      expect(Run.distinct.pluck(Arel.sql("params->'max_steps'")).sort).to eq([256, 1_024, 8_192, 65_536])
+    end
+
+    it "holds every run at the mutation rate that first produced emergence" do
+      build_sweep("max_steps")
+
+      expect(Run.distinct.pluck(Arel.sql("params->'mutation_rate'")).map(&:to_f)).to eq([2.0**-13])
+    end
+
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("max_steps")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("max_steps" => 256, "width" => 128, "height" => 128,
+                                              "mutation_rate" => 2.0**-13))
+    end
+  end
+
+  describe "ops" do
+    it "builds the full instruction set and five ablations times ten seeds" do
+      build_sweep("ops")
+
+      expect(Experiment.find_by(slug: "ops").runs_count).to eq(60)
+    end
+
+    it "ablates one family of instructions per arm, from the full set" do
+      build_sweep("ops")
+
+      expect(Run.distinct.pluck(Arel.sql("params->>'ops'")).sort)
+        .to eq(["<>+-.,[]", "<>{}+-.,", "<>{}+-.,[]", "<>{}+-.[]", "<>{}+-,[]", "<>{}.,[]"].sort)
+    end
+
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("ops")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("ops" => "<>{}+-.,[]", "width" => 128, "height" => 128,
+                                              "mutation_rate" => 2.0**-13))
+    end
+  end
+
   it "refuses a sweep it does not know" do
     expect { build_sweep("colour") }.to raise_error(/Unknown sweep/)
   end
