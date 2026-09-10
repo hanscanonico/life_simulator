@@ -22,6 +22,10 @@ pub struct World {
     seed: u64,
     epoch: u64,
     cells: Vec<u8>,
+    /// Where `step_life` writes the next generation before swapping it into `cells`;
+    /// never part of the world's state, so it stays out of `world_hash` and snapshots.
+    /// Empty for the soup, which rewrites its cells in place.
+    scratch: Vec<u8>,
     transition: TransitionTracker,
     /// The `copy_rate` of the most recently counted epoch; see `step_soup`.
     copy_rate: f64,
@@ -35,6 +39,7 @@ impl World {
             seed,
             epoch: 0,
             cells: vec![0; params.cell_count() * params.stride()],
+            scratch: life_scratch(params),
             transition: TransitionTracker::default(),
             copy_rate: 0.0,
         };
@@ -131,6 +136,7 @@ impl World {
             seed,
             epoch: header.epoch,
             cells,
+            scratch: life_scratch(params),
             transition: TransitionTracker::from_state(header.transition),
             copy_rate: 0.0,
         })
@@ -250,30 +256,42 @@ impl World {
         y * width + x
     }
 
+    /// `B3/S23` on a torus, in two sequential passes per row instead of eight scattered
+    /// reads per cell: first each column's live count over the three rows around it, then
+    /// a three-wide window over those sums. The sums are staged in the scratch row they
+    /// then overwrite — the window reads one column ahead of the write, and column zero
+    /// is kept aside for the wrap at the last column.
     fn step_life(&mut self) {
-        let width = self.params.width as isize;
-        let height = self.params.height as isize;
-        let mut next = self.cells.clone();
+        let width = self.params.width as usize;
+        let height = self.params.height as usize;
+        let cells = &self.cells;
+        let next = &mut self.scratch;
         for y in 0..height {
+            let row = y * width;
+            let above = if y == 0 { height - 1 } else { y - 1 } * width;
+            let below = if y + 1 == height { 0 } else { y + 1 } * width;
+            let above_row = &cells[above..above + width];
+            let this_row = &cells[row..row + width];
+            let below_row = &cells[below..below + width];
+            let sums = &mut next[row..row + width];
+            for (x, sum) in sums.iter_mut().enumerate() {
+                *sum = u8::from(above_row[x] != 0)
+                    + u8::from(this_row[x] != 0)
+                    + u8::from(below_row[x] != 0);
+            }
+            let first = sums[0];
+            let mut left = sums[width - 1];
+            let mut mid = first;
             for x in 0..width {
-                let mut alive = 0;
-                for dy in -1..=1isize {
-                    for dx in -1..=1isize {
-                        if dx == 0 && dy == 0 {
-                            continue;
-                        }
-                        let nx = (x + dx).rem_euclid(width) as usize;
-                        let ny = (y + dy).rem_euclid(height) as usize;
-                        alive += u32::from(self.cells[ny * width as usize + nx] != 0);
-                    }
-                }
-                let at = y as usize * width as usize + x as usize;
-                let born = alive == 3;
-                let survives = self.cells[at] != 0 && alive == 2;
-                next[at] = u8::from(born || survives);
+                let right = if x + 1 == width { first } else { sums[x + 1] };
+                let itself = this_row[x] != 0;
+                let alive = left + mid + right - u8::from(itself);
+                sums[x] = u8::from(alive == 3 || (itself && alive == 2));
+                left = mid;
+                mid = right;
             }
         }
-        self.cells = next;
+        std::mem::swap(&mut self.cells, &mut self.scratch);
     }
 
     fn mutate(&mut self, rng: &mut Rng) {
@@ -323,6 +341,13 @@ impl World {
             })
             .map(|(_, count)| *count)
             .sum()
+    }
+}
+
+fn life_scratch(params: &Params) -> Vec<u8> {
+    match params.substrate {
+        Substrate::Life => vec![0; params.cell_count()],
+        Substrate::Soup => Vec::new(),
     }
 }
 
@@ -524,6 +549,37 @@ mod tests {
             moved
         };
         assert_eq!(alive_cells(&world), expected);
+    }
+
+    #[test]
+    fn a_blinker_oscillates_across_the_wrap_of_a_non_square_torus() {
+        let params = life(5, 9);
+        let mut world = World::new(&params, 0).unwrap();
+        let vertical = [(0, 8), (0, 0), (0, 1)];
+        for (x, y) in vertical {
+            world.set_cell(x, y, &[1]);
+        }
+
+        world.step();
+        assert_eq!(alive_cells(&world), vec![(0, 0), (1, 0), (4, 0)]);
+        world.step();
+        assert_eq!(alive_cells(&world), vec![(0, 0), (0, 1), (0, 8)]);
+    }
+
+    #[test]
+    fn a_life_world_restored_from_a_snapshot_steps_identically() {
+        let params = Params {
+            init: Init::Random,
+            ..life(16, 16)
+        };
+        let mut world = World::new(&params, 7).unwrap();
+        world.step();
+
+        let mut restored = World::from_snapshot(&params, 7, &world.snapshot()).unwrap();
+        assert_eq!(restored.world_hash(), world.world_hash());
+        world.step();
+        restored.step();
+        assert_eq!(restored.world_hash(), world.world_hash());
     }
 
     #[test]
