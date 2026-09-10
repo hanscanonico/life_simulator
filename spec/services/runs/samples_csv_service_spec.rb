@@ -26,20 +26,39 @@ RSpec.describe Runs::SamplesCsvService do
     expect(rows.last[1]).to be_nil
   end
 
+  it "reads no sample before the reader pulls the first row" do
+    create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+
+    expect(queries_while { described_class.call(run: run).first }).to eq(0)
+  end
+
   context "with more samples than one batch holds" do
-    it "reads them in a bounded number of queries" do
+    before do
       stub_const("#{described_class}::BATCH_SIZE", 100)
       samples = Array.new(500) { |index| { run_id: run.id, epoch: index * 10, values: { "compress_ratio" => 0.5 } } }
       Sample.upsert_all(samples, unique_by: %i[run_id epoch], record_timestamps: true)
+    end
 
-      queries = 0
-      counter = ->(_name, _start, _finish, _id, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
-      lines = ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
-        described_class.call(run: run).to_a
-      end
+    it "reads them in a bounded number of queries" do
+      lines = nil
+
+      queries = queries_while { lines = described_class.call(run: run).to_a }
 
       expect(lines.size).to eq(501)
       expect(queries).to be <= 8
     end
+
+    it "reads one batch to hand over the first row" do
+      lines = described_class.call(run: run)
+
+      expect(queries_while { lines.first(2) }).to eq(1)
+    end
+  end
+
+  def queries_while(&read)
+    queries = 0
+    counter = ->(_name, _start, _finish, _id, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
+    ActiveSupport::Notifications.subscribed(counter, "sql.active_record", &read)
+    queries
   end
 end

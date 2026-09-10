@@ -41,6 +41,18 @@ RSpec.describe Experiments::RunsCsvService do
     end
   end
 
+  it "reads no run before the reader pulls the first row" do
+    create(:run, experiment: experiment)
+
+    queries = 0
+    counter = ->(_name, _start, _finish, _id, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
+    ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
+      described_class.call(experiment: experiment).first
+    end
+
+    expect(queries).to eq(0)
+  end
+
   context "with a paired axis" do
     let(:experiment) do
       create(:experiment, param_grid: { "size" => [{ "width" => 32, "height" => 32 },
