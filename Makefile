@@ -15,7 +15,7 @@ verify: wasm rails-verify engine-verify
 
 rails-verify:
 	bundle exec rubocop
-	bundle exec brakeman -q --no-pager --no-exit-on-warn --no-exit-on-error
+	bundle exec brakeman -q --no-pager
 	bundle exec rspec
 
 engine-verify:

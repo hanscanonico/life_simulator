@@ -22,7 +22,7 @@ module Runs
          .where(finished_at: since..)
          .joins(:snapshots)
          .group("runs.id")
-         .having("COUNT(snapshots.id) > (runs.epochs / #{default_keep_every}) + #{KEEP_SLACK}")
+         .having("COUNT(snapshots.id) > (runs.epochs / ?) + ?", default_keep_every, KEEP_SLACK)
     end
 
     def self.default_keep_every = KEEP_FACTOR * Lab::Schema.defaults.fetch("snapshot_every")
