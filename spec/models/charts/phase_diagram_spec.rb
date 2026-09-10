@@ -29,6 +29,17 @@ RSpec.describe Charts::PhaseDiagram do
     end
   end
 
+  describe "#x_tick_anchor" do
+    subject(:diagram) { build([group(1, transition_epochs: [100])]) }
+
+    it "hugs the edges and centres everything between them" do
+      anchors = [diagram.plot_left, (diagram.plot_left + diagram.plot_right) / 2, diagram.plot_right]
+                .map { |position| diagram.x_tick_anchor(position) }
+
+      expect(anchors).to eq(%w[start middle end])
+    end
+  end
+
   describe "#dots" do
     it "plots one dot per transitioned run" do
       diagram = build([group(1, transition_epochs: [100, 200]), group(2, transition_epochs: [300])])

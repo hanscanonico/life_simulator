@@ -106,7 +106,8 @@ const FIELDS: &[Field] = &[
             min: 0.0,
             max: 64.0,
         },
-        doc: "Moore-neighbourhood radius an interaction reaches; 0 means well-mixed.",
+        doc: "Moore-neighbourhood radius an interaction reaches; 0 means well-mixed. \
+              A positive radius must fit the torus: 2*radius + 1 <= min(width, height).",
     },
     Field {
         name: "max_steps",
@@ -164,6 +165,13 @@ pub enum ParamError {
     NotFinite {
         field: &'static str,
     },
+    /// A neighbourhood wider than the world wraps onto itself: the same cell would sit at
+    /// two offsets (double weight) and self-exclusion stops being reliable.
+    RadiusTooWide {
+        radius: u32,
+        width: u32,
+        height: u32,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -176,6 +184,16 @@ impl fmt::Display for ParamError {
                 max,
             } => write!(f, "{field} is {value}, outside {min}..={max}"),
             Self::NotFinite { field } => write!(f, "{field} is not a finite number"),
+            Self::RadiusTooWide {
+                radius,
+                width,
+                height,
+            } => write!(
+                f,
+                "radius is {radius}, too wide for a {width}x{height} world: \
+                 the largest legal radius is {}",
+                (width.min(height) - 1) / 2
+            ),
         }
     }
 }
@@ -204,6 +222,13 @@ impl Params {
                     max,
                 });
             }
+        }
+        if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
+            return Err(ParamError::RadiusTooWide {
+                radius: self.radius,
+                width: self.width,
+                height: self.height,
+            });
         }
         Ok(())
     }
@@ -287,6 +312,56 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn rejects_a_neighbourhood_wider_than_the_world() {
+        let too_wide = Params {
+            width: 8,
+            height: 8,
+            radius: 4,
+            ..Params::default()
+        };
+        assert_eq!(
+            too_wide.validate(),
+            Err(ParamError::RadiusTooWide {
+                radius: 4,
+                width: 8,
+                height: 8
+            })
+        );
+        assert!(too_wide.validate().unwrap_err().to_string().contains("3"));
+
+        assert_eq!(
+            Params {
+                radius: 3,
+                ..too_wide
+            }
+            .validate(),
+            Ok(())
+        );
+        assert_eq!(
+            Params {
+                width: 32,
+                height: 32,
+                ..too_wide
+            }
+            .validate(),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn accepts_a_well_mixed_radius_at_every_size() {
+        for side in [4, 8, 128, 1024] {
+            let params = Params {
+                width: side,
+                height: side,
+                radius: 0,
+                ..Params::default()
+            };
+            assert_eq!(params.validate(), Ok(()), "{side}x{side}");
+        }
     }
 
     #[test]

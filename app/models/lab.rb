@@ -32,9 +32,9 @@ module Lab
     "radius" => {
       name: "Neighbourhood radius",
       description: "Does spatial locality speed emergence and stabilise diversity afterwards?",
-      # 64 is half the 128-wide torus, so every cell can reach every other one: the
-      # well-mixed arm of DESIGN §1.3's {1, 2, 4, infinity}.
-      param_grid: { "radius" => [1, 2, 4, 64], "width" => [128], "height" => [128] },
+      # Radius 0 is the engine's well-mixed neighbourhood — a partner drawn uniformly
+      # from the whole world: the infinity arm of DESIGN §1.3's {1, 2, 4, infinity}.
+      param_grid: { "radius" => [1, 2, 4, 0], "width" => [128], "height" => [128] },
       seeds: (1..10).to_a,
       epochs: 20_000
     }

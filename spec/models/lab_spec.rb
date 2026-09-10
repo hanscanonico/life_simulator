@@ -12,6 +12,10 @@ RSpec.describe Lab do
       end
     end
 
+    it "sweeps the radius grid of DESIGN 1.3, with 0 as the well-mixed arm" do
+      expect(Lab::SWEEPS.fetch("radius")[:param_grid]["radius"]).to eq([1, 2, 4, 0])
+    end
+
     # An axis whose values are hashes is a bundle of parameters travelling together, so it
     # is the hash keys that name parameters, not the axis itself.
     def swept_params(param_grid)

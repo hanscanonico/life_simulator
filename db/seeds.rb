@@ -12,7 +12,7 @@
 # locally. None of this is a measurement: the transition epochs come from a seeded RNG,
 # not from the engine, which is why it never runs outside development.
 if Rails.env.development?
-  radii = [1, 2, 4, 64]
+  radii = [1, 2, 4, 0]
   sample_every = 500
   epochs = 20_000
 
@@ -29,10 +29,11 @@ if Rails.env.development?
 
   radii.each do |radius|
     (1..5).each do |seed|
-      # Locality is supposed to speed emergence, so the fake data leans that way; the
-      # well-mixed arm mostly never transitions.
-      centre = 2_500 * Math.log2(radius + 1) + random.rand(1_500)
-      transition = radius == 64 && seed > 2 ? nil : (centre / sample_every).round * sample_every
+      # Locality is supposed to speed emergence, so the fake data leans that way; radius
+      # 0 is the well-mixed arm — the widest reach of all — and mostly never transitions.
+      reach = radius.zero? ? radii.max * 2 : radius
+      centre = 2_500 * Math.log2(reach + 1) + random.rand(1_500)
+      transition = radius.zero? && seed > 2 ? nil : (centre / sample_every).round * sample_every
 
       run = experiment.runs.create!(
         params: Lab::Schema.run_defaults.merge("radius" => radius, "width" => 128, "height" => 128),
