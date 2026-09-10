@@ -26,7 +26,7 @@ RSpec.describe "Pages", type: :request do
       get how_it_works_path
 
       expect(response.body).to include(
-        "<title>How it works</title>",
+        "<title>How it works — Life Simulator</title>",
         %(<meta name="description" content="The substrate, the ten-instruction language)
       )
     end

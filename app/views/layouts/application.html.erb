@@ -1,11 +1,14 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title><%= content_for(:title) || "Life Simulator" %></title>
+    <title><%= page_title %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <% if content_for?(:description) %>
-      <meta name="description" content="<%= content_for(:description) %>">
-    <% end %>
+    <meta name="description" content="<%= page_description %>">
+    <meta property="og:title" content="<%= page_title %>">
+    <meta property="og:description" content="<%= page_description %>">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="<%= request.original_url %>">
+    <meta name="twitter:card" content="summary">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="application-name" content="Life Simulator">
     <meta name="mobile-web-app-capable" content="yes">
@@ -30,21 +33,22 @@
   </head>
 
   <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
     <header class="site-header">
       <div class="container flex-between items-center">
-        <%# Linked by path, not by root_path: the home page (and its route) is its own task. %>
-        <a class="site-wordmark" href="/">Life Simulator</a>
+        <%= link_to "Life Simulator", root_path, class: "site-wordmark" %>
         <nav class="site-nav">
-          <a href="/">Home</a>
-          <%= link_to "How it works", how_it_works_path %>
-          <%= link_to "Experiments", experiments_path %>
-          <%= link_to "Findings", findings_path %>
-          <%= link_to "Lab", lab_path %>
+          <% { "Home" => root_path, "How it works" => how_it_works_path,
+               "Experiments" => experiments_path, "Findings" => findings_path,
+               "Lab" => lab_path }.each do |label, path| %>
+            <%= link_to label, path, "aria-current": ("page" if current_page?(path)) %>
+          <% end %>
         </nav>
       </div>
     </header>
 
-    <main class="container site-main">
+    <main class="container site-main" id="main" tabindex="-1">
       <%= yield %>
     </main>
 

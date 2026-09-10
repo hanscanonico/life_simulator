@@ -28,6 +28,13 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).not_to include("Neighbourhood radius</dt>")
     end
 
+    it "frames the page for a browser and a crawler" do
+      get experiments_path
+
+      expect(response.body).to include('<html lang="en">', "<title>Experiments — Life Simulator</title>",
+                                       '<meta property="og:type" content="website">')
+    end
+
     context "with no experiment" do
       it "still renders, pointing at the planned programme" do
         get experiments_path
@@ -143,6 +150,16 @@ RSpec.describe "Experiments", type: :request do
         expect(lines.second).to include(",7,finished,20000,20000,900,2,0.42")
         expect(lines.third).to include(",8,finished,20000,20000,,4,")
       end
+    end
+
+    it "describes itself with the sweep's own description" do
+      experiment.update!(description: "Does a bigger neighbourhood help?")
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include(
+        %(<meta name="description" content="Does a bigger neighbourhood help?">)
+      )
     end
 
     it "is addressed by slug" do
