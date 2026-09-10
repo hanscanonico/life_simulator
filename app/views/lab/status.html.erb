@@ -1,5 +1,12 @@
 <turbo-frame id="lab_status">
   <section class="lab-status">
+    <div class="flex items-center gap-2 mb-4">
+      <%= link_to "Refresh", lab_status_path, class: "btn btn-sm btn-outline" %>
+      <time class="text-sm text-muted" datetime="<%= @status.fetched_at.iso8601 %>"
+            data-controller="relative-time"
+            data-relative-time-datetime-value="<%= @status.fetched_at.iso8601 %>">updated just now</time>
+    </div>
+
     <h2>Runs</h2>
     <dl class="facts">
       <% @status.counts_by_status.each do |status, count| %>

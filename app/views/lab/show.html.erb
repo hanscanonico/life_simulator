@@ -1,15 +1,14 @@
 <% content_for :title, "Lab" %>
-<%# The status block is the only thing that moves, and it moves without any JavaScript of
-    ours: the browser reloads the page and the lazy frame refetches. %>
-<% content_for :head do %>
-  <meta http-equiv="refresh" content="30">
-<% end %>
 
 <h1>Lab</h1>
 <p class="text-muted">
-  What the runners are doing right now. This page refreshes itself every 30 seconds.
+  What the runners are doing right now. The status below updates in place every 30 seconds
+  — the page itself never reloads, so it never loses your place.
 </p>
 
-<turbo-frame id="lab_status" src="<%= lab_status_path %>" loading="lazy">
+<%# The frame refetches itself: nothing outside it moves, so the poll controller is scoped
+    to the frame and only ever calls its reload(). %>
+<turbo-frame id="lab_status" src="<%= lab_status_path %>" loading="lazy"
+             data-controller="frame-poll" data-frame-poll-interval-value="30000">
   <p class="text-muted">Loading status…</p>
 </turbo-frame>
