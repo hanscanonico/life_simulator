@@ -51,7 +51,8 @@ if Rails.env.development?
             "top_share" => (0.0001 + (0.45 * progress)).round(4),
             "replicator_count" => (12_000 * progress).round,
             "op_density" => (0.039 + (0.11 * progress)).round(4),
-            "entropy_bits" => (8.0 - (3.1 * progress)).round(3)
+            "entropy_bits" => (8.0 - (3.1 * progress)).round(3),
+            "copy_rate" => (0.6 * progress).round(4)
           } }
       end
       Sample.insert_all!(rows)

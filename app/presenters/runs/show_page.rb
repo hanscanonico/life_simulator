@@ -9,7 +9,8 @@ module Runs
       "distinct_tapes" => "Distinct tapes",
       "top_share" => "Share of the most common tape",
       "replicator_count" => "Replicator count",
-      "op_density" => "Instruction density"
+      "op_density" => "Instruction density",
+      "copy_rate" => "Copy rate"
     }.freeze
 
     def self.build(run:) = new(run: run)

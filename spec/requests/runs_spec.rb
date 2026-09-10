@@ -7,13 +7,13 @@ RSpec.describe "Runs", type: :request do
 
   describe "GET /runs/:id" do
     it "shows the metric series, the seed and the parameters" do
-      create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
-      create(:sample, run: run, epoch: 900, values: { "compress_ratio" => 0.4 })
+      create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9, "copy_rate" => 0.0 })
+      create(:sample, run: run, epoch: 900, values: { "compress_ratio" => 0.4, "copy_rate" => 0.31 })
 
       get run_path(run)
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Compression ratio", "<svg", "4242", "mutation_rate")
+      expect(response.body).to include("Compression ratio", "Copy rate", "<svg", "4242", "mutation_rate")
     end
 
     context "with no sample" do
