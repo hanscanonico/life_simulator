@@ -84,8 +84,18 @@ impl LabClient {
         )
     }
 
-    pub fn samples(&self, run: i64, runner_id: &str, samples: &[Value]) -> Result<()> {
-        self.member(run, runner_id, "samples", json!({ "samples": samples }))
+    pub fn samples(
+        &self,
+        run: i64,
+        runner_id: &str,
+        samples: &[Value],
+        transition_epoch: Option<u64>,
+    ) -> Result<()> {
+        let mut body = json!({ "samples": samples });
+        if let Some(epoch) = transition_epoch {
+            body["transition_epoch"] = json!(epoch);
+        }
+        self.member(run, runner_id, "samples", body)
     }
 
     pub fn snapshot(

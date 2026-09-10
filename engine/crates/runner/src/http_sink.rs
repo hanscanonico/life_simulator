@@ -21,6 +21,7 @@ pub struct HttpSink<'a> {
     batched_at: Instant,
     batch_age: Duration,
     last_metrics: Option<Metrics>,
+    transition_epoch: Option<u64>,
 }
 
 impl<'a> HttpSink<'a> {
@@ -33,6 +34,7 @@ impl<'a> HttpSink<'a> {
             batched_at: Instant::now(),
             batch_age: BATCH_AGE,
             last_metrics: None,
+            transition_epoch: None,
         }
     }
 
@@ -49,8 +51,12 @@ impl<'a> HttpSink<'a> {
         if self.pending.is_empty() {
             return Ok(());
         }
-        self.client
-            .samples(self.run, &self.runner_id, &self.pending)?;
+        self.client.samples(
+            self.run,
+            &self.runner_id,
+            &self.pending,
+            self.transition_epoch,
+        )?;
         self.pending.clear();
         self.batched_at = Instant::now();
         Ok(())
@@ -58,11 +64,19 @@ impl<'a> HttpSink<'a> {
 }
 
 impl RunSink for HttpSink<'_> {
-    fn sample(&mut self, epoch: u64, metrics: &Metrics) -> Result<()> {
+    fn sample(
+        &mut self,
+        epoch: u64,
+        metrics: &Metrics,
+        transition_epoch: Option<u64>,
+    ) -> Result<()> {
         let mut sample = serde_json::to_value(metrics)?;
         sample["epoch"] = json!(epoch);
         self.pending.push(sample);
         self.last_metrics = Some(metrics.clone());
+        if transition_epoch.is_some() {
+            self.transition_epoch = transition_epoch;
+        }
         if self.pending.len() >= BATCH_SIZE || self.batched_at.elapsed() >= self.batch_age {
             self.flush()?;
         }
@@ -91,6 +105,7 @@ mod tests {
     use super::*;
     use crate::mock_lab::MockLab;
     use crate::run;
+    use life_engine::{Init, Params};
 
     fn client(lab: &MockLab) -> LabClient {
         LabClient::new(&lab.base_url(), crate::mock_lab::TOKEN)
@@ -117,7 +132,7 @@ mod tests {
             HttpSink::new(&client, 1, "runner-1").with_batch_age(Duration::from_secs(600));
 
         for epoch in 0..(BATCH_SIZE as u64 - 1) {
-            sink.sample(epoch, &metrics(0.9)).unwrap();
+            sink.sample(epoch, &metrics(0.9), None).unwrap();
         }
 
         assert_eq!(lab.count("POST /api/runs/1/samples"), 0);
@@ -131,13 +146,14 @@ mod tests {
             HttpSink::new(&client, 1, "runner-1").with_batch_age(Duration::from_secs(600));
 
         for epoch in 0..BATCH_SIZE as u64 {
-            sink.sample(epoch, &metrics(0.9)).unwrap();
+            sink.sample(epoch, &metrics(0.9), None).unwrap();
         }
 
         let posted = lab.request("POST /api/runs/1/samples");
         assert_eq!(posted["samples"].as_array().unwrap().len(), BATCH_SIZE);
         assert_eq!(posted["samples"][0]["epoch"], json!(0));
         assert_eq!(posted["samples"][0]["compress_ratio"], json!(0.9));
+        assert_eq!(posted.get("transition_epoch"), None, "nothing settled yet");
     }
 
     #[test]
@@ -146,7 +162,7 @@ mod tests {
         let client = client(&lab);
         let mut sink = HttpSink::new(&client, 1, "runner-1").with_batch_age(Duration::ZERO);
 
-        sink.sample(0, &metrics(0.9)).unwrap();
+        sink.sample(0, &metrics(0.9), None).unwrap();
 
         assert_eq!(lab.count("POST /api/runs/1/samples"), 1);
     }
@@ -167,14 +183,33 @@ mod tests {
     }
 
     #[test]
+    fn a_batch_carries_the_transition_epoch_the_run_has_settled_on() {
+        let lab = MockLab::start();
+        let client = client(&lab);
+        let mut sink =
+            HttpSink::new(&client, 1, "runner-1").with_batch_age(Duration::from_secs(600));
+        let ordered = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..MockLab::params()
+        };
+
+        run::execute(&ordered, 7, 6, &mut sink).unwrap();
+
+        let posted = lab.request("POST /api/runs/1/samples");
+        assert_eq!(posted["samples"].as_array().unwrap().len(), 4);
+        assert_eq!(posted["transition_epoch"], json!(0));
+    }
+
+    #[test]
     fn finish_carries_the_last_metrics_as_the_summary() {
         let lab = MockLab::start();
         let client = client(&lab);
         let mut sink =
             HttpSink::new(&client, 1, "runner-1").with_batch_age(Duration::from_secs(600));
 
-        sink.sample(0, &metrics(0.9)).unwrap();
-        sink.sample(2, &metrics(0.4)).unwrap();
+        sink.sample(0, &metrics(0.9), None).unwrap();
+        sink.sample(2, &metrics(0.4), Some(2)).unwrap();
         sink.finish(&RunResult {
             params: MockLab::params(),
             seed: 7,

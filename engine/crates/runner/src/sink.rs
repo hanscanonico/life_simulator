@@ -16,7 +16,14 @@ pub struct RunResult {
 }
 
 pub trait RunSink {
-    fn sample(&mut self, epoch: u64, metrics: &Metrics) -> Result<()>;
+    /// One sampled epoch, with the transition epoch the engine has settled on so far so
+    /// a run that dies before `finish` still reports its measurement.
+    fn sample(
+        &mut self,
+        epoch: u64,
+        metrics: &Metrics,
+        transition_epoch: Option<u64>,
+    ) -> Result<()>;
     fn snapshot(&mut self, epoch: u64, raw: &[u8], png: &[u8]) -> Result<()>;
     fn finish(&mut self, result: &RunResult) -> Result<()>;
 }
@@ -25,7 +32,12 @@ pub trait RunSink {
 pub struct NullSink;
 
 impl RunSink for NullSink {
-    fn sample(&mut self, _epoch: u64, _metrics: &Metrics) -> Result<()> {
+    fn sample(
+        &mut self,
+        _epoch: u64,
+        _metrics: &Metrics,
+        _transition_epoch: Option<u64>,
+    ) -> Result<()> {
         Ok(())
     }
 

@@ -96,7 +96,35 @@ pub struct TransitionTracker {
     last_epoch: Option<u64>,
 }
 
+/// The tracker's whole state, so a snapshot can carry it and a resumed run keeps the
+/// measurement it had already made.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TransitionState {
+    pub candidate: Option<u64>,
+    pub held: u32,
+    pub settled: Option<u64>,
+    pub last_epoch: Option<u64>,
+}
+
 impl TransitionTracker {
+    pub fn from_state(state: TransitionState) -> Self {
+        Self {
+            candidate: state.candidate,
+            held: state.held,
+            settled: state.settled,
+            last_epoch: state.last_epoch,
+        }
+    }
+
+    pub fn state(&self) -> TransitionState {
+        TransitionState {
+            candidate: self.candidate,
+            held: self.held,
+            settled: self.settled,
+            last_epoch: self.last_epoch,
+        }
+    }
+
     pub fn observe(&mut self, epoch: u64, compress_ratio: f64) {
         if self.settled.is_some() || self.last_epoch == Some(epoch) {
             return;
@@ -185,6 +213,26 @@ mod tests {
 
         tracker.observe(80, 0.99);
         assert_eq!(tracker.epoch(), Some(40), "settled epochs never move");
+    }
+
+    /// The shape of production run 41's series, sampled every ten epochs: noise for 500
+    /// samples, then a fall that holds low for the rest of the run.
+    #[test]
+    fn the_detector_reports_the_first_sample_below_the_threshold_across_a_resume() {
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..500u64 {
+            tracker.observe(sample * 10, 0.94);
+        }
+        tracker.observe(5000, 0.725);
+        tracker.observe(5010, 0.526);
+        tracker.observe(5020, 0.052);
+        assert_eq!(tracker.epoch(), None, "the drop has not held yet");
+
+        let mut resumed = TransitionTracker::from_state(tracker.state());
+        for sample in 1..=1500u64 {
+            resumed.observe(5020 + sample * 10, 0.05);
+        }
+        assert_eq!(resumed.epoch(), Some(5010));
     }
 
     #[test]

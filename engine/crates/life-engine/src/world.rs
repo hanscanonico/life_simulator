@@ -118,6 +118,7 @@ impl World {
                 height: self.params.height,
                 tape_len: self.params.tape_len,
                 epoch: self.epoch,
+                transition: self.transition.state(),
             },
             &self.cells,
         )
@@ -130,7 +131,7 @@ impl World {
             seed,
             epoch: header.epoch,
             cells,
-            transition: TransitionTracker::default(),
+            transition: TransitionTracker::from_state(header.transition),
             copy_rate: 0.0,
         })
     }
@@ -651,6 +652,25 @@ mod tests {
             world.step();
         }
         assert_eq!(world.transition_epoch(), Some(0));
+    }
+
+    #[test]
+    fn a_snapshot_carries_the_transition_epoch_across_a_resume() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        for _ in 0..3 {
+            world.metrics();
+            world.step();
+        }
+        assert_eq!(world.transition_epoch(), None, "the drop has not held yet");
+
+        let mut restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        restored.metrics();
+        assert_eq!(restored.transition_epoch(), Some(0));
     }
 
     #[test]
