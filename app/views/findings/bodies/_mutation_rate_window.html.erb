@@ -22,40 +22,116 @@
 
 <h2>Result (interim)</h2>
 <p>
-  Partial, and not yet a result. The numbers below cover the finished runs only, all of
-  them 128×128 over 20 000 epochs.
+  Partial. Every number in this section is from the lab check of 2026-09-11 at 01:20 CEST,
+  when 97 of the 100 runs had finished and 3 were still running; the phase diagram and the
+  arm table below are live, so they will drift ahead of this prose.
+</p>
+
+<div class="table-scroll mt-4">
+  <table class="data-table">
+    <caption class="text-sm text-muted text-left">
+      Transitions per arm, lab check of 2026-09-11 01:20 CEST — 128×128, 20 000 epochs,
+      10 seeds per arm
+    </caption>
+    <thead>
+      <tr>
+        <th><span class="mono">mutation_rate</span></th>
+        <th class="numeric">Transitioned</th>
+        <th>Transition epochs (run / seed)</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td class="mono">0</td>
+          <td class="numeric mono">0/10</td>
+          <td class="mono">—</td>
+        </tr>
+        <tr>
+          <td class="mono">2<sup>-16</sup> = 1.53e-5</td>
+          <td class="numeric mono">0/10</td>
+          <td class="mono">—</td>
+        </tr>
+        <tr>
+          <td class="mono">2<sup>-15</sup> = 3.05e-5</td>
+          <td class="numeric mono">0/10</td>
+          <td class="mono">—</td>
+        </tr>
+        <tr>
+          <td class="mono">2<sup>-14</sup> = 6.10e-5</td>
+          <td class="numeric mono">0/10</td>
+          <td class="mono">—</td>
+        </tr>
+        <tr>
+          <td class="mono">2<sup>-13</sup> = 1.221e-4</td>
+          <td class="numeric mono">2/10</td>
+          <td class="mono">run 41 seed 1 @ ≤ 9 900 (see caveat); run 45 seed 5 @ 13 700</td>
+        </tr>
+        <tr>
+          <td class="mono">2<sup>-12</sup> = 2.441e-4</td>
+          <td class="numeric mono">1/10</td>
+          <td class="mono">run 59 seed 9 @ 19 500</td>
+        </tr>
+        <tr>
+          <td class="mono">2<sup>-11</sup> = 4.883e-4</td>
+          <td class="numeric mono">0/10</td>
+          <td class="mono">—</td>
+        </tr>
+        <tr>
+          <td class="mono">2<sup>-10</sup> = 9.766e-4</td>
+          <td class="numeric mono">0/10</td>
+          <td class="mono">—</td>
+        </tr>
+        <tr>
+          <td class="mono">2<sup>-9</sup> = 1.953e-3</td>
+          <td class="numeric mono">1/10</td>
+          <td class="mono">run 83 seed 3 @ 15 300</td>
+        </tr>
+        <tr>
+          <td class="mono">2<sup>-8</sup> = 3.906e-3</td>
+          <td class="numeric mono">1/10</td>
+          <td class="mono">run 95 seed 5 @ 18 080</td>
+        </tr>
+    </tbody>
+  </table>
+</div>
+
+<p>
+  <strong>The interim claim.</strong> No transition in 40/40 seeds at
+  <span class="mono">mutation_rate ≤ 2<sup>-14</sup></span>, the zero-mutation control
+  included, against 5/60 seeds at <span class="mono">≥ 2<sup>-13</sup></span>. No arm
+  reaches more than 2 of 10, and the earliest transition anywhere in the sweep is epoch
+  9 900. That is the shape a lower edge of a window would have, at a count no arm can yet
+  carry.
 </p>
 <p>
-  <strong>No transition in the low arms.</strong> At
-  <span class="mono">mutation_rate = 0</span>, <span class="mono">2<sup>-16</sup></span>,
-  <span class="mono">2<sup>-15</sup></span> and <span class="mono">2<sup>-14</sup></span>
-  the count is 0 of 10 transitions in each arm, seeds 1 to 10. Those worlds end where they
-  started: <span class="mono">compress_ratio</span> median 0.91 to 0.93 at 20 000 epochs
-  and <span class="mono">replicator_count</span> 0.
+  Four caveats, each of which can still move the reading:
 </p>
-<p>
-  <strong>One transition at 2<sup>-13</sup>,</strong> 1 of 9 finished runs — run 41, seed
-  1. Its <span class="mono">compress_ratio</span> sits at 0.94 until about epoch 5000,
-  then falls 0.725 → 0.526 → 0.052 within 100 epochs and ends at 0.26 at 20 000 epochs;
-  <span class="mono">entropy_bits</span> drops from 7.9 to 6.2 across the same window.
-  <span class="mono">replicator_count</span> is 538 at epoch 5000 and peaks at 867, then
-  is back to 0 after epoch 5500. The event is diverse rather than a single winner:
-  <span class="mono">top_share</span> stays at or below 0.008 and
-  <span class="mono">distinct_tapes</span> reaches 13 349. Run 45 (seed 5, same arm) is
-  still running with a peak <span class="mono">replicator_count</span> of 108.
-</p>
-<p>
-  <strong>Higher rates are unfinished.</strong> 0 of 4 finished runs have transitioned at
-  <span class="mono">2<sup>-12</sup></span> so far, and the arms above it —
-  <span class="mono">2<sup>-11</sup></span>, <span class="mono">2<sup>-10</sup></span>,
-  <span class="mono">2<sup>-9</sup></span> and <span class="mono">2<sup>-8</sup></span> —
-  contribute no finished run to this tally.
-</p>
-<p>
-  This section is held until the high arms and run 45 finish, and even then it is not
-  readable as a negative result: the <span class="mono">bff-control</span> positive
-  control has not transitioned yet, so a flat sweep would say nothing about the
-  hypothesis. One discrepancy is under investigation: the
-  <span class="mono">transition_epoch</span> recorded for run 41 is 9900, while its own
-  samples first fall below 0.6 at epoch 5030.
-</p>
+<ul>
+  <li>
+    Every transitioned run's final summary reports
+    <span class="mono">replicator_count 0</span>. The detector fires on the
+    compression and diversity signature, not on a counted copier — run 45 ends at
+    <span class="mono">distinct_tapes</span> 1 935,
+    <span class="mono">compress_ratio</span> 0.051,
+    <span class="mono">entropy_bits</span> 6.86,
+    <span class="mono">copy_rate</span> 6.1 × 10<sup>-5</sup>; run 41 at
+    <span class="mono">distinct_tapes</span> 13 349,
+    <span class="mono">compress_ratio</span> 0.260,
+    <span class="mono">entropy_bits</span> 6.74. So these are transitions in tape
+    statistics, not counted self-replicators.
+  </li>
+  <li>
+    Run 41's stored <span class="mono">transition_epoch</span> of 9 900 predates the
+    resume fix of PR #25, and its own samples put the collapse near epoch 5 030. It is
+    cited as ≤ 9 900 until the backfill of PR #30 lands.
+  </li>
+  <li>
+    Two runs of the <span class="mono">2<sup>-8</sup></span> arm, 99 and 100, were still
+    running at the time of the check, so that arm may yet become 2 of 10.
+  </li>
+  <li>
+    Nothing here is readable as a negative result until the
+    <span class="mono">bff-control</span> positive control transitions: a flat sweep on an
+    untested instrument says nothing about the hypothesis.
+  </li>
+</ul>

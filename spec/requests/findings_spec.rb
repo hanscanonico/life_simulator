@@ -58,40 +58,40 @@ RSpec.describe "Findings", type: :request do
     end
 
     context "with the interim mutation-rate numbers" do
-      it "marks the section partial and held on the positive control" do
+      it "marks the section partial and dates the lab check" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("Result (interim)", "Partial, and not yet a result.",
-                      "held until the high arms and run 45 finish",
-                      "positive control has not transitioned yet")
+          .to include("Result (interim)", "Partial.",
+                      "lab check of 2026-09-11 at 01:20 CEST, when 97 of the 100 runs had finished")
       end
 
-      it "reports the one run that transitioned, with its numbers" do
+      it "states the interim claim with its seed counts" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("1 of 9 finished runs — run 41, seed 1.",
-                      "sits at 0.94 until about epoch 5000, then falls 0.725 → 0.526 → 0.052 " \
-                      "within 100 epochs and ends at 0.26 at 20 000 epochs",
-                      "drops from 7.9 to 6.2 across the same window",
-                      "is 538 at epoch 5000 and peaks at 867, then is back to 0 after epoch 5500")
+          .to include("No transition in 40/40 seeds at",
+                      "against 5/60 seeds at",
+                      "No arm reaches more than 2 of 10, and the earliest transition anywhere in the sweep " \
+                      "is epoch 9 900")
       end
 
-      it "counts the arms that have finished and the run still going" do
+      it "tabulates every arm with the runs that transitioned" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("the count is 0 of 10 transitions in each arm, seeds 1 to 10",
-                      "median 0.91 to 0.93 at 20 000 epochs", "0 of 4 finished runs have transitioned at",
-                      "Run 45 (seed 5, same arm) is still running with a peak")
+          .to include("run 41 seed 1 @ ≤ 9 900 (see caveat); run 45 seed 5 @ 13 700",
+                      "run 59 seed 9 @ 19 500", "run 83 seed 3 @ 15 300", "run 95 seed 5 @ 18 080")
       end
 
-      it "flags the transition epoch its samples disagree with" do
+      it "caveats the detector, the stale epoch, the unfinished arm and the control" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("recorded for run 41 is 9900, while its own samples first fall below 0.6 at epoch 5030")
+          .to include("Every transitioned run's final summary reports",
+                      "predates the resume fix of PR #25, and its own samples put the collapse near epoch 5 030",
+                      "arm, 99 and 100, were still running at the time of the check",
+                      "positive control transitions")
       end
     end
 
