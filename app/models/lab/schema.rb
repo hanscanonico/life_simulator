@@ -14,7 +14,13 @@ module Lab
 
     class << self
       def fields
-        @fields ||= JSON.parse(PATH.read).fetch("fields").freeze
+        @fields ||= document.fetch("fields").freeze
+      end
+
+      # The transition rule the engine's tracker measures by: `threshold` on
+      # `compress_ratio` and the `hold_samples` further samples it must stay below it.
+      def transition
+        @transition ||= document.fetch("transition").freeze
       end
 
       def defaults
@@ -37,6 +43,12 @@ module Lab
       def field(name)
         fields.find { |candidate| candidate["name"] == name } ||
           raise(ArgumentError, "the engine schema has no #{name} parameter")
+      end
+
+      private
+
+      def document
+        @document ||= JSON.parse(PATH.read).freeze
       end
     end
   end

@@ -15,6 +15,8 @@ module Experiments
       end
     end
 
+    Planned = Data.define(:slug, :name, :description)
+
     def self.build = new
 
     def rows
@@ -26,7 +28,20 @@ module Experiments
 
     def any? = rows.present?
 
+    # The sweeps of the programme (Lab::SWEEPS) that no `rake lab:sweep` has turned into an
+    # Experiment yet: the plan is public even before a run exists.
+    def planned
+      @planned ||= Lab::SWEEPS.filter_map do |key, definition|
+        slug = key.tr("_", "-")
+        next if queued_slugs.include?(slug)
+
+        Planned.new(slug: slug, name: definition.fetch(:name), description: definition.fetch(:description))
+      end
+    end
+
     private
+
+    def queued_slugs = @queued_slugs ||= experiments.to_set(&:slug)
 
     def experiments = @experiments ||= Experiment.order(:name).to_a
 

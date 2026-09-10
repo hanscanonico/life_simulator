@@ -19,12 +19,21 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to include("Neighbourhood radius", "50%")
     end
 
+    it "lists the sweeps of the programme that are not queued yet" do
+      experiment
+
+      get experiments_path
+
+      expect(response.body).to include("Not queued yet", "Instruction set ablations")
+      expect(response.body).not_to include("Neighbourhood radius</dt>")
+    end
+
     context "with no experiment" do
-      it "still renders" do
+      it "still renders, pointing at the planned programme" do
         get experiments_path
 
         expect(response).to have_http_status(:ok)
-        expect(response.body).to include("No experiment has been queued yet")
+        expect(response.body).to include("No sweep has been queued yet", "Mutation rate")
       end
     end
   end
@@ -38,6 +47,21 @@ RSpec.describe "Experiments", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Transition epoch vs radius", "<svg", "Runs")
+      expect(response.body).to include("Download CSV", experiment_path(experiment, format: :csv))
+    end
+
+    it "spells the transition rate out over the finished runs alone" do
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
+                   params: Lab::Schema.run_defaults.merge("radius" => 2))
+      create(:run, experiment: experiment, status: "finished",
+                   params: Lab::Schema.run_defaults.merge("radius" => 4))
+      create(:run, experiment: experiment, status: "running", transition_epoch: 300,
+                   params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include("1 of 2 finished runs transitioned", "50%",
+                                       "+1 run still under way already transitioned")
     end
 
     it "shows each run's queue priority" do
@@ -67,6 +91,17 @@ RSpec.describe "Experiments", type: :request do
 
         expect(response.body).not_to include("Arms of radius")
       end
+
+      it "says the rate has no denominator yet" do
+        create(:run, experiment: experiment, status: "running", transition_epoch: 300,
+                     params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("no finished run yet",
+                                         "+1 run still under way already transitioned")
+        expect(response.body).not_to include("finished runs transitioned")
+      end
     end
 
     context "with runs that never transitioned" do
@@ -87,6 +122,26 @@ RSpec.describe "Experiments", type: :request do
         get experiment_path(experiment)
 
         expect(response.body).to include("series-nav")
+      end
+    end
+
+    context "as CSV" do
+      it "streams one row per run with its seed and its swept parameters" do
+        create(:run, experiment: experiment, seed: 7, status: "finished", epochs: 20_000, epochs_done: 20_000,
+                     transition_epoch: 900, params: Lab::Schema.run_defaults.merge("radius" => 2),
+                     summary: { "compress_ratio" => 0.42 })
+        create(:run, experiment: experiment, seed: 8, status: "finished", epochs: 20_000, epochs_done: 20_000,
+                     params: Lab::Schema.run_defaults.merge("radius" => 4))
+
+        get experiment_path(experiment, format: :csv)
+
+        lines = response.body.lines.map(&:chomp)
+        expect(response.media_type).to eq("text/csv")
+        expect(response.headers["Content-Disposition"]).to include("attachment", "radius-runs.csv")
+        expect(lines.first).to eq("run_id,seed,status,epochs,epochs_done,transition_epoch,radius,#{Sample::OBSERVABLES.join(',')}")
+        expect(lines.size).to eq(3)
+        expect(lines.second).to include(",7,finished,20000,20000,900,2,0.42")
+        expect(lines.third).to include(",8,finished,20000,20000,,4,")
       end
     end
 

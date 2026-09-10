@@ -20,8 +20,19 @@ them is an engineering task, not a seeding.
 `lab:requeue_failed[<slug>]` sends every failed run of an experiment back to pending with
 its runner columns cleared, for failures caused by a since-fixed bug rather than by the
 run's parameters. `lab:prioritise[<slug>,<priority>]` sets an experiment's priority and
-that of its pending runs, so the next claims serve them first. `lab:db_size` and
-`lab:prune_snapshots` are the maintenance tasks.
+that of its pending runs, so the next claims serve them first.
+`lab:sweep` is idempotent on (experiment, canonical params, seed), so re-running it after a
+grid gained an arm seeds that arm only. When a grid *loses* an arm, its queued runs stay
+behind: `"lab:discard_pending[<slug>,<param>,<value>]"` deletes the pending runs of the
+experiment whose parameter holds that value (`"lab:discard_pending[radius,radius,64]"`),
+and `"lab:discard_duplicates[<slug>]"` deletes the pending duplicates an older,
+non-idempotent seeding created, keeping one run per (params, seed). Both delete pending
+runs only — a claimed, running or terminal run is left where it is — and print the ids they
+removed; quote the whole task name in zsh, brackets and commas included.
+`lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes
+`transition_epoch` from the stored samples of terminal runs, for runs measured before the
+tracker survived a snapshot resume. `lab:db_size` and `lab:prune_snapshots` are the
+maintenance tasks.
 `https://simulator-life.com/lab/status` shows the queue by status
 (`pending`, `claimed`, `running`, `finished`, `failed`), live runners and epochs per hour.
 

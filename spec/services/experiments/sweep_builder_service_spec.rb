@@ -54,23 +54,40 @@ RSpec.describe Experiments::SweepBuilderService do
     end
   end
 
-  context "with a run whose params omit a parameter the engine defaults" do
-    let(:experiment) { create(:experiment, param_grid: { "mutation_rate" => [0.0] }, seeds: [1]) }
+  context "with an arm added to the grid of a built sweep" do
+    it "creates the new arm's runs and nothing else" do
+      build_sweep
+      experiment.update!(param_grid: { "mutation_rate" => [0.0, 0.5], "radius" => [1, 2, 4] })
 
-    it "reads the absent parameter as its default instead of as another run" do
-      experiment.runs.create!(seed: 1, epochs: experiment.epochs,
-                              params: Lab::Schema.run_defaults.except("tape_len").merge("mutation_rate" => 0.0))
+      expect { described_class.call(experiment) }.to change(Run, :count).by(6)
+    end
 
-      expect { build_sweep }.not_to change(Run, :count)
+    it "leaves the runs of the arms already built untouched" do
+      build_sweep
+      built = experiment.runs.order(:id).pluck(:id)
+      experiment.update!(param_grid: { "mutation_rate" => [0.0, 0.5], "radius" => [1, 2, 4] })
+
+      described_class.call(experiment)
+
+      expect(experiment.runs.order(:id).pluck(:id).first(12)).to eq(built)
     end
   end
 
-  context "with a run whose params hold an integer where the grid holds a float" do
+  context "with runs stored before the engine schema grew a parameter" do
+    it "recognises them instead of re-creating the whole sweep" do
+      build_sweep
+      experiment.runs.each { |run| run.update!(params: run.params.except("ops", "top_k")) }
+
+      expect { described_class.call(experiment.reload) }.not_to change(Run, :count)
+    end
+  end
+
+  context "with a run whose stored arm is an integer and a grid arm that is a float" do
     let(:experiment) { create(:experiment, param_grid: { "mutation_rate" => [0.0] }, seeds: [1]) }
 
-    it "treats the two numbers as one parameter value" do
-      experiment.runs.create!(seed: 1, epochs: experiment.epochs,
-                              params: Lab::Schema.run_defaults.merge("mutation_rate" => 0))
+    it "recognises the arm as already built" do
+      experiment.runs.create!(params: Lab::Schema.run_defaults.merge("mutation_rate" => 0), seed: 1,
+                              epochs: experiment.epochs)
 
       expect { build_sweep }.not_to change(Run, :count)
     end

@@ -76,6 +76,137 @@ RSpec.describe "the lab queue tasks" do
     end
   end
 
+  describe "lab:backfill_transitions" do
+    let(:experiment) { create(:experiment, slug: "bff-control", status: "finished") }
+
+    def run_with_drop(**attributes)
+      create(:run, experiment: experiment, status: "finished", **attributes).tap do |run|
+        [0.94, 0.5, 0.4, 0.3, 0.2].each_with_index do |ratio, index|
+          create(:sample, run: run, epoch: index * 10, values: { "compress_ratio" => ratio })
+        end
+      end
+    end
+
+    it "rewrites the transition epoch of a terminal run measured before the resume fix" do
+      run = run_with_drop(transition_epoch: 40)
+
+      invoke("lab:backfill_transitions", "bff-control")
+
+      expect(run.reload.transition_epoch).to eq(10)
+    end
+
+    it "clears a transition epoch the samples do not support" do
+      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 900)
+
+      invoke("lab:backfill_transitions", "bff-control")
+
+      expect(run.reload.transition_epoch).to be_nil
+    end
+
+    it "leaves a run whose recorded epoch already matches its samples alone" do
+      run = run_with_drop(transition_epoch: 10)
+      output = nil
+
+      expect { output = invoke("lab:backfill_transitions", "bff-control") }
+        .not_to(change { run.reload.updated_at })
+      expect(output).to eq("backfilled 0 of 1 terminal runs\n")
+    end
+
+    it "leaves the runs still in the queue alone" do
+      run = create(:run, :claimed, experiment: experiment, transition_epoch: 900)
+
+      invoke("lab:backfill_transitions", "bff-control")
+
+      expect(run.reload.transition_epoch).to eq(900)
+    end
+
+    it "prints each run's old and new epoch and a total" do
+      run = run_with_drop(transition_epoch: 40)
+
+      expect(invoke("lab:backfill_transitions", "bff-control"))
+        .to include("run #{run.id}: 40 → 10", "backfilled 1 of 1 terminal runs")
+    end
+
+    it "covers every experiment with no slug given" do
+      run = run_with_drop(transition_epoch: 40)
+      other = create(:run, experiment: create(:experiment, slug: "radius"), status: "finished",
+                           transition_epoch: 900)
+
+      invoke("lab:backfill_transitions")
+
+      expect([run.reload.transition_epoch, other.reload.transition_epoch]).to eq([10, nil])
+    end
+
+    it "refuses an experiment it does not know" do
+      expect { invoke("lab:backfill_transitions", "colour") }.to raise_error(/Unknown experiment "colour"/)
+    end
+  end
+
+  describe "lab:discard_pending" do
+    let(:experiment) { create(:experiment, slug: "radius") }
+
+    def run_on(radius, *traits)
+      create(:run, *traits, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => radius))
+    end
+
+    it "deletes the pending runs of the arm and prints their ids" do
+      discarded = run_on(64)
+      kept = run_on(1)
+
+      output = invoke("lab:discard_pending", "radius", "radius", "64")
+
+      expect(output).to include("discarded 1 pending runs #{discarded.id}")
+      expect(experiment.runs.pluck(:id)).to eq([kept.id])
+    end
+
+    it "leaves a claimed run of the arm alone" do
+      run = run_on(64, :claimed)
+
+      invoke("lab:discard_pending", "radius", "radius", "64")
+
+      expect(run.reload).to be_claimed
+    end
+
+    it "refuses an experiment it does not know" do
+      expect { invoke("lab:discard_pending", "colour", "radius", "64") }
+        .to raise_error(/Unknown experiment "colour"/)
+    end
+
+    it "refuses a call with no value" do
+      experiment
+
+      expect { invoke("lab:discard_pending", "radius", "radius") }.to raise_error(/Give a parameter and a value/)
+    end
+  end
+
+  describe "lab:discard_duplicates" do
+    let(:experiment) { create(:experiment, slug: "radius") }
+
+    it "keeps one run per arm and seed and prints the ids it removed" do
+      kept = create(:run, experiment: experiment, seed: 3)
+      duplicate = create(:run, experiment: experiment, seed: 3, params: Lab::Schema.run_defaults)
+
+      output = invoke("lab:discard_duplicates", "radius")
+
+      expect(output).to include("discarded 1 duplicate pending runs #{duplicate.id}")
+      expect(experiment.runs.pluck(:id)).to eq([kept.id])
+    end
+
+    it "leaves a running duplicate alone" do
+      running = create(:run, :claimed, experiment: experiment, seed: 3, status: "running")
+      create(:run, :claimed, experiment: experiment, seed: 3, status: "running",
+                             params: Lab::Schema.run_defaults)
+
+      invoke("lab:discard_duplicates", "radius")
+
+      expect([running.reload.status, experiment.runs.count]).to eq(["running", 2])
+    end
+
+    it "refuses an experiment it does not know" do
+      expect { invoke("lab:discard_duplicates", "colour") }.to raise_error(/Unknown experiment "colour"/)
+    end
+  end
+
   describe "lab:sweep" do
     it "carries a sweep definition's priority to the experiment and its runs" do
       stub_const("Lab::SWEEPS", { "control" => sweep_definition })

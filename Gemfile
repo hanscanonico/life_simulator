@@ -21,6 +21,8 @@ gem "jbuilder"
 # json 3.0 dropped positional parse options; Active Support 8.1 still calls
 # `JSON.parse(json, options)`, which breaks every jsonb attribute read.
 gem "json", "~> 2.7"
+# The CSV exports; csv leaves the default gems in Ruby 3.4
+gem "csv"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"

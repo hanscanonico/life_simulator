@@ -7,15 +7,27 @@
   <dt>Substrate</dt><dd><%= @show.experiment.substrate %></dd>
   <dt>Status</dt><dd><%= @show.experiment.status %></dd>
   <dt>Epochs per run</dt><dd><%= number_with_delimiter @show.experiment.epochs %></dd>
-  <dt>Runs finished</dt><dd><%= @show.runs_done %> / <%= @show.experiment.runs_count %></dd>
+  <dt>Runs finished</dt><dd><%= @show.finished_count %> / <%= @show.experiment.runs_count %></dd>
   <dt>Transition rate</dt>
-  <dd><%= @show.transition_rate ? number_to_percentage(@show.transition_rate * 100, precision: 0) : "—" %></dd>
+  <dd>
+    <% if @show.transition_rate %>
+      <%= @show.transitioned_finished %> of <%= @show.finished_count %> finished runs transitioned
+      (<%= number_to_percentage(@show.transition_rate * 100, precision: 0) %>)
+    <% else %>
+      no finished run yet
+    <% end %>
+    <% if @show.transitioned_running.positive? %>
+      <span class="text-muted">
+        (+<%= pluralize(@show.transitioned_running, "run") %> still under way already transitioned)
+      </span>
+    <% end %>
+  </dd>
 </dl>
 
 <% if @show.axes.any? %>
   <% @show.arms.each do |axis, arms| %>
     <%= render @show.diagram_for(axis) %>
-    <% if @show.runs_done.positive? %>
+    <% if @show.finished_count.positive? %>
       <%= render "experiments/arms_table", axis: axis, arms: arms %>
     <% end %>
   <% end %>
@@ -24,4 +36,5 @@
 <% end %>
 
 <h2>Runs</h2>
+<p><%= link_to "Download CSV", experiment_path(@show.experiment, format: :csv), class: "btn btn-sm btn-outline" %></p>
 <%= render "experiments/runs_table", page: @show %>

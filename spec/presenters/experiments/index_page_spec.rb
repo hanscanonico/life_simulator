@@ -45,4 +45,17 @@ RSpec.describe Experiments::IndexPage do
       expect(page).not_to be_any
     end
   end
+
+  describe "#planned" do
+    it "lists the sweeps of the programme that have no experiment yet" do
+      create(:experiment, name: "Mutation rate", slug: "mutation-rate")
+
+      expect(page.planned.map(&:slug)).to eq(%w[world-size radius max-steps ops])
+    end
+
+    it "describes each planned sweep from its programme entry" do
+      expect(page.planned.first).to have_attributes(slug: "mutation-rate", name: "Mutation rate",
+                                                    description: Lab::SWEEPS.fetch("mutation_rate")[:description])
+    end
+  end
 end

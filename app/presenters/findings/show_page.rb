@@ -33,7 +33,7 @@ module Findings
 
     def diagrams = evidence ? evidence.diagrams : []
 
-    def runs_done = evidence ? evidence.runs_done : 0
+    def runs_done = evidence ? evidence.finished_count : 0
 
     def pending? = runs_done.zero?
   end

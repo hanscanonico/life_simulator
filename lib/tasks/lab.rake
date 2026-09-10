@@ -23,6 +23,27 @@ namespace :lab do
     puts "#{experiment.name}: #{requeued} failed runs back to pending"
   end
 
+  desc "Delete the pending runs of an experiment whose parameter holds a given value"
+  task :discard_pending, %i[slug param value] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+    raise "Give a parameter and a value, as lab:discard_pending[radius,radius,64]." if args[:value].nil?
+
+    discarded = Runs::DiscardPendingService.call(experiment: experiment, param: args[:param], value: args[:value])
+
+    puts "#{experiment.name}: discarded #{discarded.size} pending runs #{discarded.join(', ')}"
+  end
+
+  desc "Delete the duplicate pending runs of an experiment, keeping one run per (params, seed)"
+  task :discard_duplicates, [:slug] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+    discarded = Runs::DiscardDuplicatesService.call(experiment: experiment)
+
+    puts "#{experiment.name}: discarded #{discarded.size} duplicate pending runs #{discarded.join(', ')}"
+  end
+
   desc "Set the queue priority of an experiment and of its pending runs"
   task :prioritise, [:slug, :priority] => :environment do |_task, args|
     experiment = Experiment.find_by(slug: args[:slug])
@@ -33,6 +54,29 @@ namespace :lab do
     pending = Experiments::SetPriorityService.call(experiment: experiment, priority: priority)
 
     puts "#{experiment.name}: priority #{priority}, #{pending} pending runs"
+  end
+
+  desc "Recompute transition_epoch from the stored samples of terminal runs (one experiment, or all)"
+  task :backfill_transitions, [:slug] => :environment do |_task, args|
+    runs = Run.terminal.order(:id)
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+      runs = runs.where(experiment: experiment)
+    end
+
+    terminal = runs.to_a
+    backfilled = terminal.count do |run|
+      recomputed = Runs::TransitionEpochService.call(run: run)
+      next false if recomputed == run.transition_epoch
+
+      puts "run #{run.id}: #{run.transition_epoch || 'none'} → #{recomputed || 'none'}"
+      run.update!(transition_epoch: recomputed)
+      true
+    end
+
+    puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
   end
 
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"

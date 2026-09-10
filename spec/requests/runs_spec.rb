@@ -5,6 +5,30 @@ require "rails_helper"
 RSpec.describe "Runs", type: :request do
   let(:run) { create(:run, seed: 4_242, epochs: 20_000, epochs_done: 20_000, transition_epoch: 900) }
 
+  describe "GET /runs/:id/samples.csv" do
+    it "streams the whole metric series in epoch order" do
+      create(:sample, run: run, epoch: 200, values: { "compress_ratio" => 0.4, "copy_rate" => 0.31 })
+      create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+
+      get samples_run_path(run, format: :csv)
+
+      lines = response.body.lines.map(&:chomp)
+      expect(response.media_type).to eq("text/csv")
+      expect(response.headers["Content-Disposition"]).to include("attachment", "run-#{run.id}-samples.csv")
+      expect(lines.first).to eq("epoch,#{Sample::OBSERVABLES.join(',')}")
+      expect(lines.second).to eq("100,0.9,,,,,,")
+      expect(lines.third).to eq("200,0.4,,,,,,0.31")
+    end
+
+    context "with no sample" do
+      it "still sends the header" do
+        get samples_run_path(run, format: :csv)
+
+        expect(response.body).to eq("epoch,#{Sample::OBSERVABLES.join(',')}\n")
+      end
+    end
+  end
+
   describe "GET /runs/:id" do
     it "shows the metric series, the seed and the parameters" do
       create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9, "copy_rate" => 0.0 })
@@ -14,6 +38,13 @@ RSpec.describe "Runs", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Compression ratio", "Copy rate", "<svg", "4242", "mutation_rate")
+    end
+
+    it "names the substrate beside the sweep instead of a dangling dash" do
+      get run_path(run)
+
+      expect(response.body).to include("soup substrate, seed")
+      expect(response.body).not_to match(/—\s*\n?\s*seed/)
     end
 
     it "draws one chart per observable of a run that reported samples" do
@@ -42,6 +73,12 @@ RSpec.describe "Runs", type: :request do
 
         expect(response.body).to include("runner-1", "last heartbeat 2 minutes ago")
       end
+    end
+
+    it "links the CSV of its samples" do
+      get run_path(run)
+
+      expect(response.body).to include("Download CSV", samples_run_path(run, format: :csv))
     end
 
     context "with snapshots" do

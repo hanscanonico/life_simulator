@@ -3,8 +3,8 @@
 <h1>Run #<%= @show.run.id %></h1>
 <p class="text-muted">
   <%= link_to @show.run.experiment.name, experiment_path(@show.run.experiment) %> —
-  seed <span class="mono"><%= @show.run.seed %></span>. The seed and the parameters below
-  reproduce this run byte for byte.
+  <%= @show.run.experiment.substrate %> substrate, seed <span class="mono"><%= @show.run.seed %></span>.
+  The seed and the parameters below reproduce this run byte for byte.
 </p>
 
 <dl class="facts">
@@ -26,6 +26,7 @@
 <% end %>
 
 <h2>Metrics</h2>
+<p><%= link_to "Download CSV", samples_run_path(@show.run, format: :csv), class: "btn btn-sm btn-outline" %></p>
 <% if @show.charts_empty? %>
   <p class="text-muted">This run has not reported a sample yet.</p>
 <% else %>

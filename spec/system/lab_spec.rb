@@ -51,6 +51,16 @@ RSpec.describe "The lab status frame", :js, type: :system do
     await_poll_controller
   end
 
+  it "resolves the eager frame into the status itself" do
+    expect(page).to have_css("h2", text: "Runners seen in the last 5 minutes")
+    expect(page).to have_css("h2", text: "Throughput")
+  end
+
+  # The frame polls itself, so a meta refresh would be a second, page-destroying clock.
+  it "leaves the page itself to the reader" do
+    expect(page).to have_no_css("meta[http-equiv='refresh']", visible: :all)
+  end
+
   it "counts the seconds since the numbers were fetched" do
     expect(page).to have_text(/updated (just now|\d+s ago)/)
     expect(page).to have_text(/updated \d+s ago/)

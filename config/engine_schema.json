@@ -110,5 +110,9 @@
       "name": "snapshot_every",
       "type": "integer"
     }
-  ]
+  ],
+  "transition": {
+    "hold_samples": 3,
+    "threshold": 0.6
+  }
 }
