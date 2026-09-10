@@ -9,13 +9,15 @@ RSpec.describe "the lab queue tasks" do
 
     it "turns the failed runs of the experiment pending" do
       run = create(:run, :claimed, experiment: experiment, status: "failed", epochs_done: 1_200,
-                                   started_at: 1.hour.ago, finished_at: 1.minute.ago, error: "boom")
+                                   started_at: 1.hour.ago, finished_at: 1.minute.ago, error: "boom",
+                                   summary: { "replicators" => 3 }, transition_epoch: 900)
 
       invoke("lab:requeue_failed", "bff-control")
 
       expect(run.reload).to have_attributes(status: "pending", runner_id: nil, claimed_at: nil,
                                             heartbeat_at: nil, started_at: nil, finished_at: nil,
-                                            error: nil, epochs_done: 0)
+                                            error: nil, epochs_done: 0, summary: {},
+                                            transition_epoch: nil)
     end
 
     it "leaves a claimed run of the experiment alone" do

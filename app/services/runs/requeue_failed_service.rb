@@ -10,7 +10,8 @@ module Runs
     include Callable
 
     REQUEUED_ATTRIBUTES = { status: "pending", epochs_done: 0, runner_id: nil, claimed_at: nil,
-                            heartbeat_at: nil, started_at: nil, finished_at: nil, error: nil }.freeze
+                            heartbeat_at: nil, started_at: nil, finished_at: nil, error: nil,
+                            summary: {}, transition_epoch: nil }.freeze
 
     def initialize(experiment:)
       @experiment = experiment

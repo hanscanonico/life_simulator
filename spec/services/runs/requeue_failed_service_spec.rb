@@ -8,7 +8,8 @@ RSpec.describe Runs::RequeueFailedService do
   def failed_run(**attributes)
     create(:run, :claimed, experiment: experiment, status: "failed", started_at: 1.hour.ago,
                            finished_at: 2.minutes.ago, error: "answer body over the limit",
-                           epochs_done: 1_200, **attributes)
+                           epochs_done: 1_200, summary: { "replicators" => 3 }, transition_epoch: 900,
+                           **attributes)
   end
 
   it "returns a failed run to the pending queue with its runner columns cleared" do
@@ -19,6 +20,14 @@ RSpec.describe Runs::RequeueFailedService do
     expect(run.reload).to have_attributes(status: "pending", runner_id: nil, claimed_at: nil,
                                           heartbeat_at: nil, started_at: nil, finished_at: nil,
                                           error: nil, epochs_done: 0)
+  end
+
+  it "drops the results the failed attempt reported, so the run reads as never claimed" do
+    run = failed_run
+
+    described_class.call(experiment: experiment)
+
+    expect(run.reload).to have_attributes(summary: {}, transition_epoch: nil)
   end
 
   it "returns the number of runs it requeued" do
