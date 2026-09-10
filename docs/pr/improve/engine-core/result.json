@@ -1,0 +1,20 @@
+{
+  "params": {
+    "substrate": "soup",
+    "width": 64,
+    "height": 64,
+    "tape_len": 64,
+    "radius": 1,
+    "max_steps": 8192,
+    "mutation_rate": 0.000244140625,
+    "init": "random",
+    "sample_every": 10,
+    "top_k": 16,
+    "snapshot_every": 100
+  },
+  "seed": 1,
+  "epochs": 20000,
+  "transition_epoch": null,
+  "wall_seconds": 101.713042,
+  "epochs_per_second": 196.6316178017761
+}
