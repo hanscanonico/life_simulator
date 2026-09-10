@@ -673,6 +673,35 @@ mod tests {
         assert_eq!(restored.transition_epoch(), Some(0));
     }
 
+    /// A resumed run samples its snapshot's own epoch again, so the restored tracker has
+    /// to remember which epoch it last saw or the drop counts as held one sample early.
+    #[test]
+    fn a_resume_does_not_count_the_re_sampled_snapshot_epoch_twice() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        for _ in 0..2 {
+            world.metrics();
+            world.step();
+        }
+        world.metrics();
+
+        let mut restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        restored.metrics();
+        assert_eq!(
+            restored.transition_epoch(),
+            None,
+            "epoch 2 had already been observed"
+        );
+
+        restored.step();
+        restored.metrics();
+        assert_eq!(restored.transition_epoch(), Some(0));
+    }
+
     #[test]
     fn rendering_gives_one_rgba_pixel_per_cell() {
         let mut world = World::new(&life(4, 4), 0).unwrap();

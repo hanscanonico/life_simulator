@@ -1,5 +1,6 @@
-//! The lab-mode sink: metric samples batched to the app, snapshots posted as they are
-//! taken, and one `finish` carrying the transition epoch and the last metrics.
+//! The lab-mode sink: metric samples batched to the app with the transition epoch the
+//! run has settled on, snapshots posted as they are taken, and one `finish` carrying
+//! that epoch again with the last metrics.
 
 use crate::api::LabClient;
 use crate::sink::{RunResult, RunSink};
@@ -199,6 +200,25 @@ mod tests {
         let posted = lab.request("POST /api/runs/1/samples");
         assert_eq!(posted["samples"].as_array().unwrap().len(), 4);
         assert_eq!(posted["transition_epoch"], json!(0));
+    }
+
+    #[test]
+    fn a_settled_transition_epoch_is_kept_for_later_batches() {
+        let lab = MockLab::start();
+        let client = client(&lab);
+        let mut sink =
+            HttpSink::new(&client, 1, "runner-1").with_batch_age(Duration::from_secs(600));
+
+        sink.sample(0, &metrics(0.9), None).unwrap();
+        sink.sample(2, &metrics(0.4), Some(2)).unwrap();
+        sink.flush().unwrap();
+        sink.sample(4, &metrics(0.4), None).unwrap();
+        sink.flush().unwrap();
+
+        let batches = lab.requests("POST /api/runs/1/samples");
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[1]["samples"][0]["epoch"], json!(4));
+        assert_eq!(batches[1]["transition_epoch"], json!(2));
     }
 
     #[test]
