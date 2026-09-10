@@ -16,8 +16,13 @@ container, quoted for zsh:
 Read `docs/DESIGN.md` §1.3 first: the five sweeps in order are the research plan.
 `Lab::SWEEPS` (`app/models/lab.rb`) holds the first three as data, and `lab:sweep` seeds
 one of them; sweeps 4 and 5 need engine parameters that do not exist yet, so proposing
-them is an engineering task, not a seeding. `lab:db_size` and `lab:prune_snapshots` are
-the maintenance tasks. `https://simulator-life.com/lab/status` shows the queue by status
+them is an engineering task, not a seeding.
+`lab:requeue_failed[<slug>]` sends every failed run of an experiment back to pending with
+its runner columns cleared, for failures caused by a since-fixed bug rather than by the
+run's parameters. `lab:prioritise[<slug>,<priority>]` sets an experiment's priority and
+that of its pending runs, so the next claims serve them first. `lab:db_size` and
+`lab:prune_snapshots` are the maintenance tasks.
+`https://simulator-life.com/lab/status` shows the queue by status
 (`pending`, `claimed`, `running`, `finished`, `failed`), live runners and epochs per hour.
 
 You receive the deadline of the current unattended run and, optionally, the reports of
