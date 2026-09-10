@@ -2,10 +2,11 @@
 
 class Snapshot < ApplicationRecord
   # Bytea imposes no size of its own, so the ceiling on a runner's upload is this one.
-  # It sits well above the largest raw world any sweep runs (256×256 cells of 64-byte
-  # tapes, 4 MiB, and the engine compresses before posting), while Params would allow
-  # 1024×1024×1024 = 1 GiB — revisit this with any change to a Params range or to the
-  # sweep grid, since engine Params is the single authority on world size (DESIGN §3).
+  # It sits well above the largest raw world the programme runs (the bff-control positive
+  # control's 512×256 torus of 64-byte tapes, 8 MiB, and the engine compresses before
+  # posting), while Params would allow 1024×1024×1024 = 1 GiB — revisit this with any
+  # change to a Params range or to the sweep grid, since engine Params is the single
+  # authority on world size (DESIGN §3).
   MAX_BYTES = 64.megabytes
 
   belongs_to :run
