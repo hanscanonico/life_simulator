@@ -124,6 +124,35 @@ RSpec.describe "Api::Runs", type: :request do
 
       expect(response).to have_http_status(:not_found)
     end
+
+    it "never lowers the progress already reported" do
+      run.update!(epochs_done: 800)
+
+      post heartbeat_api_run_path(run), params: { runner_id: "runner-1", epochs_done: 500 }, headers: headers, as: :json
+
+      expect(run.reload.epochs_done).to eq(800)
+    end
+
+    context "with a heartbeat that lands after the run finished" do
+      let(:run) do
+        create(:run, :claimed, experiment: experiment, status: "finished", epochs_done: 1_000,
+                               finished_at: 1.minute.ago)
+      end
+
+      it "accepts the late heartbeat without complaining to the runner" do
+        post heartbeat_api_run_path(run), params: { runner_id: "runner-1", epochs_done: 900 }, headers: headers,
+                                          as: :json
+
+        expect(response).to have_http_status(:no_content)
+      end
+
+      it "leaves the finished run alone" do
+        post heartbeat_api_run_path(run), params: { runner_id: "runner-1", epochs_done: 900 }, headers: headers,
+                                          as: :json
+
+        expect(run.reload).to have_attributes(status: "finished", epochs_done: 1_000, finished_at: be_present)
+      end
+    end
   end
 
   describe "POST /api/runs/:id/samples" do

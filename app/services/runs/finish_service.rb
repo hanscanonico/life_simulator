@@ -29,7 +29,7 @@ module Runs
       # behind the end, and a run reported as 19,342 of 20,000 reads as incomplete.
       attributes[:epochs_done] = @run.epochs if @error.blank?
       attributes[:summary] = @summary if @summary.present?
-      attributes[:transition_epoch] = @transition_epoch unless @transition_epoch.nil?
+      attributes[:transition_epoch] = @transition_epoch if @run.earlier_transition_epoch?(@transition_epoch)
       attributes
     end
 

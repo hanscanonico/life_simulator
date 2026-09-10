@@ -27,9 +27,28 @@ RSpec.describe Runs::ReleaseStaleService do
     expect(run.reload.status).to eq("claimed")
   end
 
+  it "timestamps the row it released" do
+    run = create(:run, :stale, updated_at: 1.hour.ago)
+
+    expect { described_class.call }.to(change { run.reload.updated_at })
+  end
+
   it "reports how many runs it released" do
     create(:run, :stale)
 
     expect(described_class.call).to eq(1)
+  end
+
+  it "releases the whole batch in one statement, since every claim poll calls it" do
+    create_list(:run, 3, :stale)
+    updates = []
+    subscription = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+      updates << payload[:sql] if payload[:sql].start_with?("UPDATE")
+    end
+
+    described_class.call
+    ActiveSupport::Notifications.unsubscribe(subscription)
+
+    expect(updates.size).to eq(1)
   end
 end

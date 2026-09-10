@@ -137,8 +137,12 @@ Rails/SkipsModelValidations:
   # The runner streams metric samples in batches and re-posts them on retry; the bulk
   # upsert on the `[run_id, epoch]` unique index is what makes that idempotent, and the
   # database constraints are the ones that matter for those rows.
+  # Releasing stale runs happens on every claim poll of twelve runners: one UPDATE over the
+  # `stale` scope, writing a literal status and clearing the claim, touches no validated
+  # attribute and must not become a per-run round trip.
   AllowedMethods:
     - upsert_all
+    - update_all
 
 Rails/Output:
   Exclude:

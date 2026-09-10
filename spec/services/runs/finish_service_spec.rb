@@ -20,6 +20,14 @@ RSpec.describe Runs::FinishService do
     expect(run.reload.epochs_done).to eq(20_000)
   end
 
+  it "keeps the earlier transition epoch a sample batch already reported" do
+    run.update!(transition_epoch: 300)
+
+    described_class.call(run: run, transition_epoch: 900)
+
+    expect(run.reload.transition_epoch).to eq(300)
+  end
+
   it "finishes the experiment once no run is outstanding" do
     described_class.call(run: run)
 
