@@ -10,6 +10,20 @@ RSpec.describe Run, type: :model do
   it { is_expected.to have_many(:snapshots).dependent(:destroy) }
   it { is_expected.to validate_numericality_of(:epochs).only_integer.is_greater_than(0) }
 
+  describe "indexes" do
+    let(:indexes) { described_class.connection.indexes(described_class.table_name) }
+
+    it "indexes heartbeat_at for the status page's live runners" do
+      expect(indexes.map(&:columns)).to include(["heartbeat_at"])
+    end
+
+    it "indexes finished_at for the terminal runs the pruner walks" do
+      index = indexes.find { |i| i.name == "index_runs_on_finished_at_terminal" }
+
+      expect(index).to have_attributes(columns: ["finished_at"], where: a_string_including("finished"))
+    end
+  end
+
   describe ".stale" do
     it "includes a claimed run whose heartbeat is older than the stale window" do
       stale = create(:run, :stale)

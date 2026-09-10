@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_120005) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -50,6 +50,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_120005) do
     t.integer "transition_epoch"
     t.datetime "updated_at", null: false
     t.index ["experiment_id"], name: "index_runs_on_experiment_id"
+    t.index ["finished_at"], name: "index_runs_on_finished_at_terminal", where: "((status)::text = ANY ((ARRAY['finished'::character varying, 'failed'::character varying])::text[]))"
+    t.index ["heartbeat_at"], name: "index_runs_on_heartbeat_at"
     t.index ["status", "id"], name: "index_runs_on_status_and_id"
     t.index ["status", "priority", "id"], name: "index_runs_on_status_and_priority_and_id", order: { priority: :desc }
   end
@@ -60,6 +62,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_120005) do
     t.bigint "run_id", null: false
     t.datetime "updated_at", null: false
     t.jsonb "values", default: {}, null: false
+    t.index ["created_at"], name: "index_samples_on_created_at"
     t.index ["run_id", "epoch"], name: "index_samples_on_run_id_and_epoch", unique: true
   end
 
