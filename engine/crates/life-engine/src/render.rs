@@ -1,23 +1,43 @@
 //! World → RGBA pixels. The engine owns the colours: the browser viewer draws what this
 //! produces and never invents a palette of its own (`docs/DESIGN.md` §2).
 
-use crate::hash::fnv1a64;
+use crate::bff;
+use crate::hash;
 
 pub const BYTES_PER_PIXEL: usize = 4;
 
-/// Op density at which a soup cell is drawn at full brightness. Uniformly random bytes
-/// sit at 10/256 ≈ 0.039, so a fresh soup renders dim and a soup that has filled up with
-/// instructions renders bright.
+/// Op density at which a soup cell is drawn at full brightness and full saturation.
+/// Uniformly random bytes sit at 10/256 ≈ 0.039, so a fresh soup renders dark and grey
+/// and a soup that has filled up with instructions renders bright and saturated.
 const FULL_BRIGHTNESS_OP_DENSITY: f64 = 0.25;
-const MIN_VALUE: f64 = 0.15;
-const SATURATION: f64 = 0.85;
+const MIN_VALUE: f64 = 0.06;
+const MIN_SATURATION: f64 = 0.2;
+const MAX_SATURATION: f64 = 0.95;
 
-/// Hue from a stable hash of the tape, brightness from how much of it is instructions.
+/// Hue from the tape's *instruction skeleton* — the sequence of BFF ops with the non-op
+/// bytes dropped — so that a family of near-identical replicators shares a colour and a
+/// colony reads as one hue instead of noise. Two tapes that differ only in bytes the
+/// interpreter ignores are the same programme, and get the same hue.
+fn skeleton_hue(tape: &[u8]) -> f64 {
+    let mut digest = hash::OFFSET_BASIS;
+    for byte in tape {
+        if bff::is_op(*byte) {
+            digest ^= *byte as u64;
+            digest = digest.wrapping_mul(hash::PRIME);
+        }
+    }
+    (digest % 3600) as f64 / 10.0
+}
+
+/// Hue from the instruction skeleton, saturation and brightness from how much of the
+/// tape is instructions: op-free tapes stay near-black, so random soup is a dark field
+/// the colonies pop out of.
 pub fn soup_pixel(tape: &[u8], op_density: f64) -> [u8; 4] {
-    let hue = (fnv1a64(tape) % 3600) as f64 / 10.0;
+    let hue = skeleton_hue(tape);
     let reach = (op_density / FULL_BRIGHTNESS_OP_DENSITY).clamp(0.0, 1.0);
+    let saturation = MIN_SATURATION + (MAX_SATURATION - MIN_SATURATION) * reach;
     let value = MIN_VALUE + (1.0 - MIN_VALUE) * reach;
-    let [r, g, b] = hsv_to_rgb(hue, SATURATION, value);
+    let [r, g, b] = hsv_to_rgb(hue, saturation, value);
     [r, g, b, 255]
 }
 
@@ -64,15 +84,59 @@ mod tests {
 
     #[test]
     fn a_tapes_hue_is_stable_and_its_brightness_follows_op_density() {
-        let tape = b"replicate me";
+        let tape = b"re+pli-cate.me";
         assert_eq!(soup_pixel(tape, 0.1), soup_pixel(tape, 0.1));
-        assert_ne!(soup_pixel(tape, 0.1), soup_pixel(b"something else", 0.1));
 
         let dim = soup_pixel(tape, 0.0);
         let bright = soup_pixel(tape, 1.0);
         let sum = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
         assert!(sum(bright) > sum(dim));
         assert_eq!(soup_pixel(tape, 1.0), soup_pixel(tape, 0.25), "clamped");
+    }
+
+    #[test]
+    fn a_sparse_tape_reads_grey_and_a_dense_one_reads_saturated() {
+        let tape = b"re+pli-cate.me";
+        let saturation = |pixel: [u8; 4]| {
+            let high = *pixel[0..3].iter().max().unwrap() as f64;
+            let low = *pixel[0..3].iter().min().unwrap() as f64;
+            (high - low) / high
+        };
+        assert!(
+            saturation(soup_pixel(tape, 0.025)) < 0.4,
+            "random soup is grey"
+        );
+        assert!(
+            saturation(soup_pixel(tape, 0.25)) > 0.9,
+            "a colony is vivid"
+        );
+    }
+
+    #[test]
+    fn tapes_differing_only_in_non_op_bytes_share_a_hue() {
+        let one = b"aa+bb[cc]dd-ee";
+        let other = b"zz+ZZ[qq]QQ-ww";
+        assert_eq!(skeleton_hue(one), skeleton_hue(other));
+        assert_eq!(soup_pixel(one, 0.3), soup_pixel(other, 0.3), "same colour");
+    }
+
+    #[test]
+    fn a_different_instruction_sequence_gets_a_different_hue() {
+        assert_ne!(
+            skeleton_hue(b"aa+bb[cc]dd-ee"),
+            skeleton_hue(b"aa-bb[cc]dd+ee")
+        );
+        assert_ne!(skeleton_hue(b"+[.]"), skeleton_hue(b"+[.].."));
+    }
+
+    #[test]
+    fn an_op_free_tape_is_near_black() {
+        let pixel = soup_pixel(b"no instructions here", 0.0);
+        assert!(
+            pixel[0..3].iter().all(|c| *c < 20),
+            "op-free soup stays dark: {pixel:?}"
+        );
+        assert_eq!(pixel[3], 255);
     }
 
     #[test]
