@@ -144,6 +144,24 @@ RSpec.describe Experiments::ShowPage do
       expect(page.transition_rate).to eq(0.5)
     end
 
+    it "counts the transitions of the runs still under way apart from the rate" do
+      finished_run(radius: 1, transition_epoch: 100)
+      finished_run(radius: 2)
+      create(:run, experiment: experiment, status: "running", transition_epoch: 300,
+                   params: Lab::Schema.run_defaults.merge("radius" => 4))
+
+      expect(page).to have_attributes(transitioned_finished: 1, finished_count: 2,
+                                      transitioned_running: 1, transition_rate: 0.5)
+    end
+
+    context "with no run under way that transitioned" do
+      it "counts none" do
+        create(:run, experiment: experiment, status: "running")
+
+        expect(page.transitioned_running).to eq(0)
+      end
+    end
+
     context "with no finished run" do
       it "has no rate" do
         expect(page.transition_rate).to be_nil

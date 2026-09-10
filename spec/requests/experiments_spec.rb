@@ -19,12 +19,21 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to include("Neighbourhood radius", "50%")
     end
 
+    it "lists the sweeps of the programme that are not queued yet" do
+      experiment
+
+      get experiments_path
+
+      expect(response.body).to include("Not queued yet", "Instruction set ablations")
+      expect(response.body).not_to include("Neighbourhood radius</dt>")
+    end
+
     context "with no experiment" do
-      it "still renders" do
+      it "still renders, pointing at the planned programme" do
         get experiments_path
 
         expect(response).to have_http_status(:ok)
-        expect(response.body).to include("No experiment has been queued yet")
+        expect(response.body).to include("No sweep has been queued yet", "Mutation rate")
       end
     end
   end
@@ -38,6 +47,20 @@ RSpec.describe "Experiments", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Transition epoch vs radius", "<svg", "Runs")
+    end
+
+    it "spells the transition rate out over the finished runs alone" do
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
+                   params: Lab::Schema.run_defaults.merge("radius" => 2))
+      create(:run, experiment: experiment, status: "finished",
+                   params: Lab::Schema.run_defaults.merge("radius" => 4))
+      create(:run, experiment: experiment, status: "running", transition_epoch: 300,
+                   params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include("1 of 2 finished runs transitioned", "50%",
+                                       "+1 run still under way already transitioned")
     end
 
     it "shows each run's queue priority" do

@@ -16,6 +16,13 @@ RSpec.describe "Runs", type: :request do
       expect(response.body).to include("Compression ratio", "Copy rate", "<svg", "4242", "mutation_rate")
     end
 
+    it "names the substrate beside the sweep instead of a dangling dash" do
+      get run_path(run)
+
+      expect(response.body).to include("soup substrate, seed")
+      expect(response.body).not_to match(/—\s*\n?\s*seed/)
+    end
+
     it "draws one chart per observable of a run that reported samples" do
       create(:sample, run: run, epoch: 100, values: Runs::ShowPage::METRICS.keys.index_with(0.5))
 

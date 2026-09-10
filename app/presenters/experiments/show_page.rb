@@ -33,14 +33,21 @@ module Experiments
 
     def pagy = page.first
 
-    def runs_done = finished_runs.size
+    def finished_count = finished_runs.size
 
-    def transitioned = finished_runs.count { |run| run.transition_epoch.present? }
+    def transitioned_finished = finished_runs.count { |run| run.transition_epoch.present? }
+
+    # Runs still under way can already carry a transition epoch, and they are not in the
+    # rate's denominator: the page reports them separately rather than diluting the share.
+    def transitioned_running
+      @transitioned_running ||= experiment.runs.where(status: %w[claimed running])
+                                          .where.not(transition_epoch: nil).count
+    end
 
     def transition_rate
-      return nil if runs_done.zero?
+      return nil if finished_count.zero?
 
-      transitioned.fdiv(runs_done)
+      transitioned_finished.fdiv(finished_count)
     end
 
     private
