@@ -7,6 +7,11 @@ module Experiments
   # height), in which case the runs carry the pair and not the axis name — matching a run
   # to a value means matching that sub-hash against the run's params.
   Axis = Data.define(:name, :values) do
+    # The swept axes of a `param_grid`: a key with a single value is held fixed, not swept.
+    def self.sweep(param_grid)
+      param_grid.filter_map { |name, values| new(name: name, values: values) if values.is_a?(Array) && values.size > 1 }
+    end
+
     def param_keys = paired? ? values.first.keys : [name]
 
     def paired? = values.first.is_a?(Hash)

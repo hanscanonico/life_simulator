@@ -26,6 +26,7 @@
 <% end %>
 
 <h2>Metrics</h2>
+<p><%= link_to "Download CSV", samples_run_path(@show.run, format: :csv), class: "btn btn-sm btn-outline" %></p>
 <% if @show.charts_empty? %>
   <p class="text-muted">This run has not reported a sample yet.</p>
 <% else %>

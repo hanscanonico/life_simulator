@@ -14,11 +14,7 @@ module Experiments
 
     attr_reader :experiment
 
-    def axes
-      @axes ||= experiment.param_grid.filter_map do |name, values|
-        Axis.new(name: name, values: values) if values.is_a?(Array) && values.size > 1
-      end
-    end
+    def axes = @axes ||= Axis.sweep(experiment.param_grid)
 
     def diagrams = diagrams_by_axis.values
 
