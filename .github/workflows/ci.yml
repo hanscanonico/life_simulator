@@ -92,7 +92,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # The system specs drive headless Chrome (spec/support/capybara.rb).
+      # Headless Chrome for the `js: true` system specs (spec/support/capybara.rb).
       - name: Install packages
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y google-chrome-stable curl libjemalloc2 libvips postgresql-client
 
@@ -107,7 +107,7 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432
         run: |
           bin/rails db:prepare
-          bin/rspec
+          bundle exec rspec
 
       - name: Keep screenshots from failed system tests
         uses: actions/upload-artifact@v4
