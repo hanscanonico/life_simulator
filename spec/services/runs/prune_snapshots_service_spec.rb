@@ -81,6 +81,14 @@ RSpec.describe Runs::PruneSnapshotsService do
     expect { described_class.call(run: run, keep_every: 300) }.to change { run.snapshots.count }.from(10).to(5)
   end
 
+  it "thins a run whose sweep varied snapshot_every by that run's own cadence" do
+    run = snapshotted((200..4_000).step(200).to_a, params: Lab::Schema.run_defaults.merge("snapshot_every" => 200))
+
+    described_class.call(run: run)
+
+    expect(kept(run)).to eq([200, 2_000, 4_000])
+  end
+
   it "defaults keep_every to ten snapshot cadences from the engine schema" do
     expect(described_class.default_keep_every).to eq(10 * Lab::Schema.defaults.fetch("snapshot_every"))
   end

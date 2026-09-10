@@ -29,28 +29,31 @@ module Runs
 
     def initialize(run:, keep_every: nil)
       @run = run
-      @keep_every = keep_every || run.params["snapshot_every"].then { |every| every ? KEEP_FACTOR * every : nil } ||
-                    self.class.default_keep_every
+      @keep_every = keep_every || run_keep_every
     end
 
-    # Returns how many snapshots it deleted.
     def call
       return 0 unless @run.terminal?
       return 0 if epochs.empty?
 
-      @run.snapshots.where.not(epoch: kept_epochs.to_a).delete_all
+      @run.snapshots.where.not(epoch: kept_epochs).delete_all
     end
 
-    # The epochs this run keeps, smallest first.
     def kept_epochs
-      kept = Set.new
-      kept << epochs.first << epochs.last
+      kept = Set[epochs.first, epochs.last]
       kept.merge(epochs.select { |epoch| (epoch % @keep_every).zero? })
       kept << nearest_to_transition if @run.transition_epoch
-      kept.sort.to_set
+      kept.sort
     end
 
     private
+
+    # `snapshot_every` is normally the runner's business (Lab::Schema::NON_RUN_PARAMS), but a
+    # sweep can put it on the grid, and then the run posts at its own cadence.
+    def run_keep_every
+      every = @run.params["snapshot_every"]
+      every ? KEEP_FACTOR * every : self.class.default_keep_every
+    end
 
     def epochs = @epochs ||= @run.snapshots.order(:epoch).pluck(:epoch)
 
