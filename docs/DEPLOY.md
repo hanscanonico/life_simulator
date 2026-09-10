@@ -2,8 +2,9 @@
 
 The site runs on the mini-pc (`mini-pc@192.168.1.37`) as a Docker Compose stack —
 `db` (Postgres 17), `app` (Rails behind Thruster), `runner` (the Rust engine in lab
-mode), `cloudflared` — reached from the internet through a Cloudflare tunnel. Nothing but the tunnel is exposed: the app is
-bound to `127.0.0.1:8070` and Postgres to `127.0.0.1:5433`.
+mode), `cloudflared` — reached from the internet through a Cloudflare tunnel. Nothing
+but the tunnel is exposed: the app is bound to `127.0.0.1:8070` and Postgres to
+`127.0.0.1:5433`.
 
 ## First-time setup
 

@@ -32,6 +32,19 @@ ENV RAILS_ENV="production" \
 FROM docker.io/library/rust:1-slim-bookworm AS rust-build
 
 WORKDIR /src
+
+# wasm-bindgen-cli must match the wasm-bindgen crate the engine links, or the
+# generated glue rejects the module: read the version out of the lockfile. Only
+# the lockfile is copied at this point, so editing engine source does not
+# recompile the CLI — a from-source install of several minutes — on every deploy.
+COPY engine/Cargo.lock /src/engine/Cargo.lock
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y build-essential && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives && \
+    rustup target add wasm32-unknown-unknown && \
+    cargo install wasm-bindgen-cli --locked \
+      --version "$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;q;}' /src/engine/Cargo.lock)"
+
 COPY Makefile /src/
 COPY engine /src/engine/
 
@@ -40,15 +53,6 @@ COPY engine /src/engine/
 RUN mkdir -p /out && \
     if [ "$(uname -m)" = "x86_64" ]; then export RUSTFLAGS="-C target-cpu=x86-64-v3"; fi && \
     cd /src/engine && cargo build --release -p runner && cp target/release/runner /out/
-
-# wasm-bindgen-cli must match the wasm-bindgen crate the engine links, or the
-# generated glue rejects the module: read the version out of the lockfile.
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential && \
-    rm -rf /var/lib/apt/lists /var/cache/apt/archives && \
-    rustup target add wasm32-unknown-unknown && \
-    cargo install wasm-bindgen-cli --locked \
-      --version "$(sed -n '/^name = "wasm-bindgen"$/{n;s/^version = "\(.*\)"$/\1/p;q;}' /src/engine/Cargo.lock)"
 
 # Whatever `make wasm` emits into app/assets/wasm is what the image ships; the
 # directory is created first so the copy out of this stage never misses.

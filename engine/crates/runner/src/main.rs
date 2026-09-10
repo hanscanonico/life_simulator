@@ -53,7 +53,7 @@ enum Command {
         #[arg(long, env = "RUNNER_TOKEN")]
         token: String,
         /// Runs executed at once; defaults to the cores the site does not keep.
-        #[arg(long)]
+        #[arg(long, env = "RUNNER_PARALLELISM")]
         parallelism: Option<usize>,
         /// Identifies this runner to the app; defaults to the host and pid.
         #[arg(long, env = "RUNNER_ID")]
