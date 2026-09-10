@@ -11,6 +11,7 @@ class Experiment < ApplicationRecord
   validates :slug, presence: true, uniqueness: true, format: { with: /\A[a-z0-9]+(?:-[a-z0-9]+)*\z/ }
   validates :substrate, presence: true
   validates :epochs, numericality: { only_integer: true, greater_than: 0 }
+  validates :priority, numericality: { only_integer: true }
 
   def to_param = slug
 end

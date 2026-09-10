@@ -256,6 +256,14 @@ RSpec.describe "Api::Runs", type: :request do
                                             summary: { "compress_ratio" => 0.31 })
     end
 
+    it "credits the finished run with its whole epoch budget" do
+      run.update!(epochs: 20_000, epochs_done: 19_342)
+
+      post finish_api_run_path(run), params: { runner_id: "runner-1" }, headers: headers, as: :json
+
+      expect(run.reload.epochs_done).to eq(20_000)
+    end
+
     it "finishes the experiment once every run is terminal" do
       post finish_api_run_path(run), params: { runner_id: "runner-1" }, headers: headers, as: :json
 

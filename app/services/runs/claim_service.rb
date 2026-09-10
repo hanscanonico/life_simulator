@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
 module Runs
-  # Hands the oldest pending run to a runner. `FOR UPDATE SKIP LOCKED` is what makes two
-  # runners claiming at the same instant get two different runs instead of the same one.
+  # Hands the most urgent pending run to a runner: highest priority first, oldest run
+  # within a priority, so a control experiment queued today can jump ahead of a long
+  # sweep. `FOR UPDATE SKIP LOCKED` is what makes two runners claiming at the same
+  # instant get two different runs instead of the same one.
   class ClaimService
     include Callable
 
@@ -14,7 +16,7 @@ module Runs
       ReleaseStaleService.call
 
       Run.transaction do
-        run = Run.pending.order(:id).lock("FOR UPDATE SKIP LOCKED").first
+        run = Run.pending.order(priority: :desc, id: :asc).lock("FOR UPDATE SKIP LOCKED").first
         claim(run) if run
         run
       end
