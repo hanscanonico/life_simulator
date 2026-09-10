@@ -22,6 +22,16 @@ module Charts
     def x_ticks = x_scale.ticks.map { |tick| tick.with(position: plot_left + tick.position) }
     def y_ticks = y_scale.ticks.map { |tick| tick.with(position: plot_top + tick.position) }
 
+    # A word-long label centred on the plot's edge ("well-mixed" at the far end of the
+    # radius axis) spills outside the viewBox and is clipped, so the outermost x labels
+    # hug the edge instead of straddling it.
+    def x_tick_anchor(position)
+      return "start" if position <= plot_left
+      return "end" if position >= plot_right
+
+      "middle"
+    end
+
     def x_pixel(value) = plot_left + x_scale.position(value)
     def y_pixel(value) = plot_top + y_scale.position(value)
   end

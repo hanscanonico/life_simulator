@@ -36,7 +36,7 @@
     },
     {
       "default": 1,
-      "doc": "Moore-neighbourhood radius an interaction reaches; 0 means well-mixed.",
+      "doc": "Moore-neighbourhood radius an interaction reaches; 0 means well-mixed. A positive radius must fit the torus: 2*radius + 1 <= min(width, height).",
       "max": 64,
       "min": 0,
       "name": "radius",
