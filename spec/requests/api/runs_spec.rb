@@ -230,6 +230,28 @@ RSpec.describe "Api::Runs", type: :request do
       expect(run.snapshots.sole.blob).to eq("new")
     end
 
+    it "stores a world the size of the programme's largest" do
+      post snapshots_api_run_path(run),
+           params: { runner_id: "runner-1", epoch: 300, blob: upload("w" * 8.megabytes) }, headers: headers
+
+      expect(run.snapshots.sole.blob.bytesize).to eq(8.megabytes)
+    end
+
+    # The cap itself is 64 MiB; posting that much through the rack stack for an example
+    # buys nothing the model spec does not already pin, so only the 422 wiring is checked.
+    context "with a payload over the cap" do
+      it "answers unprocessable content and stores nothing" do
+        stub_const("Snapshot::MAX_BYTES", 8)
+
+        post snapshots_api_run_path(run),
+             params: { runner_id: "runner-1", epoch: 300, blob: Base64.encode64("w" * 9) },
+             headers: headers, as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(run.snapshots).to be_empty
+      end
+    end
+
     it "rejects a runner that does not hold the run" do
       post snapshots_api_run_path(run), params: { runner_id: "runner-9", epoch: 300 }, headers: headers, as: :json
 
