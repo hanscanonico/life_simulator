@@ -21,7 +21,7 @@ RSpec.describe "Runs", type: :request do
 
       get run_path(run)
 
-      expect(response.body.scan("chart-line").size).to eq(Runs::ShowPage::METRICS.size)
+      expect(response.body.scan("chart-line").size).to eq(7)
     end
 
     context "with no sample" do

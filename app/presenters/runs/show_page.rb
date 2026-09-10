@@ -29,11 +29,7 @@ module Runs
       end
     end
 
-    def started? = run.epochs_done.positive?
-
-    # A run reports its first sample only once it has run an epoch, so nothing can be
-    # plotted before then.
-    def charts_empty? = !started? || charts.all?(&:empty?)
+    def charts_empty? = charts.all?(&:empty?)
 
     def transition_label
       return ActiveSupport::NumberHelper.number_to_delimited(run.transition_epoch) if run.transition_epoch

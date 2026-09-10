@@ -69,6 +69,15 @@ RSpec.describe Runs::ShowPage do
 
       expect(page).not_to be_charts_empty
     end
+
+    # The runner flushes its first sample batch after 10 s but only heartbeats
+    # `epochs_done` after 30 s, so samples routinely arrive before any progress does.
+    it "is false for a sample that arrived before the first heartbeat" do
+      run = create(:run, :claimed, epochs_done: 0)
+      create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+
+      expect(described_class.build(run: run)).not_to be_charts_empty
+    end
   end
 
   describe "#snapshots" do
