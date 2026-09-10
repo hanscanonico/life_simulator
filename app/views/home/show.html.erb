@@ -1,0 +1,83 @@
+<main class="site-main">
+  <div class="container-narrow viewer-page">
+    <h1 class="viewer-title">A world that programs itself</h1>
+
+    <div class="viewer"
+         data-controller="viewer"
+         data-viewer-worlds-value="<%= @show.worlds.to_json %>"
+         data-viewer-substrate-value="<%= @show.substrate %>"
+         data-viewer-seed-value="<%= @show.seed %>"
+         data-viewer-steps-per-frame-value="<%= @show.steps_per_frame %>"
+         data-viewer-wasm-url-value="<%= @show.wasm_url %>">
+      <canvas class="viewer-canvas" data-viewer-target="canvas" aria-label="The living world"></canvas>
+
+      <p class="viewer-status text-sm text-error" data-viewer-target="status" role="status"></p>
+
+      <div class="viewer-controls">
+        <div class="form-group viewer-control">
+          <label class="form-label text-xs" for="viewer-substrate">Substrate</label>
+          <select class="form-select" id="viewer-substrate" data-action="viewer#changeSubstrate">
+            <% @show.substrates.each do |substrate| %>
+              <option value="<%= substrate %>" <%= "selected" if substrate == @show.substrate %>>
+                <%= substrate.capitalize %>
+              </option>
+            <% end %>
+          </select>
+        </div>
+
+        <div class="form-group viewer-control">
+          <label class="form-label text-xs" for="viewer-speed">Speed</label>
+          <input class="viewer-speed" id="viewer-speed" type="range" min="1" max="8" step="1"
+                 value="<%= @show.steps_per_frame %>" data-action="viewer#changeSpeed">
+        </div>
+
+        <div class="viewer-buttons">
+          <button class="btn btn-primary" type="button" data-action="viewer#toggle">
+            <span data-viewer-target="playLabel">Pause</span>
+          </button>
+          <button class="btn btn-outline" type="button" data-action="viewer#step">Step</button>
+          <button class="btn btn-outline" type="button" data-action="viewer#reset">New seed</button>
+        </div>
+      </div>
+
+      <dl class="viewer-readout">
+        <div class="viewer-metric">
+          <dt class="text-xs text-muted uppercase">Epoch</dt>
+          <dd class="code" data-viewer-target="epoch">0</dd>
+        </div>
+        <div class="viewer-metric">
+          <dt class="text-xs text-muted uppercase">Compression</dt>
+          <dd class="code" data-viewer-target="compressRatio">—</dd>
+        </div>
+        <div class="viewer-metric">
+          <dt class="text-xs text-muted uppercase">Replicators</dt>
+          <dd class="code" data-viewer-target="replicatorCount">—</dd>
+        </div>
+        <div class="viewer-metric">
+          <dt class="text-xs text-muted uppercase">Distinct tapes</dt>
+          <dd class="code" data-viewer-target="distinctTapes">—</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="viewer-copy">
+      <p>
+        Every cell above holds a tiny program — 64 random bytes. Each epoch, a cell meets one of
+        its neighbours, the two tapes are glued together and the result is executed as code. The
+        colour of a cell is a fingerprint of the bytes it holds, its brightness the share of those
+        bytes that are instructions. Nothing here selects for anything: there is no fitness
+        function, no reward, no reproduction rule. The programs are the only thing that can change
+        the programs.
+      </p>
+      <p>
+        Watch the colours. A random soup is confetti, every cell a different tape, and the
+        compression ratio sits near 1.0. Sooner or later one program copies itself into its
+        neighbour, that neighbour copies it on, and the confetti collapses into a few broad
+        stretches of one colour — life, or at least the part of it that replicates. The
+        compression ratio falls, the replicator count climbs and the number of distinct tapes
+        drops. The same engine runs the sweeps that measure when this happens, in
+        <a href="/experiments">the experiments</a>.
+      </p>
+    </div>
+  </div>
+</main>

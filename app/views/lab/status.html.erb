@@ -1,0 +1,50 @@
+<turbo-frame id="lab_status">
+  <section class="lab-status">
+    <h2>Runs</h2>
+    <dl class="facts">
+      <% @status.counts_by_status.each do |status, count| %>
+        <dt><%= status %></dt><dd><%= number_with_delimiter count %></dd>
+      <% end %>
+      <dt>total</dt><dd><%= number_with_delimiter @status.total_runs %></dd>
+    </dl>
+
+    <h2>Runners seen in the last 5 minutes</h2>
+    <% if @status.runners.any? %>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Runner</th>
+            <th class="numeric">Runs</th>
+            <th class="numeric">Epochs done</th>
+            <th>Last heartbeat</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @status.runners.each do |runner| %>
+            <tr>
+              <td class="mono"><%= runner.id %></td>
+              <td class="numeric"><%= runner.runs %></td>
+              <td class="numeric"><%= number_with_delimiter runner.epochs_done %></td>
+              <td><%= time_ago_in_words(runner.last_seen) %> ago</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <p class="text-muted">No runner has heartbeated in the last 5 minutes.</p>
+    <% end %>
+
+    <h2>Throughput</h2>
+    <p><%= number_with_delimiter @status.epochs_per_hour %> epochs in the last hour.</p>
+
+    <h2>Oldest pending run</h2>
+    <% if @status.oldest_pending %>
+      <p>
+        <%= link_to "Run ##{@status.oldest_pending.id}", run_path(@status.oldest_pending) %>,
+        queued <%= time_ago_in_words(@status.oldest_pending.created_at) %> ago.
+      </p>
+    <% else %>
+      <p class="text-muted">The queue is empty.</p>
+    <% end %>
+  </section>
+</turbo-frame>

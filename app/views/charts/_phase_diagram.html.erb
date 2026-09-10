@@ -1,0 +1,32 @@
+<figure class="chart">
+  <figcaption class="chart-title"><%= phase_diagram.title %></figcaption>
+  <% if phase_diagram.empty? %>
+    <p class="chart-empty text-muted">No finished runs yet.</p>
+  <% else %>
+    <svg class="chart-svg" viewBox="0 0 <%= phase_diagram.width %> <%= phase_diagram.height %>"
+         role="img" aria-label="<%= phase_diagram.title %>" preserveAspectRatio="xMidYMid meet">
+      <%= render "charts/axes", chart: phase_diagram %>
+      <path class="chart-line chart-median" d="<%= phase_diagram.median_path %>"></path>
+      <g class="chart-dots">
+        <% phase_diagram.dots.each do |dot| %>
+          <circle cx="<%= dot[:x].round(2) %>" cy="<%= dot[:y].round(2) %>" r="4">
+            <title><%= dot[:label] %></title>
+          </circle>
+        <% end %>
+      </g>
+      <g class="chart-censored">
+        <% phase_diagram.censored_marks.each do |mark| %>
+          <circle cx="<%= mark[:x].round(2) %>" cy="<%= mark[:y].round(2) %>" r="5">
+            <title><%= mark[:label] %></title>
+          </circle>
+          <text x="<%= (mark[:x] + 8).round(2) %>" y="<%= (mark[:y] + 4).round(2) %>"><%= mark[:count] %></text>
+        <% end %>
+      </g>
+    </svg>
+    <%# A figure carries at most one figcaption, and it is the title above the plot. %>
+    <p class="chart-legend text-sm text-muted">
+      Filled dots are runs that transitioned; the line joins the median per value. Hollow
+      markers at the top are runs with no emergence in <%= phase_diagram.epochs %> epochs.
+    </p>
+  <% end %>
+</figure>

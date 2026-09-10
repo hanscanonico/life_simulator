@@ -1,0 +1,96 @@
+{
+  "fields": [
+    {
+      "default": "soup",
+      "doc": "Which world rule to run: the BFF program soup, or Conway's Game of Life.",
+      "name": "substrate",
+      "type": "enum",
+      "values": [
+        "soup",
+        "life"
+      ]
+    },
+    {
+      "default": 128,
+      "doc": "World width in cells; the world is a torus.",
+      "max": 1024,
+      "min": 4,
+      "name": "width",
+      "type": "integer"
+    },
+    {
+      "default": 128,
+      "doc": "World height in cells; the world is a torus.",
+      "max": 1024,
+      "min": 4,
+      "name": "height",
+      "type": "integer"
+    },
+    {
+      "default": 64,
+      "doc": "Bytes of tape held by one soup cell. Ignored by the life substrate.",
+      "max": 1024,
+      "min": 8,
+      "name": "tape_len",
+      "type": "integer"
+    },
+    {
+      "default": 1,
+      "doc": "Moore-neighbourhood radius an interaction reaches; 0 means well-mixed.",
+      "max": 64,
+      "min": 0,
+      "name": "radius",
+      "type": "integer"
+    },
+    {
+      "default": 8192,
+      "doc": "Instruction budget for one interaction between two tapes.",
+      "max": 1048576,
+      "min": 1,
+      "name": "max_steps",
+      "type": "integer"
+    },
+    {
+      "default": 0.000244140625,
+      "doc": "Probability a byte is replaced by a random byte, per byte per epoch. Applies to every substrate: the ordinary Game of Life needs 0.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "mutation_rate",
+      "type": "float"
+    },
+    {
+      "default": "random",
+      "doc": "Initial world state: uniformly random bytes, or all zero (the control).",
+      "name": "init",
+      "type": "enum",
+      "values": [
+        "random",
+        "zero"
+      ]
+    },
+    {
+      "default": 10,
+      "doc": "Record the observables every this many epochs.",
+      "max": 1000000,
+      "min": 1,
+      "name": "sample_every",
+      "type": "integer"
+    },
+    {
+      "default": 16,
+      "doc": "How many of the most common tapes are put through the replicator test.",
+      "max": 256,
+      "min": 1,
+      "name": "top_k",
+      "type": "integer"
+    },
+    {
+      "default": 100,
+      "doc": "Write a full world snapshot every this many epochs.",
+      "max": 1000000,
+      "min": 1,
+      "name": "snapshot_every",
+      "type": "integer"
+    }
+  ]
+}
