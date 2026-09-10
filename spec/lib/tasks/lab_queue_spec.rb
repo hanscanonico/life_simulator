@@ -105,9 +105,11 @@ RSpec.describe "the lab queue tasks" do
 
     it "leaves a run whose recorded epoch already matches its samples alone" do
       run = run_with_drop(transition_epoch: 10)
+      output = nil
 
-      expect { invoke("lab:backfill_transitions", "bff-control") }
+      expect { output = invoke("lab:backfill_transitions", "bff-control") }
         .not_to(change { run.reload.updated_at })
+      expect(output).to eq("backfilled 0 of 1 terminal runs\n")
     end
 
     it "leaves the runs still in the queue alone" do

@@ -20,10 +20,11 @@ them is an engineering task, not a seeding.
 `lab:requeue_failed[<slug>]` sends every failed run of an experiment back to pending with
 its runner columns cleared, for failures caused by a since-fixed bug rather than by the
 run's parameters. `lab:prioritise[<slug>,<priority>]` sets an experiment's priority and
-that of its pending runs, so the next claims serve them first. `lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes
+that of its pending runs, so the next claims serve them first.
+`lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes
 `transition_epoch` from the stored samples of terminal runs, for runs measured before the
-tracker survived a snapshot resume. `lab:db_size` and
-`lab:prune_snapshots` are the maintenance tasks.
+tracker survived a snapshot resume. `lab:db_size` and `lab:prune_snapshots` are the
+maintenance tasks.
 `https://simulator-life.com/lab/status` shows the queue by status
 (`pending`, `claimed`, `running`, `finished`, `failed`), live runners and epochs per hour.
 
