@@ -25,6 +25,16 @@ RSpec.describe "Lab", type: :request do
       expect(response.body).to include("runner-a", "300 epochs in the last hour")
     end
 
+    context "with a pending run" do
+      it "shows the priority of the oldest one" do
+        create(:run, priority: 5)
+
+        get lab_status_path
+
+        expect(response.body).to include("priority 5")
+      end
+    end
+
     context "with an idle lab" do
       it "says so" do
         get lab_status_path

@@ -51,7 +51,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_120005) do
     t.datetime "updated_at", null: false
     t.index ["experiment_id"], name: "index_runs_on_experiment_id"
     t.index ["status", "id"], name: "index_runs_on_status_and_id"
-    t.index ["status", "priority", "id"], name: "index_runs_on_status_and_priority_and_id"
+    t.index ["status", "priority", "id"], name: "index_runs_on_status_and_priority_and_id", order: { priority: :desc }
   end
 
   create_table "samples", force: :cascade do |t|
