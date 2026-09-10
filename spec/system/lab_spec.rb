@@ -34,7 +34,22 @@ RSpec.describe "The lab status frame", :js, type: :system do
     JS
   end
 
-  before { visit lab_path }
+  # The frame's content arrives over its own request, which can beat the import map: every
+  # example here drives the poll controller, so none may start before it is listening.
+  def await_poll_controller
+    Timeout.timeout(Capybara.default_max_wait_time) do
+      sleep 0.05 until page.evaluate_script(<<~JS)
+        !!(window.Stimulus && window.Stimulus.getControllerForElementAndIdentifier(
+          document.getElementById("lab_status"), "frame-poll"
+        ))
+      JS
+    end
+  end
+
+  before do
+    visit lab_path
+    await_poll_controller
+  end
 
   it "counts the seconds since the numbers were fetched" do
     expect(page).to have_text(/updated (just now|\d+s ago)/)
