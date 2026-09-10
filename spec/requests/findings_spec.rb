@@ -63,7 +63,8 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.body.squish)
           .to include("Result (interim)", "Partial.",
-                      "lab check of 2026-09-11 at 01:20 CEST, when 97 of the 100 runs had finished")
+                      "lab check of 2026-09-11 at 01:20 CEST, when 97 of the 100 runs had finished",
+                      "a run requeued from its last snapshot drops out of the diagram until it finishes again")
       end
 
       it "states the interim claim with its seed counts" do
