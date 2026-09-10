@@ -6,6 +6,10 @@ module Experiments
   # order of a sweep is reproducible. A grid value that is a Hash contributes all of its
   # keys at once, which is how paired parameters (a square world's width and height) stay
   # paired instead of multiplying against each other.
+  #
+  # Seeding is idempotent: a run is identified by (canonical params, seed), so re-running a
+  # sweep whose grid gained an arm creates that arm's runs and nothing else. See
+  # Lab::CanonicalParams for why the comparison cannot be a plain hash equality.
   class SweepBuilderService
     include Callable
 
@@ -26,15 +30,17 @@ module Experiments
     private
 
     def build_run(params, seed)
-      return if existing_keys.include?([params, seed])
+      key = [Lab::CanonicalParams.for(params), seed]
+      return if existing_keys.include?(key)
 
       @experiment.runs.create!(params: params, seed: seed, epochs: @experiment.epochs,
                                priority: @experiment.priority)
-      existing_keys << [params, seed]
+      existing_keys << key
     end
 
     def existing_keys
-      @existing_keys ||= @experiment.runs.pluck(:params, :seed).to_set
+      @existing_keys ||= @experiment.runs.pluck(:params, :seed)
+                                    .to_set { |params, seed| [Lab::CanonicalParams.for(params), seed] }
     end
 
     def param_sets

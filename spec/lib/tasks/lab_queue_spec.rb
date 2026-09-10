@@ -142,6 +142,71 @@ RSpec.describe "the lab queue tasks" do
     end
   end
 
+  describe "lab:discard_pending" do
+    let(:experiment) { create(:experiment, slug: "radius") }
+
+    def run_on(radius, *traits)
+      create(:run, *traits, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => radius))
+    end
+
+    it "deletes the pending runs of the arm and prints their ids" do
+      discarded = run_on(64)
+      kept = run_on(1)
+
+      output = invoke("lab:discard_pending", "radius", "radius", "64")
+
+      expect(output).to include("discarded 1 pending runs #{discarded.id}")
+      expect(experiment.runs.pluck(:id)).to eq([kept.id])
+    end
+
+    it "leaves a claimed run of the arm alone" do
+      run = run_on(64, :claimed)
+
+      invoke("lab:discard_pending", "radius", "radius", "64")
+
+      expect(run.reload).to be_claimed
+    end
+
+    it "refuses an experiment it does not know" do
+      expect { invoke("lab:discard_pending", "colour", "radius", "64") }
+        .to raise_error(/Unknown experiment "colour"/)
+    end
+
+    it "refuses a call with no value" do
+      experiment
+
+      expect { invoke("lab:discard_pending", "radius", "radius") }.to raise_error(/Give a parameter and a value/)
+    end
+  end
+
+  describe "lab:discard_duplicates" do
+    let(:experiment) { create(:experiment, slug: "radius") }
+
+    it "keeps one run per arm and seed and prints the ids it removed" do
+      kept = create(:run, experiment: experiment, seed: 3)
+      duplicate = create(:run, experiment: experiment, seed: 3, params: Lab::Schema.run_defaults)
+
+      output = invoke("lab:discard_duplicates", "radius")
+
+      expect(output).to include("discarded 1 duplicate pending runs #{duplicate.id}")
+      expect(experiment.runs.pluck(:id)).to eq([kept.id])
+    end
+
+    it "leaves a running duplicate alone" do
+      running = create(:run, :claimed, experiment: experiment, seed: 3, status: "running")
+      create(:run, :claimed, experiment: experiment, seed: 3, status: "running",
+                             params: Lab::Schema.run_defaults)
+
+      invoke("lab:discard_duplicates", "radius")
+
+      expect([running.reload.status, experiment.runs.count]).to eq(["running", 2])
+    end
+
+    it "refuses an experiment it does not know" do
+      expect { invoke("lab:discard_duplicates", "colour") }.to raise_error(/Unknown experiment "colour"/)
+    end
+  end
+
   describe "lab:sweep" do
     it "carries a sweep definition's priority to the experiment and its runs" do
       stub_const("Lab::SWEEPS", { "control" => sweep_definition })
