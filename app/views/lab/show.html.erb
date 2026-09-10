@@ -1,0 +1,15 @@
+<% content_for :title, "Lab" %>
+<%# The status block is the only thing that moves, and it moves without any JavaScript of
+    ours: the browser reloads the page and the lazy frame refetches. %>
+<% content_for :head do %>
+  <meta http-equiv="refresh" content="30">
+<% end %>
+
+<h1>Lab</h1>
+<p class="text-muted">
+  What the runners are doing right now. This page refreshes itself every 30 seconds.
+</p>
+
+<turbo-frame id="lab_status" src="<%= lab_status_path %>" loading="lazy">
+  <p class="text-muted">Loading status…</p>
+</turbo-frame>

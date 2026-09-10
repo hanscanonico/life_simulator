@@ -1,0 +1,51 @@
+<% content_for :title, "Run ##{@show.run.id}" %>
+
+<h1>Run #<%= @show.run.id %></h1>
+<p class="text-muted">
+  <%= link_to @show.run.experiment.name, experiment_path(@show.run.experiment) %> —
+  seed <span class="mono"><%= @show.run.seed %></span>. The seed and the parameters below
+  reproduce this run byte for byte.
+</p>
+
+<dl class="facts">
+  <dt>Status</dt><dd><%= @show.run.status %></dd>
+  <dt>Progress</dt>
+  <dd><%= number_with_delimiter @show.run.epochs_done %> / <%= number_with_delimiter @show.run.epochs %> epochs
+    (<%= @show.progress %>%)</dd>
+  <dt>Transition epoch</dt>
+  <dd><%= @show.run.transition_epoch ? number_with_delimiter(@show.run.transition_epoch) : "no emergence" %></dd>
+  <dt>Runner</dt><dd><%= @show.run.runner_id || "—" %></dd>
+</dl>
+
+<% if @show.run.error.present? %>
+  <p class="alert alert-error"><%= @show.run.error %></p>
+<% end %>
+
+<h2>Metrics</h2>
+<div class="chart-grid-2">
+  <% @show.charts.each do |chart| %>
+    <%= render chart %>
+  <% end %>
+</div>
+
+<h2>Snapshots</h2>
+<% if @show.snapshots.any? %>
+  <div class="snapshot-gallery">
+    <% @show.snapshots.each do |snapshot| %>
+      <figure class="snapshot">
+        <%= image_tag png_snapshot_path(snapshot), alt: "World at epoch #{snapshot.epoch}", loading: "lazy" %>
+        <figcaption class="text-sm text-muted">epoch <%= number_with_delimiter snapshot.epoch %></figcaption>
+      </figure>
+    <% end %>
+  </div>
+<% else %>
+  <p class="text-muted">No snapshot has been uploaded for this run yet.</p>
+<% end %>
+
+<h2>Parameters</h2>
+<dl class="facts mono">
+  <dt>seed</dt><dd><%= @show.run.seed %></dd>
+  <% @show.params.each do |key, value| %>
+    <dt><%= key %></dt><dd><%= param_value(value) %></dd>
+  <% end %>
+</dl>

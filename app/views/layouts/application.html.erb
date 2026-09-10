@@ -27,6 +27,27 @@
   </head>
 
   <body>
-    <%= yield %>
+    <header class="site-header">
+      <div class="container flex-between items-center">
+        <%# Linked by path, not by root_path: the home page (and its route) is its own task. %>
+        <a class="site-wordmark" href="/">Life Simulator</a>
+        <nav class="site-nav">
+          <a href="/">Home</a>
+          <%= link_to "Experiments", experiments_path %>
+          <%= link_to "Lab", lab_path %>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container site-main">
+      <%= yield %>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container flex-between items-center text-sm">
+        <span>simulator-life.com — every run keeps its seed, so every claim can be re-run.</span>
+        <a href="https://github.com/hanscanonico/life_simulator">GitHub</a>
+      </div>
+    </footer>
   </body>
 </html>

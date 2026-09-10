@@ -9,6 +9,15 @@ Rails.application.routes.draw do
   # get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
   # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
 
+  resources :experiments, only: %i[index show]
+  resources :runs, only: :show
+  resources :snapshots, only: [] do
+    get :png, on: :member
+  end
+
+  get "lab" => "lab#show", as: :lab
+  get "lab/status" => "lab#status", as: :lab_status
+
   namespace :api do
     resources :runs, only: [] do
       post :claim, on: :collection
