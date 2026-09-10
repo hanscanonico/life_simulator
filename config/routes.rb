@@ -10,6 +10,7 @@ Rails.application.routes.draw do
   # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
 
   resources :experiments, only: %i[index show]
+  resources :findings, only: %i[index show]
   resources :runs, only: :show
   resources :snapshots, only: [] do
     get :png, on: :member
