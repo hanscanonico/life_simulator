@@ -10,6 +10,7 @@ module Runs
       "top_share" => "Share of the most common tape",
       "replicator_count" => "Replicator count",
       "op_density" => "Instruction density",
+      "entropy_bits" => "Entropy (bits)",
       "copy_rate" => "Copy rate"
     }.freeze
 
@@ -26,6 +27,14 @@ module Runs
         Charts::LineChart.new(points: points_for(metric), title: title, x_label: "Epoch", y_label: title,
                               marker: run.transition_epoch)
       end
+    end
+
+    def charts_empty? = charts.all?(&:empty?)
+
+    def transition_label
+      return ActiveSupport::NumberHelper.number_to_delimited(run.transition_epoch) if run.transition_epoch
+
+      run.terminal? ? "no emergence" : "no emergence yet"
     end
 
     def snapshots = @snapshots ||= run.snapshots.where.not(png: nil).order(:epoch).select(:id, :epoch, :updated_at)

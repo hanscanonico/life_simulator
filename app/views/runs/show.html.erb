@@ -8,13 +8,17 @@
 </p>
 
 <dl class="facts">
-  <dt>Status</dt><dd><%= @show.run.status %></dd>
+  <dt>Status</dt><dd><span class="badge"><%= @show.run.status %></span></dd>
   <dt>Progress</dt>
   <dd><%= number_with_delimiter @show.run.epochs_done %> / <%= number_with_delimiter @show.run.epochs %> epochs
     (<%= @show.progress %>%)</dd>
   <dt>Transition epoch</dt>
-  <dd><%= @show.run.transition_epoch ? number_with_delimiter(@show.run.transition_epoch) : "no emergence" %></dd>
-  <dt>Runner</dt><dd><%= @show.run.runner_id || "—" %></dd>
+  <dd><%= @show.transition_label %></dd>
+  <dt>Runner</dt>
+  <dd>
+    <%= @show.run.runner_id || "—" %><% if !@show.run.terminal? && @show.run.heartbeat_at.present? %>,
+      last heartbeat <%= time_ago_in_words @show.run.heartbeat_at %> ago<% end %>
+  </dd>
 </dl>
 
 <% if @show.run.error.present? %>
@@ -22,11 +26,15 @@
 <% end %>
 
 <h2>Metrics</h2>
-<div class="chart-grid-2">
-  <% @show.charts.each do |chart| %>
-    <%= render chart %>
-  <% end %>
-</div>
+<% if @show.charts_empty? %>
+  <p class="text-muted">This run has not reported a sample yet.</p>
+<% else %>
+  <div class="chart-grid-2">
+    <% @show.charts.each do |chart| %>
+      <%= render chart %>
+    <% end %>
+  </div>
+<% end %>
 
 <h2>Snapshots</h2>
 <% if @show.snapshots.any? %>
