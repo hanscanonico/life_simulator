@@ -163,7 +163,7 @@ impl World {
     }
 
     /// One epoch of the soup, and — on the epochs a sample will read — the `copy_rate`
-    /// of those interactions. Counting costs one extra `2 × stride` copy and two
+    /// of those interactions. Counting costs one extra `2 × stride` copy and at most three
     /// comparisons per interaction, so it is off on every other epoch.
     fn step_soup(&mut self, rng: &mut Rng) {
         let stride = self.params.stride();
@@ -190,8 +190,11 @@ impl World {
             bff::run(&mut pair, max_steps);
             if counting {
                 interactions += 1;
-                let copied =
-                    pair[stride..] == before[..stride] || pair[..stride] == before[stride..];
+                // Two halves that arrived identical cannot show a copy: they already end
+                // equal to each other's pre-execution tape whether or not anything ran, and
+                // counting them reads 1.0 on a frozen monoculture.
+                let copied = before[..stride] != before[stride..]
+                    && (pair[stride..] == before[..stride] || pair[..stride] == before[stride..]);
                 copies += u64::from(copied);
             }
             self.cells[a * stride..a * stride + stride].copy_from_slice(&pair[..stride]);
@@ -582,6 +585,26 @@ mod tests {
         world.step();
         world.step();
         assert!(world.metrics().copy_rate > 0.0, "epoch 3 is");
+    }
+
+    #[test]
+    fn a_frozen_monoculture_reports_no_copies() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let before = world.world_hash();
+        world.step();
+
+        assert_eq!(world.world_hash(), before, "nothing moved");
+        assert_eq!(
+            world.metrics().copy_rate,
+            0.0,
+            "identical halves are not a copy"
+        );
     }
 
     #[test]
