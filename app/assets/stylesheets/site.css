@@ -17,12 +17,15 @@
 
 .site-nav {
   display: flex;
-  gap: var(--space-5);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
 }
 
 .site-nav a {
   color: var(--ink-secondary);
   text-decoration: none;
+  /* A multi-word entry wraps mid-word on a phone otherwise. */
+  white-space: nowrap;
 }
 
 .site-nav a:hover {
@@ -96,6 +99,11 @@
 
 .facts dd {
   margin: 0;
+}
+
+/* Definitions long enough to wrap need air between the rows. */
+.facts-prose {
+  row-gap: var(--space-4);
 }
 
 .chart {
