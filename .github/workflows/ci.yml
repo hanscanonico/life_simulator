@@ -101,6 +101,25 @@ jobs:
         with:
           bundler-cache: true
 
+      # The home page's system spec drives the real engine in the browser, so the
+      # wasm module has to exist before rspec runs.
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+
+      - name: Install wasm-bindgen
+        uses: taiki-e/cache-cargo-install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.128
+
+      - name: Build the wasm module
+        run: make wasm
+
       - name: Run tests
         env:
           RAILS_ENV: test
@@ -157,6 +176,12 @@ jobs:
         run: cargo test --workspace
 
       # The browser's copy of the rules: it has to build for wasm too.
+      - name: Install wasm-bindgen
+        if: steps.engine.outputs.present == 'true'
+        uses: taiki-e/cache-cargo-install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.128
+
       - name: Build the wasm crate
         if: steps.engine.outputs.present == 'true'
         run: make wasm
