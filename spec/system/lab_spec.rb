@@ -18,6 +18,15 @@ RSpec.describe "The lab status frame", :js, type: :system do
     )
   end
 
+  def count_frame_reloads
+    page.execute_script(<<~JS)
+      window.frameReloads = 0
+      document.getElementById("lab_status").reload = () => { window.frameReloads += 1 }
+    JS
+  end
+
+  def frame_reloads = page.evaluate_script("window.frameReloads")
+
   def tab_hidden(hidden)
     page.execute_script(<<~JS)
       Object.defineProperty(document, "hidden", { configurable: true, get: () => #{hidden} })
@@ -67,6 +76,35 @@ RSpec.describe "The lab status frame", :js, type: :system do
 
       tab_hidden(false)
       expect(page).to have_text("priority 5")
+    end
+
+    it "refetches the moment the tab comes back, without waiting for the next tick" do
+      expect(page).to have_text("The queue is empty")
+      tab_hidden(true)
+      create(:run, priority: 5)
+
+      tab_hidden(false)
+
+      expect(page).to have_text("priority 5")
+    end
+  end
+
+  context "with the page navigated away from" do
+    it "stops polling the frame it left behind" do
+      expect(page).to have_text("The queue is empty")
+      count_frame_reloads
+      poll_every(100)
+      sleep 0.5
+      expect(frame_reloads).to be_positive
+
+      click_on "Experiments"
+      expect(page).to have_css("h1", text: "Experiments")
+      reloads_on_leaving = frame_reloads
+
+      tab_hidden(false)
+      sleep 0.5
+
+      expect(frame_reloads).to eq(reloads_on_leaving)
     end
   end
 end
