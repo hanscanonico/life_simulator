@@ -80,8 +80,9 @@ Rails.application.configure do
   config.active_record.attributes_for_inspect = [ :id ]
 
   # Enable DNS rebinding protection and other `Host` header attacks. "localhost"
-  # is the container health check and the host-local curl the deploy script runs.
-  config.hosts = [ "simulator-life.com", "www.simulator-life.com", "localhost" ]
+  # is the container health check and the host-local curl the deploy script runs;
+  # "app" is the compose service name the runner reaches the lab API through.
+  config.hosts = [ "simulator-life.com", "www.simulator-life.com", "localhost", "app" ]
 
   # Skip DNS rebinding protection for the default health check endpoint.
   config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
