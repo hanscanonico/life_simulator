@@ -12,4 +12,21 @@ namespace :lab do
 
     puts "#{experiment.name}: #{experiment.reload.runs_count} runs"
   end
+
+  desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"
+  task prune_snapshots: :environment do
+    deleted = Run.terminal.find_each.sum { |run| Runs::PruneSnapshotsService.call(run: run) }
+
+    puts "pruned #{deleted} snapshots"
+  end
+
+  desc "Print the size of the lab database and of its two heaviest tables"
+  task db_size: :environment do
+    connection = ActiveRecord::Base.connection
+    puts "database: #{connection.select_value('SELECT pg_size_pretty(pg_database_size(current_database()))')}"
+    %w[samples snapshots].each do |table|
+      size = connection.select_value("SELECT pg_size_pretty(pg_total_relation_size('#{table}'))")
+      puts "#{table}: #{size}"
+    end
+  end
 end
