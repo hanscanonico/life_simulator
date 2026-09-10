@@ -168,6 +168,7 @@ impl World {
     fn step_soup(&mut self, rng: &mut Rng) {
         let stride = self.params.stride();
         let max_steps = self.params.max_steps;
+        let ops = self.params.op_set();
         let counting = self.counts_copies();
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
@@ -187,7 +188,7 @@ impl World {
             if counting {
                 before.copy_from_slice(&pair);
             }
-            bff::run(&mut pair, max_steps);
+            bff::run_with(&mut pair, max_steps, ops);
             if counting {
                 interactions += 1;
                 // Two halves that arrived identical cannot show a copy: they already end
@@ -312,10 +313,13 @@ impl World {
             return 0;
         }
         let mut rng = rng::seeded(self.seed, STREAM_REPLICATOR, self.epoch);
+        let ops = self.params.op_set();
         ranked
             .iter()
             .take(self.params.top_k as usize)
-            .filter(|(tape, _)| replicator::is_replicator(tape, self.params.max_steps, &mut rng))
+            .filter(|(tape, _)| {
+                replicator::is_replicator(tape, self.params.max_steps, ops, &mut rng)
+            })
             .map(|(_, count)| *count)
             .sum()
     }
@@ -336,6 +340,8 @@ mod tests {
     /// `Params::default()` at 32×32, seed 42, after 50 epochs.
     const PINNED_SOUP_HASH: u64 = 0xd25f_8c16_3d9e_2dd9;
     const PINNED_LIFE_HASH: u64 = 0x200a_f822_08b5_96b9;
+    /// The same run with `,` ablated (DESIGN §1.3, sweep 5).
+    const PINNED_ABLATED_SOUP_HASH: u64 = 0xb115_dbaa_f8d8_9bec;
 
     fn soup(width: u32, height: u32) -> Params {
         Params {
@@ -435,6 +441,20 @@ mod tests {
             world.step();
         }
         assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
+    }
+
+    #[test]
+    fn pinned_determinism_of_a_soup_without_the_copy_to_head0_op() {
+        let params = Params {
+            ops: "<>{}+-.[]".to_string(),
+            ..soup(32, 32)
+        };
+        let mut world = World::new(&params, 42).unwrap();
+        for _ in 0..50 {
+            world.step();
+        }
+        assert_eq!(world.world_hash(), PINNED_ABLATED_SOUP_HASH);
+        assert_ne!(world.world_hash(), PINNED_SOUP_HASH);
     }
 
     #[test]

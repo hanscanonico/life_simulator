@@ -2,8 +2,16 @@
 
 # Namespace for lab-wide constants shared by the sweep tasks and the runner API.
 module Lab
+  # The mutation rate of run 41, the first run of the mutation-rate sweep to show
+  # emergence: the later sweeps hold the rate there so their arms are comparable to it.
+  EMERGENT_MUTATION_RATE = 2.0**-13
+
+  # The instruction sets of DESIGN §1.3's ablation sweep: the whole BFF set, then one arm
+  # per family of ops removed. A byte whose op is not enabled is a no-op in the engine.
+  FULL_INSTRUCTION_SET = "<>{}+-.,[]"
+
   # The sweeps of DESIGN.md §1.3, as data: `rake lab:sweep[mutation_rate]` turns one entry
-  # into an Experiment and its runs. Sweeps 4 and 5 land with the experiments they need.
+  # into an Experiment and its runs.
   SWEEPS = {
     "mutation_rate" => {
       name: "Mutation rate",
@@ -35,6 +43,39 @@ module Lab
       # Radius 0 is the engine's well-mixed neighbourhood — a partner drawn uniformly
       # from the whole world: the infinity arm of DESIGN §1.3's {1, 2, 4, infinity}.
       param_grid: { "radius" => [1, 2, 4, 0], "width" => [128], "height" => [128] },
+      seeds: (1..10).to_a,
+      epochs: 20_000
+    },
+    "max_steps" => {
+      name: "Max steps per interaction",
+      description: "How much computation does one interaction need before replicators " \
+                   "can appear? Too small a budget cannot finish a copy.",
+      param_grid: {
+        "max_steps" => [2**8, 2**10, 2**13, 2**16],
+        "width" => [128],
+        "height" => [128],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE]
+      },
+      seeds: (1..10).to_a,
+      epochs: 20_000
+    },
+    "ops" => {
+      name: "Instruction set ablations",
+      description: "Which of the ten BFF instructions is abiogenesis actually made of? " \
+                   "Each arm removes one family of ops and keeps everything else fixed.",
+      param_grid: {
+        "ops" => [
+          FULL_INSTRUCTION_SET,
+          "<>{}+-.[]",  # no `,`: nothing can read a byte back under head0
+          "<>{}+-,[]",  # no `.`: nothing can write a byte out under head1
+          "<>{}+-.,",   # no loops
+          "<>+-.,[]",   # no head1 moves
+          "<>{}.,[]"    # no arithmetic
+        ],
+        "width" => [128],
+        "height" => [128],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE]
+      },
       seeds: (1..10).to_a,
       epochs: 20_000
     }

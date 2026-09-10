@@ -51,6 +51,24 @@
       "type": "integer"
     },
     {
+      "default": "<>{}+-.,[]",
+      "doc": "The BFF instructions this run executes, as a string of distinct op bytes. A byte whose op is left out is a no-op, like any non-instruction byte.",
+      "name": "ops",
+      "type": "subset",
+      "values": [
+        "<",
+        ">",
+        "{",
+        "}",
+        "+",
+        "-",
+        ".",
+        ",",
+        "[",
+        "]"
+      ]
+    },
+    {
       "default": 0.000244140625,
       "doc": "Probability a byte is replaced by a random byte, per byte per epoch. Applies to every substrate: the ordinary Game of Life needs 0.",
       "max": 1.0,

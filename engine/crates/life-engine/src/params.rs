@@ -1,6 +1,7 @@
 //! Simulation parameters: names, defaults, validated ranges and the JSON schema Rails
 //! reads, all in one place (`docs/DESIGN.md` §3, "parameters are data").
 
+use crate::bff::OpSet;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -30,6 +31,9 @@ pub struct Params {
     /// Moore-neighbourhood radius; `0` means well-mixed (any cell in the world).
     pub radius: u32,
     pub max_steps: u32,
+    /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
+    /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
+    pub ops: String,
     /// Probability that a given byte is replaced by a random one, per byte per epoch.
     pub mutation_rate: f64,
     pub init: Init,
@@ -47,6 +51,7 @@ impl Default for Params {
             tape_len: 64,
             radius: 1,
             max_steps: 8192,
+            ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             init: Init::Random,
             sample_every: 10,
@@ -58,8 +63,16 @@ impl Default for Params {
 
 enum Kind {
     Choice(&'static [&'static str]),
-    Integer { min: f64, max: f64 },
-    Float { min: f64, max: f64 },
+    /// A string naming a subset of these values, each at most once, at least one.
+    Subset(&'static [&'static str]),
+    Integer {
+        min: f64,
+        max: f64,
+    },
+    Float {
+        min: f64,
+        max: f64,
+    },
 }
 
 struct Field {
@@ -118,6 +131,12 @@ const FIELDS: &[Field] = &[
         doc: "Instruction budget for one interaction between two tapes.",
     },
     Field {
+        name: "ops",
+        kind: Kind::Subset(&["<", ">", "{", "}", "+", "-", ".", ",", "[", "]"]),
+        doc: "The BFF instructions this run executes, as a string of distinct op bytes. \
+              A byte whose op is left out is a no-op, like any non-instruction byte.",
+    },
+    Field {
         name: "mutation_rate",
         kind: Kind::Float { min: 0.0, max: 1.0 },
         doc: "Probability a byte is replaced by a random byte, per byte per epoch. \
@@ -172,6 +191,11 @@ pub enum ParamError {
         width: u32,
         height: u32,
     },
+    /// `ops` is not a legal instruction set; `reason` says which rule it broke.
+    InvalidOps {
+        ops: String,
+        reason: &'static str,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -194,6 +218,7 @@ impl fmt::Display for ParamError {
                  the largest legal radius is {}",
                 (width.min(height) - 1) / 2
             ),
+            Self::InvalidOps { ops, reason } => write!(f, "ops is {ops:?}: {reason}"),
         }
     }
 }
@@ -208,7 +233,7 @@ impl Params {
         })?;
         for field in FIELDS {
             let (min, max) = match field.kind {
-                Kind::Choice(_) => continue,
+                Kind::Choice(_) | Kind::Subset(_) => continue,
                 Kind::Integer { min, max } | Kind::Float { min, max } => (min, max),
             };
             let n = value[field.name]
@@ -223,6 +248,10 @@ impl Params {
                 });
             }
         }
+        OpSet::parse(&self.ops).map_err(|reason| ParamError::InvalidOps {
+            ops: self.ops.clone(),
+            reason,
+        })?;
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
             return Err(ParamError::RadiusTooWide {
                 radius: self.radius,
@@ -250,6 +279,10 @@ impl Params {
                         entry["type"] = serde_json::json!("enum");
                         entry["values"] = serde_json::json!(values);
                     }
+                    Kind::Subset(values) => {
+                        entry["type"] = serde_json::json!("subset");
+                        entry["values"] = serde_json::json!(values);
+                    }
                     Kind::Integer { min, max } => {
                         entry["type"] = serde_json::json!("integer");
                         entry["min"] = serde_json::json!(min as i64);
@@ -266,6 +299,12 @@ impl Params {
             .collect();
         serde_json::to_string_pretty(&serde_json::json!({ "fields": fields }))
             .expect("schema always serialises")
+    }
+
+    /// The instruction set this run executes. Only call on validated params: an `ops`
+    /// string that does not parse falls back to the whole instruction set.
+    pub fn op_set(&self) -> OpSet {
+        OpSet::parse(&self.ops).unwrap_or(OpSet::ALL)
     }
 
     /// Bytes of state one cell holds: a whole tape in the soup, one byte in life.
@@ -335,7 +374,7 @@ mod tests {
         assert_eq!(
             Params {
                 radius: 3,
-                ..too_wide
+                ..too_wide.clone()
             }
             .validate(),
             Ok(())
@@ -365,6 +404,33 @@ mod tests {
     }
 
     #[test]
+    fn rejects_an_instruction_set_that_is_not_a_subset_named_once_each() {
+        for ops in ["", "++", "+a", "<>{}+-.,[]<"] {
+            let params = Params {
+                ops: ops.to_string(),
+                ..Params::default()
+            };
+            assert!(
+                matches!(params.validate(), Err(ParamError::InvalidOps { .. })),
+                "{ops:?}"
+            );
+        }
+
+        let ablated = Params {
+            ops: "<>{}+-.".to_string(),
+            ..Params::default()
+        };
+        assert_eq!(ablated.validate(), Ok(()));
+        assert!(!ablated.op_set().enables(b','));
+    }
+
+    #[test]
+    fn the_default_instruction_set_is_the_whole_one() {
+        assert_eq!(Params::default().ops, "<>{}+-.,[]");
+        assert_eq!(Params::default().op_set(), OpSet::ALL);
+    }
+
+    #[test]
     fn rejects_non_finite_mutation_rate() {
         let params = Params {
             mutation_rate: f64::NAN,
@@ -382,13 +448,18 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 11);
+        assert_eq!(fields.len(), 12);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
         assert_eq!(width["default"], 128);
         assert_eq!(width["min"], 4);
         assert_eq!(width["max"], 1024);
+
+        let ops = fields.iter().find(|f| f["name"] == "ops").unwrap();
+        assert_eq!(ops["type"], "subset");
+        assert_eq!(ops["default"], "<>{}+-.,[]");
+        assert_eq!(ops["values"].as_array().unwrap().len(), 10);
 
         let substrate = fields.iter().find(|f| f["name"] == "substrate").unwrap();
         assert_eq!(substrate["type"], "enum");

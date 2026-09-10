@@ -2,18 +2,18 @@
 //! `T ++ R` for a random tape `R` leaves `T` in the second half for at least 3 of 4
 //! trials.
 
-use crate::bff;
+use crate::bff::{self, OpSet};
 use crate::rng::{self, Rng};
 
 pub const TRIALS: u32 = 4;
 pub const TRIALS_TO_PASS: u32 = 3;
 
-pub fn is_replicator(tape: &[u8], max_steps: u32, rng: &mut Rng) -> bool {
-    trials_passed(tape, max_steps, rng) >= TRIALS_TO_PASS
+pub fn is_replicator(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> bool {
+    trials_passed(tape, max_steps, ops, rng) >= TRIALS_TO_PASS
 }
 
 /// How many of the `TRIALS` trials left `tape` in the second half.
-fn trials_passed(tape: &[u8], max_steps: u32, rng: &mut Rng) -> u32 {
+fn trials_passed(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> u32 {
     let len = tape.len();
     let mut buf = vec![0u8; len * 2];
     let mut passes = 0;
@@ -22,7 +22,7 @@ fn trials_passed(tape: &[u8], max_steps: u32, rng: &mut Rng) -> u32 {
         for byte in &mut buf[len..] {
             *byte = rng::byte(rng);
         }
-        bff::run(&mut buf, max_steps);
+        bff::run_with(&mut buf, max_steps, ops);
         if &buf[len..] == tape {
             passes += 1;
         }
@@ -63,7 +63,7 @@ mod tests {
     fn the_handwritten_tape_replicates() {
         let tape = handwritten_replicator();
         let mut rng = rng::seeded(7, 0, 0);
-        assert!(is_replicator(&tape, 8192, &mut rng));
+        assert!(is_replicator(&tape, 8192, OpSet::ALL, &mut rng));
     }
 
     #[test]
@@ -115,23 +115,39 @@ mod tests {
     fn two_passing_trials_of_four_are_not_enough() {
         let tape = parity_gated_replicator();
 
-        assert_eq!(trials_passed(&tape, 8192, &mut rng::seeded(0, 0, 0)), 3);
-        assert!(is_replicator(&tape, 8192, &mut rng::seeded(0, 0, 0)));
+        assert_eq!(
+            trials_passed(&tape, 8192, OpSet::ALL, &mut rng::seeded(0, 0, 0)),
+            3
+        );
+        assert!(is_replicator(
+            &tape,
+            8192,
+            OpSet::ALL,
+            &mut rng::seeded(0, 0, 0)
+        ));
 
-        assert_eq!(trials_passed(&tape, 8192, &mut rng::seeded(2, 0, 0)), 2);
-        assert!(!is_replicator(&tape, 8192, &mut rng::seeded(2, 0, 0)));
+        assert_eq!(
+            trials_passed(&tape, 8192, OpSet::ALL, &mut rng::seeded(2, 0, 0)),
+            2
+        );
+        assert!(!is_replicator(
+            &tape,
+            8192,
+            OpSet::ALL,
+            &mut rng::seeded(2, 0, 0)
+        ));
     }
 
     #[test]
     fn a_random_tape_does_not_replicate() {
         let mut rng = rng::seeded(11, 0, 0);
         let tape: Vec<u8> = (0..256).map(|_| rng::byte(&mut rng)).collect();
-        assert!(!is_replicator(&tape, 8192, &mut rng));
+        assert!(!is_replicator(&tape, 8192, OpSet::ALL, &mut rng));
     }
 
     #[test]
     fn a_tape_of_no_ops_does_not_replicate() {
         let mut rng = rng::seeded(13, 0, 0);
-        assert!(!is_replicator(&[b'a'; 64], 8192, &mut rng));
+        assert!(!is_replicator(&[b'a'; 64], 8192, OpSet::ALL, &mut rng));
     }
 }
