@@ -1,0 +1,113 @@
+//! Criterion benches for the four hot loops of the engine: the BFF interpreter, one
+//! soup epoch, one metrics sample and one Life epoch. Every input comes from a fixed
+//! seed, so two runs on the same machine measure the same work.
+//!
+//! Baselines, criterion medians on an Apple M1 (two runs agreeing within 10%). They
+//! move with the parameter defaults — `max_steps` above all — so a machine-to-machine
+//! comparison of the absolute numbers means little; criterion's own report against the
+//! previous local run is the regression signal.
+//!
+//! | bench                          | median   |
+//! |--------------------------------|----------|
+//! | bff/random_128                 | 82 ns    |
+//! | bff/handwritten_replicator_512 | 4.9 µs   |
+//! | world_step_soup/64x64          | 3.8 ms   |
+//! | world_metrics_soup/64x64       | 6.9 ms   |
+//! | world_step_life/512x512        | 746 µs   |
+
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use life_engine::params::{Init, Params, Substrate};
+use life_engine::{bff, replicator, rng, World};
+
+const MAX_STEPS: u32 = 8192;
+const SEED: u64 = 42;
+
+fn random_bytes(seed: u64, len: usize) -> Vec<u8> {
+    let mut rng = rng::seeded(seed, 0, 0);
+    (0..len).map(|_| rng::byte(&mut rng)).collect()
+}
+
+fn soup_world() -> World {
+    let params = Params {
+        width: 64,
+        height: 64,
+        sample_every: 1,
+        ..Params::default()
+    };
+    World::new(&params, SEED).expect("valid soup params")
+}
+
+fn life_world() -> World {
+    let params = Params {
+        substrate: Substrate::Life,
+        width: 512,
+        height: 512,
+        mutation_rate: 0.0,
+        init: Init::Random,
+        ..Params::default()
+    };
+    World::new(&params, SEED).expect("valid life params")
+}
+
+fn bff_run(c: &mut Criterion) {
+    let mut group = c.benchmark_group("bff");
+
+    let random_pair = random_bytes(1, 128);
+    group.bench_function("random_128", |b| {
+        b.iter_batched_ref(
+            || random_pair.clone(),
+            |tape| bff::run(tape, MAX_STEPS),
+            BatchSize::SmallInput,
+        )
+    });
+
+    let mut replicator_pair = replicator::handwritten_replicator();
+    replicator_pair.extend(random_bytes(2, replicator_pair.len()));
+    group.bench_function("handwritten_replicator_512", |b| {
+        b.iter_batched_ref(
+            || replicator_pair.clone(),
+            |tape| bff::run(tape, MAX_STEPS),
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.finish();
+}
+
+fn world_step_soup(c: &mut Criterion) {
+    let world = soup_world();
+    let mut group = c.benchmark_group("world_step_soup");
+    group.sample_size(20);
+    group.bench_function("64x64", |b| {
+        b.iter_batched_ref(|| world.clone(), World::step, BatchSize::LargeInput)
+    });
+    group.finish();
+}
+
+fn world_metrics_soup(c: &mut Criterion) {
+    let world = soup_world();
+    let mut group = c.benchmark_group("world_metrics_soup");
+    group.sample_size(20);
+    group.bench_function("64x64", |b| {
+        b.iter_batched_ref(|| world.clone(), World::metrics, BatchSize::LargeInput)
+    });
+    group.finish();
+}
+
+fn world_step_life(c: &mut Criterion) {
+    let world = life_world();
+    let mut group = c.benchmark_group("world_step_life");
+    group.bench_function("512x512", |b| {
+        b.iter_batched_ref(|| world.clone(), World::step, BatchSize::LargeInput)
+    });
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bff_run,
+    world_step_soup,
+    world_metrics_soup,
+    world_step_life
+);
+criterion_main!(benches);
