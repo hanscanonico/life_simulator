@@ -5,8 +5,43 @@ cd "$(dirname "$0")"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 mkdir -p "$BACKUP_DIR"
 STAMP=$(date +%Y-%m-%d_%H%M)
-DUMP="$BACKUP_DIR/life_simulator_$STAMP.dump"
-docker compose -f docker-compose.yml exec -T db \
-  pg_dump -U life_simulator --format=custom life_simulator_production > "$DUMP"
+compose="docker compose -f docker-compose.yml"
+
+# Dumps land on .part and are only named once pg_restore has read their table
+# of contents, so a failed or truncated dump never displaces a good backup.
+# pg_restore runs inside the db container to keep postgresql-client off the host.
+write_dump() {
+  local target=$1
+  shift
+  if ! $compose exec -T db \
+    pg_dump -U life_simulator --format=custom "$@" life_simulator_production >"$target.part"; then
+    echo "pg_dump failed writing $target" >&2
+    rm -f "$target.part"
+    return 1
+  fi
+  if ! $compose exec -T db pg_restore -l >/dev/null <"$target.part"; then
+    echo "$target.part is not a readable dump" >&2
+    rm -f "$target.part"
+    return 1
+  fi
+  mv "$target.part" "$target"
+}
+
+full="$BACKUP_DIR/life_simulator_$STAMP.dump"
+# snapshots are 8.3 GB of an 8.4 GB database, so a schema-and-metadata restore
+# is only affordable from a dump that leaves their rows out.
+meta="$BACKUP_DIR/life_simulator_meta_$STAMP.dump"
+
+if ! write_dump "$full"; then
+  echo "Backup aborted; the existing backups are untouched." >&2
+  exit 1
+fi
+if ! write_dump "$meta" --exclude-table-data=public.snapshots; then
+  echo "Metadata backup failed; $full is kept and nothing was rotated." >&2
+  exit 1
+fi
+
 find "$BACKUP_DIR" -name 'life_simulator_*.dump' -mtime +14 -delete
-echo "Backup written: $DUMP ($(du -h "$DUMP" | cut -f1))"
+
+echo "Backup written: $full ($(du -h "$full" | cut -f1))"
+echo "Metadata backup written: $meta ($(du -h "$meta" | cut -f1))"

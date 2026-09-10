@@ -2,10 +2,19 @@
 # directory ("deploy"), which every other stack on the mini-pc could also claim.
 name: life-simulator
 
+# Unbounded json-file logs are the mini-pc's usual way of filling its disk: the
+# runner alone prints a line per claim, forever.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
     image: postgres:17
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: life_simulator
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in deploy/.env}
@@ -30,6 +39,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     restart: unless-stopped
+    logging: *logging
     environment:
       RAILS_ENV: production
       # Thruster's listening port. It overwrites PORT for Puma itself, so this
@@ -58,6 +68,7 @@ services:
     image: life-simulator-app:latest
     command: runner lab --api http://app:8080 --parallelism ${RUNNER_PARALLELISM:-12}
     restart: unless-stopped
+    logging: *logging
     environment:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
     depends_on:
@@ -76,6 +87,7 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
+    logging: *logging
     # `:-` rather than `:?`: compose interpolates the whole file, so a required
     # token would refuse `up -d app` too. A missing one fails here, visibly.
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
