@@ -12,9 +12,12 @@
   <dd><%= @show.transition_rate ? number_to_percentage(@show.transition_rate * 100, precision: 0) : "—" %></dd>
 </dl>
 
-<% if @show.diagrams.any? %>
-  <% @show.diagrams.each do |diagram| %>
-    <%= render diagram %>
+<% if @show.axes.any? %>
+  <% @show.arms.each do |axis, arms| %>
+    <%= render @show.diagram_for(axis) %>
+    <% if @show.runs_done.positive? %>
+      <%= render "experiments/arms_table", axis: axis, arms: arms %>
+    <% end %>
   <% end %>
 <% else %>
   <p class="text-muted">This experiment sweeps no parameter, so it has no phase diagram.</p>

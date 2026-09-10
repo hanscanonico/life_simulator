@@ -1,0 +1,34 @@
+<%# The per-arm numbers behind one phase diagram: how often a self-replicator emerged at
+    each grid value, and how quickly. `arms` is a list of Experiments::ArmSummary. %>
+<div class="table-scroll mt-4">
+  <table class="data-table">
+    <caption class="text-sm text-muted text-left">Arms of <%= axis.name.to_s.humanize.downcase %></caption>
+    <thead>
+      <tr>
+        <th><%= axis.name.to_s.humanize %></th>
+        <th class="numeric">n</th>
+        <th class="numeric">Transitioned</th>
+        <th class="numeric">Median epoch</th>
+        <th class="numeric">IQR</th>
+        <th class="numeric">Censored</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% arms.each do |arm| %>
+        <tr>
+          <td class="mono"><%= arm.label %></td>
+          <td class="numeric"><%= arm.runs_finished %></td>
+          <td class="numeric">
+            <span class="mono"><%= arm.transitioned %>/<%= arm.runs_finished %></span>
+            <span class="text-muted">
+              <%= arm.transition_fraction ? number_to_percentage(arm.transition_fraction * 100, precision: 0) : "—" %>
+            </span>
+          </td>
+          <td class="numeric mono"><%= epoch_value(arm.median_epoch) %></td>
+          <td class="numeric mono"><%= epoch_value(arm.q1_epoch, arm.q3_epoch) %></td>
+          <td class="numeric"><%= arm.censored %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

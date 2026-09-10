@@ -84,6 +84,50 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  describe "#arms" do
+    let(:experiment) do
+      create(:experiment, epochs: 20_000, param_grid: { "radius" => [1, 2] })
+    end
+
+    it "is keyed by the axis the arms belong to" do
+      expect(page.arms.keys.map(&:name)).to eq(["radius"])
+    end
+
+    context "with no finished run" do
+      it "summarises every arm as empty" do
+        create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+        expect(page.arms.values.sole.map(&:runs_finished)).to eq([0, 0])
+      end
+    end
+
+    context "with three transitions in one arm and two censored runs in the other" do
+      before do
+        finished_run(radius: 1, transition_epoch: 800)
+        finished_run(radius: 1, transition_epoch: 100)
+        finished_run(radius: 1, transition_epoch: 300)
+        finished_run(radius: 2)
+        finished_run(radius: 2)
+      end
+
+      it "summarises the arm that transitioned, quartiles interpolated" do
+        arm = page.arms.values.sole.first
+
+        expect(arm).to have_attributes(label: "1", runs_finished: 3, transitioned: 3, censored: 0,
+                                       transition_fraction: 1.0, median_epoch: 300.0,
+                                       q1_epoch: 200.0, q3_epoch: 550.0)
+      end
+
+      it "has no epoch for the arm in which nothing emerged" do
+        arm = page.arms.values.sole.last
+
+        expect(arm).to have_attributes(label: "2", runs_finished: 2, transitioned: 0, censored: 2,
+                                       transition_fraction: 0.0, median_epoch: nil,
+                                       q1_epoch: nil, q3_epoch: nil)
+      end
+    end
+  end
+
   describe "#runs" do
     it "paginates the runs of the experiment" do
       run = finished_run(radius: 1, transition_epoch: 100)
