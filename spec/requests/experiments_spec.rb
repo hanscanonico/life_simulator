@@ -48,6 +48,27 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to include("Priority", %(<td class="numeric">5</td>))
     end
 
+    it "summarises every arm of the sweep" do
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
+                   params: Lab::Schema.run_defaults.merge("radius" => 2))
+      create(:run, experiment: experiment, status: "finished",
+                   params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include("Arms of radius", "Median epoch", "IQR", "1/2")
+    end
+
+    context "with a sweep no run of which has finished" do
+      it "shows no arm table" do
+        create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+        get experiment_path(experiment)
+
+        expect(response.body).not_to include("Arms of radius")
+      end
+    end
+
     context "with runs that never transitioned" do
       it "says so on the chart" do
         create(:run, experiment: experiment, status: "finished",

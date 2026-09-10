@@ -20,12 +20,12 @@ module Experiments
       end
     end
 
-    def diagrams
-      @diagrams ||= axes.map do |axis|
-        Charts::PhaseDiagram.new(groups: groups_for(axis), title: axis.title, x_label: axis.name.to_s.humanize,
-                                 epochs: experiment.epochs, log_x: axis.log?)
-      end
-    end
+    def diagrams = diagrams_by_axis.values
+
+    def diagram_for(axis) = diagrams_by_axis.fetch(axis)
+
+    # One summary per grid value, per axis: the numbers the phase diagram draws.
+    def arms = @arms ||= axes.index_with { |axis| arms_for(axis) }
 
     def varying_keys = @varying_keys ||= axes.flat_map(&:param_keys).uniq
 
@@ -45,6 +45,22 @@ module Experiments
 
     private
 
+    def diagrams_by_axis
+      @diagrams_by_axis ||= axes.index_with do |axis|
+        Charts::PhaseDiagram.new(groups: groups_for(axis), title: axis.title, x_label: axis.name.to_s.humanize,
+                                 epochs: experiment.epochs, log_x: axis.log?)
+      end
+    end
+
+    def arms_for(axis)
+      axis.values.map do |value|
+        runs = finished_runs.select { |run| axis.matches?(run.params, value) }
+        epochs, censored = runs.partition { |run| run.transition_epoch.present? }
+        ArmSummary.new(label: axis.label_of(value), transition_epochs: epochs.map(&:transition_epoch),
+                       censored: censored.size)
+      end
+    end
+
     def page = @page ||= @paginate.call(experiment.runs.order(:id))
 
     def finished_runs
@@ -52,11 +68,9 @@ module Experiments
     end
 
     def groups_for(axis)
-      axis.values.map do |value|
-        runs = finished_runs.select { |run| axis.matches?(run.params, value) }
-        epochs, censored = runs.partition { |run| run.transition_epoch.present? }
-        Charts::PhaseDiagram::Group.new(value: axis.position_of(value), label: axis.label_of(value),
-                                        transition_epochs: epochs.map(&:transition_epoch), censored: censored.size)
+      axis.values.zip(arms[axis]).map do |value, arm|
+        Charts::PhaseDiagram::Group.new(value: axis.position_of(value), label: arm.label,
+                                        transition_epochs: arm.transition_epochs, censored: arm.censored)
       end
     end
   end
