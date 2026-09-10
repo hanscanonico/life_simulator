@@ -105,3 +105,22 @@ fn read_params(source: &str) -> Result<Params> {
     params.validate().map_err(anyhow::Error::msg)?;
     Ok(params)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Rails reads the schema from `config/engine_schema.json`, a copy of this command's
+    /// output; `make schema` refreshes it and this test is what stops it drifting.
+    #[test]
+    fn the_schema_rails_reads_is_the_engines_own() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../config/engine_schema.json");
+        let committed = std::fs::read_to_string(&path).expect("the committed schema exists");
+        assert_eq!(
+            committed.trim_end(),
+            Params::schema_json().trim_end(),
+            "config/engine_schema.json is stale — run `make schema`"
+        );
+    }
+}
