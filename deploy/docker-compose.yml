@@ -52,6 +52,27 @@ services:
       retries: 5
       start_period: 40s
 
+  runner:
+    # The same image as the app — one build, two commands — so a deploy always
+    # runs the engine that matches the schema and the API it talks to.
+    image: life-simulator-app:latest
+    command: runner lab --api http://app:8080 --parallelism ${RUNNER_PARALLELISM:-12}
+    restart: unless-stopped
+    environment:
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+    depends_on:
+      app:
+        condition: service_healthy
+    # SIGTERM makes the runner flush its samples and heartbeat before it exits;
+    # the app then releases the run and the next claim resumes it.
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          # 14 of the 16 cores: the site keeps two whatever the soup is doing.
+          cpus: "14"
+          memory: 6g
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped

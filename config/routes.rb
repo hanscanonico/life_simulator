@@ -26,6 +26,7 @@ Rails.application.routes.draw do
         post :samples
         post :snapshots
         post :finish
+        get "snapshots/latest", action: :latest_snapshot, as: :latest_snapshot
       end
     end
   end
