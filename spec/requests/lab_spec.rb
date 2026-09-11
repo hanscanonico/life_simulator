@@ -78,7 +78,21 @@ RSpec.describe "Lab", type: :request do
 
         get lab_status_path
 
-        expect(response.body).to include("Worth a look", "No progress for", "Run ##{run.id}")
+        expect(response.body.squish).to include("Worth a look", "no progress for", "Run ##{run.id}")
+      end
+    end
+
+    context "with a running run whose heartbeat has gone stale" do
+      it "keeps it worth a look and explains the count it inflates" do
+        run = create(:run, :stale, status: "running", runner_id: "bench-7",
+                                   heartbeat_at: 30.minutes.ago)
+
+        get lab_status_path
+
+        body = response.body.squish
+        expect(body).to include("Worth a look", "Run ##{run.id}",
+                                "heartbeat stale for 30 minutes (will release on the next claim)")
+        expect(body).to include("1 running, 1 with a stale heartbeat")
       end
     end
 

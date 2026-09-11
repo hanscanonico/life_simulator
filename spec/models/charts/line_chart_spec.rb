@@ -23,6 +23,16 @@ RSpec.describe Charts::LineChart do
     end
   end
 
+  describe "#y_title_x" do
+    it "keeps the rotated y title inside the viewBox whatever the ticks measure" do
+      narrow = build([[0, 0.0], [100, 1.0]])
+      wide = build([[0, 0], [100, 16_384_000]])
+
+      expect(narrow.y_ticks.map(&:label)).not_to eq(wide.y_ticks.map(&:label))
+      expect([narrow.y_title_x, wide.y_title_x]).to all(be_between(0, narrow.plot_left))
+    end
+  end
+
   describe "#empty?" do
     context "with no points" do
       it "reports the chart as empty" do

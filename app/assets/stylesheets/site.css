@@ -68,6 +68,13 @@
   padding-inline: 0;
 }
 
+/* A heading linked to from another page (#glossary on /how-it-works) would otherwise land
+   flush against the top of the viewport, reading as a page that starts mid-section. */
+.site-main h2[id],
+.site-main h3[id] {
+  scroll-margin-top: var(--space-6);
+}
+
 .site-footer {
   border-top: 1px solid var(--line);
   padding: var(--space-5) 0;

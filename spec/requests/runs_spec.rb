@@ -111,13 +111,28 @@ RSpec.describe "Runs", type: :request do
 
       it "reads the rate and the time remaining off the samples' own clock" do
         recorded_at = Time.current
-        create(:sample, run: run, epoch: 100, created_at: recorded_at - 10.seconds)
-        create(:sample, run: run, epoch: 200, created_at: recorded_at)
+        create(:sample, run: run, epoch: 200, created_at: recorded_at - 80.seconds)
+        create(:sample, run: run, epoch: 1_000, created_at: recorded_at)
 
         get run_path(run)
 
         expect(response.body.squish).to include("measured from recorded samples", "10.0 epochs/s",
                                                 "Time remaining", "32 minutes")
+      end
+    end
+
+    context "with a run whose samples all arrived in one batch" do
+      let(:run) { create(:run, :claimed, epochs: 20_000, epochs_done: 1_000) }
+
+      it "dashes the rate rather than dividing by the batch's own width" do
+        recorded_at = Time.current
+        create(:sample, run: run, epoch: 100, created_at: recorded_at - 0.05.seconds)
+        create(:sample, run: run, epoch: 1_000, created_at: recorded_at)
+
+        get run_path(run)
+
+        expect(response.body.squish).to match(/Rate.*—.*Time remaining.*—/)
+        expect(response.body).not_to include("epochs/s")
       end
     end
 

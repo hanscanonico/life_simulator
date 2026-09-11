@@ -195,6 +195,53 @@ RSpec.describe Lab::StatusPage do
     end
   end
 
+  describe "#stale_heartbeat_runs" do
+    it "flags a claimed run whose runner stopped heartbeating" do
+      run = create(:run, :stale, status: "running", heartbeat_at: 30.minutes.ago)
+
+      expect(page.stale_heartbeat_runs.sole).to eq(run)
+      expect(page.stale_heartbeat_count).to eq(1)
+    end
+
+    context "with a run still inside the heartbeat window" do
+      it "leaves it to the runners table" do
+        create(:run, :claimed)
+
+        expect(page.stale_heartbeat_runs).to be_empty
+      end
+    end
+
+    context "with a run that was released" do
+      it "leaves it alone" do
+        create(:run, status: "pending", heartbeat_at: 30.minutes.ago)
+
+        expect(page.stale_heartbeat_runs).to be_empty
+      end
+    end
+  end
+
+  describe "#worth_a_look" do
+    # The run is off the runners table and out of the stall check — both of which only look
+    # inside the heartbeat window — while `counts_by_status` still calls it running.
+    it "lists a stale-heartbeat run the rest of the page cannot see" do
+      run = create(:run, :stale, status: "running", heartbeat_at: 30.minutes.ago)
+
+      expect(page.runners).to be_empty
+      expect(page.stalled_runs).to be_empty
+      expect(page.live_run_count).to eq(1)
+      expect(page.worth_a_look.sole).to have_attributes(run: run, reason: :stale_heartbeat,
+                                                        stale_heartbeat?: true)
+    end
+
+    it "reads the stalled runs before the stale-heartbeat ones" do
+      stalled = create(:run, :claimed, status: "running", started_at: 3.hours.ago)
+      silent = create(:run, :stale, status: "running", heartbeat_at: 30.minutes.ago)
+
+      expect(page.worth_a_look.map(&:run)).to eq([stalled, silent])
+      expect(page.worth_a_look.map(&:reason)).to eq(%i[no_progress stale_heartbeat])
+    end
+  end
+
   describe "#epochs_per_hour" do
     it "sums the epochs each run covered inside the window" do
       run = create(:run, :claimed)

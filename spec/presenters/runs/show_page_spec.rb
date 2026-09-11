@@ -114,8 +114,8 @@ RSpec.describe Runs::ShowPage do
   describe "#epochs_per_second" do
     it "is the epoch span over the wall-clock span of the samples" do
       recorded_at = Time.current
-      create(:sample, run: run, epoch: 100, created_at: recorded_at - 10.seconds)
-      create(:sample, run: run, epoch: 200, created_at: recorded_at)
+      create(:sample, run: run, epoch: 200, created_at: recorded_at - 80.seconds)
+      create(:sample, run: run, epoch: 1_000, created_at: recorded_at)
 
       expect(page.epochs_per_second).to eq(10.0)
     end
@@ -142,14 +142,22 @@ RSpec.describe Runs::ShowPage do
 
         expect(page.epochs_per_second).to be_nil
       end
+
+      it "refuses a span narrower than the batch that wrote it" do
+        recorded_at = Time.current
+        create(:sample, run: run, epoch: 100, created_at: recorded_at - 0.02.seconds)
+        create(:sample, run: run, epoch: 900, created_at: recorded_at)
+
+        expect(page.epochs_per_second).to be_nil
+      end
     end
   end
 
   describe "#eta" do
     it "is the remaining epochs at the measured rate" do
       recorded_at = Time.current
-      create(:sample, run: run, epoch: 100, created_at: recorded_at - 10.seconds)
-      create(:sample, run: run, epoch: 200, created_at: recorded_at)
+      create(:sample, run: run, epoch: 200, created_at: recorded_at - 80.seconds)
+      create(:sample, run: run, epoch: 1_000, created_at: recorded_at)
 
       expect(page.eta).to eq(75.seconds)
     end
@@ -165,8 +173,8 @@ RSpec.describe Runs::ShowPage do
 
       it "has no time left to report" do
         recorded_at = Time.current
-        create(:sample, run: run, epoch: 100, created_at: recorded_at - 10.seconds)
-        create(:sample, run: run, epoch: 200, created_at: recorded_at)
+        create(:sample, run: run, epoch: 200, created_at: recorded_at - 80.seconds)
+        create(:sample, run: run, epoch: 1_000, created_at: recorded_at)
 
         expect(page.eta).to be_nil
       end

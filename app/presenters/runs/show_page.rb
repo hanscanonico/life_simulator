@@ -15,6 +15,10 @@ module Runs
     }.freeze
 
     SAMPLE_CLOCK = "COUNT(*), MIN(epoch), MAX(epoch), MIN(created_at), MAX(created_at)"
+    # Samples arrive in batches of 50 (`http_sink::BATCH_SIZE`), so the rows of one batch
+    # share a wall-clock instant to within a few milliseconds. A span shorter than this is
+    # a batch's own width, not a measurement, and dividing by it reports megaepochs a second.
+    MIN_MEASURED_SPAN = 60
 
     def self.build(run:) = new(run: run)
 
@@ -53,7 +57,7 @@ module Runs
     # recorded sample. The finish `wall_seconds` covers one segment only — a resumed run
     # has several — and the samples are the one record of progress a release cannot rewrite.
     def epochs_per_second
-      return nil if sample_count < 2 || epoch_span.zero? || seconds_span <= 0
+      return nil if sample_count < 2 || epoch_span <= 0 || seconds_span < MIN_MEASURED_SPAN
 
       (epoch_span / seconds_span).round(2)
     end
