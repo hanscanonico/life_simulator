@@ -482,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn an_age_ceiling_is_read_with_or_without_a_unit() {
+    fn a_wall_clock_flag_is_read_with_or_without_a_unit() {
         assert_eq!(parse_duration("30m"), Ok(SNAPSHOT_MAX_AGE));
         assert_eq!(parse_duration("600"), Ok(Duration::from_secs(600)));
         assert_eq!(parse_duration("90s"), Ok(Duration::from_secs(90)));

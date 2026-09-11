@@ -495,7 +495,7 @@ impl LabClient {
                 report("outage", url, started, attempts, &failure);
                 reported = Some(Instant::now());
             }
-            if !self.rest(wait.min(grace - started.elapsed())) {
+            if !self.rest(wait.min(grace.saturating_sub(started.elapsed()))) {
                 return Err(anyhow!(Interrupted {
                     endpoint: url.to_string(),
                 }));
@@ -783,6 +783,26 @@ mod tests {
 
         assert!(error.contains("/api/runs/claim"), "{error}");
         assert!(error.contains(&format!("{TEST_GRACE:?}")), "{error}");
+    }
+
+    /// A beat never waits an outage out: whatever the client's grace is, the call gives
+    /// up inside `HEARTBEAT_GRACE` and the next tick beats again. A beat held for the
+    /// whole window would also hold the run at its end, where the scope that spawned the
+    /// beat thread joins it.
+    #[test]
+    fn a_beat_gives_up_well_inside_the_outage_grace() {
+        let lab = MockLab::start();
+        let grace = Duration::from_secs(30);
+        let client = client(&lab).with_grace(grace);
+        lab.fail_next_at("/api/runs/1/heartbeat", u32::MAX);
+
+        let started = Instant::now();
+        let error = format!("{:#}", client.heartbeat(1, "runner-1", 12).unwrap_err());
+        let waited = started.elapsed();
+
+        assert!(waited >= HEARTBEAT_GRACE, "{waited:?}");
+        assert!(waited < grace / 2, "{waited:?}");
+        assert!(error.contains("/api/runs/1/heartbeat"), "{error}");
     }
 
     /// SIGTERM during a backoff: the wait ends with the signal rather than at the end of
