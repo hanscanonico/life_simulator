@@ -1,38 +1,44 @@
 <% content_for :title, @show.finding.title %>
 <% content_for :description, @show.finding.summary %>
 
-<p class="finding-meta text-sm text-muted">
-  <span class="badge <%= @show.finding.badge_class %>"><%= @show.finding.status_label %></span>
-  <time datetime="<%= @show.finding.date.iso8601 %>"><%= l @show.finding.date, format: :long %></time>
-</p>
-
-<h1><%= @show.finding.title %></h1>
-<p class="text-muted"><%= @show.finding.summary %></p>
-
-<%= render @show.finding.body_partial %>
-
-<h2>Evidence</h2>
-<% if @show.experiment? %>
-  <p class="text-sm">
-    Sweep: <%= link_to @show.experiment.name, experiment_path(@show.experiment) %>
+<div class="container-narrow">
+  <p class="finding-meta text-sm text-muted">
+    <span class="badge <%= @show.finding.badge_class %>"><%= @show.finding.status_label %></span>
+    <time datetime="<%= @show.finding.date.iso8601 %>"><%= l @show.finding.date, format: :long %></time>
   </p>
 
-  <% if @show.pending? %>
+  <h1><%= @show.finding.title %></h1>
+  <p class="text-muted"><%= @show.finding.summary %></p>
+
+  <%= render @show.finding.body_partial %>
+
+  <h2>Evidence</h2>
+  <% if @show.experiment? %>
+    <p class="text-sm">
+      Sweep: <%= link_to @show.experiment.name, experiment_path(@show.experiment) %>
+    </p>
+
+    <% if @show.pending? %>
+      <p class="text-muted">
+        No run of this sweep has finished yet, so the diagram below is still empty: it fills
+        in as the lab works through the grid.
+      </p>
+    <% end %>
+  <% else %>
     <p class="text-muted">
-      No run of this sweep has finished yet, so the diagram below is still empty: it fills
-      in as the lab works through the grid.
+      The sweep <span class="mono"><%= @show.finding.experiment_slug %></span> has not been
+      queued in the lab yet, so this finding has no runs behind it.
     </p>
   <% end %>
+</div>
 
+<%# The evidence keeps the full page width: a phase diagram and a six-column runs table
+    read badly squeezed into a prose measure. %>
+<% if @show.experiment? %>
   <% @show.diagrams.each do |diagram| %>
     <%= render diagram %>
   <% end %>
 
   <h3>Runs</h3>
   <%= render "experiments/runs_table", page: @show.evidence %>
-<% else %>
-  <p class="text-muted">
-    The sweep <span class="mono"><%= @show.finding.experiment_slug %></span> has not been
-    queued in the lab yet, so this finding has no runs behind it.
-  </p>
 <% end %>

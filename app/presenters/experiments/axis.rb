@@ -40,6 +40,14 @@ module Experiments
       value.is_a?(Numeric) ? Charts.format_value(value.to_f) : value.to_s
     end
 
+    # The label of the arm a run belongs to. A run off the grid — a hand-tweaked param, a
+    # run from an earlier grid — still names its own value rather than going blank.
+    def label_of_run(run_params)
+      value = value_of(run_params) || own_value(run_params)
+
+      value.nil? ? nil : label_of(value)
+    end
+
     # More than two decades of span (the mutation-rate grid) is unreadable on a linear
     # axis: every value but the largest collapses onto the origin.
     def log?
@@ -64,6 +72,12 @@ module Experiments
     end
 
     def plain_values = values.reject { |value| well_mixed?(value) }
+
+    def own_value(run_params)
+      return nil if paired?
+
+      run_params[name]
+    end
 
     def numeric_of(value)
       candidate = value.is_a?(Hash) ? value.values.find { |paired| paired.is_a?(Numeric) } : value

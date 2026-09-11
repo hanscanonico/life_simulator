@@ -4,9 +4,14 @@ module Charts
   # The frame every chart shares: a fixed viewBox, a padded plot area and the two scales
   # the partials read to place gridlines, ticks and marks.
   module Plot
-    WIDTH = 760
-    HEIGHT = 300
-    PADDING = { top: 16, right: 20, bottom: 44, left: 72 }.freeze
+    # The padding is where the labels live, so it holds the largest text the charts draw:
+    # 23 user units at phone width (site.css). An eight-character y label is 110 units wide
+    # at that size and hangs 8 units left of the plot, hence a 120-unit left gutter; the
+    # bottom one stacks the x labels and the axis title, and the top one takes the ascent of
+    # the highest y label.
+    WIDTH = 828
+    HEIGHT = 328
+    PADDING = { top: 24, right: 40, bottom: 64, left: 120 }.freeze
 
     Tick = Data.define(:label, :position)
 
