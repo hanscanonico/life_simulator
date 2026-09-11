@@ -23,6 +23,13 @@ module FindingsHelper
     link_to(label, run_path(run))
   end
 
+  # How many runs of a sweep have reached their last epoch, read at render time: a write-up
+  # of a sweep that is still going states its own denominator rather than freezing a count
+  # that was true on the day it was written.
+  def findings_finished_count(experiment_slug:)
+    Run.joins(:experiment).where(experiment: { slug: experiment_slug }, status: "finished").count
+  end
+
   private
 
   # `(params, seed)` identifies a run inside its sweep — a seed alone does not, since every

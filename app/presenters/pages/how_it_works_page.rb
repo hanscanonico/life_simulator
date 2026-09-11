@@ -3,10 +3,13 @@
 module Pages
   # The programme of DESIGN §1.3 as the how-it-works page reads it: the sweeps in the order
   # Lab::SWEEPS declares them, each pointed at its write-up if one cites it and at its
-  # sweep page if the lab has queued it. The positive control is held out of the numbered
-  # sweeps: it is the design record's addition, not one of the five questions.
+  # sweep page if the lab has queued it. The positive control and the follow-up re-runs
+  # are held out of the numbered sweeps: they are the design record's additions, not the
+  # five questions.
   class HowItWorksPage
     CONTROL_KEY = "bff_control"
+
+    FOLLOW_UP_KEYS = %w[mutation_rate_long].freeze
 
     Sweep = Data.define(:name, :description, :experiment, :finding) do
       def experiment? = experiment.present?
@@ -16,9 +19,11 @@ module Pages
 
     def self.build = new
 
-    def sweeps = @sweeps ||= (Lab::SWEEPS.keys - [CONTROL_KEY]).map { |key| sweep_for(key) }
+    def sweeps = @sweeps ||= (Lab::SWEEPS.keys - [CONTROL_KEY] - FOLLOW_UP_KEYS).map { |key| sweep_for(key) }
 
     def control = @control ||= sweep_for(CONTROL_KEY)
+
+    def follow_ups = @follow_ups ||= FOLLOW_UP_KEYS.map { |key| sweep_for(key) }
 
     private
 

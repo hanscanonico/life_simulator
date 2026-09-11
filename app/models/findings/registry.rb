@@ -7,6 +7,22 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "mutation-rate-long-horizon",
+        title: "Emergence is rare, and half of it happens after epoch 20 000",
+        date: Date.new(2026, 9, 11),
+        experiment_slug: "mutation-rate-long",
+        status: :partial,
+        summary: "The four rates around sweep 1's transitions, re-run for 60 000 epochs — " \
+                 "three times the budget that produced the mutation-rate window finding. " \
+                 "It reproduces that sweep run for run and then doubles it: six of 40 runs " \
+                 "reach a census-confirmed replicator, and half of those transitions land " \
+                 "after epoch 20 000, where the short sweep had already stopped watching. " \
+                 "One of its disagreements resolves the same way — the run it recorded as " \
+                 "flagged with an empty census counts replicators at epoch 26 140. The " \
+                 "2^-14 arm stays silent at three times the budget, so the lower cutoff " \
+                 "is not a censoring artefact."
+      ),
+      Finding.new(
         slug: "mutation-rate-window",
         title: "Life emerged, but the mutation-rate window did not",
         date: Date.new(2026, 9, 11),

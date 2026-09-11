@@ -30,6 +30,25 @@ module Lab
       seeds: (1..10).to_a,
       epochs: 20_000
     },
+    "mutation_rate_long" => {
+      name: "Mutation rate, long runs",
+      description: "Sweep 1 saw transitions only at 2^-13 and 2^-12 (one seed in ten " \
+                   "each) within 20 000 epochs. Same world, rates around that window, " \
+                   "three times longer: is emergence rare or just slow?",
+      # Not a sixth question of DESIGN §1.3 but the re-run its first sweep asks for: the
+      # four rates around the transitions it found, at three times its budget. The world
+      # is the sweep's, so a run here repeats a run there byte for byte up to epoch
+      # 20 000; the cadence is raised because 60 000 epochs at the engine's default would
+      # post 600 full-world snapshots per run.
+      param_grid: {
+        "mutation_rate" => (11..14).reverse_each.map { |exponent| 2.0**-exponent },
+        "width" => [128],
+        "height" => [128],
+        "snapshot_every" => [500]
+      },
+      seeds: (1..10).to_a,
+      epochs: 60_000
+    },
     "world_size" => {
       name: "World size",
       description: "Does time to emergence scale with cell count (more lottery tickets) " \

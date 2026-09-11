@@ -78,3 +78,26 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   before the epochs they have reached, so the counts and the hazard do not depend on them),
   and every arm is heavily censored at 20 000 epochs. The direct extension is the
   `bff-control` 2^17-cell soup; the survival/hazard section of the sweep page is the lens.
+- 2026-09-11 — **`mutation-rate-long`, the 60 000-epoch re-run of §1.3 item 1, read as
+  rare rather than slow.** The four rates around sweep 1's transitions (2^-14…2^-11) on
+  the same 128×128 world, 10 seeds each, 60 000 epochs, snapshot_every 500; a run repeats
+  its sweep-1 counterpart byte for byte to epoch 20 000, so the two sweeps are nested and
+  the overlap is not counted twice. 37 of 40 terminal at the time of writing, the other 3
+  already past their transitions and their census peaks. Eight runs flagged, six
+  census-confirmed (0/10, 2/10, 3/10, 1/10 from 2^-14 up; 15% overall): 2^-13 seed 1 at
+  5 030 (peak census 867) and seed 5 at 7 000 (108); 2^-12 seed 9 at 15 560 (57), seed 10
+  at 21 540 (123) and seed 2 at 47 820 (105); 2^-11 seed 10 at 42 730 (36). **Sweep 1's
+  reading is confirmed and its count was low**: three of the six confirmed transitions
+  land after epoch 20 000, and 3 events in the first 20 000 epochs against 3 more in the
+  next 40 000 is a roughly constant hazard per epoch — rare, not a slow start. The 2^-12
+  seed 9 run, which three earlier sweeps all recorded as flagged with an empty census,
+  counts its first replicating cell at 26 140 and peaks at 57: **that class of
+  disagreement can be a budget artefact**. The 2^-14 arm is still census-silent at three
+  times the budget, so sweep 1's hinted lower cutoff is not a censoring artefact — but 10
+  seeds bound a hazard rather than abolishing it. Two flagged runs keep an empty census
+  (2^-14 seed 3 at 39 320, final compress_ratio 0.900; 2^-12 seed 5 at 43 220, final
+  0.951), and 2^-12 seed 10 shows **emergence is a state a world can leave**: census peak
+  123 at 28 100, then back to compress_ratio 0.952 with all 16 384 tapes distinct by
+  60 000. The window of item 1 stays **not supported**: 0, 2, 3 and 1 of 10 has a floor
+  and no resolvable peak. Held at **partial** while runs remain on the clock; the write-up
+  reads its denominator from the database at render time.

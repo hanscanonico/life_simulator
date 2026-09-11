@@ -251,6 +251,82 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the long-horizon re-run" do
+      let(:long_run) { Findings::Registry.find("mutation-rate-long-horizon") }
+
+      it "states what the longer budget added to the short sweep" do
+        get finding_path(long_run)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.squish)
+          .to include("The short sweep was right, and it under-counted.",
+                      "three transitions; the 60 000-epoch budget finds eight",
+                      "three of them fall after epoch 20 000")
+        expect(response.body).to include(finding_path("mutation-rate-window"))
+      end
+
+      it "counts the same flagged runs in its prose as in its per-arm table" do
+        get finding_path(long_run)
+
+        flagged = response.parsed_body.css("table.data-table").first.css("tbody tr")
+                          .sum { |row| row.css("td")[1].text.squish.to_i }
+
+        expect(flagged).to eq(8)
+        expect(response.body.squish).to include("budget finds eight", "this sweep has 8 events")
+      end
+
+      it "reports the disagreement the longer clock resolved" do
+        get finding_path(long_run)
+
+        expect(response.body.squish)
+          .to include("A disagreement that was only the clock.", "counts its first replicating cell at epoch 26 140",
+                      "was the budget and not the substrate")
+      end
+
+      it "holds the lower cutoff open rather than calling the arm a zero" do
+        get finding_path(long_run)
+
+        expect(response.body.squish)
+          .to include("The lower cutoff survives three times the budget.",
+                      "they do not abolish it")
+      end
+
+      it "reports the transition that dissolved and the two empty censuses" do
+        get finding_path(long_run)
+
+        expect(response.body.squish)
+          .to include("Two runs flagged with an empty census", "of 0.952 with all 16 384 tapes distinct",
+                      "read on the census it has 6")
+      end
+
+      it "reads its arms, its seeds and its budget from the sweep the lab would build" do
+        sweep = Lab::SWEEPS.fetch("mutation_rate_long")
+        redefined = sweep.merge(param_grid: sweep.fetch(:param_grid).merge("mutation_rate" => [2.0**-13]),
+                                epochs: 512)
+        stub_const("Lab::SWEEPS", Lab::SWEEPS.merge("mutation_rate_long" => redefined))
+
+        get finding_path(long_run)
+
+        expect(response.body.squish).to include("512 epochs per run", "0 of the 10 runs have reached 512 epochs")
+      end
+
+      context "with runs of the sweep in this database" do
+        it "counts the terminal ones at render time and draws the cited census" do
+          experiment = create(:experiment, name: "Mutation rate, long runs", slug: "mutation-rate-long",
+                                           epochs: 60_000)
+          run = create(:run, experiment: experiment, seed: 9, status: "finished", transition_epoch: 15_560,
+                             params: Lab::Schema.run_defaults.merge("mutation_rate" => 2.0**-12))
+          create(:run, experiment: experiment, seed: 8, status: "running")
+          create(:sample, run: run, epoch: 26_140, values: { "replicator_count" => 57 })
+
+          get finding_path(long_run)
+
+          expect(response.body.squish).to include("1 of the 40 runs have reached 60 000 epochs")
+          expect(response.body).to include(%(class="chart-cited"), run_path(run))
+        end
+      end
+    end
+
     context "with the positive control" do
       it "states the falsifier" do
         control = Findings::Registry.find("bff-control")

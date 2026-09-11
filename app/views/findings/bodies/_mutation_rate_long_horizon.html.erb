@@ -1,0 +1,226 @@
+<% sweep = Lab::SWEEPS.fetch("mutation_rate_long") %>
+<% short_sweep = Lab::SWEEPS.fetch("mutation_rate") %>
+<% seeds = sweep.fetch(:seeds).size %>
+<% planned = sweep.fetch(:param_grid).fetch("mutation_rate").size * seeds %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% short_epochs = number_with_delimiter short_sweep.fetch(:epochs), delimiter: " " %>
+<% terminal = findings_finished_count(experiment_slug: "mutation-rate-long") %>
+
+<%# The recorded result, read on 2026-09-11. Runs are named by arm and seed, never by a
+    database id, and the live tables further down re-read the same runs. %>
+<% arms = [
+     { exponent: 14, flagged: 1, confirmed: 0, transitions: [], detector_only: [[3, 39_320]] },
+     { exponent: 13, flagged: 2, confirmed: 2, transitions: [[1, 5_030, 867], [5, 7_000, 108]],
+       detector_only: [] },
+     { exponent: 12, flagged: 4, confirmed: 3,
+       transitions: [[9, 15_560, 57], [10, 21_540, 123], [2, 47_820, 105]], detector_only: [[5, 43_220]] },
+     { exponent: 11, flagged: 1, confirmed: 1, transitions: [[10, 42_730, 36]], detector_only: [] }
+   ] %>
+
+<h2>Hypothesis</h2>
+<p>
+  The <%= link_to "mutation-rate sweep", finding_path("mutation-rate-window") %> stopped
+  every run at <%= short_epochs %> epochs, and 95 of its 100 runs were still in a random
+  soup when the clock ran out. A sweep censored that heavily measures its own budget as
+  much as its parameter: an arm showing nothing may hold a hazard that is genuinely lower,
+  or the same hazard watched for too short a time. The two readings separate on a longer
+  run. If emergence at these rates is <em>rare</em> — a low hazard per epoch — three times
+  the budget buys about three times the events and the arms keep their order. If the short
+  sweep was instead watching a <em>slow</em> process, the extra epochs produce events out
+  of arms that read as empty, and the window the first sweep failed to find could still be
+  there, displaced past epoch <%= short_epochs %>.
+</p>
+
+<h2>Method</h2>
+<p>
+  The four rates that bracket the short sweep's transitions —
+  <span class="mono">2<sup>-14</sup></span> to <span class="mono">2<sup>-11</sup></span>,
+  the arm below the lowest transition through the arm above the highest of this
+  neighbourhood — on the same 128×128 torus of 64-byte tapes, <%= seeds %> seeds each,
+  <%= epochs %> epochs per run. Every parameter that enters the simulation is at the short
+  sweep's value, and only the snapshot cadence is sparser — a snapshot is written output
+  and not state — so a run here is the same run the short sweep made, byte for byte, up to
+  epoch <%= short_epochs %>, and then keeps going: this is a re-run rather than a new
+  sample, which is what makes the two sweeps directly comparable and also what stops the
+  overlap from counting twice. The dependent variable is the transition epoch of DESIGN
+  §1.2 — the first sampled epoch at which <span class="mono">compress_ratio</span> falls
+  below 0.6 and stays below for three further samples — and beside it the
+  <span class="mono">replicator_count</span> census. A run is called census-confirmed here
+  when both fire in it.
+</p>
+
+<h2>Result</h2>
+<p>
+  <%= terminal %> of the <%= planned %> runs have reached <%= epochs %> epochs. Every run
+  still on the clock is already past its own transition epoch and past its own census peak,
+  so no count below is waiting on them. The table is the recorded per-arm result; the phase
+  diagram and the per-run rows below read the same runs live.
+</p>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Mutation rate</th>
+        <th class="numeric">Flagged</th>
+        <th class="numeric">Census-confirmed</th>
+        <th>Transition epochs (peak census)</th>
+        <th>Flagged with an empty census</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% arms.each do |arm| %>
+        <% rate = 2.0**-arm.fetch(:exponent) %>
+        <tr>
+          <td class="mono">2<sup>-<%= arm.fetch(:exponent) %></sup></td>
+          <td class="numeric mono"><%= arm.fetch(:flagged) %> of <%= seeds %></td>
+          <td class="numeric mono"><%= arm.fetch(:confirmed) %> of <%= seeds %></td>
+          <td class="mono">
+            <% if arm.fetch(:transitions).empty? %>
+              —
+            <% else %>
+              <%= safe_join(arm.fetch(:transitions).sort_by { |transition| transition[1] }
+                               .map { |seed, epoch, peak|
+                    safe_join([number_with_delimiter(epoch, delimiter: " "), " (",
+                               findings_run_link(experiment_slug: "mutation-rate-long", seed: seed,
+                                                 params: { "mutation_rate" => rate }),
+                               ", #{peak})"])
+                  }, ", ") %>
+            <% end %>
+          </td>
+          <td class="mono">
+            <% if arm.fetch(:detector_only).empty? %>
+              —
+            <% else %>
+              <%= safe_join(arm.fetch(:detector_only).map { |seed, epoch|
+                    safe_join([number_with_delimiter(epoch, delimiter: " "), " (",
+                               findings_run_link(experiment_slug: "mutation-rate-long", seed: seed,
+                                                 params: { "mutation_rate" => rate }),
+                               ")"])
+                  }, ", ") %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p class="text-sm text-muted">
+  "Peak census" is the largest <span class="mono">replicator_count</span> the run reached
+  at any sample. The last column is the runs the detector flagged whose census never left
+  zero.
+</p>
+
+<p>
+  <strong>The short sweep was right, and it under-counted.</strong> Within the same four
+  arms the <%= short_epochs %>-epoch budget found three transitions; the
+  <%= epochs %>-epoch budget finds eight, six of them census-confirmed — 6 of
+  <%= planned %> runs, 15%. The six confirmed transitions land at 5 030, 7 000, 15 560,
+  21 540, 42 730 and 47 820 epochs, a median of 18 550, and three of them fall after epoch
+  <%= short_epochs %>: half of the emergence in this region of the parameter space happens
+  where the first sweep had already stopped watching. That is the answer to the question
+  the sweep was queued for. Emergence here is rare — three events in the first
+  <%= short_epochs %> epochs of these runs and three more in the 40 000 that follow, which
+  is what a roughly constant hazard per epoch looks like — rather than a process that was
+  merely slow to start. Six events cannot tell a constant hazard from a gently falling one,
+  but they do rule out the reading in which the short budget was missing a burst.
+</p>
+
+<p>
+  <strong>A disagreement that was only the clock.</strong> The
+  <span class="mono">2<sup>-12</sup></span> arm's ninth seed is the run three earlier
+  sweeps have all recorded — it flags at epoch 15 560 under the mutation-rate, world-size
+  and radius grids alike, every one of which stops at <%= short_epochs %>, and in all three
+  its census is zero at every sample. Run for <%= epochs %> epochs, the same run counts its
+  first replicating cell at epoch 26 140 and peaks at 57. The
+  <%= link_to "first sweep's", finding_path("mutation-rate-window") %> flagged-with-no-census
+  disagreement, in this run, was the budget and not the substrate: the detector saw the tape
+  statistics turn over, and the census needed another 10 000 epochs to see the lineage that
+  had done it.
+</p>
+
+<% cited_chart = findings_run_chart(experiment_slug: "mutation-rate-long", seed: 9, metric: "replicator_count",
+                                    params: { "mutation_rate" => 2.0**-12 }) %>
+<% if cited_chart %>
+  <p>
+    That run's census, with its transition epoch marked: flat at zero across the whole span
+    the short sweep watched, and only then lifting off.
+  </p>
+
+  <%= cited_chart %>
+<% end %>
+
+<p>
+  <strong>Determinism, checked once more.</strong> The two earliest transitions here — the
+  <span class="mono">2<sup>-13</sup></span> arm's first and fifth seeds at 5 030 and 7 000
+  epochs — are the short sweep's two earliest, at the same epochs, from the same
+  <span class="mono">(params, seed)</span>. One of them peaks at 867 replicating cells, the
+  largest census of either sweep. Nothing about the re-run is new evidence up to epoch
+  <%= short_epochs %>; that is the point, and it is the guarantee DESIGN §1.1 makes,
+  checked rather than asserted.
+</p>
+
+<p>
+  <strong>The lower cutoff survives three times the budget.</strong> The
+  <span class="mono">2<sup>-14</sup></span> arm has no census-confirmed run at
+  <%= epochs %> epochs, as it had none at <%= short_epochs %>. Its one flagged run collapses
+  <span class="mono">compress_ratio</span> only to 0.900 by the last epoch, holds 16 370 of
+  its 16 384 tapes distinct and never counts a replicating cell — the low-entropy attractor
+  the other sweeps also report, not a lineage. The hint of a cutoff in the first sweep was
+  the weakest thing it claimed, and the obvious way for it to be wrong was censoring; that
+  way out is now closed for this arm. What the arm is not is a demonstrated zero: 10 seeds
+  that produce nothing bound the hazard, they do not abolish it.
+</p>
+
+<p>
+  <strong>Two runs flagged with an empty census, and one that did not hold.</strong> The
+  detector fires twice on runs whose <span class="mono">replicator_count</span> never leaves
+  zero — the <span class="mono">2<sup>-14</sup></span> arm's third seed at 39 320 and the
+  <span class="mono">2<sup>-12</sup></span> arm's fifth seed at 43 220, 2 of
+  <%= planned %> runs — and the second of those ends with
+  <span class="mono">compress_ratio</span> back at 0.951 and every tape distinct, which is
+  the soup it started in. Read on the detector alone this sweep has 8 events; read on the
+  census it has 6, and the two disagree in both directions across the programme. Separately,
+  the <span class="mono">2<sup>-12</sup></span> arm's tenth seed shows that a confirmed
+  emergence is not a terminal state: it transitions at 21 540, its census peaks at 123 cells
+  by 28 100, and by epoch <%= epochs %> the world has climbed back to a
+  <span class="mono">compress_ratio</span> of 0.952 with all 16 384 tapes distinct. The
+  lineage spread, saturated and dissolved, and the world it left behind is indistinguishable
+  from one where nothing ever happened. A longer budget does not only add events; it also
+  shows some of them ending.
+</p>
+
+<p>
+  <strong>The window is still not there.</strong> Confirmed emergence lands 0, 2, 3 and 1 of
+  <%= seeds %> from <span class="mono">2<sup>-14</sup></span> to
+  <span class="mono">2<sup>-11</sup></span>. That is the same shape the first sweep reported
+  at a third of the budget — a floor with nothing below it and no peak above it that
+  <%= seeds %> seeds can resolve — and 3 of <%= seeds %> against 1 of <%= seeds %> is not a
+  distinguishable pair of arms. The extra epochs sharpened the claim about <em>when</em>
+  emergence happens without moving the claim about <em>where</em> in the parameter space it
+  does.
+</p>
+
+<p>
+  This stays partial rather than published for two reasons. Runs are still on the clock, so
+  the denominator above is read live and the arms may still gain an event. And every arm is
+  censored again at <%= epochs %> epochs: the latest confirmed transition of the sweep fell
+  at 47 820, four fifths of the way through the budget, which is precisely the pattern that
+  says the next budget would find more.
+</p>
+
+<h2>What next</h2>
+<p>
+  The programme's cheapest events are not here. This sweep spent 2.4 million run-epochs for
+  six confirmed transitions; the
+  <%= link_to "world-size sweep", finding_path("world-size-scaling") %> reads emergence as a
+  hazard per cell-epoch, which makes a wider world the efficient way to buy events and a
+  longer run the expensive one. The reading to test next is whether the two trade off the
+  way that hazard predicts — 60 000 epochs at 128² and 20 000 at 256² are within a factor of
+  three of the same cell-epoch budget and should produce comparable counts. The
+  <%= link_to "BFF positive control", finding_path("bff-control") %> still gates reading any
+  silent arm as a negative, the <span class="mono">2<sup>-14</sup></span> arm included. And
+  the transient at <span class="mono">2<sup>-12</sup></span> is an argument for watching the
+  census rather than the detector: a run that ends in a random soup can still have held a
+  hundred replicating cells in the middle, and only the stored samples say so.
+</p>
