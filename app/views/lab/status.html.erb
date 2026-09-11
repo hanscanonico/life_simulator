@@ -59,7 +59,7 @@
                 <td colspan="5">
                   <%= pluralize @status.superseded_runners.size, "slot" %> of a superseded
                   runner: the heartbeat stopped, so these are out of the counts above and
-                  their runs are released on the next claim.
+                  their runs go back to the queue once the heartbeat is stale.
                 </td>
               </tr>
               <%= render partial: "lab/runner_row", collection: @status.superseded_runners,

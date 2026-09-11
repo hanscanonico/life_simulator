@@ -67,7 +67,9 @@ RSpec.describe "Lab", type: :request do
 
         get lab_status_path
 
-        expect(response.body.squish).to include("12 slots expected, 1 live, 11 idle")
+        body = response.body.squish
+        expect(body).to include("12 slots expected, 1 live, 11 idle.")
+        expect(body).not_to include("superseded runner")
       end
     end
 
@@ -127,7 +129,8 @@ RSpec.describe "Lab", type: :request do
         body = response.body.squish
         expect(body).to include("2 slots expected, 1 live, 1 idle, 1 stale (superseded runner)",
                                 "1 slot of a superseded runner: the heartbeat stopped, so " \
-                                "these are out of the counts above")
+                                "these are out of the counts above and their runs go back " \
+                                "to the queue once the heartbeat is stale.")
         expect(body).to include("bench-0", "gone-0")
       end
     end
