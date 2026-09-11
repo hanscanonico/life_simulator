@@ -158,10 +158,11 @@ EOF
 pending	24
 running	12
 
+psql: warning: one column, no count
 finished	318
 EOF
 )
-  expect "parse_counts keeps the status rows and drops the blank" \
+  expect "parse_counts keeps the status rows and drops the blank and the one-column noise" \
     "$(printf 'pending\t24\nrunning\t12\nfinished\t318')" "$got" || failed=1
 
   got=$(parse_stats <<'EOF'
@@ -181,11 +182,22 @@ EOF
 2026-09-11T23:50:00Z	container	life-simulator-db-1	612MiB / 31GiB	1.93%	0.40%	-
 EOF
 )
-  expect "render_table keeps every measured number" \
-    "yes" \
-    "$(grep -q '31724' <<<"$got" && grep -q '5410' <<<"$got" &&
-       grep -q 'pending' <<<"$got" && grep -q 'life-simulator-db-1' <<<"$got" &&
-       echo yes)" || failed=1
+  expect "render_table lays every measured number out under its heading" \
+    "$(cat <<'EOF'
+memory report 2026-09-11T23:50:00Z
+
+host memory (MiB)
+  total      used       available    swap used
+  31724      14012      5410         2047
+
+runs by status
+  pending    24
+
+containers
+  name                       memory                   mem%     cpu%
+  life-simulator-db-1        612MiB / 31GiB           1.93%    0.40%
+EOF
+)" "$got" || failed=1
 
   [ "$failed" = 0 ] || { echo "self-test failed" >&2; return 1; }
   echo "self-test passed"
@@ -205,7 +217,7 @@ while [ $# -gt 0 ]; do
 done
 
 case $repeat in
-  ''|*[!0-9]*) echo "--repeat takes a positive integer" >&2; exit 2 ;;
+  ''|*[!0-9]*|0) echo "--repeat takes a positive integer" >&2; exit 2 ;;
 esac
 case $interval in
   ''|*[!0-9]*) echo "--interval takes a whole number of seconds" >&2; exit 2 ;;
