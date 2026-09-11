@@ -51,6 +51,37 @@ RSpec.describe "Pages", type: :request do
       expect(nav[1]).to eq(["How it works", how_it_works_path])
     end
 
+    it "lists the programme's five sweeps in declaration order and the control apart" do
+      get how_it_works_path
+
+      items = response.parsed_body.css("ol li strong").map { |item| item.text.squish }
+
+      expect(items).to eq(Lab::SWEEPS.except("bff_control").values.pluck(:name))
+      expect(response.body.squish).to include("BFF positive control", "written up in")
+      expect(response.body).to include(findings_path)
+    end
+
+    context "with a sweep the lab has queued and a finding citing it" do
+      it "links the sweep's name to its write-up" do
+        create(:experiment, name: "Mutation rate", slug: "mutation-rate")
+
+        get how_it_works_path
+
+        expect(response.body).to include(finding_path("mutation-rate-window"))
+      end
+    end
+
+    context "with a sweep no finding cites and no experiment for it" do
+      it "leaves its name as plain text" do
+        get how_it_works_path
+
+        links = response.parsed_body.css("ol li strong a").map(&:text)
+
+        expect(links).not_to include("Neighbourhood radius")
+        expect(response.body).to include("Neighbourhood radius")
+      end
+    end
+
     it "lists the ten instructions" do
       get how_it_works_path
 

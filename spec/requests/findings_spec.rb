@@ -128,6 +128,29 @@ RSpec.describe "Findings", type: :request do
                       "nothing here is a clean negative until the")
       end
 
+      it "draws the earliest transitioning run inline once that run is in the lab" do
+        experiment = create(:experiment, name: "Mutation rate", slug: "mutation-rate", epochs: 20_000)
+        run = create(:run, experiment: experiment, seed: 1, status: "finished", transition_epoch: 5_030,
+                           params: Lab::Schema.run_defaults.merge("mutation_rate" => Lab::EMERGENT_MUTATION_RATE))
+        create(:sample, run: run, epoch: 5_000, values: { "compress_ratio" => 0.98 })
+        create(:sample, run: run, epoch: 5_030, values: { "compress_ratio" => 0.41 })
+
+        get finding_path(finding)
+
+        expect(response.body.squish).to include("The earliest transition of the sweep",
+                                                "Compression ratio", "seed 1")
+        expect(response.body).to include(%(class="chart-cited"), run_path(run))
+      end
+
+      context "with none of its runs in this database" do
+        it "prints the narrative without the inline chart" do
+          get finding_path(finding)
+
+          expect(response.body).to include("The earliest transition of the sweep")
+          expect(response.body).not_to include("chart-cited")
+        end
+      end
+
       it "names the follow-up sweeps it hands the question to" do
         get finding_path(finding)
 

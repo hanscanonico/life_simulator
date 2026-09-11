@@ -24,9 +24,15 @@ module Runs
 
     def charts
       @charts ||= METRICS.map do |metric, title|
-        Charts::LineChart.new(points: points_for(metric), title: title, x_label: "Epoch", y_label: title,
-                              marker: run.transition_epoch)
+        Charts::LineChart.new(points: MetricSeriesService.call(run: run, metric: metric), title: title,
+                              x_label: "Epoch", y_label: title, marker: run.transition_epoch)
       end
+    end
+
+    # The write-ups that rest on this run's sweep, read from the registry rather than
+    # queried: a finding is content in the repo, not a row.
+    def findings
+      @findings ||= Findings::Registry.all.select { |finding| finding.experiment_slug == run.experiment.slug }
     end
 
     def charts_empty? = charts.all?(&:empty?)
@@ -55,15 +61,6 @@ module Runs
 
     def arm_labels
       Experiments::Axis.sweep(run.experiment.param_grid).filter_map { |axis| axis.label_of_run(run.params) }
-    end
-
-    def samples = @samples ||= run.samples.order(:epoch).pluck(:epoch, :values)
-
-    def points_for(metric)
-      samples.filter_map do |epoch, values|
-        value = values[metric]
-        [epoch, value] if value.is_a?(Numeric)
-      end
     end
   end
 end

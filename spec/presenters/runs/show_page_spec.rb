@@ -38,6 +38,20 @@ RSpec.describe Runs::ShowPage do
     end
   end
 
+  describe "#findings" do
+    it "is empty for a sweep no finding cites" do
+      expect(page.findings).to be_empty
+    end
+
+    context "with a sweep a finding rests on" do
+      let(:run) { create(:run, experiment: create(:experiment, name: "Mutation rate", slug: "mutation-rate")) }
+
+      it "cites every finding that names the sweep" do
+        expect(page.findings.map(&:slug)).to eq(["mutation-rate-window"])
+      end
+    end
+  end
+
   describe "#transition_label" do
     it "delimits the epoch of a run that transitioned" do
       expect(page.transition_label).to eq("200")
