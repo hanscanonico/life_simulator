@@ -26,8 +26,9 @@
     <% if @status.expected_slots %>
       <p class="text-muted">
         <%= @status.expected_slots %> slots expected,
-        <%= @status.runners.size %> seen,
-        <%= @status.idle_slots %> idle.
+        <%= @status.live_runners.size %> live,
+        <%= @status.idle_slots %> idle<% if @status.superseded_runners.any? %>,
+          <%= @status.superseded_runners.size %> stale (superseded runner)<% end %>.
       </p>
     <% end %>
     <% if @status.departed_slots.positive? %>
@@ -49,20 +50,22 @@
             </tr>
           </thead>
           <tbody>
-            <% @status.runners.each do |runner| %>
-              <tr>
-                <td class="mono"><%= runner.id %></td>
-                <td>
-                  <% runner.run_ids.each do |run_id| %>
-                    <%= link_to "##{run_id}", run_path(run_id) %>
-                  <% end %>
-                </td>
-                <td class="numeric"><%= number_with_delimiter runner.epochs_done %></td>
-                <td class="numeric"><%= number_with_delimiter runner.epochs_per_hour %></td>
-                <td><%= time_ago_in_words(runner.last_seen) %> ago</td>
-              </tr>
-            <% end %>
+            <%= render partial: "lab/runner_row", collection: @status.live_runners,
+                       as: :runner_row %>
           </tbody>
+          <% if @status.superseded_runners.any? %>
+            <tbody class="text-muted">
+              <tr>
+                <td colspan="5">
+                  <%= pluralize @status.superseded_runners.size, "slot" %> of a superseded
+                  runner: the heartbeat stopped, so these are out of the counts above and
+                  their runs go back to the queue once the heartbeat is stale.
+                </td>
+              </tr>
+              <%= render partial: "lab/runner_row", collection: @status.superseded_runners,
+                         as: :runner_row %>
+            </tbody>
+          <% end %>
         </table>
       </div>
     <% else %>
