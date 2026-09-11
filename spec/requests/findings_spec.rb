@@ -118,7 +118,8 @@ RSpec.describe "Findings", type: :request do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("<h2>What next</h2>", "2<sup>-#{ceiling}</sup>", "mutation_rate = 0")
+          .to include("<h2>What next</h2>", "2<sup>-#{ceiling}</sup>", "mutation_rate = 0",
+                      "nothing to do with emergence")
       end
 
       it "says the census agrees where the effect is strong" do
@@ -200,7 +201,7 @@ RSpec.describe "Findings", type: :request do
         expect(response).to have_http_status(:ok)
         expect(response.body)
           .to include(%(<span class="badge #{control.badge_class}">#{control.status_label}</span>))
-        expect(response.body.squish).to include("<h2>What the census shows</h2>")
+        expect(response.body.squish[%r{<h2>Hypothesis</h2>(.*?)<h2>}, 1]).to include("falsifier")
       end
 
       it "states the sparse cadences its runs carry" do
