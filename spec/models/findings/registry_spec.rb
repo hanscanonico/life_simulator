@@ -20,7 +20,7 @@ RSpec.describe Findings::Registry do
   end
 
   it "names a sweep the lab knows how to build" do
-    known = Lab::SWEEPS.keys.map { |sweep| sweep.tr("_", "-") }
+    known = Lab::SWEEPS.keys.map { |sweep| Lab.slug_for(sweep) }
 
     expect(described_class.all.map(&:experiment_slug)).to all(be_in(known))
   end
@@ -44,7 +44,12 @@ RSpec.describe Findings::Registry do
   end
 
   it "finds a finding by slug" do
-    expect(described_class.find("mutation-rate-window").status).to eq(:refuted)
+    expect(described_class.find("mutation-rate-window").status).to eq(:partial)
+  end
+
+  it "opens the world-size sweep against DESIGN 1.3 sweep 2" do
+    expect(described_class.find("world-size-scaling"))
+      .to have_attributes(experiment_slug: "world-size", status: :open)
   end
 
   it "returns nothing for an unknown slug" do

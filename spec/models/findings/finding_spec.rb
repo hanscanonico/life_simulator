@@ -20,6 +20,15 @@ RSpec.describe Findings::Finding do
     expect(finding.badge_class).to eq("badge-info")
   end
 
+  it "explains its status in one sentence" do
+    expect(finding.status_meaning).to eq("The sweep is running and no claim is made yet.")
+  end
+
+  it "gives every status a badge class and a meaning" do
+    expect(described_class::STATUSES).to all(be_in(described_class::BADGE_CLASSES.keys))
+    expect(described_class::STATUSES).to all(be_in(described_class::STATUS_MEANINGS.keys))
+  end
+
   context "with an unknown status" do
     it "refuses to exist" do
       build = lambda do

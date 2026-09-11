@@ -11,6 +11,10 @@ module Lab
   # op is left out of the set is a no-op.
   FULL_INSTRUCTION_SET = "<>{}+-.,[]"
 
+  # A sweep's key is a Ruby-ish identifier; its Experiment slug is the same word in URL
+  # form. One helper so the task, the presenter and the findings agree on the spelling.
+  def self.slug_for(key) = key.tr("_", "-")
+
   # The sweeps of DESIGN.md §1.3, as data: `rake lab:sweep[mutation_rate]` turns one entry
   # into an Experiment and its runs.
   SWEEPS = {

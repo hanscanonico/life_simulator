@@ -53,6 +53,14 @@ RSpec.describe Experiments::IndexPage do
       expect(page.planned.map(&:slug)).to eq(%w[world-size radius max-steps ops bff-control])
     end
 
+    context "with a sweep built by hand under another slug" do
+      it "excludes it by name rather than advertising it as unqueued" do
+        create(:experiment, name: "BFF positive control", slug: "bff-control-rerun")
+
+        expect(page.planned.map(&:slug)).not_to include("bff-control")
+      end
+    end
+
     it "describes each planned sweep from its programme entry" do
       expect(page.planned.first).to have_attributes(slug: "mutation-rate", name: "Mutation rate",
                                                     description: Lab::SWEEPS.fetch("mutation_rate")[:description])

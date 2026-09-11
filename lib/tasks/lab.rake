@@ -6,7 +6,7 @@ namespace :lab do
     definition = Lab::SWEEPS[args[:sweep]]
     raise "Unknown sweep #{args[:sweep].inspect}. Known sweeps: #{Lab::SWEEPS.keys.join(', ')}" if definition.nil?
 
-    experiment = Experiment.find_or_initialize_by(slug: args[:sweep].tr("_", "-"))
+    experiment = Experiment.find_or_initialize_by(slug: Lab.slug_for(args[:sweep]))
     experiment.update!(definition.merge(substrate: "soup"))
     Experiments::SweepBuilderService.call(experiment)
 

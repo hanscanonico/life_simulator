@@ -1,0 +1,51 @@
+<% sweep = Lab::SWEEPS.fetch("world_size") %>
+<% sides = sweep.fetch(:param_grid).fetch("world_size").map { |arm| arm.fetch("width") } %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+
+<h2>Hypothesis</h2>
+<p>
+  DESIGN §1.3 sweep 2 sets two readings of emergence against each other, and they predict
+  opposite things about a bigger world. If a replicator is a lottery win — one cell
+  somewhere stumbles into a tape that copies itself, and the rest of the world only has to
+  not destroy it — then cells are tickets: quadrupling the cell count should cut the
+  expected time to the first transition by about the same factor, and the smallest worlds
+  should mostly never transition inside the budget. If instead emergence is a
+  <em>per-cell rate</em> — each cell needs its own local history of interactions before
+  anything can replicate — then the transition epoch hardly moves with cell count, and the
+  arms land on top of each other.
+</p>
+<p>
+  The two readings differ in what a world is for. Under the lottery reading the world is a
+  parallel search and its size is the search budget; under the rate reading the world is a
+  population of independent local experiments, each running at its own speed.
+</p>
+
+<h2>Method</h2>
+<p>
+  Square tori of 64-byte tapes at
+  <span class="mono"><%= sides.map { |side| "#{side}×#{side}" }.to_sentence(last_word_connector: " and ") %></span>
+  — width and height travel together, so the arms are
+  <%= sides.map { |side| number_with_delimiter(side * side) }.to_sentence(last_word_connector: " and ") %>
+  cells —
+  with <%= sweep.fetch(:seeds).size %> seeds each and <%= epochs %> epochs per run. Every
+  other parameter is at its default. The dependent variable is the transition epoch of
+  DESIGN §1.2, the first sampled epoch at which
+  <span class="mono">compress_ratio</span> falls below 0.6 and stays below it for three
+  more samples; a run that never crosses is censored, not zero.
+</p>
+
+<h2>Result</h2>
+<p>
+  Open: the sweep is queued and no claim is made yet. The arms, the seeds that have
+  finished and the transition epochs behind them are in the phase diagram and the runs
+  table below, which read from the runs themselves — nothing on this page restates them.
+</p>
+<p>
+  Two things will decide how a flat sweep may be read. A flat result is not readable as a
+  per-cell rate until the
+  <%= link_to "BFF positive control", finding_path("bff-control") %> transitions; before
+  that, arms that all sit at the censoring line say only that the instrument is untested.
+  And the <%= epochs %>-epoch budget is short next to the earliest transition any sweep of
+  ours has seen — around epoch 5 000 — so a sweep in which nothing transitions anywhere is
+  explained just as well by too small a budget as by the size of the world.
+</p>
