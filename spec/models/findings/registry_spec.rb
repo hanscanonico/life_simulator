@@ -44,7 +44,7 @@ RSpec.describe Findings::Registry do
   end
 
   it "finds a finding by slug" do
-    expect(described_class.find("mutation-rate-window").status).to eq(:open)
+    expect(described_class.find("mutation-rate-window").status).to eq(:refuted)
   end
 
   it "returns nothing for an unknown slug" do

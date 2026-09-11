@@ -10,7 +10,7 @@ RSpec.describe "Findings", type: :request do
       get findings_path
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include(finding.title, "open")
+      expect(response.body).to include(finding.title, "refuted")
     end
 
     context "with the sweep in the lab" do
@@ -57,42 +57,51 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
-    context "with the interim mutation-rate numbers" do
-      it "marks the section partial and dates the lab check" do
+    context "with the final mutation-rate numbers" do
+      it "reports the sweep as finished and the emergence that happened" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("Result (interim)", "Partial.",
-                      "lab check of 2026-09-11 at 01:20 CEST, when 97 of the 100 runs had finished",
-                      "a run requeued from its last snapshot drops out of the diagram until it finishes again")
+          .to include("All 100 runs finished. Five transitioned",
+                      "the first at epoch 5 030",
+                      "The other 95 were censored at 20 000 epochs")
       end
 
-      it "states the interim claim with its seed counts" do
+      it "says plainly that the window is not supported" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("No transition in 40/40 seeds at",
-                      "against 5/60 seeds at",
-                      "No arm reaches more than 2 of 10, and the earliest transition anywhere in the sweep " \
-                      "is epoch 9 900")
+          .to include("The window is not there.",
+                      "is not supported by its own data",
+                      "A one-sided Fisher exact test on that 2×2 table gives",
+                      "p ≈ 0.073")
       end
 
       it "tabulates every arm with the runs that transitioned" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("run 41 seed 1 @ ≤ 9 900 (see caveat); run 45 seed 5 @ 13 700",
-                      "run 59 seed 9 @ 19 500", "run 83 seed 3 @ 15 300", "run 95 seed 5 @ 18 080")
+          .to include("5 030 (<a href=\"#{run_path(41)}\">run 41</a>, seed 1)",
+                      "7 000 (<a href=\"#{run_path(45)}\">run 45</a>, seed 5)",
+                      "15 560 (<a href=\"#{run_path(59)}\">run 59</a>, seed 9)",
+                      "10 670 (<a href=\"#{run_path(83)}\">run 83</a>, seed 3)",
+                      "18 080 (<a href=\"#{run_path(95)}\">run 95</a>, seed 5)")
       end
 
-      it "caveats the detector, the stale epoch, the unfinished arm and the control" do
+      it "keeps the detector and the control as caveats" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("Every transitioned run's final summary reports",
-                      "predates the resume fix of PR #25, and its own samples put the collapse near epoch 5 030",
-                      "arm, 99 and 100, were still running at the time of the check",
-                      "positive control transitions")
+          .to include("detector fires in only three of the five transitioned runs",
+                      "nothing here is a clean negative until the")
+      end
+
+      it "names the follow-up sweeps it hands the question to" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include(experiment_path("mutation-rate-long"), experiment_path("world-size"),
+                      experiment_path("bff-control"))
       end
     end
 

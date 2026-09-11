@@ -7,14 +7,17 @@ module Findings
     ALL = [
       Finding.new(
         slug: "mutation-rate-window",
-        title: "Does a mutation-rate window exist for spontaneous replicators?",
-        date: Date.new(2026, 9, 10),
+        title: "Life emerged, but the mutation-rate window did not",
+        date: Date.new(2026, 9, 11),
         experiment_slug: "mutation-rate",
-        status: :open,
-        summary: "DESIGN §1.3 sweep 1 holds that there is a window: with no mutation at all " \
-                 "emergence is delayed, and above an error threshold — Eigen's quasispecies " \
-                 "bound — mutation destroys any replicator faster than it can copy itself. " \
-                 "The sweep is running; this finding stays open until every run has finished."
+        status: :refuted,
+        summary: "All 100 runs finished, and five of them crossed the transition: " \
+                 "self-replicating structure arose from a random soup with no fitness " \
+                 "function, the first at epoch 5 030. But it arose at 2^-13, 2^-12, 2^-9 " \
+                 "and 2^-8 alike, about one seed in ten wherever it arose, so the window " \
+                 "of DESIGN §1.3 sweep 1 is not supported at this scale. Only a lower " \
+                 "cutoff is hinted at: 0 of 40 runs below 2^-13 against 5 of 60 at or " \
+                 "above it, one-sided Fisher p ≈ 0.073."
       ),
       Finding.new(
         slug: "bff-control",
