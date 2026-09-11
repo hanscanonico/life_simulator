@@ -102,9 +102,21 @@ impl World {
 
     /// Every observable of the design, and the transition tracker fed by this sample.
     pub fn metrics(&mut self) -> Metrics {
-        let measured = self.measure();
-        self.transition.observe(self.epoch, measured.compress_ratio);
-        measured
+        let compressed = metrics::compress_ratio(&self.cells);
+        self.sample(compressed)
+    }
+
+    /// The same sample as `metrics` and the same snapshot as `snapshot`, taken together
+    /// at an epoch whose cadences coincide: `compress_ratio` and the snapshot's payload
+    /// are one and the same zlib stream over the cells, so it is produced once.
+    pub fn metrics_with_snapshot(&mut self) -> (Metrics, Vec<u8>) {
+        let payload = metrics::compress(&self.cells);
+        let compressed = metrics::compress_ratio_of(payload.len(), self.cells.len());
+        let measured = self.sample(compressed);
+        (
+            measured,
+            snapshot::encode_compressed(&self.snapshot_header(), &payload),
+        )
     }
 
     pub fn transition_epoch(&self) -> Option<u64> {
@@ -116,17 +128,18 @@ impl World {
     }
 
     pub fn snapshot(&self) -> Vec<u8> {
-        snapshot::encode(
-            &snapshot::Header {
-                substrate: self.params.substrate,
-                width: self.params.width,
-                height: self.params.height,
-                tape_len: self.params.tape_len,
-                epoch: self.epoch,
-                transition: self.transition.state(),
-            },
-            &self.cells,
-        )
+        snapshot::encode(&self.snapshot_header(), &self.cells)
+    }
+
+    fn snapshot_header(&self) -> snapshot::Header {
+        snapshot::Header {
+            substrate: self.params.substrate,
+            width: self.params.width,
+            height: self.params.height,
+            tape_len: self.params.tape_len,
+            epoch: self.epoch,
+            transition: self.transition.state(),
+        }
     }
 
     pub fn from_snapshot(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
@@ -307,20 +320,26 @@ impl World {
         }
     }
 
-    fn measure(&self) -> Metrics {
+    fn sample(&mut self, compress_ratio: f64) -> Metrics {
+        let measured = self.measure(compress_ratio);
+        self.transition.observe(self.epoch, measured.compress_ratio);
+        measured
+    }
+
+    fn measure(&self, compress_ratio: f64) -> Metrics {
         let stride = self.params.stride();
-        let counts = metrics::tape_counts(&self.cells, stride);
         let cells = self.params.cell_count() as f64;
-        let ranked = metrics::by_population(&counts);
+        let ranked = metrics::ranked_tapes(&self.cells, stride);
         let top_share = ranked.first().map_or(0.0, |(_, n)| *n as f64 / cells);
+        let histogram = metrics::ByteHistogram::of(&self.cells);
 
         Metrics {
-            compress_ratio: metrics::compress_ratio(&self.cells),
-            distinct_tapes: counts.len() as u64,
+            compress_ratio,
+            distinct_tapes: ranked.len() as u64,
             top_share,
-            op_density: metrics::op_density(&self.cells),
+            op_density: histogram.op_density(),
             replicator_count: self.count_replicators(&ranked),
-            entropy_bits: metrics::entropy_bits(&self.cells),
+            entropy_bits: histogram.entropy_bits(),
             copy_rate: self.copy_rate,
         }
     }
@@ -729,6 +748,18 @@ mod tests {
         assert_eq!(measured.distinct_tapes, 1);
         assert_eq!(measured.top_share, 1.0);
         assert_eq!(measured.entropy_bits, 0.0);
+    }
+
+    #[test]
+    fn a_sample_taken_with_its_snapshot_reads_the_same_metrics() {
+        let params = soup(16, 16);
+        let mut world = World::new(&params, 5).unwrap();
+        world.step();
+
+        let (together, raw) = world.clone().metrics_with_snapshot();
+        assert_eq!(together, world.metrics());
+        assert_eq!(raw, world.snapshot());
+        assert_eq!(world.transition_epoch(), None);
     }
 
     #[test]

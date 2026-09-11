@@ -1,19 +1,21 @@
-//! Criterion benches for the four hot loops of the engine: the BFF interpreter, one
-//! soup epoch, one metrics sample and one Life epoch. Every input comes from a fixed
-//! seed, so two runs on the same machine measure the same work.
+//! Criterion benches for the hot loops of the engine: the BFF interpreter, one soup
+//! epoch, one metrics sample — alone and taken with the snapshot of the same epoch —
+//! and one Life epoch. Every input comes from a fixed seed, so two runs on the same
+//! machine measure the same work.
 //!
 //! Baselines, criterion medians on an Apple M1 (two runs agreeing within 10%). They
 //! move with the parameter defaults — `max_steps` above all — so a machine-to-machine
 //! comparison of the absolute numbers means little; criterion's own report against the
 //! previous local run is the regression signal.
 //!
-//! | bench                          | median   |
-//! |--------------------------------|----------|
-//! | bff/random_128                 | 82 ns    |
-//! | bff/handwritten_replicator_512 | 4.9 µs   |
-//! | world_step_soup/64x64          | 3.8 ms   |
-//! | world_metrics_soup/64x64       | 6.9 ms   |
-//! | world_step_life/512x512        | 746 µs   |
+//! | bench                                  | median |
+//! |----------------------------------------|--------|
+//! | bff/random_128                         | 82 ns  |
+//! | bff/handwritten_replicator_512         | 4.9 µs |
+//! | world_step_soup/64x64                  | 3.8 ms |
+//! | world_metrics_soup/64x64               | 5.0 ms |
+//! | world_metrics_soup/64x64_with_snapshot | 5.0 ms |
+//! | world_step_life/512x512                | 746 µs |
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use life_engine::params::{Init, Params, Substrate};
@@ -90,6 +92,13 @@ fn world_metrics_soup(c: &mut Criterion) {
     group.sample_size(20);
     group.bench_function("64x64", |b| {
         b.iter_batched_ref(|| world.clone(), World::metrics, BatchSize::LargeInput)
+    });
+    group.bench_function("64x64_with_snapshot", |b| {
+        b.iter_batched_ref(
+            || world.clone(),
+            World::metrics_with_snapshot,
+            BatchSize::LargeInput,
+        )
     });
     group.finish();
 }

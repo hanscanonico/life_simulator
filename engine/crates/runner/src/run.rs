@@ -74,11 +74,16 @@ pub fn execute_world(
 
     loop {
         let epoch = world.epoch();
-        if epoch.is_multiple_of(sample_every) {
+        let sampling = epoch.is_multiple_of(sample_every);
+        let snapshotting = epoch.is_multiple_of(snapshot_every);
+        if sampling && snapshotting {
+            let (metrics, raw) = world.metrics_with_snapshot();
+            sink.sample(epoch, &metrics, world.transition_epoch())?;
+            sink.snapshot(epoch, &raw, &render_png(&world)?)?;
+        } else if sampling {
             let metrics = world.metrics();
             sink.sample(epoch, &metrics, world.transition_epoch())?;
-        }
-        if epoch.is_multiple_of(snapshot_every) {
+        } else if snapshotting {
             let raw = world.snapshot();
             sink.snapshot(epoch, &raw, &render_png(&world)?)?;
         }
