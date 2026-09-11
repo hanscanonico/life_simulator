@@ -122,6 +122,19 @@ RSpec.describe Experiments::TransitionReportService do
     end
   end
 
+  context "with a census that moved just before the crossing" do
+    let!(:early_census) do
+      sampled(transition_epoch: 300,
+              samples: [sample(0.9, entropy: 5.0, replicators: 3, copy_rate: 0.002, tapes: 900, top_share: 0.02),
+                        sample(0.8, entropy: 4.0, replicators: 0, copy_rate: 0.0, tapes: 800, top_share: 0.05),
+                        sample(0.45, entropy: 1.8, replicators: 0, copy_rate: 0.0, tapes: 200, top_share: 0.4)])
+    end
+
+    it "confirms the crossing off the samples that came before it" do
+      expect(row_for(early_census)).to have_attributes(confirmed_epoch: 300, confirmed_by: "census")
+    end
+  end
+
   context "with a census that moved beyond the confirmation window" do
     let!(:late_census) do
       sampled(transition_epoch: 100,
@@ -132,6 +145,19 @@ RSpec.describe Experiments::TransitionReportService do
 
     it "leaves the crossing unconfirmed" do
       expect(row_for(late_census)).to have_attributes(confirmed_epoch: nil, confirmed_by: nil)
+    end
+  end
+
+  context "with a crossing recorded past the last stored sample" do
+    let!(:unsampled_crossing) do
+      sampled(transition_epoch: 900,
+              samples: [sample(0.9, entropy: 5.0, replicators: 3, copy_rate: 0.002, tapes: 900, top_share: 0.02),
+                        sample(0.45, entropy: 1.8, replicators: 4, copy_rate: 0.003, tapes: 200, top_share: 0.4)])
+    end
+
+    it "leaves the crossing unconfirmed rather than reaching for the nearest sample" do
+      expect(row_for(unsampled_crossing)).to have_attributes(transition_epoch: 900, confirmed_epoch: nil,
+                                                             confirmed_by: nil)
     end
   end
 
