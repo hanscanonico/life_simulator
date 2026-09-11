@@ -4,7 +4,6 @@ use crate::bff;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::io::Write;
 
 /// `compress_ratio` below this, held for `TRANSITION_HOLD_SAMPLES` further samples, is
@@ -28,15 +27,27 @@ pub struct Metrics {
 
 /// `zlib(all tapes).len / raw.len` — the BFF paper's headline signal.
 pub fn compress_ratio(bytes: &[u8]) -> f64 {
-    if bytes.is_empty() {
+    compress_ratio_of(compress(bytes).len(), bytes.len())
+}
+
+/// `compress_ratio` read off a stream `compress` has already produced over the very same
+/// bytes — a snapshot's payload, so an epoch that both samples and snapshots compresses
+/// once. The compression level and the byte set are part of the observable
+/// (`docs/DESIGN.md` §1.2), which is why there is one compressor for both readers.
+pub fn compress_ratio_of(compressed_len: usize, raw_len: usize) -> f64 {
+    if raw_len == 0 {
         return 0.0;
     }
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    compressed_len as f64 / raw_len as f64
+}
+
+/// The zlib stream `compress_ratio` measures, and the payload a snapshot carries.
+pub fn compress(bytes: &[u8]) -> Vec<u8> {
+    let mut encoder = ZlibEncoder::new(Vec::with_capacity(bytes.len() / 4), Compression::default());
     encoder
         .write_all(bytes)
         .expect("writing to a Vec cannot fail");
-    let compressed = encoder.finish().expect("writing to a Vec cannot fail");
-    compressed.len() as f64 / bytes.len() as f64
+    encoder.finish().expect("writing to a Vec cannot fail")
 }
 
 /// Fraction of bytes that are one of the ten instructions (random bytes ≈ 10/256).
@@ -50,38 +61,72 @@ pub fn op_density(bytes: &[u8]) -> f64 {
 
 /// Shannon entropy of the byte distribution, in bits (8.0 for uniform random bytes).
 pub fn entropy_bits(bytes: &[u8]) -> f64 {
-    if bytes.is_empty() {
-        return 0.0;
-    }
-    let mut histogram = [0u64; 256];
-    for byte in bytes {
-        histogram[*byte as usize] += 1;
-    }
-    let total = bytes.len() as f64;
-    histogram
-        .iter()
-        .filter(|count| **count > 0)
-        .map(|count| {
-            let p = *count as f64 / total;
-            -p * p.log2()
-        })
-        .sum()
+    ByteHistogram::of(bytes).entropy_bits()
 }
 
-/// How many cells hold each distinct tape, keyed in a `BTreeMap` so iteration order is
-/// the tapes' own order and never a hash seed's.
-pub fn tape_counts(cells: &[u8], stride: usize) -> BTreeMap<&[u8], u64> {
-    let mut counts: BTreeMap<&[u8], u64> = BTreeMap::new();
-    for tape in cells.chunks_exact(stride) {
-        *counts.entry(tape).or_insert(0) += 1;
-    }
-    counts
+/// The 256 byte counts of a buffer. `op_density` and `entropy_bits` are two readings of
+/// the same counts, so a sample of the whole cell buffer builds them once and reads
+/// twice instead of walking a quarter of a megabyte again.
+pub struct ByteHistogram {
+    bins: [u64; 256],
+    total: usize,
 }
 
-/// Distinct tapes ordered by population, ties broken by tape value so the order is a
-/// function of the world alone.
-pub fn by_population<'a>(counts: &BTreeMap<&'a [u8], u64>) -> Vec<(&'a [u8], u64)> {
-    let mut ranked: Vec<(&'a [u8], u64)> = counts.iter().map(|(tape, n)| (*tape, *n)).collect();
+impl ByteHistogram {
+    pub fn of(bytes: &[u8]) -> Self {
+        let mut bins = [0u64; 256];
+        for byte in bytes {
+            bins[*byte as usize] += 1;
+        }
+        Self {
+            bins,
+            total: bytes.len(),
+        }
+    }
+
+    /// The same fraction `op_density` counts byte by byte, summed over the instruction
+    /// bins.
+    pub fn op_density(&self) -> f64 {
+        if self.total == 0 {
+            return 0.0;
+        }
+        let ops: u64 = bff::OPS.iter().map(|op| self.bins[*op as usize]).sum();
+        ops as f64 / self.total as f64
+    }
+
+    pub fn entropy_bits(&self) -> f64 {
+        if self.total == 0 {
+            return 0.0;
+        }
+        let total = self.total as f64;
+        self.bins
+            .iter()
+            .filter(|count| **count > 0)
+            .map(|count| {
+                let p = *count as f64 / total;
+                -p * p.log2()
+            })
+            .sum()
+    }
+}
+
+/// Distinct tapes with their populations, ordered by population and ties broken by tape
+/// value, so the ranking is a function of the world alone. Sorting the tapes and
+/// run-length counting them costs a third of what a map keyed by whole tapes costs on a
+/// soup of distinct tapes, and a few microseconds more than it once the soup has
+/// converged on a handful.
+pub fn ranked_tapes(cells: &[u8], stride: usize) -> Vec<(&[u8], u64)> {
+    let mut tapes: Vec<&[u8]> = cells.chunks_exact(stride).collect();
+    tapes.sort_unstable();
+
+    let mut ranked: Vec<(&[u8], u64)> = Vec::new();
+    for tape in tapes {
+        match ranked.last_mut() {
+            Some((seen, count)) if *seen == tape => *count += 1,
+            _ => ranked.push((tape, 1)),
+        }
+    }
+    // A stable sort, so tapes of equal population keep the ascending order above.
     ranked.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
     ranked
 }
@@ -186,14 +231,110 @@ mod tests {
     #[test]
     fn tapes_are_counted_and_ranked_by_population() {
         let cells = [1, 1, 2, 2, 1, 1, 3, 3, 1, 1];
-        let counts = tape_counts(&cells, 2);
-        assert_eq!(counts.len(), 3);
-        assert_eq!(counts[&[1, 1][..]], 3);
-
-        let ranked = by_population(&counts);
+        let ranked = ranked_tapes(&cells, 2);
+        assert_eq!(ranked.len(), 3);
         assert_eq!(ranked[0], (&[1u8, 1][..], 3));
         assert_eq!(ranked[1], (&[2u8, 2][..], 1), "ties break by tape value");
         assert_eq!(ranked[2], (&[3u8, 3][..], 1));
+    }
+
+    /// The ranking a `BTreeMap` keyed by whole tapes produced, which every recorded
+    /// `distinct_tapes`, `top_share` and `replicator_count` was read from.
+    fn ranked_through_a_map(cells: &[u8], stride: usize) -> Vec<(&[u8], u64)> {
+        let mut counts: std::collections::BTreeMap<&[u8], u64> = std::collections::BTreeMap::new();
+        for tape in cells.chunks_exact(stride) {
+            *counts.entry(tape).or_insert(0) += 1;
+        }
+        let mut ranked: Vec<(&[u8], u64)> = counts.iter().map(|(tape, n)| (*tape, *n)).collect();
+        ranked.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+        ranked
+    }
+
+    #[test]
+    fn the_ranking_matches_the_map_it_replaces_on_a_random_soup() {
+        let mut rng = crate::rng::seeded(7, 0, 0);
+        let cells: Vec<u8> = (0..64 * 512).map(|_| crate::rng::byte(&mut rng)).collect();
+        assert_eq!(ranked_tapes(&cells, 64), ranked_through_a_map(&cells, 64));
+    }
+
+    #[test]
+    fn the_ranking_matches_the_map_it_replaces_on_a_soup_full_of_ties() {
+        let mut rng = crate::rng::seeded(8, 0, 0);
+        let distinct: Vec<u8> = (0..64 * 8).map(|_| crate::rng::byte(&mut rng)).collect();
+        let mut cells = Vec::new();
+        for cell in 0..512usize {
+            let tape = cell % 8;
+            cells.extend_from_slice(&distinct[tape * 64..tape * 64 + 64]);
+        }
+        let ranked = ranked_tapes(&cells, 64);
+        assert_eq!(
+            ranked.len(),
+            8,
+            "every tape shares its count with the others"
+        );
+        assert_eq!(ranked, ranked_through_a_map(&cells, 64));
+    }
+
+    /// The entropy `entropy_bits` summed from a histogram of its own, which every
+    /// recorded `entropy_bits` was read from — bin order included, so the floating-point
+    /// sum is the same one.
+    fn entropy_through_its_own_pass(bytes: &[u8]) -> f64 {
+        if bytes.is_empty() {
+            return 0.0;
+        }
+        let mut histogram = [0u64; 256];
+        for byte in bytes {
+            histogram[*byte as usize] += 1;
+        }
+        let total = bytes.len() as f64;
+        histogram
+            .iter()
+            .filter(|count| **count > 0)
+            .map(|count| {
+                let p = *count as f64 / total;
+                -p * p.log2()
+            })
+            .sum()
+    }
+
+    #[test]
+    fn the_histogram_reads_the_same_op_density_and_entropy_as_a_pass_each() {
+        let mut rng = crate::rng::seeded(9, 0, 0);
+        let bytes: Vec<u8> = (0..4096).map(|_| crate::rng::byte(&mut rng)).collect();
+        let histogram = ByteHistogram::of(&bytes);
+        assert_eq!(histogram.op_density(), op_density(&bytes));
+        assert_eq!(
+            histogram.entropy_bits(),
+            entropy_through_its_own_pass(&bytes)
+        );
+
+        let empty = ByteHistogram::of(&[]);
+        assert_eq!(empty.op_density(), 0.0);
+        assert_eq!(empty.entropy_bits(), 0.0);
+    }
+
+    #[test]
+    fn a_snapshots_payload_length_reads_the_same_compress_ratio() {
+        let mut rng = crate::rng::seeded(10, 0, 0);
+        let cells: Vec<u8> = (0..4096).map(|_| crate::rng::byte(&mut rng)).collect();
+        let encoded = crate::snapshot::encode(
+            &crate::snapshot::Header {
+                substrate: crate::params::Substrate::Soup,
+                width: 8,
+                height: 8,
+                tape_len: 64,
+                epoch: 0,
+                transition: TransitionState::default(),
+            },
+            &cells,
+        );
+        let payload = encoded.len() - crate::snapshot::HEADER_LEN;
+        assert_eq!(
+            compress_ratio_of(payload, cells.len()),
+            compress_ratio(&cells)
+        );
+        assert_eq!(compress_ratio_of(0, 0), 0.0);
+        assert_eq!(compress_ratio(&[]), 0.0);
     }
 
     #[test]

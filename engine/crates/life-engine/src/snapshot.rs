@@ -1,13 +1,11 @@
 //! The snapshot container: a small header plus the zlib-compressed cell bytes. Rails
 //! stores these verbatim, so the header carries enough to reject a mismatched restore.
 
-use crate::metrics::TransitionState;
+use crate::metrics::{self, TransitionState};
 use crate::params::{Params, Substrate};
 use flate2::read::ZlibDecoder;
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
 use std::fmt;
-use std::io::{Read, Write};
+use std::io::Read;
 
 pub const MAGIC: [u8; 4] = *b"LSNP";
 pub const VERSION: u8 = 2;
@@ -58,7 +56,14 @@ fn epoch_from_field(field: i64) -> Option<u64> {
 }
 
 pub fn encode(header: &Header, cells: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(HEADER_LEN + cells.len() / 4);
+    encode_compressed(header, &metrics::compress(cells))
+}
+
+/// A snapshot built from a payload already compressed by `compress` — the header is a
+/// plain prefix, so a caller that needs the payload's length for `compress_ratio` can
+/// compress the cells once and still produce the very same snapshot bytes.
+pub fn encode_compressed(header: &Header, payload: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(HEADER_LEN + payload.len());
     out.extend_from_slice(&MAGIC);
     out.push(VERSION);
     out.push(match header.substrate {
@@ -73,12 +78,8 @@ pub fn encode(header: &Header, cells: &[u8]) -> Vec<u8> {
     out.extend_from_slice(&header.transition.held.to_le_bytes());
     out.extend_from_slice(&epoch_field(header.transition.settled).to_le_bytes());
     out.extend_from_slice(&epoch_field(header.transition.last_epoch).to_le_bytes());
-
-    let mut encoder = ZlibEncoder::new(out, Compression::default());
-    encoder
-        .write_all(cells)
-        .expect("writing to a Vec cannot fail");
-    encoder.finish().expect("writing to a Vec cannot fail")
+    out.extend_from_slice(payload);
+    out
 }
 
 /// Reads a snapshot back, checking it describes the world `params` describes.
@@ -183,9 +184,8 @@ mod tests {
         out.extend_from_slice(&params.height.to_le_bytes());
         out.extend_from_slice(&params.tape_len.to_le_bytes());
         out.extend_from_slice(&epoch.to_le_bytes());
-        let mut encoder = ZlibEncoder::new(out, Compression::default());
-        encoder.write_all(cells).unwrap();
-        encoder.finish().unwrap()
+        out.extend_from_slice(&metrics::compress(cells));
+        out
     }
 
     #[test]
