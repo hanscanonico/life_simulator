@@ -1,0 +1,50 @@
+<%# The runs that decide the claim: every finished run of the sweep the detector flagged or
+    the census counted a replicator in. `page` is a Findings::ShowPage. %>
+<% if page.transitions.any? %>
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th class="numeric">Seed</th>
+          <th class="numeric"><%= page.arm_column %></th>
+          <th class="numeric">Transition epoch</th>
+          <th class="numeric">Peak replicators</th>
+          <th class="numeric">Min <span class="mono">entropy_bits</span></th>
+          <th class="numeric">Max <span class="mono">copy_rate</span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% page.transitions.each do |transition| %>
+          <tr>
+            <td><%= link_to "Run ##{transition.run.id}", run_path(transition.run) %></td>
+            <td class="numeric mono"><%= transition.run.seed %></td>
+            <td class="numeric mono"><%= transition.arm_label || "—" %></td>
+            <td class="numeric mono"><%= epoch_value transition.transition_epoch %></td>
+            <td class="numeric mono">
+              <%= count_value transition.peak_replicator_count %>
+              <% if transition.peak_epoch.present? %>
+                <span class="text-muted">(<%= epoch_value transition.peak_epoch %>)</span>
+              <% end %>
+            </td>
+            <td class="numeric mono"><%= metric_value transition.min_entropy_bits %></td>
+            <td class="numeric mono"><%= metric_value transition.max_copy_rate %></td>
+            <td><%= link_to "CSV", samples_run_path(transition.run, format: :csv) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <% if page.transitions_capped? %>
+    <p class="text-sm text-muted">
+      The first <%= Findings::ShowPage::MAX_TRANSITIONS %> rows only, by transition epoch.
+      The full set is on the <%= link_to "sweep's page", experiment_path(page.experiment) %>.
+    </p>
+  <% end %>
+<% else %>
+  <p class="text-muted">
+    No finished run of this sweep has transitioned or counted a replicator yet.
+  </p>
+<% end %>

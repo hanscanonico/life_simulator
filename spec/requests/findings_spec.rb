@@ -63,14 +63,42 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
-    context "with the final mutation-rate numbers" do
-      it "reports the sweep as finished and the emergence that happened" do
+    context "with the transitions table" do
+      it "rows the flagged runs with their extrema and a CSV link" do
+        experiment = create(:experiment, slug: "mutation-rate", epochs: 20_000,
+                                         param_grid: { "mutation_rate" => [0.0, 2.0**-16, 2.0**-8] })
+        run = create(:run, experiment: experiment, seed: 7, status: "finished", transition_epoch: 5_030,
+                           params: Lab::Schema.run_defaults.merge("mutation_rate" => 2.0**-8))
+        create(:sample, run: run, epoch: 5_030,
+                        values: { "replicator_count" => 867, "entropy_bits" => 1.2, "copy_rate" => 0.31 })
+
+        get finding_path(finding)
+
+        expect(response.body.squish).to include("Transitions and replicator counts", "867", "1.2", "0.31")
+        expect(response.body).to include(samples_run_path(run, format: :csv))
+      end
+
+      context "with nothing flagged yet" do
+        it "says so" do
+          create(:experiment, slug: "mutation-rate", epochs: 20_000,
+                              param_grid: { "mutation_rate" => [0.0, 2.0**-16, 2.0**-8] })
+
+          get finding_path(finding)
+
+          expect(response.body.squish).to include("No finished run of this sweep has transitioned")
+        end
+      end
+    end
+
+    context "with the mutation-rate write-up" do
+      it "states the shape of the sweep and points at the live tables" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("All 100 runs finished. Five transitioned",
-                      "the first at epoch 5 030",
-                      "The other 95 were censored at 20 000 epochs")
+          .to include("All 100 runs finished",
+                      "which read the runs live",
+                      "Nothing transitioned at any rate at or below",
+                      "in no arm more often than 2 of 10")
       end
 
       it "says plainly that the window is not supported" do
@@ -79,37 +107,24 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish)
           .to include("The window is not there.",
                       "is not supported by its own data",
-                      "A one-sided Fisher exact test on that 2×2 table gives",
+                      "a one-sided Fisher exact test on that 2×2 table giving",
                       "p ≈ 0.073")
-      end
-
-      it "tabulates every arm with the runs that transitioned" do
-        get finding_path(finding)
-
-        expect(response.body.squish)
-          .to include("5 030 (<a href=\"#{run_path(41)}\">run 41</a>, seed 1)",
-                      "7 000 (<a href=\"#{run_path(45)}\">run 45</a>, seed 5)",
-                      "15 560 (<a href=\"#{run_path(59)}\">run 59</a>, seed 9)",
-                      "10 670 (<a href=\"#{run_path(83)}\">run 83</a>, seed 3)",
-                      "18 080 (<a href=\"#{run_path(95)}\">run 95</a>, seed 5)")
       end
 
       it "separates the compress_ratio floor from emergence" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("climbs arm by arm from ≈ 0.92 at",
-                      "to ≈ 0.99 at",
-                      "without a single reversal",
-                      "those three arms sit between 0.91 and 0.93, with the no-mutation arm the highest",
+          .to include("climbs arm by arm from", "without a single reversal",
                       "it has nothing to do with emergence")
       end
 
-      it "keeps the detector and the control as caveats" do
+      it "keeps the detector, the censoring and the control as caveats" do
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("detector fires in only three of the five transitioned runs",
+          .to include("the census disagrees with it on some flagged runs",
+                      "Every 0/10 arm is censored at 20 000 epochs rather than negative",
                       "nothing here is a clean negative until the")
       end
 
