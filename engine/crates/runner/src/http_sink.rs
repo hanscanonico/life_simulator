@@ -207,6 +207,30 @@ mod tests {
     }
 
     #[test]
+    fn a_settled_transition_posts_a_snapshot_off_the_cadence() {
+        let lab = MockLab::start();
+        let client = client(&lab);
+        let mut sink =
+            HttpSink::new(&client, 1, "runner-1").with_batch_age(Duration::from_secs(600));
+        let ordered = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            snapshot_every: 4,
+            ..MockLab::params()
+        };
+
+        run::execute(&ordered, 7, 6, &mut sink).unwrap();
+
+        let posted = lab.requests("POST /api/runs/1/snapshots");
+        assert_eq!(
+            posted.len(),
+            3,
+            "two cadence epochs and the settling sample"
+        );
+        assert_eq!(posted[2]["epoch"], json!(6));
+    }
+
+    #[test]
     fn a_settled_transition_epoch_is_kept_for_later_batches() {
         let lab = MockLab::start();
         let client = client(&lab);
