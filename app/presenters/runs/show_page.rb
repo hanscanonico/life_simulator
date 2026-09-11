@@ -37,6 +37,10 @@ module Runs
       run.terminal? ? "no emergence" : "no emergence yet"
     end
 
+    # The arm this run sits in, named the way the sweep's own tables name it:
+    # Experiments::Axis is the only place that knows radius 0 reads "well-mixed".
+    def arm_label = @arm_label ||= arm_labels.join(", ").presence
+
     def snapshots = @snapshots ||= run.snapshots.where.not(png: nil).order(:epoch).select(:id, :epoch, :updated_at)
 
     def params = run.params.sort.to_h
@@ -48,6 +52,10 @@ module Runs
     end
 
     private
+
+    def arm_labels
+      Experiments::Axis.sweep(run.experiment.param_grid).filter_map { |axis| axis.label_of_run(run.params) }
+    end
 
     def samples = @samples ||= run.samples.order(:epoch).pluck(:epoch, :values)
 

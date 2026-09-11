@@ -41,6 +41,34 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     page.evaluate_script("document.querySelector('h1').getBoundingClientRect().left")
   end
 
+  # A caption laid out at the table's width reports more scrollWidth than clientWidth once
+  # its text outruns the box, and it slides away with the columns when the box scrolls.
+  def caption_boxes
+    page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll('.table-caption'), (caption) => {
+        const box = caption.getBoundingClientRect();
+        return [Math.round(box.left), Math.round(box.right), caption.scrollWidth - caption.clientWidth];
+      })
+    JS
+  end
+
+  def scroll_tables_right
+    page.execute_script(<<~JS)
+      document.querySelectorAll('.table-scroll').forEach((box) => { box.scrollLeft = box.scrollWidth; });
+    JS
+  end
+
+  def skip_link_covers_wordmark?
+    page.evaluate_script(<<~JS)
+      (() => {
+        const link = document.querySelector('.skip-link').getBoundingClientRect();
+        const mark = document.querySelector('.site-wordmark').getBoundingClientRect();
+        return !(link.right <= mark.left || mark.right <= link.left ||
+                 link.bottom <= mark.top || mark.bottom <= link.top);
+      })()
+    JS
+  end
+
   it "keeps an experiment inside the viewport, gutter included" do
     visit experiment_path(experiment)
 
@@ -82,6 +110,27 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     page.send_keys(:tab)
 
     expect(page).to have_css(".skip-link", text: "Skip to content")
+  end
+
+  it "gives the focused skip link a row of its own above the wordmark" do
+    visit experiments_path
+
+    page.send_keys(:tab)
+
+    expect(page).to have_css(".skip-link", text: "Skip to content")
+    expect(skip_link_covers_wordmark?).to be(false)
+  end
+
+  it "keeps a table's caption out of the table's scrolling box" do
+    visit experiment_path(experiment)
+
+    expect(page).to have_css("figcaption.table-caption")
+    boxes = caption_boxes
+    scroll_tables_right
+
+    expect(caption_boxes).to eq(boxes)
+    expect(boxes.map(&:third)).to all(eq(0))
+    expect(boxes.map(&:second)).to all(be <= phone_width - 16)
   end
 
   it "keeps a finding inside the viewport, diagram and runs table included" do
