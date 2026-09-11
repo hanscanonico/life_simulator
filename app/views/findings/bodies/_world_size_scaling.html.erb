@@ -124,10 +124,10 @@
   on four events and <span class="mono">1.6 × 10<sup>10</sup></span> cell-epochs at risk; the
   two arms that have events sit at <span class="mono">3.1 × 10<sup>-10</sup></span> (128²)
   and <span class="mono">2.5 × 10<sup>-10</sup></span> (256²), each inside the other's
-  interval. The sweep's own hazard table says the same thing per <em>run</em>-epoch, over
-  finished runs only: 0 events in 200 000 run-epochs in each of the two smallest arms, and
-  intervals more than 200-fold wide wherever there is one event. Four events cannot measure
-  an exponent. What they support is the sign — more cells, more emergence — not the claim
+  interval. The sweep's own hazard table says the same thing per <em>run</em>-epoch, with
+  every run censored where it was last watched: 0 events in 200 000 run-epochs in each of
+  the two smallest arms, and intervals more than 200-fold wide wherever there is one event.
+  Four events cannot measure an exponent. What they support is the sign — more cells, more emergence — not the claim
   that it is exactly linear in cell count.
 </p>
 
@@ -159,12 +159,13 @@
 <p>
   <strong>Size does not change the pre-emergence soup.</strong> Among the runs that never
   transitioned, the final <span class="mono">compress_ratio</span> sits between 0.93 and 0.96
-  in every arm, and the per-arm medians span 0.945 to 0.951 with no order in them;
-  <span class="mono">entropy_bits</span> ends within a few hundredths of 7.87 everywhere.
-  A 1 024-cell soup and a 65 536-cell soup are the same soup. That is worth stating because
-  the radius sweep found the opposite for its parameter — there the censored runs' floor
-  moved monotonically from 0.951 to 0.859 as a cell's reach widened — so cell count acts on
-  how often something happens, not on what the world looks like while nothing does.
+  in every arm, and the per-arm medians span 0.945 to 0.951 — less than the 0.937 to 0.956
+  the 32² arm's own ten runs span between them; <span class="mono">entropy_bits</span> ends
+  within a few hundredths of 7.87 everywhere. A 1 024-cell soup and a 65 536-cell soup are
+  the same soup. That is worth stating because the radius sweep found the opposite for its
+  parameter — there the censored runs' floor moved monotonically from 0.951 to 0.859 as a
+  cell's reach widened — so cell count acts on how often something happens, not on what the
+  world looks like while nothing does.
 </p>
 
 <p>

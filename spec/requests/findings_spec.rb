@@ -348,6 +348,7 @@ RSpec.describe "Findings", type: :request do
                       "the arms should show about 0.06, 0.26, 1 and 3.7 events",
                       "about one time in eight",
                       "2.5 × 10<sup>-10</sup></span> per cell-epoch",
+                      "with every run censored where it was last watched",
                       "Four events cannot measure an exponent.")
       end
 
