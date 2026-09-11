@@ -11,9 +11,9 @@
   <dt>Runs finished</dt><dd><%= @show.finished_count %> / <%= @show.experiment.runs_count %></dd>
   <dt>Transition rate</dt>
   <dd>
-    <% if @show.transition_rate %>
+    <% if @show.transition_rate.fraction %>
       <%= @show.transitioned_finished %> of <%= @show.finished_count %> finished runs transitioned
-      (<%= number_to_percentage(@show.transition_rate * 100, precision: 0) %>)
+      (<%= percent_value @show.transition_rate.fraction %>)
     <% else %>
       no finished run yet
     <% end %>

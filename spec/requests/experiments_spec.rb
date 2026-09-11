@@ -88,6 +88,18 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to include("Priority", %(<td class="numeric">5</td>))
     end
 
+    it "delimits each run's transition epoch and dashes the runs without one" do
+      create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 12_345,
+                   params: Lab::Schema.run_defaults.merge("radius" => 1))
+      create(:run, experiment: experiment, status: "finished", epochs_done: 20_000,
+                   params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include(%(<td class="numeric">12,345</td>))
+      expect(response.body).to match(%r{<td class="numeric">20,000</td>\s*<td class="numeric">—</td>})
+    end
+
     it "summarises every arm of the sweep" do
       create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
                    params: Lab::Schema.run_defaults.merge("radius" => 2))
@@ -96,7 +108,9 @@ RSpec.describe "Experiments", type: :request do
 
       get experiment_path(experiment)
 
-      expect(response.body).to include("Arms of radius", "Median epoch", "IQR", "1/2")
+      expect(response.body).to include("Arms of radius", "Median epoch", "IQR")
+      expect(response.body).to match(%r{<span class="mono">1/2</span>\s*<span class="text-muted">\s*50%})
+      expect(response.body).to match(%r{<span class="mono">0/0</span>\s*<span class="text-muted">\s*—})
     end
 
     context "with censored runs alongside runs that emerged" do

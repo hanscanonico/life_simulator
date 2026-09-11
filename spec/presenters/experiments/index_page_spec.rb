@@ -11,7 +11,8 @@ RSpec.describe Experiments::IndexPage do
     it "lists the experiment with nothing done" do
       experiment
 
-      expect(page.rows.sole).to have_attributes(runs_done: 0, runs_total: 0, transition_rate: nil)
+      expect(page.rows.sole).to have_attributes(runs_done: 0, runs_total: 0,
+                                                transition_rate: have_attributes(fraction: nil))
     end
   end
 
@@ -19,7 +20,8 @@ RSpec.describe Experiments::IndexPage do
     it "reports a transition rate of zero" do
       create_list(:run, 2, experiment: experiment, status: "finished")
 
-      expect(page.rows.sole).to have_attributes(runs_done: 2, runs_total: 2, transition_rate: 0.0)
+      expect(page.rows.sole).to have_attributes(runs_done: 2, runs_total: 2,
+                                                transition_rate: have_attributes(fraction: 0.0))
     end
   end
 
@@ -29,7 +31,8 @@ RSpec.describe Experiments::IndexPage do
       create(:run, experiment: experiment, status: "finished")
       create(:run, experiment: experiment)
 
-      expect(page.rows.sole).to have_attributes(runs_done: 2, runs_total: 3, transition_rate: 0.5)
+      expect(page.rows.sole).to have_attributes(runs_done: 2, runs_total: 3,
+                                                transition_rate: have_attributes(fraction: 0.5))
     end
   end
 

@@ -74,16 +74,13 @@
   color: var(--ink-muted);
 }
 
-/* Wide tables scroll inside their own box so the page never scrolls sideways. */
+/* Wide tables scroll inside their own box so the page never scrolls sideways, and the
+   backgrounds hint at that overflow: scrollbars are hidden until they move on macOS and
+   iOS, where a column clipped mid-number reads as broken data. The paper-coloured covers
+   scroll with the content (`local`) and the shadows stay pinned to the box (`scroll`), so
+   each shadow is uncovered exactly while there is more table that way. */
 .table-scroll {
   overflow-x: auto;
-}
-
-/* Overflow hint. Scrollbars are hidden until they move on macOS and iOS, where a column
-   clipped mid-number reads as broken data. The paper-coloured covers scroll with the
-   content (`local`) and the shadows stay pinned to the box (`scroll`), so each shadow is
-   uncovered exactly while there is more table that way. */
-.table-scroll {
   background-repeat: no-repeat;
   background-attachment: local, local, scroll, scroll;
   background-position: left center, right center, left center, right center;

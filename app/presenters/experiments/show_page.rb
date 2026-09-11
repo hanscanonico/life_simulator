@@ -48,11 +48,7 @@ module Experiments
                                           .where.not(transition_epoch: nil).count
     end
 
-    def transition_rate
-      return nil if finished_count.zero?
-
-      transitioned_finished.fdiv(finished_count)
-    end
+    def transition_rate = TransitionRate.new(transitioned: transitioned_finished, finished: finished_count)
 
     private
 

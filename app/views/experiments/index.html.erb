@@ -26,7 +26,7 @@
             <td><span class="badge"><%= row.experiment.status %></span></td>
             <td class="numeric"><%= row.runs_done %> / <%= row.runs_total %></td>
             <td class="numeric">
-              <%= row.transition_rate ? number_to_percentage(row.transition_rate * 100, precision: 0) : "—" %>
+              <%= percent_value row.transition_rate.fraction %>
             </td>
           </tr>
         <% end %>
