@@ -1,0 +1,31 @@
+<%# The frame refetches this same page and Turbo keeps only the matching frame, so the
+    progress facts stay current without a route of their own. Eager, not lazy: Turbo drops a
+    lazy frame's reload() until its first load has settled. A terminal run is done moving, so
+    it gets neither src nor controller and costs no request at all — and neither does the
+    answer to a poll: Turbo refuses a response frame whose src points back at the request
+    that fetched it, and the element on the page keeps its own attributes across a reload. %>
+<%= tag.turbo_frame id: "run_progress", src: (run_path(show.run) if polling),
+                    data: (polling ? { controller: "frame-poll", frame_poll_interval_value: 15_000 } : {}) do %>
+  <dl class="facts">
+    <dt>Status</dt><dd><span class="badge <%= status_badge_class(show.run.status) %>"><%= show.run.status %></span></dd>
+    <dt>Progress</dt>
+    <dd><%= number_with_delimiter show.run.epochs_done %> / <%= number_with_delimiter show.run.epochs %> epochs
+      (<%= show.progress %>%)</dd>
+    <dt>Rate</dt>
+    <dd>
+      <% if show.epochs_per_second %>
+        <%= number_with_delimiter show.epochs_per_second %> epochs/s
+        <span class="text-sm text-muted">(measured from recorded samples)</span>
+      <% else %>—<% end %>
+    </dd>
+    <dt>Time remaining</dt>
+    <dd><%= show.eta ? distance_of_time_in_words(show.eta) : "—" %></dd>
+    <dt>Transition epoch</dt>
+    <dd><%= show.transition_label %></dd>
+    <dt>Runner</dt>
+    <dd>
+      <%= show.run.runner_id || "—" %><% if !show.run.terminal? && show.run.heartbeat_at.present? %>,
+        last heartbeat <%= time_ago_in_words show.run.heartbeat_at %> ago<% end %>
+    </dd>
+  </dl>
+<% end %>
