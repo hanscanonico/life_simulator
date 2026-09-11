@@ -71,6 +71,15 @@ RSpec.describe "Experiments", type: :request do
                                        "+1 run still under way already transitioned")
     end
 
+    it "names each run's arm the way the diagram and the arm table do" do
+      experiment.update!(param_grid: { "radius" => [1, 2, 0] })
+      create(:run, experiment: experiment, seed: 3, params: Lab::Schema.run_defaults.merge("radius" => 0))
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include(%(<td class="numeric mono">well-mixed</td>))
+    end
+
     it "shows each run's queue priority" do
       create(:run, experiment: experiment, priority: 5)
 

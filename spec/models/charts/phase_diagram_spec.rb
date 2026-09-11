@@ -97,5 +97,13 @@ RSpec.describe Charts::PhaseDiagram do
 
       expect(diagram.x_ticks.map(&:label)).to eq(%w[1 4])
     end
+
+    context "with a grid too long to label" do
+      it "names every other value, starting from the first" do
+        diagram = build((1..8).map { |value| group(value, transition_epochs: [100]) })
+
+        expect(diagram.x_ticks.map(&:label)).to eq(%w[1 3 5 7])
+      end
+    end
   end
 end

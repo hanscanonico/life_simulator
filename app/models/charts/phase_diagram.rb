@@ -8,6 +8,9 @@ module Charts
     include Plot
 
     CENSORED_ROW = 10
+    # An eight-character label spans a sixth of the 668-unit axis, and a log axis packs its
+    # columns unevenly, so past six values not all of them can be named.
+    MAX_LABELLED_VALUES = 6
 
     Group = Data.define(:value, :label, :transition_epochs, :censored) do
       def median
@@ -44,9 +47,12 @@ module Charts
     end
 
     # A sweep has a handful of grid values, so every one of them is its own tick: nice
-    # round ticks would sit between the columns the reader is comparing.
+    # round ticks would sit between the columns the reader is comparing. A grid too long to
+    # label names every other value; the dots and the arm table still carry the rest.
     def x_ticks
-      @groups.sort_by(&:value).map { |group| Plot::Tick.new(label: group.label, position: x_pixel(group.value)) }
+      sorted = @groups.sort_by(&:value)
+      sorted = sorted.select.with_index { |_, index| index.even? } if sorted.size > MAX_LABELLED_VALUES
+      sorted.map { |group| Plot::Tick.new(label: group.label, position: x_pixel(group.value)) }
     end
 
     def median_path

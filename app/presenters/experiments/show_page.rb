@@ -27,7 +27,11 @@ module Experiments
     # runs included, so the page answers "how long does emergence take" while a sweep runs.
     def survivals = @survivals ||= axes.index_with { |axis| survival_for(axis) }
 
-    def varying_keys = @varying_keys ||= axes.flat_map(&:param_keys).uniq
+    # One column per swept axis, headed and filled with the same label the phase diagram
+    # and the arm table use, so a row of the runs table can be matched to an arm.
+    def arm_columns = @arm_columns ||= axes.map { |axis| axis.name.to_s.humanize }
+
+    def arm_labels_of(run) = axes.map { |axis| axis.label_of_run(run.params) }
 
     def runs = page.last
 

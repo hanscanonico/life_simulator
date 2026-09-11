@@ -97,3 +97,38 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     expect(gutter).to be >= 16
   end
 end
+
+RSpec.describe "The prose measure on a desktop", :js, type: :system do
+  let(:desktop_width) { 1280 }
+
+  before do
+    page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride",
+                                    width: desktop_width, height: 900, deviceScaleFactor: 1, mobile: false)
+  end
+
+  def width_of(selector)
+    page.evaluate_script("document.querySelector('#{selector}').getBoundingClientRect().width")
+  end
+
+  def widths_of(selector)
+    page.evaluate_script("Array.from(document.querySelectorAll('#{selector}'), (node) => node.getBoundingClientRect().width)")
+  end
+
+  it "keeps a finding's prose to a readable measure while its evidence stays wide" do
+    sweep = create(:experiment, slug: "mutation-rate", epochs: 20_000,
+                                param_grid: { "mutation_rate" => [0.0, 0.001] })
+    create(:run, experiment: sweep, status: "finished", transition_epoch: 3_000, epochs_done: 20_000,
+                 params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.0))
+
+    visit finding_path(Findings::Registry.find("mutation-rate-window"))
+
+    expect(width_of(".container-narrow p")).to be <= 700
+    expect(widths_of("table.data-table")).to all(be > 900)
+  end
+
+  it "keeps the findings log to a readable measure" do
+    visit findings_path
+
+    expect(width_of(".finding-card p")).to be <= 700
+  end
+end

@@ -5,8 +5,8 @@
     <thead>
       <tr>
         <th class="numeric">Seed</th>
-        <% page.varying_keys.each do |key| %>
-          <th class="numeric"><%= key.humanize %></th>
+        <% page.arm_columns.each do |column| %>
+          <th class="numeric"><%= column %></th>
         <% end %>
         <th>Status</th>
         <th class="numeric">Priority</th>
@@ -19,8 +19,8 @@
       <% page.runs.each do |run| %>
         <tr>
           <td class="numeric mono"><%= run.seed %></td>
-          <% page.varying_keys.each do |key| %>
-            <td class="numeric mono"><%= param_value(run.params[key]) %></td>
+          <% page.arm_labels_of(run).each do |label| %>
+            <td class="numeric mono"><%= label || "—" %></td>
           <% end %>
           <td><span class="badge"><%= run.status %></span></td>
           <td class="numeric"><%= run.priority %></td>

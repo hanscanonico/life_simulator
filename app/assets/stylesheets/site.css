@@ -81,6 +81,32 @@
   overflow-x: auto;
 }
 
+/* Overflow hint. Scrollbars are hidden until they move on macOS and iOS, where a column
+   clipped mid-number reads as broken data. The paper-coloured covers scroll with the
+   content (`local`) and the shadows stay pinned to the box (`scroll`), so each shadow is
+   uncovered exactly while there is more table that way. */
+.table-scroll {
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+  background-position: left center, right center, left center, right center;
+  background-size: var(--space-8) 100%, var(--space-8) 100%, var(--space-4) 100%, var(--space-4) 100%;
+  background-image:
+    linear-gradient(to right, var(--paper) 60%, transparent),
+    linear-gradient(to left, var(--paper) 60%, transparent),
+    radial-gradient(farthest-side at 0 50%, var(--line-strong), transparent),
+    radial-gradient(farthest-side at 100% 50%, var(--line-strong), transparent);
+}
+
+/* A finding's prose is set to a measure, but a table inside it is evidence, not prose, and
+   its columns cannot be read through a 600 px window. Once the page is wide enough to hold
+   62rem plus its own gutter, a table breaks out of the measure, centred on it. The 37.5rem
+   is .container-narrow's max-width in 03-layout.css. */
+@media (min-width: 64rem) {
+  .container-narrow > .table-scroll {
+    margin-inline: calc((37.5rem - 62rem) / 2);
+  }
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -143,6 +169,12 @@
 }
 
 .chart-svg {
+  /* Label sizes are viewBox user units, so they shrink with the SVG: an 828-unit chart
+     drawn 358 px wide renders 13 of them as 6 px. The media queries below step the sizes
+     up as the chart narrows, and Charts::Plot::PADDING is the room the largest step
+     needs. */
+  --chart-label-size: 13px;
+  --chart-axis-title-size: 14px;
   width: 100%;
   max-width: 100%;
   height: auto;
@@ -165,12 +197,12 @@
 .chart-axis-label text {
   fill: var(--ink-muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--chart-label-size);
 }
 
 .chart-axis-label text {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--chart-axis-title-size);
 }
 
 .chart-line {
@@ -197,7 +229,7 @@
 .chart-censored text {
   fill: var(--ink-muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--chart-label-size);
 }
 
 .chart-marker line {
@@ -209,7 +241,29 @@
 .chart-marker text {
   fill: var(--negative);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--chart-label-size);
+}
+
+/* A chart that has the page to itself, drawn around 600 px wide. */
+@media (max-width: 40rem) {
+  .chart-svg {
+    --chart-label-size: 17px;
+    --chart-axis-title-size: 18px;
+  }
+}
+
+/* A phone: the same chart drawn around 360 px wide, where a label has to be 23 units to
+   reach the 10 px it takes to be read. A y label that size fills the left gutter, so the
+   rotated y title gives way — the figcaption above the plot already names the metric. */
+@media (max-width: 30rem) {
+  .chart-svg {
+    --chart-label-size: 23px;
+    --chart-axis-title-size: 24px;
+  }
+
+  .chart-y-title {
+    display: none;
+  }
 }
 
 /* The survival chart tells its arms apart by dash pattern, so the legend has to show the

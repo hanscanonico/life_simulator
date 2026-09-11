@@ -217,9 +217,58 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
-  describe "#varying_keys" do
-    it "lists the parameters the runs table has to show" do
-      expect(page.varying_keys).to eq(["radius"])
+  describe "#arm_columns" do
+    it "heads one column per swept parameter" do
+      expect(page.arm_columns).to eq(["Radius"])
+    end
+  end
+
+  describe "#arm_labels_of" do
+    it "labels a run the way its arm is labelled" do
+      run = create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+      expect(page.arm_labels_of(run)).to eq(["2"])
+    end
+
+    context "with the well-mixed arm of a radius sweep" do
+      let(:experiment) { create(:experiment, param_grid: { "radius" => [1, 2, 0] }) }
+
+      it "names it as the diagram and the arm table do" do
+        run = create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 0))
+
+        expect(page.arm_labels_of(run)).to eq(["well-mixed"])
+      end
+    end
+
+    context "with a run whose value is off the grid" do
+      it "still names the value it ran" do
+        run = create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 3))
+
+        expect(page.arm_labels_of(run)).to eq(["3"])
+      end
+    end
+
+    context "with a paired grid value" do
+      let(:experiment) do
+        create(:experiment, param_grid: { "world_size" => [{ "width" => 32, "height" => 32 },
+                                                           { "width" => 64, "height" => 64 }] })
+      end
+
+      it "labels the pair once" do
+        run = create(:run, experiment: experiment,
+                           params: Lab::Schema.run_defaults.merge("width" => 64, "height" => 64))
+
+        expect(page.arm_labels_of(run)).to eq(["64"])
+      end
+
+      context "with a pair off the grid" do
+        it "names no arm, so the table can show a dash" do
+          run = create(:run, experiment: experiment,
+                             params: Lab::Schema.run_defaults.merge("width" => 48, "height" => 48))
+
+          expect(page.arm_labels_of(run)).to eq([nil])
+        end
+      end
     end
   end
 end
