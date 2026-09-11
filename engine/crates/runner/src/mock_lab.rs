@@ -5,6 +5,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use life_engine::Params;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -20,7 +21,8 @@ struct State {
     queue_empty: bool,
     fail_next: u32,
     latest_snapshot: Option<(u64, Vec<u8>)>,
-    worlds: Vec<(u64, Vec<u8>)>,
+    worlds: BTreeMap<i64, Vec<(u64, Vec<u8>)>>,
+    corpus: Option<Value>,
 }
 
 pub struct MockLab {
@@ -79,7 +81,17 @@ impl MockLab {
 
     /// The worlds `GET /api/runs/1/world` serves, newest last.
     pub fn set_worlds(&self, worlds: Vec<(u64, Vec<u8>)>) {
-        self.state.lock().unwrap().worlds = worlds;
+        self.set_run_worlds(1, worlds);
+    }
+
+    /// The worlds `GET /api/runs/<run>/world` serves, newest last.
+    pub fn set_run_worlds(&self, run: i64, worlds: Vec<(u64, Vec<u8>)>) {
+        self.state.lock().unwrap().worlds.insert(run, worlds);
+    }
+
+    /// What `GET /api/experiments/<slug>/corpus` answers.
+    pub fn set_corpus(&self, corpus: Value) {
+        self.state.lock().unwrap().corpus = Some(corpus);
     }
 
     /// Answers the next `times` requests with a 500, as a flaky app would.
@@ -126,8 +138,17 @@ impl Drop for MockLab {
     }
 }
 
+/// The run id of `/api/runs/<id>/<action>`.
+fn run_of(path: &str) -> Option<i64> {
+    path.strip_prefix("/api/runs/")?
+        .split('/')
+        .next()?
+        .parse()
+        .ok()
+}
+
 /// The world of the `epoch` query, or the newest one when the query names none.
-fn world(url: &str, worlds: &[(u64, Vec<u8>)]) -> Option<Value> {
+fn world(url: &str, run: i64, worlds: &[(u64, Vec<u8>)]) -> Option<Value> {
     let asked = url
         .split_once("epoch=")
         .map(|(_, rest)| rest.split('&').next().unwrap_or_default().to_string());
@@ -136,7 +157,7 @@ fn world(url: &str, worlds: &[(u64, Vec<u8>)]) -> Option<Value> {
         None => worlds.last()?,
     };
     Some(json!({
-        "id": 1,
+        "id": run,
         "params": MockLab::params(),
         "seed": 7,
         "epoch": epoch,
@@ -198,7 +219,11 @@ fn answer(mut request: Request, state: &Arc<Mutex<State>>) {
             "epochs": EPOCHS,
             "epochs_done": 0,
         })),
-        (Method::Get, "/api/runs/1/world") => world(&url, &state.worlds),
+        (Method::Get, _) if path.ends_with("/world") => run_of(&path).and_then(|run| {
+            let worlds = state.worlds.get(&run).cloned().unwrap_or_default();
+            world(&url, run, &worlds)
+        }),
+        (Method::Get, _) if path.ends_with("/corpus") => state.corpus.clone(),
         (Method::Get, "/api/runs/1/snapshots/latest") => state
             .latest_snapshot
             .as_ref()

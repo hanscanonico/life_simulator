@@ -5,11 +5,12 @@
 //! `metrics()`, so the numbers it prints are the numbers a run with that setting would
 //! have reported at that epoch.
 
-use crate::api::{LabClient, StoredWorld};
+use crate::api::{CorpusRun, LabClient, StoredWorld};
 use anyhow::{anyhow, bail, Context, Result};
 use life_engine::metrics;
 use life_engine::{Metrics, Params, World};
 use serde::Serialize;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -38,6 +39,37 @@ pub enum Source {
 pub struct Options {
     pub source: Source,
     pub top_k: Vec<u32>,
+}
+
+/// Which stored worlds of a run the corpus pass reads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum Epochs {
+    /// The newest stored world of each run.
+    #[default]
+    Latest,
+    /// Every stored world of each run.
+    All,
+}
+
+pub struct CorpusOptions {
+    pub api: String,
+    pub token: String,
+    pub experiment: String,
+    pub top_k: Vec<u32>,
+    pub epochs: Epochs,
+    /// How many worlds to measure at most; all of them when `None`.
+    pub limit: Option<usize>,
+    /// Measure and print, store nothing.
+    pub dry_run: bool,
+}
+
+/// What a corpus pass did, for the caller and the tests: the worlds it measured, the
+/// worlds it could not read, and the readings it stored.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct CorpusSummary {
+    pub worlds: usize,
+    pub failed: usize,
+    pub stored: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,6 +122,98 @@ pub fn execute(options: Options) -> Result<Report> {
         Source::File { path, params, seed } => (None, read_blob(&path, params, seed)?),
     };
     measure(&stored, run, &options.top_k)
+}
+
+/// Re-measures a whole experiment: every selected stored world of every finished run, at
+/// every `top_k` asked for, with the readings stored as rescore rows. A world that cannot
+/// be read is reported and skipped, since one corrupt snapshot must not cost the pass;
+/// only a pass where nothing at all could be read is a failure.
+pub fn execute_corpus(options: CorpusOptions) -> Result<CorpusSummary> {
+    let client = LabClient::new(&options.api, &options.token);
+    let runs = client.corpus(&options.experiment)?;
+    let mut summary = CorpusSummary::default();
+
+    for (run, epoch) in selected(&runs, options.epochs, options.limit) {
+        match rescore_world(&client, run, epoch, &options) {
+            Ok(stored) => {
+                summary.worlds += 1;
+                summary.stored += stored;
+            }
+            Err(error) => {
+                summary.failed += 1;
+                println!(
+                    "event=error run={} epoch={epoch} message={:?}",
+                    run.id,
+                    format!("{error:#}")
+                );
+            }
+        }
+    }
+
+    if summary.worlds == 0 && summary.failed > 0 {
+        bail!(
+            "every one of the {} worlds of {} failed to rescore",
+            summary.failed,
+            options.experiment
+        );
+    }
+    println!(
+        "event=rescore_done experiment={} worlds={}",
+        options.experiment, summary.worlds
+    );
+    Ok(summary)
+}
+
+fn rescore_world(
+    client: &LabClient,
+    run: &CorpusRun,
+    epoch: u64,
+    options: &CorpusOptions,
+) -> Result<usize> {
+    let stored = client
+        .world(run.id, Some(epoch))?
+        .ok_or_else(|| anyhow!("run {} no longer holds a world at epoch {epoch}", run.id))?;
+    let report = measure(&stored, Some(run.id), &options.top_k)?;
+    for setting in &report.settings {
+        println!(
+            "event=rescore run={} epoch={} top_k={} replicators={}",
+            run.id, report.epoch, setting.top_k, setting.replicator_count
+        );
+    }
+    if options.dry_run {
+        return Ok(0);
+    }
+    let rows = rows(report.epoch, &report.settings)?;
+    client.post_rescores(run.id, &rows)?;
+    Ok(rows.len())
+}
+
+/// The worlds to read, in corpus order: the newest stored one of each run, or all of them.
+fn selected(runs: &[CorpusRun], epochs: Epochs, limit: Option<usize>) -> Vec<(&CorpusRun, u64)> {
+    let worlds = runs.iter().flat_map(|run| {
+        let selected: Vec<u64> = match epochs {
+            Epochs::Latest => run.epochs.last().copied().into_iter().collect(),
+            Epochs::All => run.epochs.clone(),
+        };
+        selected.into_iter().map(move |epoch| (run, epoch))
+    });
+    match limit {
+        Some(limit) => worlds.take(limit).collect(),
+        None => worlds.collect(),
+    }
+}
+
+/// The rows `POST /api/runs/:id/rescores` stores: a setting's readings plus the epoch they
+/// were read at. Keep the field names in step with `Rescore::READINGS`.
+fn rows(epoch: u64, settings: &[Setting]) -> Result<Vec<Value>> {
+    settings
+        .iter()
+        .map(|setting| {
+            let mut row = serde_json::to_value(setting).context("serialising a reading")?;
+            row["epoch"] = json!(epoch);
+            Ok(row)
+        })
+        .collect()
 }
 
 fn read_blob(path: &Path, params: Params, seed: u64) -> Result<StoredWorld> {
@@ -399,5 +523,139 @@ mod tests {
         .to_string();
 
         assert!(error.contains("run 1 has no stored world"), "{error}");
+    }
+
+    /// A corpus of two finished runs, each holding the same two worlds.
+    fn corpus_lab(epochs: Vec<u64>) -> MockLab {
+        let lab = MockLab::start();
+        let mut world = World::new(&MockLab::params(), 7).expect("legal params");
+        let mut worlds = Vec::new();
+        for epoch in &epochs {
+            while world.epoch() < *epoch {
+                world.step();
+            }
+            worlds.push((*epoch, world.snapshot()));
+        }
+        for run in [1, 2] {
+            lab.set_run_worlds(run, worlds.clone());
+        }
+        let described: Vec<Value> = [1, 2]
+            .iter()
+            .map(|run| {
+                json!({
+                    "id": run,
+                    "seed": 7,
+                    "params": MockLab::params(),
+                    "status": "finished",
+                    "transition_epoch": Value::Null,
+                    "epochs": epochs,
+                })
+            })
+            .collect();
+        lab.set_corpus(json!({ "slug": "radius", "runs": described }));
+        lab
+    }
+
+    fn corpus_options(lab: &MockLab, epochs: Epochs, dry_run: bool) -> CorpusOptions {
+        CorpusOptions {
+            api: lab.base_url(),
+            token: crate::mock_lab::TOKEN.to_string(),
+            experiment: "radius".to_string(),
+            top_k: vec![16, 64],
+            epochs,
+            limit: None,
+            dry_run,
+        }
+    }
+
+    #[test]
+    fn every_world_of_every_run_is_measured_at_every_top_k_and_stored() {
+        let lab = corpus_lab(vec![0, 3]);
+
+        let summary = execute_corpus(corpus_options(&lab, Epochs::All, false)).unwrap();
+
+        assert_eq!(
+            summary,
+            CorpusSummary {
+                worlds: 4,
+                failed: 0,
+                stored: 8
+            }
+        );
+        let posted = lab.requests("POST /api/runs/1/rescores");
+        assert_eq!(posted.len(), 2);
+        let rows = posted[0]["rescores"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["top_k"], json!(16));
+        assert_eq!(rows[0]["epoch"], json!(0));
+        assert!(rows[0]["entropy_bits"].is_number(), "{rows:?}");
+    }
+
+    #[test]
+    fn the_latest_pass_reads_one_world_per_run() {
+        let lab = corpus_lab(vec![0, 3]);
+
+        let summary = execute_corpus(corpus_options(&lab, Epochs::Latest, false)).unwrap();
+
+        assert_eq!(summary.worlds, 2);
+        assert_eq!(lab.count("POST /api/runs/1/rescores"), 1);
+        assert_eq!(
+            lab.request("POST /api/runs/2/rescores")["rescores"][0]["epoch"],
+            json!(3)
+        );
+    }
+
+    #[test]
+    fn a_limit_stops_the_pass_early() {
+        let lab = corpus_lab(vec![0, 3]);
+        let mut options = corpus_options(&lab, Epochs::All, false);
+        options.limit = Some(3);
+
+        assert_eq!(execute_corpus(options).unwrap().worlds, 3);
+    }
+
+    #[test]
+    fn a_dry_run_measures_and_stores_nothing() {
+        let lab = corpus_lab(vec![0, 3]);
+
+        let summary = execute_corpus(corpus_options(&lab, Epochs::All, true)).unwrap();
+
+        assert_eq!(summary.worlds, 4);
+        assert_eq!(summary.stored, 0);
+        assert_eq!(lab.count("POST /api/runs/1/rescores"), 0);
+    }
+
+    /// One unreadable world must not cost the rest of the pass.
+    #[test]
+    fn a_world_the_lab_no_longer_holds_is_reported_and_skipped() {
+        let lab = corpus_lab(vec![0, 3]);
+        lab.set_run_worlds(2, vec![]);
+
+        let summary = execute_corpus(corpus_options(&lab, Epochs::All, false)).unwrap();
+
+        assert_eq!((summary.worlds, summary.failed), (2, 2));
+    }
+
+    #[test]
+    fn a_pass_where_no_world_could_be_read_fails() {
+        let lab = corpus_lab(vec![0, 3]);
+        lab.set_run_worlds(1, vec![]);
+        lab.set_run_worlds(2, vec![]);
+
+        let error = execute_corpus(corpus_options(&lab, Epochs::All, false))
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("every one of the 4 worlds"), "{error}");
+    }
+
+    #[test]
+    fn an_experiment_that_finished_no_run_measures_nothing() {
+        let lab = MockLab::start();
+        lab.set_corpus(json!({ "slug": "radius", "runs": [] }));
+
+        let summary = execute_corpus(corpus_options(&lab, Epochs::Latest, false)).unwrap();
+
+        assert_eq!(summary, CorpusSummary::default());
     }
 }

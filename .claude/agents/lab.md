@@ -53,6 +53,18 @@ one row per setting — `replicator_count`, `top_share`, `distinct_tapes`, `comp
 each passes the replicator test. Report the table as it stands, per run id; a count that
 only appears at a larger `top_k` is a proposal for a design-record entry, not a change to
 make.
+`runner rescore-corpus` does the same for a whole experiment and *stores* what it reads, so
+the argument for or against a `top_k` rests on rows anyone can query rather than on a
+pasted table:
+`docker compose -f deploy/docker-compose.yml exec -T runner runner rescore-corpus --api http://app:8080 --experiment <slug> --top-k 16,64,256`
+It walks the experiment's terminal runs, measures the newest stored world of each
+(`--epochs all` for every stored world, `--limit <n>` to stop early, `--dry-run` to measure
+and store nothing) and writes one `rescores` row per (run, epoch, top_k), rewriting a row
+it has read before rather than duplicating it. It prints
+`event=rescore run= epoch= top_k= replicators=` per reading and
+`event=rescore_done experiment= worlds=` at the end; a world it cannot read logs
+`event=error` and the pass carries on. Like `rescore`, it changes no run, no param and no
+default.
 
 The runner writes an `event=` line for each thing a slot does, in the shape
 `event=<name> runner=<id> slot=<n> ...`: `claim`, `resume`, `progress` (each heartbeat,

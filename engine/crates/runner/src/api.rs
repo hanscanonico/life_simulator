@@ -20,6 +20,9 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 /// How much of a JSON answer the runner is willing to read. Every endpoint but the two
 /// that serve worlds answers a handful of fields, so a megabyte is already generous.
 const MAX_JSON_BODY: u64 = 1024 * 1024;
+/// `GET /api/experiments/:slug/corpus` answers a row per finished run with its params and
+/// its stored epochs; a sweep of a few hundred runs stays well inside this.
+const MAX_CORPUS_BODY: u64 = 16 * 1024 * 1024;
 /// `GET .../world` answers a base64 blob of a whole world and the caller knows no params
 /// to bound it with, so it keeps the flat limit `ureq`'s 10 MiB default cannot meet.
 const MAX_WORLD_BODY: u64 = 256 * 1024 * 1024;
@@ -60,6 +63,16 @@ pub struct Snapshot<'a> {
     pub raw: &'a [u8],
     pub png: &'a [u8],
     pub reason: SnapshotReason,
+}
+
+/// One run of an experiment's corpus: which stored worlds it holds, and the params that
+/// describe their bytes. `epochs` is ascending, as the lab orders it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CorpusRun {
+    pub id: i64,
+    pub params: Params,
+    pub seed: u64,
+    pub epochs: Vec<u64>,
 }
 
 /// A binary answer: the bytes and the epoch its header named.
@@ -242,6 +255,28 @@ impl LabClient {
             seed: number(&world, "seed")?,
             blob: BASE64.decode(blob).context("decoding the stored world")?,
         }))
+    }
+
+    /// The finished runs of an experiment and the worlds they stored — what
+    /// `runner rescore-corpus` walks. Empty when the experiment finished no run yet.
+    pub fn corpus(&self, slug: &str) -> Result<Vec<CorpusRun>> {
+        let path = format!("/api/experiments/{slug}/corpus");
+        let (status, body) = self.get(&path, &[], MAX_CORPUS_BODY)?;
+        let body = accepted(status, body, &format!("GET {path}"))?;
+        let corpus: Value = serde_json::from_str(&body).context("parsing the corpus")?;
+        let runs = corpus["runs"]
+            .as_array()
+            .ok_or_else(|| anyhow!("the corpus has no runs"))?;
+        runs.iter().map(corpus_run).collect()
+    }
+
+    /// Stores readings of one run's worlds. The rows key on `[run, epoch, top_k]` in the
+    /// app, so re-measuring a world rewrites its rows rather than adding to them.
+    pub fn post_rescores(&self, run: i64, rescores: &[Value]) -> Result<()> {
+        let path = format!("/api/runs/{run}/rescores");
+        let (status, response) = self.post(&path, &json!({ "rescores": rescores }))?;
+        accepted(status, response, &format!("POST {path}"))?;
+        Ok(())
     }
 
     fn member(&self, run: i64, runner_id: &str, action: &str, mut body: Value) -> Result<()> {
@@ -429,6 +464,24 @@ fn accepted<T: Answer>(status: u16, body: T, what: &str) -> Result<T> {
     } else {
         bail!("{what} answered {status}: {}", body.describe())
     }
+}
+
+fn corpus_run(run: &Value) -> Result<CorpusRun> {
+    Ok(CorpusRun {
+        id: number(run, "id")? as i64,
+        params: serde_json::from_value(run["params"].clone()).context("parsing the run params")?,
+        seed: number(run, "seed")?,
+        epochs: run["epochs"]
+            .as_array()
+            .ok_or_else(|| anyhow!("run {} has no epochs", run["id"]))?
+            .iter()
+            .map(|epoch| {
+                epoch
+                    .as_u64()
+                    .ok_or_else(|| anyhow!("a stored epoch is not a number"))
+            })
+            .collect::<Result<Vec<u64>>>()?,
+    })
 }
 
 fn number(value: &Value, key: &str) -> Result<u64> {
@@ -676,6 +729,46 @@ mod tests {
         assert_eq!(newest.params, MockLab::params());
         assert_eq!(newest.seed, 7);
         assert_eq!(asked.blob, b"old".to_vec());
+    }
+
+    #[test]
+    fn a_corpus_names_each_run_and_the_worlds_it_holds() {
+        let lab = MockLab::start();
+        lab.set_corpus(json!({
+            "slug": "radius",
+            "runs": [{
+                "id": 45,
+                "seed": 7,
+                "params": MockLab::params(),
+                "status": "finished",
+                "transition_epoch": 400,
+                "epochs": [100, 300],
+            }],
+        }));
+
+        let corpus = client(&lab).corpus("radius").unwrap();
+
+        assert_eq!(
+            corpus,
+            vec![CorpusRun {
+                id: 45,
+                params: MockLab::params(),
+                seed: 7,
+                epochs: vec![100, 300],
+            }]
+        );
+    }
+
+    #[test]
+    fn readings_travel_as_a_rescores_array() {
+        let lab = MockLab::start();
+
+        client(&lab)
+            .post_rescores(45, &[json!({ "epoch": 100, "top_k": 16 })])
+            .unwrap();
+
+        let posted = lab.request("POST /api/runs/45/rescores");
+        assert_eq!(posted["rescores"][0]["top_k"], json!(16));
     }
 
     #[test]
