@@ -406,6 +406,17 @@ RSpec.describe "Findings", type: :request do
                       "a factor of two hiding in here would be invisible")
       end
 
+      # The hazard table is rendered by the experiment page, not by this one, so the
+      # narrative has to send the reader there rather than say "below".
+      it "sends the reader to the sweep's page for the hazard intervals and sizes them" do
+        get finding_path(radius)
+
+        expect(response.body.squish)
+          .to include("The hazard section on the sweep's page",
+                      "30-fold wide in the arms with two events and more than 200-fold wide")
+        expect(response.body.squish).not_to include("hazard section below", "hazard table and the per-run rows below")
+      end
+
       it "keeps the compress_ratio trend as an observation about the soup" do
         get finding_path(radius)
 
@@ -427,6 +438,7 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.body.squish)
           .to include("All ten seeds reproduce", "digit for digit",
+                      "agrees wherever all three recorded it",
                       "that arm is not an independent sample")
         expect(response.body).to include(finding_path("mutation-rate-window"), finding_path("world-size-scaling"))
       end

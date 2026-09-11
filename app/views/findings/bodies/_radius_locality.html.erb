@@ -43,8 +43,8 @@
 <h2>Result</h2>
 <p>
   All 40 runs finished and 6 of them transitioned. The table is the recorded per-arm
-  result; the phase diagram, the hazard table and the per-run rows below read the same runs
-  live.
+  result; the phase diagram and the per-run rows below read the same runs live, and the
+  sweep's own page adds the hazard table.
 </p>
 
 <div class="table-scroll">
@@ -98,10 +98,11 @@
   spread in the sweep is 2 of 10 against 1 of 10, which is a one-sided Fisher exact
   <span class="mono">p = 0.5</span> — the two arms are not distinguishable at all. With ten
   seeds an arm cannot reach <span class="mono">p &lt; 0.05</span> against another until it
-  shows 4 transitions where the other shows none. The hazard section below says the same
-  thing on the runs' own time at risk: every arm's 95% interval contains every other arm's
-  estimate, from roughly 0.05 to 0.11 events per 10<sup>4</sup> run-epochs with intervals
-  that span more than two orders of magnitude each. So this is a negative result about an
+  shows 4 transitions where the other shows none. The hazard section on the sweep's page
+  says the same thing on the runs' own time at risk: every arm's 95% interval contains every
+  other arm's estimate, from roughly 0.05 to 0.11 events per 10<sup>4</sup> run-epochs, and
+  each interval is 30-fold wide in the arms with two events and more than 200-fold wide in
+  the arms with one. So this is a negative result about an
   effect of the size the hypothesis imagined, not a demonstration that radius does nothing:
   a factor of two hiding in here would be invisible.
 </p>
@@ -111,7 +112,8 @@
   collapsed, with <span class="mono">compress_ratio</span> between 0.07 and 0.31 at the last
   epoch. The sixth — the <span class="mono">radius = 2</span> arm's flagged run — falls to a
   floor near 0.11, stays down for about two thousand epochs, then climbs back through the
-  0.6 line and ends at 0.91, indistinguishable from the seeds that never moved. It is a
+  0.6 line and ends at 0.91, next to the 0.894 to 0.904 of its arm's seeds that never
+  moved. It is a
   genuine crossing by the locked rule and a reminder that a transition in the DESIGN §1.2
   sense is a state a world can leave again.
 </p>
@@ -138,8 +140,10 @@
   <%= link_to "world-size", finding_path("world-size-scaling") %> sweep's 128² arm. All ten
   seeds reproduce: the same transition epoch in the one seed that transitions, and the same
   final <span class="mono">compress_ratio</span>, <span class="mono">distinct_tapes</span>,
-  <span class="mono">entropy_bits</span> and <span class="mono">copy_rate</span> in every
-  one of them, digit for digit, across three experiments run weeks apart. That is the
+  <span class="mono">top_share</span> and <span class="mono">entropy_bits</span> in every
+  one of them, digit for digit, across three experiments run weeks apart.
+  <span class="mono">copy_rate</span> agrees wherever all three recorded it, which for the
+  mutation-rate arm was only the seed that transitioned. That is the
   guarantee DESIGN §1.1 makes — a run is a function of
   <span class="mono">(params, seed)</span> — checked against itself rather than asserted. It
   is also a caveat on this sweep: that arm is not an independent sample, so the sweep holds
