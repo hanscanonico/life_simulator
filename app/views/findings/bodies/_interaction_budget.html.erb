@@ -133,10 +133,12 @@
   <span class="mono">top_share</span> 0.00427. The same arm's fifth seed crosses at 7 000,
   counts its first cell at 7 030 and climbs much more slowly — a census peak of 108 at
   9 580, a <span class="mono">copy_rate</span> peak of 0.00433 at 9 610, entropy down to
-  4.32 bits at 7 100 — and ends the run far less consumed than the first:
-  <span class="mono">compress_ratio</span> 0.054, 2 406 distinct tapes,
-  <span class="mono">top_share</span> 0.00726, a world taken over by one short lineage rather
-  than by the 13 349 variants the first seed ends with. Both transitions are backed by stored
+  4.32 bits at 7 100 — and yet ends the run further gone than the first:
+  <span class="mono">compress_ratio</span> 0.054 against 0.26, 2 406 distinct tapes against
+  13 349, <span class="mono">top_share</span> 0.00726 against 0.00427, a world taken over by
+  one short lineage rather than by the many variants the first seed ends with. A slower climb
+  and a smaller census peak end in the more uniform world, not the less uniform one. Both
+  transitions are backed by stored
   worlds: the second has a snapshot at
   exactly its transition epoch, and the first has one 30 epochs before it, which is close
   enough to rescore the crossing against a rebuilt world rather than only against its
@@ -253,10 +255,11 @@
                                (high.fetch(:steps) - low.fetch(:steps))) * 1e6, precision: 1)
       }.to_sentence(last_word_connector: " and ") %>
   microseconds per epoch across the three gaps — a marginal price that barely moves over three
-  octaves of budget. That is the shape you get when interactions are still running when the
-  ceiling cuts them off. If most of them halted long before
-  <span class="mono">max_steps</span>, raising the ceiling would cost almost nothing and the
-  marginal price would fall away as the ceiling rose; it does not. The eight-fold budget
+  octaves of budget. That is the shape you get when some steady share of the interactions is
+  still running when the ceiling cuts it off, and each extra step is executed for that share.
+  If every interaction halted before <span class="mono">max_steps</span>, raising the ceiling
+  would cost nothing; if the share that reaches the ceiling thinned as the ceiling rose, the
+  marginal price would thin with it. Over three octaves it barely does. The eight-fold budget
   difference between the widest arm and the only one that works is real work, done and
   charged for, and it buys nothing.
 </p>

@@ -669,7 +669,20 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish)
           .to include("about #{(rates.first / rates.last).round} times what an epoch at 256 costs",
                       "3.3, 2.5 and 2.3 microseconds per epoch",
-                      "the marginal price would fall away as the ceiling rose; it does not")
+                      "the marginal price would thin with it. Over three octaves it barely does.")
+      end
+
+      it "reads the slower transition as ending in the more uniform world" do
+        get finding_path(budget)
+
+        prose = response.parsed_body.text.squish
+        collapsed = prose[/compress_ratio ([\d.]+) against ([\d.]+)/, 1].to_f
+        against = prose[/compress_ratio ([\d.]+) against ([\d.]+)/, 2].to_f
+
+        expect(collapsed).to be < against
+        expect(prose).to include("ends the run further gone than the first",
+                                 "2 406 distinct tapes against 13 349",
+                                 "end in the more uniform world, not the less uniform one")
       end
 
       it "counts the copy-rate blips per arm and reads them as rising with the budget" do
