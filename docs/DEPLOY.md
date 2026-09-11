@@ -1,15 +1,34 @@
 # Deploying Life Simulator
 
-The site runs on the mini-pc (`mini-pc@192.168.1.37`) as a Docker Compose stack —
+The site runs on the mini-pc (`ssh mini-pc`, a Tailscale name reachable from any network; the LAN address is `192.168.1.37`) as a Docker Compose stack —
 `db` (Postgres 17), `app` (Rails behind Thruster), `runner` (the Rust engine in lab
 mode), `cloudflared` — reached from the internet through a Cloudflare tunnel. Nothing
 but the tunnel is exposed: the app is bound to `127.0.0.1:8070` and Postgres to
 `127.0.0.1:5433`.
 
+## Reaching the mini-pc from anywhere
+
+The mini-pc is on a private Tailscale network, so `ssh mini-pc` works from any network,
+not only the home wifi. The alias lives in `~/.ssh/config` on the Mac:
+
+```
+Host mini-pc
+  HostName mini-pc.taila334e7.ts.net
+  User mini-pc
+```
+
+Requirements on the machine you connect from: the Tailscale app installed and signed in
+to the same account that owns `mini-pc` (menu-bar icon shows connected). A new laptop or
+phone only needs that install and sign-in, plus the alias above. On the home wifi the
+LAN address `mini-pc@192.168.1.37` still works as a fallback.
+
+If the mini-pc drops off the tailnet, run `sudo tailscale up --ssh --hostname=mini-pc`
+on it over the LAN and open the login link it prints in any browser on the Mac.
+
 ## First-time setup
 
 ```sh
-ssh mini-pc@192.168.1.37
+ssh mini-pc
 git clone git@github.com:hanscanonico/life_simulator.git ~/Documents/life_simulator
 cd ~/Documents/life_simulator
 cp deploy/.env.example deploy/.env && $EDITOR deploy/.env   # fill every value
@@ -223,7 +242,7 @@ Installing the runner, once, on the mini-pc:
 
 ```sh
 gh api -X POST repos/hanscanonico/life_simulator/actions/runners/registration-token --jq .token
-ssh mini-pc@192.168.1.37
+ssh mini-pc
 cd ~/Documents/life_simulator
 deploy/setup_runner <token>          # registers mini-pc-life with the life-prod label
 sudo ~/actions-runner-life/svc.sh install $USER

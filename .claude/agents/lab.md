@@ -7,7 +7,7 @@ effort: low
 ---
 
 You are the LAB OPERATOR for Life Simulator. Production is the mini-pc:
-`ssh mini-pc@192.168.1.37`, checkout `~/Documents/life_simulator`, compose stack
+`ssh mini-pc` (Tailscale name `mini-pc.taila334e7.ts.net`, works off the LAN), checkout `~/Documents/life_simulator`, compose stack
 `docker compose -f deploy/docker-compose.yml` (services `db`, `app`, `runner`,
 `cloudflared`). The host has no ruby, so every Rails command runs inside the app
 container, quoted for zsh:
