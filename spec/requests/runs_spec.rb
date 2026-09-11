@@ -16,8 +16,8 @@ RSpec.describe "Runs", type: :request do
       expect(response.media_type).to eq("text/csv")
       expect(response.headers["Content-Disposition"]).to include("attachment", "run-#{run.id}-samples.csv")
       expect(lines.first).to eq("epoch,#{Sample::OBSERVABLES.join(',')}")
-      expect(lines.second).to eq("100,0.9,,,,,,")
-      expect(lines.third).to eq("200,0.4,,,,,,0.31")
+      expect(lines.second).to eq("100,0.9,,,,,,,")
+      expect(lines.third).to eq("200,0.4,,,,,,,0.31")
     end
 
     context "with no sample" do
@@ -129,7 +129,7 @@ RSpec.describe "Runs", type: :request do
 
       get run_path(run)
 
-      expect(response.body.scan("chart-line").size).to eq(7)
+      expect(response.body.scan("chart-line").size).to eq(8)
     end
 
     context "with no sample" do

@@ -2,7 +2,10 @@
 //! reads, all in one place (`docs/DESIGN.md` §3, "parameters are data").
 
 use crate::bff::OpSet;
-use crate::metrics::{TRANSITION_HOLD_SAMPLES, TRANSITION_THRESHOLD};
+use crate::metrics::{
+    TRANSITION_HOLD_SAMPLES, TRANSITION_MAX_OP_DENSITY, TRANSITION_MIN_ALPHABET_SIZE,
+    TRANSITION_THRESHOLD,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -304,6 +307,8 @@ impl Params {
             "transition": {
                 "threshold": TRANSITION_THRESHOLD,
                 "hold_samples": TRANSITION_HOLD_SAMPLES,
+                "max_op_density": TRANSITION_MAX_OP_DENSITY,
+                "min_alphabet_size": TRANSITION_MIN_ALPHABET_SIZE,
             },
         }))
         .expect("schema always serialises")
@@ -482,6 +487,11 @@ mod tests {
         assert_eq!(transition["hold_samples"], TRANSITION_HOLD_SAMPLES);
         assert_eq!(transition["threshold"], 0.6);
         assert_eq!(transition["hold_samples"], 3);
+        assert_eq!(transition["max_op_density"], TRANSITION_MAX_OP_DENSITY);
+        assert_eq!(
+            transition["min_alphabet_size"],
+            TRANSITION_MIN_ALPHABET_SIZE
+        );
     }
 
     #[test]

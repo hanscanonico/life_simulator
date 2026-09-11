@@ -91,6 +91,18 @@ namespace :lab do
     puts ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
+  desc "List the stored transitions the alphabet guard would no longer accept (one experiment, or all). " \
+       "Prints them; changes nothing"
+  task :transition_audit, [:slug] => :environment do |_task, args|
+    experiment = nil
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+    end
+
+    print Runs::TransitionAuditService.call(experiment: experiment).to_text
+  end
+
   desc "Check that every run with a transition has a snapshot near it, and count snapshots by reason"
   task :snapshot_audit, [:slug] => :environment do |_task, args|
     experiment = Experiment.find_by(slug: args[:slug])

@@ -16,7 +16,8 @@ RSpec.describe Runs::ShowPage do
 
     it "draws one chart per DESIGN observable" do
       expect(described_class::METRICS.keys)
-        .to eq(%w[compress_ratio distinct_tapes top_share replicator_count op_density entropy_bits copy_rate])
+        .to eq(%w[compress_ratio distinct_tapes top_share replicator_count op_density entropy_bits alphabet_size
+                  copy_rate])
       expect(described_class::METRICS.keys).to match_array(Sample::OBSERVABLES)
       expect(page.charts.map(&:title)).to eq(described_class::METRICS.values)
     end

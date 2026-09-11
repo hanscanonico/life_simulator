@@ -113,6 +113,8 @@
   ],
   "transition": {
     "hold_samples": 3,
+    "max_op_density": 0.9,
+    "min_alphabet_size": 16,
     "threshold": 0.6
   }
 }

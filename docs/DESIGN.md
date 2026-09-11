@@ -57,15 +57,26 @@ claim rests on it.
 - `op_density`: fraction of bytes that are one of the 10 instructions (random ≈ 10/256).
 - `replicator_count`: how many cells pass the replicator test (below).
 - `entropy_bits`: Shannon entropy of the byte distribution.
+- `alphabet_size`: how many of the 256 byte values the world still holds, 1–256. Only
+  `+` and `-` can mint a byte value, so with `mutation_rate = 0` the alphabet is a
+  one-way coalescent: it can collapse onto a couple of instruction bytes, which reads
+  compressible and all-ops while replicating nothing. Life cells are `0`/`1`, so it
+  reads 2.
 - `copy_rate`: share of the sampled epoch's interactions that ended with one tape copied
   byte-exactly over the other half (either direction), among the pairs whose two halves
   started out different — halves that arrive identical end that way whatever runs, so
   they are not a copy. Replication caught in situ, so it sees the replicators the
   replicator test misses — those that only copy with a kin partner or into a particular
   layout. Counted only on the epochs a sample reads; the life substrate reports 0.
-- `transition_epoch` (per run, once): first sampled epoch at which `compress_ratio` drops
-  below `0.6` and stays below it for the next 3 samples. Null until it happens. The
-  primary dependent variable of every sweep is this number.
+- `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
+  appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
+  0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard
+  against alphabet collapse, which produces a compressible world with no replication at
+  all (run 183: two byte values, `op_density` exactly 1.0, `copy_rate` 0). Null until it
+  happens. The primary dependent variable of every sweep is this number. The engine's
+  tracker is the single authority on this rule; Rails only re-reads stored samples by it
+  (`Runs::TransitionEpochService`), and samples recorded before `alphabet_size` existed
+  are read by the `op_density` half of the guard alone.
 
 **Replicator test**: a tape `T` is a replicator if executing `T ++ R` for a random tape
 `R` (fresh, seeded) yields `T` in the second half for at least 3 of 4 trials. Run on the

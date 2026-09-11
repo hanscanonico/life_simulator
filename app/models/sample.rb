@@ -5,7 +5,7 @@ class Sample < ApplicationRecord
   # column order of every export. Keep in sync with
   # engine/crates/life-engine/src/metrics.rs.
   OBSERVABLES = %w[
-    compress_ratio distinct_tapes top_share op_density replicator_count entropy_bits copy_rate
+    compress_ratio distinct_tapes top_share op_density replicator_count entropy_bits alphabet_size copy_rate
   ].freeze
 
   belongs_to :run

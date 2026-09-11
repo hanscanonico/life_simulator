@@ -53,4 +53,36 @@ RSpec.describe Runs::TransitionEpochService do
 
     expect(described_class.call(run: run)).to be_nil
   end
+
+  # Run 183's shape: compressible because the byte alphabet collapsed onto two
+  # instructions, not because anything replicates.
+  context "with a drop whose samples are all instructions" do
+    it "reports nothing" do
+      6.times do |index|
+        create(:sample, run: run, epoch: index * 10, values: { "compress_ratio" => 0.143, "op_density" => 1.0 })
+      end
+
+      expect(described_class.call(run: run)).to be_nil
+    end
+  end
+
+  context "with a sample that carries the alphabet it was read on" do
+    it "reads the collapse straight off it" do
+      6.times do |index|
+        create(:sample, run: run, epoch: index * 10,
+                        values: { "compress_ratio" => 0.2, "op_density" => 0.3, "alphabet_size" => 2 })
+      end
+
+      expect(described_class.call(run: run)).to be_nil
+    end
+
+    it "keeps a drop whose alphabet is alive" do
+      6.times do |index|
+        create(:sample, run: run, epoch: index * 10,
+                        values: { "compress_ratio" => 0.2, "op_density" => 0.3, "alphabet_size" => 200 })
+      end
+
+      expect(described_class.call(run: run)).to eq(0)
+    end
+  end
 end
