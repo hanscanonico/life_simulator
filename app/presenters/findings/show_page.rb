@@ -57,10 +57,25 @@ module Findings
 
     private
 
-    def transition_rows = @transition_rows ||= candidate_runs.filter_map { |run| transition_for(run) }
+    def transition_rows = @transition_rows ||= rows_of(candidate_runs)
 
-    def transition_for(run)
-      samples = run.samples.order(:epoch).pluck(:epoch, :values)
+    # The samples of every candidate are read in one query and handed to the rows, so the
+    # table costs the same two queries at one row as it does at the cap.
+    def rows_of(runs)
+      samples = samples_by_run(runs)
+
+      runs.filter_map { |run| transition_for(run, samples.fetch(run.id, [])) }
+    end
+
+    def samples_by_run(runs)
+      return {} if runs.empty?
+
+      Sample.where(run_id: runs.map(&:id)).order(:epoch).pluck(:run_id, :epoch, :values)
+            .group_by(&:first)
+            .transform_values { |rows| rows.map { |(_, epoch, values)| [epoch, values] } }
+    end
+
+    def transition_for(run, samples)
       peak_epoch, peak = peak_replicators(samples)
       return nil if run.transition_epoch.nil? && !peak.to_f.positive?
 
@@ -90,19 +105,18 @@ module Findings
     def candidate_runs
       return [] unless experiment?
 
-      finished_runs.where(id: candidate_ids).order(:transition_epoch, :id).limit(MAX_TRANSITIONS + 1).to_a
+      finished_runs.where.not(transition_epoch: nil)
+                   .or(finished_runs.where(id: counted_run_ids))
+                   .order(:transition_epoch, :id).limit(MAX_TRANSITIONS + 1).to_a
     end
 
-    def candidate_ids = finished_runs.where.not(transition_epoch: nil).ids | counted_run_ids
-
     # `runs.summary` carries the newest sample, not a peak, so the census needs the
-    # samples. One scan over the sweep's finished runs' samples names the candidates and
-    # the extrema above then read the samples of those runs alone. Numbers sort above
-    # strings in jsonb, so a non-numeric count never passes the comparison.
+    # samples. The candidates are named by a subquery rather than a second round trip, and
+    # it is served by `index_samples_on_run_id_replicated` — whose predicate this `where`
+    # has to keep matching. Numbers sort above strings in jsonb, so a non-numeric count
+    # never passes the comparison.
     def counted_run_ids
-      Sample.where(run_id: finished_runs.select(:id))
-            .where("values -> 'replicator_count' > '0'::jsonb")
-            .distinct.pluck(:run_id)
+      Sample.where("values -> 'replicator_count' > '0'::jsonb").select(:run_id)
     end
 
     def finished_runs = experiment.runs.where(status: "finished")

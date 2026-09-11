@@ -17,9 +17,18 @@ RSpec.describe Sample, type: :model do
     expect(build(:sample, run: sample.run, epoch: sample.epoch)).not_to be_valid
   end
 
-  it "indexes created_at for the status page's throughput window" do
-    columns = described_class.connection.indexes(described_class.table_name).map(&:columns)
+  describe "indexes" do
+    let(:indexes) { described_class.connection.indexes(described_class.table_name) }
 
-    expect(columns).to include(["created_at"])
+    it "indexes created_at for the status page's throughput window" do
+      expect(indexes.map(&:columns)).to include(["created_at"])
+    end
+
+    it "indexes run_id for the samples a replicator was counted in" do
+      index = indexes.find { |candidate| candidate.name == "index_samples_on_run_id_replicated" }
+
+      expect(index).to have_attributes(columns: ["run_id"],
+                                       where: a_string_including("'replicator_count'", "> '0'::jsonb"))
+    end
   end
 end
