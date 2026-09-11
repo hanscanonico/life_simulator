@@ -21,33 +21,22 @@ module Experiments
       peak_replicator_epoch first_replicator_epoch peak_copy_rate peak_copy_rate_epoch
       final_compress_ratio final_distinct_tapes final_top_share
     ].freeze
-    ARM_COLUMNS = %w[arm n flagged replicators both either_but_not_both].freeze
 
-    Row = Data.define(:run_id, :seed, :arm, :params, :transition_epoch, :collapse_epoch,
+    Row = Data.define(:run_id, :seed, :params, :transition_epoch, :collapse_epoch,
                       :min_entropy_bits, :min_entropy_epoch, :peak_replicator_count,
                       :peak_replicator_epoch, :first_replicator_epoch, :peak_copy_rate,
                       :peak_copy_rate_epoch, :final_compress_ratio, :final_distinct_tapes,
                       :final_top_share) do
-      def flagged? = !transition_epoch.nil?
-
-      def replicated? = peak_replicator_count.to_f.positive?
-
       def cells
         [run_id, seed, *params.values, *SAMPLE_COLUMNS.map { |column| public_send(column) }]
       end
-    end
-
-    Arm = Data.define(:label, :runs, :flagged, :replicated, :both) do
-      def either_but_not_both = flagged + replicated - (2 * both)
-
-      def cells = [label, runs, flagged, replicated, both, either_but_not_both]
     end
 
     Report = Data.define(:rows, :arms, :param_keys) do
       def headers = [*RUN_COLUMNS, *param_keys, *SAMPLE_COLUMNS]
 
       def to_text
-        [table(headers, rows.map(&:cells)), table(ARM_COLUMNS, arms.map(&:cells))].join("\n")
+        [table(headers, rows.map(&:cells)), table(TransitionArmsService::COLUMNS, arms.map(&:cells))].join("\n")
       end
 
       def to_csv
@@ -55,7 +44,7 @@ module Experiments
           csv << headers
           rows.each { |row| csv << row.cells }
           csv << []
-          csv << ARM_COLUMNS
+          csv << TransitionArmsService::COLUMNS
           arms.each { |arm| csv << arm.cells }
         end
       end
@@ -90,13 +79,9 @@ module Experiments
       @rows ||= sampled_runs.map { |run, samples| row(run, samples) }
     end
 
-    def arms
-      rows.group_by(&:arm).map do |label, arm_rows|
-        Arm.new(label: label, runs: arm_rows.size, flagged: arm_rows.count(&:flagged?),
-                replicated: arm_rows.count(&:replicated?),
-                both: arm_rows.count { |row| row.flagged? && row.replicated? })
-      end
-    end
+    # The arm block is the arms service's, counted off indexed columns rather than off
+    # these rows, so the block the page publishes and the one under the rows cannot drift.
+    def arms = TransitionArmsService.call(experiment: @experiment)
 
     # A run nothing has been sampled from yet is no row: the report is a reading of stored
     # samples, not of the queue.
@@ -116,8 +101,7 @@ module Experiments
     end
 
     def identity_of(run)
-      { run_id: run.id, seed: run.seed, arm: arm_label(run),
-        params: param_keys.index_with { |key| run.params[key] } }
+      { run_id: run.id, seed: run.seed, params: param_keys.index_with { |key| run.params[key] } }
     end
 
     # `collapse_epoch` is the bare first crossing of the threshold, where
@@ -146,12 +130,6 @@ module Experiments
 
       { final_compress_ratio: values["compress_ratio"], final_distinct_tapes: values["distinct_tapes"],
         final_top_share: values["top_share"] }
-    end
-
-    def arm_label(run)
-      labels = axes.filter_map { |axis| axis.label_of_run(run.params) }
-
-      labels.empty? ? @experiment.slug : labels.join(" ")
     end
 
     def extreme(samples, observable, direction)

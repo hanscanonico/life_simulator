@@ -48,6 +48,14 @@ module Experiments
                                           .where.not(transition_epoch: nil).count
     end
 
+    # The page that makes the claim shows how often the two observables disagree; the
+    # per-run rows behind the counts stay in the transition report CSV.
+    def transition_arms = @transition_arms ||= TransitionArmsService.call(experiment: experiment)
+
+    def transition_report? = finished_count.positive? && transition_arms.any?
+
+    def transition_threshold = TransitionReportService::THRESHOLD
+
     def transition_rate = TransitionRate.new(transitioned: transitioned_finished, finished: finished_count)
 
     private
