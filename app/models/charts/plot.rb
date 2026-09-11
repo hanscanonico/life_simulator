@@ -17,6 +17,10 @@ module Charts
     # last one all but touches the card border, and the first shares the origin with the y
     # axis's own zero.
     EDGE_INSET = 14
+    # Where the rotated y title sits, measured from the left of the viewBox. It is fixed
+    # inside the left gutter on purpose: derived from the tick labels' own extent it lands
+    # outside the viewBox — and is clipped — on a chart whose ticks are one digit wide.
+    Y_TITLE_X = 18
 
     Tick = Data.define(:label, :position)
 
@@ -29,6 +33,15 @@ module Charts
     def plot_width = plot_right - plot_left
     def plot_height = plot_bottom - plot_top
 
+    # How far the data itself is pulled back from the axis lines. The outermost marks of a
+    # phase diagram are whole dots, not a line's endpoint, so half of one sits outside the
+    # plot box unless the columns are inset the way their labels are.
+    def x_inset = 0
+
+    def x_axis_width = plot_width - (2 * x_inset)
+    def y_title_x = Y_TITLE_X
+    def y_title_y = plot_top + (plot_height / 2)
+
     def x_ticks = x_scale.ticks.map { |tick| tick.with(position: plot_left + tick.position) }
     def y_ticks = y_scale.ticks.map { |tick| tick.with(position: plot_top + tick.position) }
 
@@ -36,20 +49,15 @@ module Charts
     # radius axis) spills outside the viewBox and is clipped, so the outermost x labels
     # hug the edge instead of straddling it.
     def x_tick_anchor(position)
-      return "start" if position <= plot_left
-      return "end" if position >= plot_right
+      return "start" if position <= plot_left + EDGE_INSET
+      return "end" if position >= plot_right - EDGE_INSET
 
       "middle"
     end
 
-    def x_tick_label_x(position)
-      return position + EDGE_INSET if position <= plot_left
-      return position - EDGE_INSET if position >= plot_right
+    def x_tick_label_x(position) = position.clamp(plot_left + EDGE_INSET, plot_right - EDGE_INSET)
 
-      position
-    end
-
-    def x_pixel(value) = plot_left + x_scale.position(value)
+    def x_pixel(value) = plot_left + x_inset + x_scale.position(value)
     def y_pixel(value) = plot_top + y_scale.position(value)
   end
 end

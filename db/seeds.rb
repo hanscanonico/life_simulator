@@ -14,14 +14,20 @@
 if Rails.env.development?
   sample_every = 500
   epochs = 20_000
+  # A 128x128 soup burns epochs at roughly this rate on the mini-pc, and `Runs::ShowPage`
+  # measures the rate it reports from the gap between the first and the last sample, so the
+  # fake samples have to be spaced like real ones or the demo run reads megaepochs a second.
+  epochs_per_second = 50
 
   # One run's metric series. `midpoint` is where the sigmoid sits and `scale` how many
   # epochs it takes to cross: a scale of one sampling interval is the cliff a transitioning
   # run shows, and no midpoint at all is a soup that never left the random-soup plateau.
   series = lambda do |run, midpoint:, scale: 1_200, last_epoch: epochs|
+    recorded_at = run.finished_at || Time.current
     rows = (0..last_epoch).step(sample_every).map do |epoch|
       progress = midpoint.nil? ? 0.0 : 1 / (1 + Math.exp(-(epoch - midpoint) / scale.to_f))
-      { run_id: run.id, epoch: epoch, created_at: Time.current, updated_at: Time.current,
+      written_at = recorded_at - ((last_epoch - epoch) / epochs_per_second.to_f).seconds
+      { run_id: run.id, epoch: epoch, created_at: written_at, updated_at: written_at,
         values: {
           "compress_ratio" => (1.0 - (0.62 * progress)).round(4),
           "distinct_tapes" => (16_384 * (1 - (0.85 * progress))).round,
@@ -106,7 +112,8 @@ if Rails.env.development?
   in_flight = mutation_sweep.runs.create!(
     params: Lab::Schema.run_defaults.merge("mutation_rate" => emergent, "width" => 128, "height" => 128),
     seed: 4, epochs: epochs, epochs_done: 7_500, status: "running",
-    started_at: 20.minutes.ago, claimed_at: 20.minutes.ago, heartbeat_at: 20.seconds.ago, runner_id: "demo-runner-1"
+    started_at: (7_500 / epochs_per_second).seconds.ago, claimed_at: (7_500 / epochs_per_second).seconds.ago,
+    heartbeat_at: 20.seconds.ago, runner_id: "demo-runner-1"
   )
   series.call(in_flight, midpoint: nil, last_epoch: in_flight.epochs_done)
 

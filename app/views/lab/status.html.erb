@@ -14,6 +14,13 @@
       <% end %>
       <dt>total</dt><dd><%= number_with_delimiter @status.total_runs %></dd>
     </dl>
+    <% if @status.stale_heartbeat_count.positive? %>
+      <p class="text-muted">
+        <%= @status.live_run_count %> running,
+        <%= @status.stale_heartbeat_count %> with a stale heartbeat: no runner holds those
+        any more, so they are under "Worth a look" rather than in the table below.
+      </p>
+    <% end %>
 
     <h2>Runners holding a run right now</h2>
     <% if @status.expected_slots %>
@@ -77,7 +84,7 @@
     <% end %>
 
     <h2>Worth a look</h2>
-    <% if @status.stalled_runs.any? %>
+    <% if @status.worth_a_look.any? %>
       <div class="table-scroll">
         <table class="data-table">
           <thead>
@@ -85,16 +92,23 @@
               <th>Run</th>
               <th>Runner</th>
               <th class="numeric">Epochs done</th>
-              <th>No progress for</th>
+              <th>Why</th>
             </tr>
           </thead>
           <tbody>
-            <% @status.stalled_runs.each do |run| %>
+            <% @status.worth_a_look.each do |flagged| %>
               <tr>
-                <td><%= link_to "Run ##{run.id}", run_path(run) %></td>
-                <td class="mono"><%= run.runner_id %></td>
-                <td class="numeric"><%= number_with_delimiter run.epochs_done %></td>
-                <td><%= time_ago_in_words(run.last_progress_at) %></td>
+                <td><%= link_to "Run ##{flagged.run.id}", run_path(flagged.run) %></td>
+                <td class="mono"><%= flagged.run.runner_id %></td>
+                <td class="numeric"><%= number_with_delimiter flagged.run.epochs_done %></td>
+                <td>
+                  <% if flagged.stale_heartbeat? %>
+                    heartbeat stale for <%= time_ago_in_words(flagged.since) %>
+                    (will release on the next claim)
+                  <% else %>
+                    no progress for <%= time_ago_in_words(flagged.since) %>
+                  <% end %>
+                </td>
               </tr>
             <% end %>
           </tbody>

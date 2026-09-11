@@ -69,6 +69,19 @@ RSpec.describe Charts::PhaseDiagram do
     end
   end
 
+  describe "#x_pixel" do
+    # A dot is 4 units wide and a censored marker 5, so a column on the axis line itself
+    # has half a marker outside the plot box. The columns take the label inset (14 units at
+    # plot_left 120, plot_right 788) and keep their spacing: the middle value stays centred.
+    it "insets the outermost columns and keeps the rest evenly spaced" do
+      diagram = build([group(1, transition_epochs: [100]), group(2, transition_epochs: [100]),
+                       group(3, transition_epochs: [100])])
+
+      expect(diagram.dots.pluck(:x)).to eq([134.0, 454.0, 774.0])
+      expect(diagram.dots.last[:x]).to be < diagram.plot_right
+    end
+  end
+
   describe "#censored_marks" do
     it "lines the runs that never transitioned up along the top" do
       diagram = build([group(1, transition_epochs: [100]), group(2, censored: 4)])

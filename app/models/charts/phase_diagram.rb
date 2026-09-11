@@ -73,8 +73,10 @@ module Charts
       "#{group.label}: no emergence in #{epochs} epochs (#{group.censored} of #{runs} runs)"
     end
 
+    def x_inset = EDGE_INSET
+
     def x_scale
-      @x_scale ||= Scale.new(values: @groups.map(&:value), length: plot_width, log: @log_x)
+      @x_scale ||= Scale.new(values: @groups.map(&:value), length: x_axis_width, log: @log_x)
     end
 
     def y_scale

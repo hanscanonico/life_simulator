@@ -13,6 +13,9 @@ module Lab
     LAST_PROGRESS = "COALESCE(runs.epochs_done_at, runs.started_at, runs.claimed_at)"
 
     Runner = Data.define(:id, :run_ids, :last_seen, :epochs_done, :epochs_per_hour)
+    Flagged = Data.define(:run, :reason, :since) do
+      def stale_heartbeat? = reason == :stale_heartbeat
+    end
 
     def self.build = new
 
@@ -57,6 +60,25 @@ module Lab
                            .limit(STALLED_LIMIT).to_a
     end
 
+    # Everything the page asks the reader to look at, worst first: the runs that heartbeat
+    # but make no progress, then the ones whose runner stopped heartbeating altogether.
+    def worth_a_look
+      @worth_a_look ||= stalled_runs.map { |run| flagged(run, :no_progress, run.last_progress_at) } +
+                        stale_heartbeat_runs.map { |run| flagged(run, :stale_heartbeat, run.heartbeat_at) }
+    end
+
+    # A claimed or running run whose runner stopped heartbeating. It is in neither the
+    # runners table nor `stalled_runs` — both look inside the heartbeat window only — while
+    # the status counts still call it running, so without this it vanishes from the page.
+    # `Runs::ClaimService` releases it the next time a runner asks for work.
+    def stale_heartbeat_runs
+      @stale_heartbeat_runs ||= Run.stale.order(:heartbeat_at).limit(STALLED_LIMIT).to_a
+    end
+
+    def stale_heartbeat_count = @stale_heartbeat_count ||= Run.stale.count
+
+    def live_run_count = counts_by_status.values_at("claimed", "running").sum
+
     def oldest_pending = @oldest_pending ||= Run.pending.order(:created_at, :id).first
 
     private
@@ -67,6 +89,8 @@ module Lab
                  epochs_done: runs.sum(&:epochs_done),
                  epochs_per_hour: run_ids.sum { |id| hourly_epochs_by_run[id].to_i })
     end
+
+    def flagged(run, reason, since) = Flagged.new(run: run, reason: reason, since: since)
 
     def status_counts = @status_counts ||= Run.group(:status).count
 
