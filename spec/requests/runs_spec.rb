@@ -47,6 +47,27 @@ RSpec.describe "Runs", type: :request do
       expect(response.body).not_to match(/—\s*\n?\s*seed/)
     end
 
+    context "with a run of a neighbourhood sweep" do
+      let(:experiment) { create(:experiment, name: "Neighbourhood radius", param_grid: { "radius" => [0, 1, 2] }) }
+      let(:run) { create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 0)) }
+
+      it "names the arm the sweep's tables name, well-mixed included" do
+        get run_path(run)
+
+        expect(response.body).to include("well-mixed, soup substrate, seed")
+      end
+
+      context "with a run off the grid" do
+        let(:run) { create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 7)) }
+
+        it "names the run's own value" do
+          get run_path(run)
+
+          expect(response.body).to include("7, soup substrate, seed")
+        end
+      end
+    end
+
     it "draws one chart per observable of a run that reported samples" do
       create(:sample, run: run, epoch: 100, values: Runs::ShowPage::METRICS.keys.index_with(0.5))
 

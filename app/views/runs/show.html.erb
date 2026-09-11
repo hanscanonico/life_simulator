@@ -3,7 +3,7 @@
 <h1>Run #<%= @show.run.id %></h1>
 <p class="text-muted">
   <%= link_to @show.run.experiment.name, experiment_path(@show.run.experiment) %> —
-  <%= @show.run.experiment.substrate %> substrate, seed <span class="mono"><%= @show.run.seed %></span>.
+  <% if @show.arm_label %><%= @show.arm_label %>, <% end %><%= @show.run.experiment.substrate %> substrate, seed <span class="mono"><%= @show.run.seed %></span>.
   The seed and the parameters below reproduce this run byte for byte.
 </p>
 

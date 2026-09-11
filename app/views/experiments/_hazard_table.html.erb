@@ -1,27 +1,31 @@
 <%# The numbers behind one survival chart: how often a self-replicator emerged per epoch
     a run spent at risk, arm by arm and then pooled over the sweep. `survival` is a
     Charts::Survival. %>
-<div class="table-scroll mt-4">
-  <table class="data-table">
-    <caption class="text-sm text-muted text-left">
-      Emergence hazard per arm of <%= axis.name.to_s.humanize.downcase %>
-    </caption>
-    <thead>
-      <tr>
-        <th><%= axis.name.to_s.humanize %></th>
-        <th class="numeric">Runs</th>
-        <th class="numeric">Events</th>
-        <th class="numeric">Run-epochs at risk</th>
-        <th class="numeric">Hazard per 10<sup>4</sup> epochs (95% CI)</th>
-      </tr>
-    </thead>
-    <tbody>
-      <% survival.arms.each do |arm| %>
-        <%= render "experiments/hazard_row", arm: arm, pooled: false %>
-      <% end %>
-    </tbody>
-    <tfoot>
-      <%= render "experiments/hazard_row", arm: survival.pooled, pooled: true %>
-    </tfoot>
-  </table>
-</div>
+<figure class="table-figure mt-4">
+  <%# The caption sits outside .table-scroll: inside it, it is laid out at the table's width
+      and clipped mid-word on a phone. %>
+  <figcaption class="table-caption text-sm text-muted" id="hazard-of-<%= axis.name %>">
+    Emergence hazard per arm of <%= axis.name.to_s.humanize.downcase %>
+  </figcaption>
+  <div class="table-scroll">
+    <table class="data-table" aria-labelledby="hazard-of-<%= axis.name %>">
+      <thead>
+        <tr>
+          <th><%= axis.name.to_s.humanize %></th>
+          <th class="numeric">Runs</th>
+          <th class="numeric">Events</th>
+          <th class="numeric">Run-epochs at risk</th>
+          <th class="numeric">Hazard per 10<sup>4</sup> epochs (95% CI)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% survival.arms.each do |arm| %>
+          <%= render "experiments/hazard_row", arm: arm, pooled: false %>
+        <% end %>
+      </tbody>
+      <tfoot>
+        <%= render "experiments/hazard_row", arm: survival.pooled, pooled: true %>
+      </tfoot>
+    </table>
+  </div>
+</figure>

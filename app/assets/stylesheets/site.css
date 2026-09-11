@@ -1,12 +1,11 @@
 /* Site chrome, lab tables and the server-rendered SVG charts. App-specific: never
    vendored back into the numbered design-system core. */
 
-/* Clipped to nothing rather than display:none, so a keyboard can still tab to it. */
+/* Clipped to nothing rather than display:none, so a keyboard can still tab to it. In flow
+   rather than absolutely placed: focused, it takes a row of its own above the header
+   instead of covering the wordmark. Zero-sized it costs no height. */
 .skip-link {
-  position: absolute;
-  top: var(--space-2);
-  left: var(--space-2);
-  z-index: 10;
+  display: block;
   width: 0;
   height: 0;
   padding: 0;
@@ -19,8 +18,7 @@
   width: auto;
   height: auto;
   padding: var(--space-2) var(--space-3);
-  border: var(--border-width-1) solid var(--line-strong);
-  border-radius: var(--radius-default);
+  border-bottom: var(--border-width-1) solid var(--line-strong);
 }
 
 .site-header {
@@ -102,9 +100,21 @@
    62rem plus its own gutter, a table breaks out of the measure, centred on it. The 37.5rem
    is .container-narrow's max-width in 03-layout.css. */
 @media (min-width: 64rem) {
-  .container-narrow > .table-scroll {
+  .container-narrow > .table-scroll,
+  .container-narrow > .table-figure {
     margin-inline: calc((37.5rem - 62rem) / 2);
   }
+}
+
+/* A captioned table: the caption is a sibling of the scrolling box, so it wraps at the
+   page's width and never gets clipped with the table's overflow. */
+.table-figure {
+  margin-inline: 0;
+  margin-bottom: 0;
+}
+
+.table-figure > .table-caption + .table-scroll > .data-table {
+  margin-top: var(--space-2);
 }
 
 .data-table {
