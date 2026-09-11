@@ -50,7 +50,7 @@ RSpec.describe Experiments::IndexPage do
     it "lists the sweeps of the programme that have no experiment yet" do
       create(:experiment, name: "Mutation rate", slug: "mutation-rate")
 
-      expect(page.planned.map(&:slug)).to eq(%w[world-size radius max-steps ops])
+      expect(page.planned.map(&:slug)).to eq(%w[world-size radius max-steps ops bff-control])
     end
 
     it "describes each planned sweep from its programme entry" do

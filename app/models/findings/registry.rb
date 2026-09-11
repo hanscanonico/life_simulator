@@ -15,6 +15,17 @@ module Findings
                  "emergence is delayed, and above an error threshold — Eigen's quasispecies " \
                  "bound — mutation destroys any replicator faster than it can copy itself. " \
                  "The sweep is running; this finding stays open until every run has finished."
+      ),
+      Finding.new(
+        slug: "bff-control",
+        title: "Does the engine reproduce BFF emergence at all?",
+        date: Date.new(2026, 9, 11),
+        experiment_slug: "bff-control",
+        status: :open,
+        summary: "The positive control the design record makes mandatory: a well-mixed " \
+                 "soup of 2^17 tapes, the shape the published BFF work used. Until this " \
+                 "one transitions, no sweep of ours is readable as a negative result — a " \
+                 "flat sweep would only say the instrument is untested."
       )
     ].freeze
 

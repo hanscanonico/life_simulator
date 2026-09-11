@@ -33,6 +33,16 @@ RSpec.describe Findings::Registry do
     end
   end
 
+  it "renders the body partial every finding names" do
+    described_class.all.to_a.each do |finding|
+      expect(ApplicationController.render(partial: finding.body_partial)).to include("<h2>")
+    end
+  end
+
+  it "publishes the positive control the design record makes mandatory" do
+    expect(described_class.find("bff-control").experiment_slug).to eq("bff-control")
+  end
+
   it "finds a finding by slug" do
     expect(described_class.find("mutation-rate-window").status).to eq(:open)
   end

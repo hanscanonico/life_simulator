@@ -134,6 +134,75 @@ RSpec.describe "lab:sweep" do
     end
   end
 
+  describe "bff_control" do
+    it "builds the two mutation arms times three seeds" do
+      build_sweep("bff_control")
+
+      expect(Experiment.find_by(slug: "bff-control").runs_count).to eq(6)
+    end
+
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("bff_control")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("mutation_rate" => 0.0, "width" => 512, "height" => 256,
+                                              "radius" => 0, "sample_every" => 50, "snapshot_every" => 2_000))
+    end
+
+    it "gives the experiment and its runs the control's priority" do
+      build_sweep("bff_control")
+
+      expect(Experiment.find_by(slug: "bff-control").priority).to eq(10)
+      expect(Run.distinct.pluck(:priority)).to eq([10])
+    end
+
+    it "gives every run the 50 000 epoch budget" do
+      build_sweep("bff_control")
+
+      expect(Run.distinct.pluck(:epochs)).to eq([50_000])
+    end
+
+    context "with the control already built" do
+      it "creates no second copy" do
+        build_sweep("bff_control")
+
+        expect { build_sweep("bff_control") }.not_to change(Run, :count)
+      end
+    end
+
+    context "with the hand-made control of the live lab already holding its runs" do
+      before { hand_made_control }
+
+      it "adopts the six runs it finds instead of queueing a second control" do
+        expect { build_sweep("bff_control") }.not_to change(Run, :count)
+        expect(Run.count).to eq(6)
+      end
+
+      it "leaves the sparse cadences of those runs alone" do
+        build_sweep("bff_control")
+
+        expect(Run.distinct.pluck(Arel.sql("params->'sample_every'"), Arel.sql("params->'snapshot_every'")))
+          .to eq([[50, 2_000]])
+      end
+    end
+  end
+
+  # The bff-control runs of the live lab, built by hand before the sweep existed: they
+  # predate the engine's `ops` parameter and carry the design record's sparse cadences.
+  def hand_made_control
+    experiment = create(:experiment, name: "BFF positive control", slug: "bff-control",
+                                     epochs: 50_000, priority: 10, status: "running")
+    params = { "width" => 512, "height" => 256, "tape_len" => 64, "radius" => 0, "max_steps" => 8_192,
+               "init" => "random", "top_k" => 16, "sample_every" => 50, "snapshot_every" => 2_000 }
+
+    [0.0, 2.0**-12].each do |rate|
+      (1..3).each do |seed|
+        create(:run, experiment: experiment, seed: seed, epochs: 50_000, priority: 10,
+                     params: params.merge("mutation_rate" => rate))
+      end
+    end
+  end
+
   it "refuses a sweep it does not know" do
     expect { build_sweep("colour") }.to raise_error(/Unknown sweep/)
   end

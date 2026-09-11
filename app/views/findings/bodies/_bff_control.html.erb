@@ -1,0 +1,41 @@
+<h2>Hypothesis</h2>
+<p>
+  This is not a claim about nature but a claim about the instrument: the engine, run in
+  the shape the published BFF work used, reproduces the emergence of self-replicators.
+  A well-mixed soup — every interaction pairs a cell with a partner drawn uniformly from
+  the whole world — of 2<sup>17</sup> tapes should leave the random-soup regime within
+  the epoch budget: <span class="mono">compress_ratio</span> collapses,
+  <span class="mono">replicator_count</span> rises off zero and stays there.
+</p>
+<p>
+  The falsifier is blunt. If this control never transitions,
+  suspect the interpreter or the pairing rule, not the hypothesis:
+  the sweeps of DESIGN §1.3 are only worth reading once the engine has been shown to
+  produce the effect they measure.
+</p>
+
+<h2>Method</h2>
+<p>
+  A 512×256 torus — 131 072 cells, 2<sup>17</sup> tapes — of 64-byte tapes
+  (<span class="mono">tape_len = 64</span>), <span class="mono">radius = 0</span> for the
+  well-mixed neighbourhood, <span class="mono">max_steps = 8192</span> per interaction,
+  50 000 epochs per run. Two arms, <span class="mono">mutation_rate = 0</span> and the
+  engine default <span class="mono">2<sup>-12</sup> = 2.44 × 10<sup>-4</sup></span>, with
+  seeds 1, 2 and 3 each: six runs. Sampling is sparse for a world this size —
+  <span class="mono">sample_every = 50</span> and
+  <span class="mono">snapshot_every = 2000</span>, 25 full-world snapshots per run instead
+  of the 500 the engine's default cadence would write. The runs carry queue priority 10,
+  ahead of every sweep, because nothing else in the lab means anything until they land.
+</p>
+
+<h2>Result</h2>
+<p>
+  Open, and so far the control has only tested the harness. All six runs failed between
+  epoch 546 and epoch 633 against a read limit in the runner's lab-mode client — its
+  10 MiB cap on an API response, too small for a world this size — fixed by PR #17, which
+  raised the limit to 256 MiB. The six runs are being requeued from their last snapshot.
+</p>
+<p>
+  Until this control transitions, no sweep on this site is readable as a negative result.
+  The mutation-rate finding is held on that basis.
+</p>

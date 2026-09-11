@@ -79,6 +79,29 @@ module Lab
       },
       seeds: (1..10).to_a,
       epochs: 20_000
+    },
+    "bff_control" => {
+      name: "BFF positive control",
+      description: "Does the engine reproduce the published BFF emergence at all? A " \
+                   "well-mixed soup of 2^17 tapes, the shape the original work used. No " \
+                   "sweep is readable as a negative result until this one transitions.",
+      # Not one of DESIGN §1.3's sweeps but the control the design record of 2026-09-10
+      # makes mandatory, which is why it jumps the queue: priority 10 puts its runs ahead
+      # of every sweep's. Tape length and step budget are the engine's defaults already.
+      # The two cadences are on the grid — the sparse snapshots the same design-record
+      # entry asks for — because a 512×256 world at the engine's default cadence would
+      # post 500 full-world snapshots per run.
+      param_grid: {
+        "mutation_rate" => [0.0, 2.0**-12],
+        "width" => [512],
+        "height" => [256],
+        "radius" => [0],
+        "sample_every" => [50],
+        "snapshot_every" => [2_000]
+      },
+      seeds: (1..3).to_a,
+      epochs: 50_000,
+      priority: 10
     }
   }.freeze
 end
