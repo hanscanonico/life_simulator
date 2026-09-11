@@ -3,9 +3,10 @@
 require "rails_helper"
 
 RSpec.describe Charts::AgreementChart do
-  def arm(label, runs: 5, flagged: 0, replicated: 0, both: 0)
+  def arm(label, runs: 5, flagged: 0, replicated: 0, both: 0, replicated_wide: nil)
     Experiments::TransitionArmsService::Arm.new(label: label, runs: runs, flagged: flagged,
-                                                replicated: replicated, both: both)
+                                                replicated: replicated, both: both,
+                                                replicated_wide: replicated_wide)
   end
 
   def build(arms) = described_class.new(arms: arms, title: "Detector against replicator census, per arm")
