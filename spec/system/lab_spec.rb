@@ -54,6 +54,7 @@ RSpec.describe "The lab status frame", :js, type: :system do
   it "resolves the eager frame into the status itself" do
     expect(page).to have_css("h2", text: "Runners seen in the last 5 minutes")
     expect(page).to have_css("h2", text: "Throughput")
+    expect(page).to have_css("h2", text: "Worth a look")
   end
 
   # The frame polls itself, so a meta refresh would be a second, page-destroying clock.

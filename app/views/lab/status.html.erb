@@ -16,14 +16,22 @@
     </dl>
 
     <h2>Runners seen in the last 5 minutes</h2>
+    <% if @status.expected_slots %>
+      <p class="text-muted">
+        <%= @status.expected_slots %> slots expected,
+        <%= @status.runners.size %> seen,
+        <%= @status.idle_slots %> idle.
+      </p>
+    <% end %>
     <% if @status.runners.any? %>
       <div class="table-scroll">
         <table class="data-table">
           <thead>
             <tr>
               <th>Runner</th>
-              <th class="numeric">Runs</th>
+              <th>Current run</th>
               <th class="numeric">Epochs done</th>
+              <th class="numeric">Epochs/h</th>
               <th>Last heartbeat</th>
             </tr>
           </thead>
@@ -31,8 +39,13 @@
             <% @status.runners.each do |runner| %>
               <tr>
                 <td class="mono"><%= runner.id %></td>
-                <td class="numeric"><%= runner.runs %></td>
+                <td>
+                  <% runner.run_ids.each do |run_id| %>
+                    <%= link_to "##{run_id}", run_path(run_id) %>
+                  <% end %>
+                </td>
                 <td class="numeric"><%= number_with_delimiter runner.epochs_done %></td>
+                <td class="numeric"><%= number_with_delimiter runner.epochs_per_hour %></td>
                 <td><%= time_ago_in_words(runner.last_seen) %> ago</td>
               </tr>
             <% end %>
@@ -55,6 +68,34 @@
       </p>
     <% else %>
       <p class="text-muted">The queue is empty.</p>
+    <% end %>
+
+    <h2>Worth a look</h2>
+    <% if @status.stalled_runs.any? %>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Runner</th>
+              <th class="numeric">Epochs done</th>
+              <th>Silent for</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @status.stalled_runs.each do |run| %>
+              <tr>
+                <td><%= link_to "Run ##{run.id}", run_path(run) %></td>
+                <td class="mono"><%= run.runner_id %></td>
+                <td class="numeric"><%= number_with_delimiter run.epochs_done %></td>
+                <td><%= time_ago_in_words(run.last_progress_at) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% else %>
+      <p class="text-muted">None.</p>
     <% end %>
   </section>
 </turbo-frame>

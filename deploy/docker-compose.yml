@@ -49,6 +49,9 @@ services:
       DATABASE_URL: postgres://life_simulator:${POSTGRES_PASSWORD}@db:5432/life_simulator_production
       RAILS_MASTER_KEY: ${RAILS_MASTER_KEY:?set in deploy/.env}
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      # The lab status page reads this to say how many slots are idle; keep the
+      # default in step with the runner's --parallelism below.
+      RUNNER_PARALLELISM: ${RUNNER_PARALLELISM:-12}
     depends_on:
       db:
         condition: service_healthy
