@@ -4,6 +4,11 @@
 # This Dockerfile is designed for production, not development. Use with Kamal or build'n'run by hand:
 # docker build -t life-simulator-app .
 # docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name life-simulator life-simulator-app
+#
+# It builds two images. The default (last) stage is the Rails app; the `runner`
+# stage is the lab runner, built on its own so that a deploy that only changed
+# app code cannot restart the runs — see the stage's own comment.
+# docker build --target runner -t life-simulator-runner .
 
 # For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
 
@@ -59,6 +64,36 @@ RUN mkdir -p /out && \
 RUN mkdir -p /src/app/assets/wasm && make -C /src wasm
 
 
+# Final stage for the runner image
+#
+# The lab runner ships on its own rather than inside the app image, because the
+# `runner` service is restarted whenever the image it runs changes, and every
+# restart interrupts the runs in flight: they are only re-queued after the
+# 5-minute stale release and resume from their last snapshot. This stage's
+# layers read nothing but the rust-build stage, whose own inputs are engine/,
+# the Makefile and the wasm-bindgen version pinned in engine/Cargo.lock — no app
+# file is copied in — so an app-only merge rebuilds identical layers, BuildKit
+# reuses them, and the image ID does not move.
+FROM docker.io/library/debian:bookworm-slim AS runner
+
+# The runner talks to the app over HTTP and to nothing else: certificates are
+# all this image needs beyond the binary.
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y ca-certificates && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# Run as a non-root user for security, as the app image does.
+RUN groupadd --system --gid 1000 runner && \
+    useradd runner --uid 1000 --gid 1000 --create-home --shell /bin/bash
+USER 1000:1000
+
+COPY --from=rust-build /out/runner /usr/local/bin/runner
+
+# `command:` in deploy/docker-compose.yml is the subcommand and its flags, e.g.
+# `lab --api http://app:8080`.
+ENTRYPOINT ["runner"]
+
+
 # Throw-away build stage to reduce size of final image
 FROM base AS build
 
@@ -102,9 +137,6 @@ USER 1000:1000
 # Copy built artifacts: gems, application
 COPY --chown=rails:rails --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --chown=rails:rails --from=build /rails /rails
-
-# The simulation runner: `runner lab` is the command of the runner service.
-COPY --from=rust-build /out/runner /usr/local/bin/runner
 
 # Entrypoint prepares the database.
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]

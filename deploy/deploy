@@ -11,9 +11,11 @@ if [ "${1:-}" != "--no-pull" ]; then
 fi
 
 compose="docker compose -f deploy/docker-compose.yml"
-# Must match the app service's `image:` in docker-compose.yml.
-image="life-simulator-app:latest"
-previous="life-simulator-app:previous"
+# Must match the `image:` of the app and runner services in docker-compose.yml.
+app_image="life-simulator-app:latest"
+app_previous="life-simulator-app:previous"
+runner_image="life-simulator-runner:latest"
+runner_previous="life-simulator-runner:previous"
 
 # Read once: it also fails the deploy early on an unusable compose file.
 services=$($compose config --services)
@@ -68,7 +70,7 @@ start_stack() {
 }
 
 prune_superseded_images() {
-  # Never -a: that would collect $previous, which the rollback branch needs.
+  # Never -a: that would collect the :previous tags, which the rollback branch needs.
   # Housekeeping must not turn a healthy deploy into a failed one, so a prune
   # that cannot run is only reported.
   docker image prune -f --filter "until=168h" >/dev/null ||
@@ -78,20 +80,47 @@ prune_superseded_images() {
 # Tagged before the build, and taken from the container rather than from the
 # :latest tag: the build moves that tag, and an interrupted earlier deploy can
 # have left it on an image that never served.
-container=$($compose ps -q app 2>/dev/null || true)
-serving=""
-if [ -n "$container" ]; then
-  serving=$(docker inspect --format '{{.Image}}' "$container" 2>/dev/null || true)
-fi
-# Nothing is running, so fall back to the tag the last build left behind.
-if [ -z "$serving" ] && docker image inspect "$image" >/dev/null 2>&1; then
-  serving=$image
-fi
+serving_image() {
+  local service=$1 image=$2 container serving=""
+  container=$($compose ps -q "$service" 2>/dev/null || true)
+  if [ -n "$container" ]; then
+    serving=$(docker inspect --format '{{.Image}}' "$container" 2>/dev/null || true)
+  fi
+  # Nothing is running, so fall back to the tag the last build left behind.
+  if [ -z "$serving" ] && docker image inspect "$image" >/dev/null 2>&1; then
+    serving=$image
+  fi
+  echo "$serving"
+}
+
+serving=$(serving_image app "$app_image")
 if [ -n "$serving" ]; then
-  docker image tag "$serving" "$previous"
+  docker image tag "$serving" "$app_previous"
+fi
+runner_serving=$(serving_image runner "$runner_image")
+# The deploy that splits the two images finds the runner container still on the
+# app image; rolling the runner back to that would run Rails' entrypoint, so the
+# runner's own tag is the only candidate then. The app's id is read as well as
+# $serving, which is a tag rather than an id whenever no app container is up.
+app_id=$(docker image inspect --format '{{.Id}}' "$app_image" 2>/dev/null || true)
+if [ -n "$runner_serving" ] &&
+   { [ "$runner_serving" = "$serving" ] || [ "$runner_serving" = "$app_id" ]; }; then
+  runner_serving=""
+  if docker image inspect "$runner_image" >/dev/null 2>&1; then
+    runner_serving=$runner_image
+  fi
+fi
+if [ -n "$runner_serving" ]; then
+  docker image tag "$runner_serving" "$runner_previous"
 fi
 
-$compose build app
+# Two images, one build command. The runner is built from the `runner` target,
+# whose layers read only the rust-build stage — engine/, the Makefile and the
+# wasm-bindgen version pinned in engine/Cargo.lock. An app-only merge changes
+# none of those, so BuildKit reuses the cached layers verbatim: the runner image
+# keeps the same image ID, `up -d` sees the runner container already on that
+# image and leaves it running, and the runs in flight are not interrupted.
+$compose build app runner
 
 if start_stack; then
   echo "Deployed and healthy."
@@ -119,8 +148,11 @@ if [ -z "$serving" ]; then
   exit 1
 fi
 
-echo "Rolling back to the previous image..." >&2
-if docker image tag "$previous" "$image" && start_stack; then
+echo "Rolling back to the previous images..." >&2
+if [ -n "$runner_serving" ]; then
+  docker image tag "$runner_previous" "$runner_image" || true
+fi
+if docker image tag "$app_previous" "$app_image" && start_stack; then
   echo "Rolled back: the previous build is serving again." >&2
 else
   echo "The rollback did not bring the whole stack up either. Check: $compose logs app" >&2
