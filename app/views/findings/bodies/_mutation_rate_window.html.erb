@@ -20,119 +20,168 @@
   a hollow marker along the top of the phase diagram.
 </p>
 
-<h2>Result (interim)</h2>
+<h2>Result</h2>
 <p>
-  Partial. Every number in this section is from the lab check of 2026-09-11 at 01:20 CEST,
-  when 97 of the 100 runs had finished and 3 were still running; the phase diagram and the
-  runs table below are live, so they will drift away from this prose — a run requeued from
-  its last snapshot drops out of the diagram until it finishes again.
+  All 100 runs finished. Five transitioned — five independent seeds in which a random soup
+  with no fitness function and no selection pressure collapsed into self-replicating
+  structure, the first at epoch 5 030. The other 95 were censored at 20 000 epochs. The
+  numbers below are the sweep's final ones; the phase diagram and the runs table under
+  them are live and read from the same runs.
 </p>
 
 <div class="table-scroll mt-4">
   <table class="data-table">
     <caption class="text-sm text-muted text-left">
-      Transitions per arm, lab check of 2026-09-11 01:20 CEST — 128×128, 20 000 epochs,
-      10 seeds per arm
+      Emergence per arm — 128×128, 20 000 epochs, 10 seeds per arm, all runs finished
     </caption>
     <thead>
       <tr>
         <th><span class="mono">mutation_rate</span></th>
         <th class="numeric">Transitioned</th>
-        <th>Transition epochs (run / seed)</th>
+        <th>Transition epochs</th>
+        <th class="numeric">Final <span class="mono">compress_ratio</span>, censored runs</th>
       </tr>
     </thead>
     <tbody>
-        <tr>
-          <td class="mono">0</td>
-          <td class="numeric mono">0/10</td>
-          <td class="mono">—</td>
-        </tr>
-        <tr>
-          <td class="mono">2<sup>-16</sup> = 1.53e-5</td>
-          <td class="numeric mono">0/10</td>
-          <td class="mono">—</td>
-        </tr>
-        <tr>
-          <td class="mono">2<sup>-15</sup> = 3.05e-5</td>
-          <td class="numeric mono">0/10</td>
-          <td class="mono">—</td>
-        </tr>
-        <tr>
-          <td class="mono">2<sup>-14</sup> = 6.10e-5</td>
-          <td class="numeric mono">0/10</td>
-          <td class="mono">—</td>
-        </tr>
-        <tr>
-          <td class="mono">2<sup>-13</sup> = 1.221e-4</td>
-          <td class="numeric mono">2/10</td>
-          <td class="mono">run 41 seed 1 @ ≤ 9 900 (see caveat); run 45 seed 5 @ 13 700</td>
-        </tr>
-        <tr>
-          <td class="mono">2<sup>-12</sup> = 2.441e-4</td>
-          <td class="numeric mono">1/10</td>
-          <td class="mono">run 59 seed 9 @ 19 500</td>
-        </tr>
-        <tr>
-          <td class="mono">2<sup>-11</sup> = 4.883e-4</td>
-          <td class="numeric mono">0/10</td>
-          <td class="mono">—</td>
-        </tr>
-        <tr>
-          <td class="mono">2<sup>-10</sup> = 9.766e-4</td>
-          <td class="numeric mono">0/10</td>
-          <td class="mono">—</td>
-        </tr>
-        <tr>
-          <td class="mono">2<sup>-9</sup> = 1.953e-3</td>
-          <td class="numeric mono">1/10</td>
-          <td class="mono">run 83 seed 3 @ 15 300</td>
-        </tr>
-        <tr>
-          <td class="mono">2<sup>-8</sup> = 3.906e-3</td>
-          <td class="numeric mono">1/10</td>
-          <td class="mono">run 95 seed 5 @ 18 080</td>
-        </tr>
+      <tr>
+        <td class="mono">0</td>
+        <td class="numeric mono">0/10</td>
+        <td class="mono">—</td>
+        <td class="numeric mono">0.93</td>
+      </tr>
+      <tr>
+        <td class="mono">2<sup>-16</sup> = 1.53e-5</td>
+        <td class="numeric mono">0/10</td>
+        <td class="mono">—</td>
+        <td class="numeric mono">0.91</td>
+      </tr>
+      <tr>
+        <td class="mono">2<sup>-15</sup> = 3.05e-5</td>
+        <td class="numeric mono">0/10</td>
+        <td class="mono">—</td>
+        <td class="numeric mono">0.91</td>
+      </tr>
+      <tr>
+        <td class="mono">2<sup>-14</sup> = 6.10e-5</td>
+        <td class="numeric mono">0/10</td>
+        <td class="mono">—</td>
+        <td class="numeric mono">0.92</td>
+      </tr>
+      <tr>
+        <td class="mono">2<sup>-13</sup> = 1.221e-4</td>
+        <td class="numeric mono">2/10</td>
+        <td class="mono">
+          5 030 (<%= link_to "run 41", run_path(41) %>, seed 1),
+          7 000 (<%= link_to "run 45", run_path(45) %>, seed 5)
+        </td>
+        <td class="numeric mono">0.94</td>
+      </tr>
+      <tr>
+        <td class="mono">2<sup>-12</sup> = 2.441e-4</td>
+        <td class="numeric mono">1/10</td>
+        <td class="mono">15 560 (<%= link_to "run 59", run_path(59) %>, seed 9)</td>
+        <td class="numeric mono">0.95</td>
+      </tr>
+      <tr>
+        <td class="mono">2<sup>-11</sup> = 4.883e-4</td>
+        <td class="numeric mono">0/10</td>
+        <td class="mono">—</td>
+        <td class="numeric mono">0.96</td>
+      </tr>
+      <tr>
+        <td class="mono">2<sup>-10</sup> = 9.766e-4</td>
+        <td class="numeric mono">0/10</td>
+        <td class="mono">—</td>
+        <td class="numeric mono">0.98</td>
+      </tr>
+      <tr>
+        <td class="mono">2<sup>-9</sup> = 1.953e-3</td>
+        <td class="numeric mono">1/10</td>
+        <td class="mono">10 670 (<%= link_to "run 83", run_path(83) %>, seed 3)</td>
+        <td class="numeric mono">0.98</td>
+      </tr>
+      <tr>
+        <td class="mono">2<sup>-8</sup> = 3.906e-3</td>
+        <td class="numeric mono">1/10</td>
+        <td class="mono">18 080 (<%= link_to "run 95", run_path(95) %>, seed 5)</td>
+        <td class="numeric mono">0.99</td>
+      </tr>
     </tbody>
   </table>
 </div>
 
 <p>
-  <strong>The interim claim.</strong> No transition in 40/40 seeds at
-  <span class="mono">mutation_rate ≤ 2<sup>-14</sup></span>, the zero-mutation control
-  included, against 5/60 seeds at <span class="mono">≥ 2<sup>-13</sup></span>. No arm
-  reaches more than 2 of 10, and the earliest transition anywhere in the sweep is epoch
-  9 900. That is the shape a lower edge of a window would have, at a count no arm can yet
-  carry.
+  <strong>Life emerged.</strong> <%= link_to "Run 41", run_path(41) %> is the clearest
+  case: <span class="mono">compress_ratio</span> sits near 0.94 for five thousand epochs,
+  falls off a cliff at epoch 5 030 and ends at 0.26, its
+  <span class="mono">op_density</span> rises from the random soup's 0.10 to a peak near
+  0.15, and its
+  snapshots show one colony spreading across the torus from that epoch on. The five
+  transitioned runs end between 0.05 and 0.26; every one of the 95 censored runs ends
+  above 0.90. That is the BFF result, reproduced here with nothing selecting for it.
 </p>
+
 <p>
-  Four caveats, each of which can still move the reading:
+  <strong>The window is not there.</strong> Emergence happened at
+  <span class="mono">2<sup>-13</sup></span>, <span class="mono">2<sup>-12</sup></span>,
+  <span class="mono">2<sup>-9</sup></span> and <span class="mono">2<sup>-8</sup></span>
+  alike — one seed in ten, two at best, wherever it happened, with no peak in between and
+  no sign of an upper error threshold anywhere in the range swept. At ten seeds per arm
+  the gap between 2/10 and 0/10 is inside what the sweep can resolve, so the arms at or
+  above <span class="mono">2<sup>-13</sup></span> are not distinguishable from each other.
+  The hypothesis of DESIGN §1.3 sweep 1, as stated, is not supported by its own data.
 </p>
-<ul>
-  <li>
-    Every transitioned run's final summary reports
-    <span class="mono">replicator_count 0</span>. The detector fires on the
-    compression and diversity signature, not on a counted copier — run 45 ends at
-    <span class="mono">distinct_tapes</span> 1 935,
-    <span class="mono">compress_ratio</span> 0.051,
-    <span class="mono">entropy_bits</span> 6.86,
-    <span class="mono">copy_rate</span> 6.1 × 10<sup>-5</sup>; run 41 at
-    <span class="mono">distinct_tapes</span> 13 349,
-    <span class="mono">compress_ratio</span> 0.260,
-    <span class="mono">entropy_bits</span> 6.74. So these are transitions in tape
-    statistics, not counted self-replicators.
-  </li>
-  <li>
-    Run 41's stored <span class="mono">transition_epoch</span> of 9 900 predates the
-    resume fix of PR #25, and its own samples put the collapse near epoch 5 030. It is
-    cited as ≤ 9 900 until the backfill of PR #30 lands.
-  </li>
-  <li>
-    Two runs of the <span class="mono">2<sup>-8</sup></span> arm, 99 and 100, were still
-    running at the time of the check, so that arm may yet become 2 of 10.
-  </li>
-  <li>
-    Nothing here is readable as a negative result until the
-    <span class="mono">bff-control</span> positive control transitions: a flat sweep on an
-    untested instrument says nothing about the hypothesis.
-  </li>
-</ul>
+
+<p>
+  <strong>A lower cutoff, suggested and not established.</strong> The one pattern that
+  survives pooling is that nothing emerged below
+  <span class="mono">2<sup>-13</sup></span>: 0 of 40 runs at rates
+  ≤ <span class="mono">2<sup>-14</sup></span> against 5 of 60 at
+  ≥ <span class="mono">2<sup>-13</sup></span>. A one-sided Fisher exact test on that 2×2
+  table gives <span class="mono">p ≈ 0.073</span>. That is suggestive and nothing more —
+  and the split was drawn after looking at where the transitions fell, which makes it
+  weaker than the number looks.
+</p>
+
+<p>
+  What the mutation rate does change, and changes unambiguously, is the floor a soup
+  without replicators sits on: among the censored runs the final
+  <span class="mono">compress_ratio</span> climbs arm by arm from ≈ 0.92 at
+  <span class="mono">2<sup>-14</sup></span> to ≈ 0.99 at
+  <span class="mono">2<sup>-8</sup></span> without a single reversal. Below
+  <span class="mono">2<sup>-14</sup></span> there is no such order: those three arms sit
+  between 0.91 and 0.93, with the no-mutation arm the highest of them. That is mutation
+  randomising the tapes faster than interaction can make them alike. It is real, it is
+  large, and it has nothing to do with emergence.
+</p>
+
+<p>
+  Two caveats survive from the interim reading. The
+  <span class="mono">replicator_count</span> detector fires in only three of the five
+  transitioned runs — it peaks at 867 cells in run 41, 108 in run 45, 14 in run 83, and
+  never leaves zero in runs 59 and 95 — and it ends at zero in all five, so what the
+  transition detects is the compression-and-diversity signature rather than a standing
+  census of copiers. It also fired briefly, on 2 cells, in one censored run at
+  <span class="mono">2<sup>-8</sup></span>. And nothing here is a clean negative until the
+  <%= link_to "positive control", finding_path("bff-control") %> transitions: a sweep with
+  five events in a hundred runs is a weak instrument whichever way it points.
+</p>
+
+<h2>What next</h2>
+<p>
+  Emergence at 128×128 within 20 000 epochs is rare enough that this sweep mostly measured
+  censoring: 95 of 100 runs stopped before anything happened, so most of what was compared
+  between arms is where the clock ran out. Turning "one seed in ten" into a rate needs
+  longer runs, larger worlds, or both, and the sweeps for that are queued.
+  <%= link_to "Mutation rate, long runs", experiment_path("mutation-rate-long") %> re-runs
+  <span class="mono">2<sup>-14</sup></span>…<span class="mono">2<sup>-11</sup></span> for
+  60 000 epochs — three times the budget — to separate "rare" from "slow" and to test the
+  lower cutoff exactly where it was drawn.
+  <%= link_to "World size", experiment_path("world-size") %> asks whether emergence is a
+  per-world event or a per-cell rate; if it is per-cell, a bigger world is the cheapest way
+  to buy events. And the
+  <%= link_to "BFF positive control", experiment_path("bff-control") %> — 2<sup>17</sup>
+  tapes, well-mixed, 50 000 epochs — is the run that says whether this engine reaches the
+  published emergence rate at all. Until it finishes, every censored run above is evidence
+  about the instrument as much as about the soup.
+</p>
