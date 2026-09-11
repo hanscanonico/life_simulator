@@ -116,3 +116,36 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   the `op_density` half available on samples recorded before the observable existed.
   Stored `transition_epoch` values are left alone: `rake lab:transition_audit` lists the
   runs whose transition the guard would no longer accept, for a human to decide on.
+- 2026-09-11 — **`max-steps`, §1.3 item 4, read as non-monotone in the interaction budget.**
+  Four budgets two octaves apart (2^8, 2^10, 2^13, 2^16) on a 128×128 world at mutation
+  rate 2^-13, 10 seeds each, 20 000 epochs, all 40 terminal. Emergence appears in one
+  arm only: 8 192 steps, 2 of 10 seeds — seed 1 at epoch 5 030 (first cell 4 890,
+  census peak 867 at 5 080, copy_rate peak 0.0474, entropy floor 4.85 bits, final
+  compress_ratio 0.26) and seed 5 at 7 000 (first cell 7 030, census peak 108 at 9 580,
+  final compress_ratio 0.054, 2 406 distinct tapes). **The floor reading of item 4 is
+  not supported**: 65 536 steps, eight times the compute of the only arm that works,
+  produces nothing, and 256 and 1 024 are not part-way to a collapse but untouched soup
+  (entropy never below 7.77 against a 7.94 baseline, final compress_ratio 0.921–0.984,
+  16 379–16 384 of 16 384 tapes distinct). Single-cell copy_rate blips (6.1e-05, one
+  copying interaction in the epoch's 16 384) appear in 12 of the 38 silent runs and
+  never yield a replicator, but they are **not evenly spread**: 1, 2, 4 and 5 runs from
+  the narrowest arm to the widest.
+  Detector and census **agree in every arm** — zero disagreements, unlike sweeps 1 and
+  2. The 8 192 arm is the engine's default budget, so it repeats the `mutation-rate`
+  and `mutation-rate-long` 2^-13 arms epoch for epoch and peak for peak — a third
+  determinism check, and a caveat: 30 runs of new evidence and 10 of a repeat, with the
+  only events in the repeated arm. Statistics are thin: each 0/10 arm bounds its rate
+  only to ≈0–26% (one-sided 95% Clopper–Pearson 0.259) and 2/10 against 0/10 is Fisher
+  one-sided p = 0.24, so the peak is located to within a factor of 64. **The budget is
+  spent, not merely bought.** Throughput measured from the sample stream (epochs
+  between two writes over the seconds between them, gaps over 300 s dropped, covering
+  18 000–19 900 epochs of each run) is 74.4, 62.6, 29.5 and 6.0 epochs/s from the
+  narrowest arm to the widest, under a comparable shared load of ~12, 12, 10 and 12
+  runs in flight — an epoch at 65 536 costs ~12× an epoch at 256, and the marginal
+  price is near constant at 3.3, 2.5 and 2.3 µs per extra step per epoch, which is what
+  interactions cut off by the ceiling look like. The two transitioned runs are their
+  arm's slowest and each slowed at its own crossing (31.0 → 14.7 and 32.5 → 2.6
+  epochs/s) under *lower* concurrency than before it. Proposed, not committed: a finer
+  grid 2 048–32 768 at 20 seeds. Held at **partial** — not for outstanding runs but
+  because every arm is censored at 20 000 epochs and the `bff-control` census is
+  unresolved; the write-up reads its denominator from the database at render time.

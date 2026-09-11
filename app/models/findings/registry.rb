@@ -83,6 +83,24 @@ module Findings
                  "rather than emergence: among runs that never transitioned the final " \
                  "compress_ratio falls monotonically as a cell's reach widens, 0.951 to " \
                  "0.859. The diversity half of the hypothesis is untested and stays open."
+      ),
+      Finding.new(
+        slug: "interaction-budget",
+        title: "More compute per interaction is not more life",
+        date: Date.new(2026, 9, 11),
+        experiment_slug: "max-steps",
+        status: :partial,
+        summary: "DESIGN §1.3 sweep 4 expected a floor: below some number of instructions " \
+                 "a copy cannot finish, above it the budget should stop mattering. What " \
+                 "the four arms show instead is a single positive point. In 20 000 epochs " \
+                 "at 128×128 emergence appears only at max_steps 8 192, 2 of 10 seeds, and " \
+                 "never at 256, 1 024 or 65 536 — the arm with eight times the compute of " \
+                 "the one that works produces nothing, and the extra instructions are spent " \
+                 "rather than merely bought: an epoch at 65 536 costs twelve times an epoch " \
+                 "at 256. The detector and the census agree in every arm, which is rare in " \
+                 "this programme. But a peak found by one arm out of four is located to " \
+                 "within a factor of 64, and each silent arm bounds its rate only to " \
+                 "about 0–26%."
       )
     ].freeze
 

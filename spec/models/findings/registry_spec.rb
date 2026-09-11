@@ -133,6 +133,22 @@ RSpec.describe Findings::Registry do
     expect(described_class.for_experiment("unwritten")).to be_empty
   end
 
+  it "holds the finished max-steps sweep at partial, censored rather than complete" do
+    finding = described_class.find("interaction-budget")
+
+    expect(finding).to have_attributes(experiment_slug: "max-steps", status: :partial)
+    expect(finding.summary).to include("emergence appears only at max_steps 8 192",
+                                       "never at 256, 1 024 or 65 536",
+                                       "an epoch at 65 536 costs twelve times an epoch at 256",
+                                       "located to within a factor of 64")
+  end
+
+  it "trails the finished radius sweep with the four-point max-steps grid" do
+    slugs = described_class.all.map(&:slug)
+
+    expect(slugs.last(2)).to eq(%w[radius-locality interaction-budget])
+  end
+
   it "returns nothing for an unknown slug" do
     expect(described_class.find("nope")).to be_nil
   end
