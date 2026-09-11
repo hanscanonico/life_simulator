@@ -194,8 +194,8 @@ RSpec.describe "Findings", type: :request do
         get finding_path(Findings::Registry.find("bff-control"))
 
         expect(response.body).not_to match(/\d{2}:\d{2} CEST/)
-        expect(response.body).not_to match(/run 185/i)
-        expect(response.body).not_to match(/epoch 5 ?400/)
+        expect(response.body).not_to match(/\brun \d+/i)
+        expect(response.body).not_to match(/epoch \d ?\d{3}/)
       end
     end
 
