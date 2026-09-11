@@ -56,6 +56,17 @@ RSpec.describe Lab::StatusPage do
       expect(queries_during { page.runners && page.epochs_per_hour }).to eq(2)
     end
 
+    it "costs the same two reads however many slots are busy" do
+      12.times do |slot|
+        run = create(:run, :claimed, runner_id: "runner-#{slot}")
+        create(:sample, run: run, epoch: 0)
+        create(:sample, run: run, epoch: 250)
+      end
+
+      expect(queries_during { page.runners.each(&:epochs_per_hour) }).to eq(2)
+      expect(page.runners.sum(&:epochs_per_hour)).to eq(page.epochs_per_hour)
+    end
+
     context "with a runner silent for more than five minutes" do
       it "leaves it out" do
         create(:run, :stale, runner_id: "runner-b")
@@ -140,6 +151,13 @@ RSpec.describe Lab::StatusPage do
 
       expect(queries_during { page.stalled_runs }).to eq(1)
       expect(page.stalled_runs).to eq([stalest, recent])
+    end
+
+    it "lists no more than a screenful" do
+      create_list(:run, Lab::StatusPage::STALLED_LIMIT + 3, :claimed,
+                  status: "running", started_at: 3.hours.ago)
+
+      expect(page.stalled_runs.size).to eq(Lab::StatusPage::STALLED_LIMIT)
     end
   end
 

@@ -82,6 +82,16 @@ RSpec.describe "Lab", type: :request do
       end
     end
 
+    context "without the runner parallelism in the environment" do
+      it "leaves the slot count unsaid" do
+        create(:run, :claimed, runner_id: "bench-0")
+
+        get lab_status_path
+
+        expect(response.body).not_to include("slots expected")
+      end
+    end
+
     context "with an idle lab" do
       it "says so" do
         get lab_status_path
