@@ -100,10 +100,14 @@
 }
 
 /* The markup makes the box a focusable region so a keyboard can scroll it, which means it
-   needs a ring of its own; it matches the button ring in 01-buttons.css. */
+   needs a ring of its own; it matches the button ring in 01-buttons.css. An outline is
+   painted outside the border box and the fade mask below clips everything out there, ring
+   included, so a focused box drops the mask and hints its overflow with the covers and
+   shadows alone — a ring that cannot be seen is worse than a harder edge. */
 .table-scroll:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+  mask-image: none;
 }
 
 /* The background shadows sit behind the cells, so a status pill at the edge is still cut
