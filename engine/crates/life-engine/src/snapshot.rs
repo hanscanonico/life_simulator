@@ -138,11 +138,15 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), Snapsh
         return Err(SnapshotError::Mismatch { field: "tape_len" });
     }
 
-    let mut cells = Vec::new();
+    // Read one byte past the world the params describe: enough to tell "too long" from
+    // "exactly right", and a corrupt blob can no longer inflate a resuming slot off the box.
+    let expected = params.cell_count() * params.stride();
+    let mut cells = Vec::with_capacity(expected);
     ZlibDecoder::new(&bytes[header_len..])
+        .take(expected as u64 + 1)
         .read_to_end(&mut cells)
         .map_err(SnapshotError::Corrupt)?;
-    if cells.len() != params.cell_count() * params.stride() {
+    if cells.len() != expected {
         return Err(SnapshotError::Mismatch {
             field: "cell count",
         });
@@ -232,6 +236,20 @@ mod tests {
         assert_eq!(decoded, cells);
         assert_eq!(header.epoch, 7);
         assert_eq!(header.transition, TransitionState::default());
+    }
+
+    #[test]
+    fn rejects_a_payload_that_inflates_past_the_world() {
+        let params = params();
+        let expected = params.cell_count() * params.stride();
+        let bytes = encode(&header(&params, 0), &vec![0u8; expected * 8]);
+
+        assert!(matches!(
+            decode(&params, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "cell count"
+            })
+        ));
     }
 
     #[test]
