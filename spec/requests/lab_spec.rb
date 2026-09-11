@@ -71,14 +71,33 @@ RSpec.describe "Lab", type: :request do
       end
     end
 
-    context "with a live run that has stopped sampling" do
+    context "with a live run whose epoch counter has stopped moving" do
       it "puts it in the section worth a look" do
         run = create(:run, :claimed, status: "running", runner_id: "bench-4",
                                      started_at: 40.minutes.ago)
 
         get lab_status_path
 
-        expect(response.body).to include("Worth a look", "Silent for", "Run ##{run.id}")
+        expect(response.body).to include("Worth a look", "No progress for", "Run ##{run.id}")
+      end
+    end
+
+    context "with a slot of a destroyed runner still inside the heartbeat window" do
+      it "counts the working slots only and names the leftovers apart" do
+        allow(ENV).to receive(:[]).and_call_original
+        allow(ENV).to receive(:[]).with("RUNNER_PARALLELISM").and_return("12")
+        create(:run, :claimed, runner_id: "bench-0")
+        create(:run, :claimed, status: "finished", runner_id: "gone-0",
+                               finished_at: Time.current)
+
+        get lab_status_path
+
+        body = response.body.squish
+        expect(body).to include("12 slots expected, 1 seen, 11 idle",
+                                "1 slot from a previous runner still inside " \
+                                "the heartbeat window")
+        expect(body).to include("bench-0")
+        expect(body).not_to include("gone-0")
       end
     end
 
@@ -96,7 +115,7 @@ RSpec.describe "Lab", type: :request do
       it "says so" do
         get lab_status_path
 
-        expect(response.body).to include("No runner has heartbeated", "The queue is empty",
+        expect(response.body).to include("No runner is holding a run", "The queue is empty",
                                          "None.")
       end
     end

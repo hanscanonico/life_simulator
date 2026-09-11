@@ -74,6 +74,34 @@ RSpec.describe Lab::StatusPage do
         expect(page.runners).to be_empty
       end
     end
+
+    context "with a slot whose run has already finished" do
+      it "leaves it out, so the count and the table agree" do
+        create(:run, :claimed, status: "finished", runner_id: "gone-1",
+                               finished_at: Time.current)
+        create(:run, :claimed, runner_id: "runner-a")
+
+        expect(page.runners.map(&:id)).to eq(["runner-a"])
+      end
+    end
+  end
+
+  describe "#departed_slots" do
+    it "counts the slots still heartbeating without a run of their own" do
+      create(:run, :claimed, status: "finished", runner_id: "gone-1", finished_at: Time.current)
+      create(:run, :claimed, status: "failed", runner_id: "gone-2", finished_at: Time.current)
+      create(:run, :claimed, runner_id: "runner-a")
+
+      expect(page.departed_slots).to eq(2)
+    end
+
+    context "with every live slot holding a run" do
+      it "counts none" do
+        create(:run, :claimed, runner_id: "runner-a")
+
+        expect(page.departed_slots).to eq(0)
+      end
+    end
   end
 
   describe "#expected_slots" do
@@ -106,23 +134,30 @@ RSpec.describe Lab::StatusPage do
   end
 
   describe "#stalled_runs" do
-    it "leaves out a run that sampled recently" do
-      run = create(:run, :claimed)
-      create(:sample, run: run, epoch: 10)
+    it "leaves out a run whose epoch counter moved just now" do
+      create(:run, :claimed, epochs_done: 400, epochs_done_at: Time.current)
 
       expect(page.stalled_runs).to be_empty
     end
 
-    it "flags a live run whose newest sample is older than the stall window" do
-      run = create(:run, :claimed)
-      create(:sample, run: run, epoch: 10, created_at: 40.minutes.ago)
-      create(:sample, run: run, epoch: 20, created_at: 20.minutes.ago)
+    it "flags a live run whose epoch counter has not moved inside the stall window" do
+      run = create(:run, :claimed, epochs_done: 400, epochs_done_at: 20.minutes.ago)
 
       expect(page.stalled_runs.sole).to eq(run)
       expect(page.stalled_runs.sole.last_progress_at).to be_within(1.minute).of(20.minutes.ago)
     end
 
-    context "with a run that has never sampled" do
+    context "with a slow run that samples in rare batches but keeps progressing" do
+      it "leaves it alone" do
+        run = create(:run, :claimed, status: "running", epochs_done: 41_000,
+                                     started_at: 3.hours.ago, epochs_done_at: 20.seconds.ago)
+        create(:sample, run: run, epoch: 38_000, created_at: 38.minutes.ago)
+
+        expect(page.stalled_runs).to be_empty
+      end
+    end
+
+    context "with a run that has never reported progress" do
       it "flags it once it has been running long enough" do
         run = create(:run, :claimed, status: "running", started_at: 30.minutes.ago)
 
@@ -146,8 +181,7 @@ RSpec.describe Lab::StatusPage do
 
     it "reads the stalest runs first, in one query" do
       stalest = create(:run, :claimed, status: "running", started_at: 3.hours.ago)
-      recent = create(:run, :claimed)
-      create(:sample, run: recent, epoch: 10, created_at: 20.minutes.ago)
+      recent = create(:run, :claimed, epochs_done_at: 20.minutes.ago)
 
       expect(queries_during { page.stalled_runs }).to eq(1)
       expect(page.stalled_runs).to eq([stalest, recent])

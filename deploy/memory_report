@@ -36,12 +36,24 @@ and `?` marks a measurement that could not be taken.
 EOF
 }
 
-run() { timeout "$TIMEOUT" "$@"; }
+# The mini-pc runs a French locale, which translates the row labels of `free` and can
+# change a decimal separator, so every parsed command runs under the C locale.
+run() { LC_ALL=C LANG=C timeout "$TIMEOUT" "$@"; }
 
+# Read by row position and not by label: the first row of `free` carrying numbers is
+# memory and the second is swap, whatever the locale calls them ("Échange:" in French).
+# The label itself is skipped field by field, since a translation can split it in two
+# ("Mém. :").
 parse_free() {
   awk '
-    $1 == "Mem:"  { total = $2; used = $3; available = $NF }
-    $1 == "Swap:" { swap_used = $3 }
+    {
+      n = 0
+      for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) numbers[++n] = $i
+      if (n < 3) next
+      row++
+      if (row == 1) { total = numbers[1]; used = numbers[2]; available = numbers[n] }
+      else if (row == 2) { swap_used = numbers[2] }
+    }
     END {
       if (total == "") exit 1
       printf "%s\t%s\t%s\t%s\n", total, used, available, swap_used + 0
@@ -151,8 +163,20 @@ EOF
   expect "parse_free reads total, used, available and swap used" \
     "$(printf '31724\t14012\t5410\t2047')" "$got" || failed=1
 
+  got=$(parse_free <<'EOF'
+              total       utilisé      libre     partagé tamp/cache   disponible
+Mem :          7959        3000         412         118        4547        4183
+Échange:       4095        3087        1008
+EOF
+)
+  expect "parse_free reads a French free, whose rows are not labelled Mem: and Swap:" \
+    "$(printf '7959\t3000\t4183\t3087')" "$got" || failed=1
+
+  got=$(run sh -c 'printf "%s,%s" "$LC_ALL" "$LANG"')
+  expect "run forces the C locale on the command it measures" "C,C" "$got" || failed=1
+
   got=$(parse_free </dev/null; echo "exit=$?")
-  expect "parse_free fails on output without a Mem: line" "exit=1" "$got" || failed=1
+  expect "parse_free fails on output without a memory row" "exit=1" "$got" || failed=1
 
   got=$(parse_counts <<'EOF'
 pending	24

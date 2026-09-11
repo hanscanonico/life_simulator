@@ -9,9 +9,10 @@ module Runs
   class RequeueFailedService
     include Callable
 
-    REQUEUED_ATTRIBUTES = { status: "pending", epochs_done: 0, runner_id: nil, claimed_at: nil,
-                            heartbeat_at: nil, started_at: nil, finished_at: nil, error: nil,
-                            summary: {}, transition_epoch: nil }.freeze
+    REQUEUED_ATTRIBUTES = { status: "pending", epochs_done: 0, epochs_done_at: nil,
+                            runner_id: nil, claimed_at: nil, heartbeat_at: nil,
+                            started_at: nil, finished_at: nil, error: nil, summary: {},
+                            transition_epoch: nil }.freeze
 
     def initialize(experiment:)
       @experiment = experiment
