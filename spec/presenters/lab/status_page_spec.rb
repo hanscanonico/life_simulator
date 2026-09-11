@@ -271,6 +271,16 @@ RSpec.describe Lab::StatusPage do
       end
     end
 
+    context "with failures either side of the six-hour edge" do
+      it "keeps the one just inside and drops the one just outside" do
+        inside = create(:run, :just_failed, finished_at: 6.hours.ago + 1.minute)
+        create(:run, :just_failed, finished_at: 6.hours.ago - 1.minute)
+
+        expect(page.recent_failures.map(&:id)).to eq([inside.id])
+        expect(page.recent_failure_count).to eq(1)
+      end
+    end
+
     it "lists no more than a screenful and still counts them all" do
       create_list(:run, Lab::StatusPage::FAILURE_LIMIT + 3, :just_failed)
 

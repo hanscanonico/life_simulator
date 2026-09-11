@@ -139,6 +139,17 @@ RSpec.describe "Lab", type: :request do
       end
     end
 
+    context "with an error longer than the column" do
+      it "shows only the head of it" do
+        create(:run, :just_failed, error: "#{'panic ' * 19}pandemonium")
+
+        get lab_status_path
+
+        expect(response.body.squish).to include("#{'panic ' * 19}pan...")
+        expect(response.body).not_to include("pandemonium")
+      end
+    end
+
     context "with a failure older than the window" do
       it "leaves the heading out" do
         create(:run, status: "failed", finished_at: 12.hours.ago, error: "ancient")
