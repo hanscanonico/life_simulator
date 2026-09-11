@@ -37,6 +37,25 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).not_to match(/self-replicator emerged/)
     end
 
+    it "links each sweep to the findings resting on it" do
+      experiment
+
+      get experiments_path
+
+      expect(response.body).to include(finding_path("radius-locality"),
+                                       "Does spatial locality buy emergence?")
+    end
+
+    context "with a sweep no finding rests on" do
+      it "dashes its finding cell" do
+        create(:experiment, name: "Unwritten", slug: "unwritten")
+
+        get experiments_path
+
+        expect(response.body).to include("&mdash;")
+      end
+    end
+
     it "lists the sweeps of the programme that are not queued yet" do
       experiment
 
@@ -73,6 +92,26 @@ RSpec.describe "Experiments", type: :request do
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Transition epoch vs radius", "<svg", "Runs")
       expect(response.body).to include("Download CSV", experiment_path(experiment, format: :csv))
+    end
+
+    it "links to the findings resting on the sweep" do
+      get experiment_path(experiment)
+
+      expect(response.body.squish)
+        .to include("Findings resting on this sweep", "Does spatial locality buy emergence?")
+      expect(response.body).to include(finding_path("radius-locality"),
+                                       %(<span class="badge badge-error">negative</span>))
+    end
+
+    context "with a sweep no finding rests on" do
+      it "shows neither a link nor an empty heading" do
+        unwritten = create(:experiment, name: "Unwritten", slug: "unwritten")
+
+        get experiment_path(unwritten)
+
+        expect(response.body).not_to include("Findings resting on this sweep")
+        expect(response.body).not_to include(finding_path("radius-locality"))
+      end
     end
 
     it "spells the transition rate out over the finished runs alone" do

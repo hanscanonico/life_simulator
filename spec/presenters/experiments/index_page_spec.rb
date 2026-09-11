@@ -49,6 +49,22 @@ RSpec.describe Experiments::IndexPage do
     end
   end
 
+  describe "#findings" do
+    it "gives a row the registry findings resting on its sweep" do
+      create(:experiment, name: "Neighbourhood radius", slug: "radius")
+
+      expect(page.rows.sole.findings.map(&:slug)).to eq(["radius-locality"])
+    end
+
+    context "with a sweep no finding rests on" do
+      it "leaves the row without one" do
+        experiment
+
+        expect(page.rows.sole.findings).to be_empty
+      end
+    end
+  end
+
   describe "#planned" do
     it "lists the sweeps of the programme that have no experiment yet" do
       create(:experiment, name: "Mutation rate", slug: "mutation-rate")

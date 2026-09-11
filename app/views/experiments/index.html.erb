@@ -18,6 +18,7 @@
           <th>Status</th>
           <th class="numeric">Runs done</th>
           <th class="numeric">Transition rate</th>
+          <th>Finding</th>
         </tr>
       </thead>
       <tbody>
@@ -29,6 +30,13 @@
             <td class="numeric"><%= row.runs_done %> / <%= row.runs_total %></td>
             <td class="numeric">
               <%= percent_value row.transition_rate.fraction %>
+            </td>
+            <td>
+              <% if row.findings.any? %>
+                <%= safe_join(row.findings.map { |finding| link_to finding.title, finding_path(finding) }, tag.br) %>
+              <% else %>
+                <span class="text-muted">&mdash;</span>
+              <% end %>
             </td>
           </tr>
         <% end %>

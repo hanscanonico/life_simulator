@@ -25,6 +25,16 @@
   </dd>
 </dl>
 
+<% if @show.findings.any? %>
+  <p class="text-sm">
+    Findings resting on this sweep:
+    <% @show.findings.each do |finding| %>
+      <%= link_to finding.title, finding_path(finding) %>
+      <span class="badge <%= finding.badge_class %>"><%= finding.status_label %></span>
+    <% end %>
+  </p>
+<% end %>
+
 <% if @show.axes.any? %>
   <% @show.arms.each do |axis, arms| %>
     <%= render @show.diagram_for(axis) %>

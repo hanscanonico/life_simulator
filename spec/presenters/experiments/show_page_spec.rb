@@ -15,6 +15,20 @@ RSpec.describe Experiments::ShowPage do
                  params: Lab::Schema.run_defaults.merge("radius" => radius))
   end
 
+  describe "#findings" do
+    context "with a sweep a finding rests on" do
+      let(:experiment) { create(:experiment, slug: "radius") }
+
+      it "reads the registry entries for the sweep" do
+        expect(page.findings.map(&:slug)).to eq(["radius-locality"])
+      end
+    end
+
+    it "has none for a sweep nothing was written up from" do
+      expect(page.findings).to be_empty
+    end
+  end
+
   describe "#axes" do
     it "sweeps only the grid keys with more than one value" do
       expect(page.axes.map(&:name)).to eq(["radius"])

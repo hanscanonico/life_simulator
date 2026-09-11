@@ -58,6 +58,12 @@ module Experiments
       Census.new(peak: census_peaks[run.id], transitioned: run.transition_epoch.present?)
     end
 
+    # The write-ups that rest on this sweep, read from the registry rather than queried: a
+    # finding is content in the repo, not a row.
+    def findings
+      @findings ||= Findings::Registry.all.select { |finding| finding.experiment_slug == experiment.slug }
+    end
+
     def finished_count = finished_runs.size
 
     def transitioned_finished = finished_runs.count { |run| run.transition_epoch.present? }
