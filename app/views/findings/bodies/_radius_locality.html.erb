@@ -2,45 +2,168 @@
 <% radii = sweep.fetch(:param_grid).fetch("radius") %>
 <% local_radii = radii.reject(&:zero?) %>
 <% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% rate_exponent = -Math.log2(Lab::Schema.run_defaults.fetch("mutation_rate")).round %>
+
+<%# The recorded result of the finished sweep. Runs are named by arm and seed, never by a
+    database id, and the live tables further down re-read the same runs. %>
+<% arms = [
+     { label: "1", radius: 1, transitions: [[9, 15_560]], floor: "0.951", entropy: "7.89" },
+     { label: "2", radius: 2, transitions: [[10, 12_330]], floor: "0.901", entropy: "7.52" },
+     { label: "4", radius: 4, transitions: [[10, 5_910], [1, 11_250]], floor: "0.860", entropy: "7.27" },
+     { label: "well-mixed", radius: 0, transitions: [[5, 11_030], [1, 12_400]], floor: "0.859", entropy: "7.26" }
+   ] %>
 
 <h2>Hypothesis</h2>
 <p>
-  DESIGN §1.3 sweep 3 asks what spatial locality buys. A neighbourhood radius decides who a
-  cell can interact with: at
-  <span class="mono"><%= local_radii.to_sentence(last_word_connector: " and ") %></span>
-  a tape only ever meets its neighbours, while
+  DESIGN §1.3 sweep 3 asks what spatial locality buys, and it asks it twice. A
+  neighbourhood radius decides who a cell can interact with: at
+  <span class="mono"><%= local_radii.to_sentence(last_word_connector: " and ") %></span> a
+  tape only ever meets the tapes inside that Moore neighbourhood, while
   <span class="mono">radius = 0</span> is the well-mixed world — a partner drawn uniformly
-  from the whole torus, the infinity arm of the design record. Locality is supposed to cut
-  both ways: a tight neighbourhood shelters a new lineage from the soup long enough to take
-  hold, and it also starves it of the variety a copy needs, so a tight world should be
-  slower to produce anything at all.
+  from the whole torus, the infinity arm of the design record. The first half of the
+  hypothesis is about speed: a tight neighbourhood shelters a new lineage from the soup
+  long enough to take hold, so a local world should reach the first replicator sooner and
+  more often than a well-mixed one. The second half is about what happens afterwards:
+  locality is supposed to keep a world diverse once a lineage exists, by stopping one
+  winner from reaching every cell. This finding answers the first half only.
 </p>
 
 <h2>Method</h2>
 <p>
-  A single world shape, <%= sweep.fetch(:seeds).size %> seeds per arm and <%= epochs %>
-  epochs per run, with the radius as the only parameter that moves:
-  <span class="mono"><%= radii.to_sentence(last_word_connector: " and ") %></span>. The
-  dependent variables are both observables of DESIGN §1.2 — the transition epoch and the
-  <span class="mono">replicator_count</span> census — read from the samples themselves in
-  the tables below.
+  One world shape and one parameter moving. A 128×128 torus of 64-byte tapes at the
+  engine's default mutation rate, <span class="mono">2<sup>-<%= rate_exponent %></sup></span>,
+  <%= sweep.fetch(:seeds).size %> seeds per arm and <%= epochs %> epochs per run, with the
+  radius taking <span class="mono"><%= radii.to_sentence(last_word_connector: " and ") %></span>
+  and every other parameter at its default. The dependent variable is the transition epoch
+  of DESIGN §1.2 — the first sampled epoch at which <span class="mono">compress_ratio</span>
+  falls below 0.6 and stays below it for three further samples. A run that never crosses is
+  censored at <%= epochs %> epochs, not zero.
 </p>
 
 <h2>Result</h2>
 <p>
-  Open: most of the grid is terminal but no claim is made here yet. The shape so far is that
-  connectivity buys emergence. The widest local neighbourhood and the well-mixed arm both
-  produce transitions that the detector and the census agree on; the two tightest arms
-  produce none, and each of them has instead a single seed that collapses
-  <span class="mono">entropy_bits</span> with a census of zero — the same disagreement class
-  the <%= link_to "mutation-rate", finding_path("mutation-rate-window") %> and
-  <%= link_to "world-size", finding_path("world-size-scaling") %> sweeps report, a
-  low-entropy attractor that is not a replicator by the locked test.
+  All 40 runs finished and 6 of them transitioned. The table is the recorded per-arm
+  result; the phase diagram and the per-run rows below read the same runs live, and the
+  sweep's own page adds the hazard table.
 </p>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Neighbourhood</th>
+        <th class="numeric">Transitioned</th>
+        <th>Transition epochs</th>
+        <th class="numeric">Median final <span class="mono">compress_ratio</span></th>
+        <th class="numeric">Median final <span class="mono">entropy_bits</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% arms.each do |arm| %>
+        <tr>
+          <td class="mono"><%= arm.fetch(:label) %></td>
+          <td class="numeric mono"><%= arm.fetch(:transitions).size %> of <%= sweep.fetch(:seeds).size %></td>
+          <td class="mono">
+            <%= safe_join(arm.fetch(:transitions).sort_by(&:last).map { |seed, epoch|
+                  safe_join([number_with_delimiter(epoch, delimiter: " "), " (",
+                             findings_run_link(experiment_slug: "radius", seed: seed,
+                                               params: { "radius" => arm.fetch(:radius) }),
+                             ")"])
+                }, ", ") %>
+          </td>
+          <td class="numeric mono"><%= arm.fetch(:floor) %></td>
+          <td class="numeric mono"><%= arm.fetch(:entropy) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p class="text-sm text-muted">
+  The two medians are taken over the runs of each arm that did <em>not</em> transition — the
+  soup the arm sits in when nothing emerges — at the last sampled epoch.
+</p>
+
 <p>
-  Two readings of that are still open, and this sweep alone cannot separate them: either a
-  tight neighbourhood is genuinely hostile to a replicator, or it is merely slower than the
-  budget, in which case the arms that show nothing are censored rather than negative. The
-  arms and the per-run numbers are in the phase diagram and the evidence tables below, which
-  read the runs live.
+  <strong>Locality did not speed emergence.</strong> The well-mixed arm, which has no
+  locality at all, transitioned as often as the best local arm and sooner than two of them.
+  Ordered by how much of the world a cell can reach, the counts run 1, 1, 2, 2 with the
+  well-mixed arm at the top of that list rather than the bottom, and the earliest transition
+  of the sweep belongs to the widest local arm, not the tightest. The effect the hypothesis
+  predicts — a local arm reaching the first replicator sooner or more often than the
+  well-mixed one — is not in the data.
+</p>
+
+<p>
+  <strong>And ten seeds could not have seen it unless it were enormous.</strong> The widest
+  spread in the sweep is 2 of 10 against 1 of 10, which is a one-sided Fisher exact
+  <span class="mono">p = 0.5</span> — the two arms are not distinguishable at all. With ten
+  seeds an arm cannot reach <span class="mono">p &lt; 0.05</span> against another until it
+  shows 4 transitions where the other shows none. The hazard section on the sweep's page
+  says the same thing on the runs' own time at risk: every arm's 95% interval contains every
+  other arm's estimate, from roughly 0.05 to 0.11 events per 10<sup>4</sup> run-epochs, and
+  each interval is 30-fold wide in the arms with two events and more than 200-fold wide in
+  the arms with one. So this is a negative result about an
+  effect of the size the hypothesis imagined, not a demonstration that radius does nothing:
+  a factor of two hiding in here would be invisible.
+</p>
+
+<p>
+  <strong>One transition did not hold.</strong> Five of the six transitioned runs end
+  collapsed, with <span class="mono">compress_ratio</span> between 0.07 and 0.31 at the last
+  epoch. The sixth — the <span class="mono">radius = 2</span> arm's flagged run — falls to a
+  floor near 0.11, stays down for about two thousand epochs, then climbs back through the
+  0.6 line and ends at 0.91, next to the 0.894 to 0.904 of its arm's seeds that never
+  moved. It is a
+  genuine crossing by the locked rule and a reminder that a transition in the DESIGN §1.2
+  sense is a state a world can leave again.
+</p>
+
+<p>
+  <strong>What the sweep does show is about the soup, not about emergence.</strong> Among
+  the runs that never transitioned, the final <span class="mono">compress_ratio</span> falls
+  monotonically as a cell's reach widens — 0.951, 0.901, 0.860 across the three local arms —
+  and the well-mixed arm sits at 0.859, at the end of that trend rather than apart from it.
+  The arms' spreads do not overlap between <span class="mono">radius = 1</span>,
+  <span class="mono">radius = 2</span> and the pair above them, and
+  <span class="mono">entropy_bits</span> orders the arms identically. Wider mixing leaves the
+  tapes more alike than a tight neighbourhood does. That is a real, clean effect on the
+  pre-emergence soup and nothing more: it is measured on the runs where nothing emerged, and
+  the mutation-rate sweep already found a floor of the same kind that moved with its
+  parameter while emergence did not.
+</p>
+
+<p>
+  <strong>A determinism cross-check, for free.</strong> The
+  <span class="mono">radius = 1</span> arm is the engine's default radius, so its ten runs
+  repeat the parameters of the <%= link_to "mutation-rate", finding_path("mutation-rate-window") %>
+  sweep's <span class="mono">2<sup>-<%= rate_exponent %></sup></span> arm and the
+  <%= link_to "world-size", finding_path("world-size-scaling") %> sweep's 128² arm. All ten
+  seeds reproduce: the same transition epoch in the one seed that transitions, and the same
+  final <span class="mono">compress_ratio</span>, <span class="mono">distinct_tapes</span>,
+  <span class="mono">top_share</span> and <span class="mono">entropy_bits</span> in every
+  one of them, digit for digit, across three experiments run weeks apart.
+  <span class="mono">copy_rate</span> agrees wherever all three recorded it, which for the
+  mutation-rate arm was only the seed that transitioned. That is the
+  guarantee DESIGN §1.1 makes — a run is a function of
+  <span class="mono">(params, seed)</span> — checked against itself rather than asserted. It
+  is also a caveat on this sweep: that arm is not an independent sample, so the sweep holds
+  30 runs of new evidence and 10 of a repeat.
+</p>
+
+<h2>What next</h2>
+<p>
+  The second half of the hypothesis is untouched and stays open: whether locality
+  <em>stabilises</em> diversity once a replicator exists is a question about the six
+  transitioned runs' <span class="mono">distinct_tapes</span> and
+  <span class="mono">top_share</span> series after their transition epochs, not about how
+  many arms transitioned, and nothing here tests it. Six runs spread over four arms is too
+  thin to read that way — the comparison wants several transitions per arm — so it is left
+  for the sweep that has them. The hazard section on the
+  <%= link_to "sweep's page", experiment_path("radius") %> is the right lens for the speed
+  question once more seeds exist: it spends a censored run's whole observed lifetime rather
+  than throwing it away, and the way to move those intervals is more seeds or longer runs,
+  which is what <%= link_to "mutation rate, long runs", experiment_path("mutation-rate-long") %>
+  and the <%= link_to "BFF positive control", finding_path("bff-control") %> are for. Until
+  the control resolves, an arm that shows nothing here is still evidence about the
+  instrument as well as about the world.
 </p>

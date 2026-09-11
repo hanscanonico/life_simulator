@@ -93,11 +93,13 @@ RSpec.describe Findings::Registry do
     expect(finding.summary).to include("replicators appear only in the largest world")
   end
 
-  it "opens the radius sweep against DESIGN 1.3 sweep 3" do
+  it "reads the finished radius sweep as a negative on the speed half of DESIGN 1.3 sweep 3" do
     finding = described_class.find("radius-locality")
 
-    expect(finding).to have_attributes(experiment_slug: "radius", status: :open)
-    expect(finding.summary).to include("connectivity buys emergence")
+    expect(finding).to have_attributes(experiment_slug: "radius", status: :negative)
+    expect(finding.summary).to include("the well-mixed arm transitioned as often as the best local arm",
+                                       "is not supported",
+                                       "stays open")
   end
 
   it "returns nothing for an unknown slug" do
