@@ -95,10 +95,12 @@ module Findings
                  "the four arms show instead is a single positive point. In 20 000 epochs " \
                  "at 128×128 emergence appears only at max_steps 8 192, 2 of 10 seeds, and " \
                  "never at 256, 1 024 or 65 536 — the arm with eight times the compute of " \
-                 "the one that works produces nothing. The detector and the census agree " \
-                 "in every arm, which is rare in this programme. But a peak found by one " \
-                 "arm out of four is located to within a factor of 64, and each silent arm " \
-                 "bounds its rate only to about 0–26%."
+                 "the one that works produces nothing, and the extra instructions are spent " \
+                 "rather than merely bought: an epoch at 65 536 costs twelve times an epoch " \
+                 "at 256. The detector and the census agree in every arm, which is rare in " \
+                 "this programme. But a peak found by one arm out of four is located to " \
+                 "within a factor of 64, and each silent arm bounds its rate only to " \
+                 "about 0–26%."
       )
     ].freeze
 

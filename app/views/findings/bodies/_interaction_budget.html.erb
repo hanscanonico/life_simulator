@@ -10,10 +10,11 @@
 <%# The recorded result, read on 2026-09-11. Runs are named by arm and seed, never by a
     database id, and the live tables further down re-read the same runs. %>
 <% arms = [
-     { steps: 256, exponent: 8, flagged: 0, confirmed: 0, transitions: [] },
-     { steps: 1_024, exponent: 10, flagged: 0, confirmed: 0, transitions: [] },
-     { steps: 8_192, exponent: 13, flagged: 2, confirmed: 2, transitions: [[1, 5_030, 867], [5, 7_000, 108]] },
-     { steps: 65_536, exponent: 16, flagged: 0, confirmed: 0, transitions: [] }
+     { steps: 256, exponent: 8, flagged: 0, confirmed: 0, transitions: [], rate: 74.35, blips: 1 },
+     { steps: 1_024, exponent: 10, flagged: 0, confirmed: 0, transitions: [], rate: 62.60, blips: 2 },
+     { steps: 8_192, exponent: 13, flagged: 2, confirmed: 2, transitions: [[1, 5_030, 867], [5, 7_000, 108]],
+       rate: 29.49, blips: 4 },
+     { steps: 65_536, exponent: 16, flagged: 0, confirmed: 0, transitions: [], rate: 5.96, blips: 5 }
    ] %>
 
 <h2>Hypothesis</h2>
@@ -50,9 +51,9 @@
 
 <h2>Result</h2>
 <p>
-  <%= terminal %> of the <%= planned %> runs have reached <%= epochs %> epochs. The one run
-  still on the clock has already transitioned and already been census-confirmed, so no count
-  in the table below is waiting on it. The table is the recorded per-arm result; the phase
+  <%= terminal %> of the <%= planned %> runs have reached <%= epochs %> epochs — a count read
+  from the database when this page is served rather than frozen into the text. The table below
+  is the per-arm result recorded once every one of the <%= planned %> had finished; the phase
   diagram and the per-run rows further down read the same runs live.
 </p>
 
@@ -132,10 +133,11 @@
   <span class="mono">top_share</span> 0.00427. The same arm's fifth seed crosses at 7 000,
   counts its first cell at 7 030 and climbs much more slowly — a census peak of 108 at
   9 580, a <span class="mono">copy_rate</span> peak of 0.00433 at 9 610, entropy down to
-  4.32 bits at 7 100 — and is the run still on the clock, three quarters of the way through
-  its budget, so its latest <span class="mono">compress_ratio</span> of 0.05, its 2 108
-  distinct tapes and its <span class="mono">top_share</span> of 0.0083 are a reading and not
-  a final one. Both transitions are backed by stored worlds: the second has a snapshot at
+  4.32 bits at 7 100 — and ends the run far less consumed than the first:
+  <span class="mono">compress_ratio</span> 0.054, 2 406 distinct tapes,
+  <span class="mono">top_share</span> 0.00726, a world taken over by one short lineage rather
+  than by the 13 349 variants the first seed ends with. Both transitions are backed by stored
+  worlds: the second has a snapshot at
   exactly its transition epoch, and the first has one 30 epochs before it, which is close
   enough to rescore the crossing against a rebuilt world rather than only against its
   samples.
@@ -159,11 +161,15 @@
   0.921 to 0.984, and <span class="mono">distinct_tapes</span> ends between 16 379 and
   16 384 of the world's 16 384 cells. That is an untouched soup, not a world that started
   down the path and stopped: the 256 and 1 024 arms do not sit part-way between the silent
-  and the collapsed, they sit where the first epoch left them. Ten of those runs do show a
-  single-cell <span class="mono">copy_rate</span> blip of 6.1 × 10<sup>-5</sup> — one
-  interaction in a sampling window that happened to copy a byte — and none of them produces
-  a replicator. A blip at that magnitude is the floor of the measurement, spread evenly over
-  the arms, and it is not an early sign of anything.
+  and the collapsed, they sit where the first epoch left them. <%= arms.sum { |arm| arm.fetch(:blips) } %>
+  of those 38 runs do show a <span class="mono">copy_rate</span> blip, eleven of them at
+  exactly 6.1 × 10<sup>-5</sup> — that is 1/16 384, one interaction of a counted epoch that
+  copied a tape — and the twelfth at twice it. None of the twelve produces a replicator, and
+  every one of them ends as untouched as the rest, so a blip is not an early sign of
+  emergence. It is not noise spread evenly over the arms either: the count climbs with the
+  budget, 1 of the 10 runs at 256, 2 of 10 at 1 024, 4 of the 8 silent runs at 8 192 and 5 of
+  10 at 65 536. That is the first sign that the extra instructions are being executed and not
+  merely allowed; the cost measured below says the same thing outright.
 </p>
 
 <p>
@@ -198,25 +204,84 @@
 </p>
 
 <p>
-  <strong>What it cost.</strong> The 65 536 arm is the expensive one and the only arm whose
-  rate the log can state cleanly: 20 000 epochs at 17.6 to 20.7 epochs per second, a mean
-  near 19.2, for a wall time of 1 001 to 1 134 seconds per run. The other three arms were
-  resumed from snapshots at least once and a resume resets the wall clock, so no honest
-  per-epoch rate can be read for them here; the eight-fold difference in budget between the
-  widest and narrowest arm is not visible in any number this sweep recorded. The
-  computation, in other words, was bought and not spent — which is consistent with the
-  substrate: most interactions halt long before <span class="mono">max_steps</span>, so
-  raising the ceiling changes the cost of few of them.
+  <strong>What it cost, and what the cost says.</strong> A run writes its samples in batches
+  as it goes, so the epochs between two writes over the seconds between them measure the
+  engine actually running. Dropping every gap longer than 300 seconds removes the time a run
+  spent queued or waiting for a slot and leaves the time it spent working; what is left covers
+  18 000 to 19 900 of each run's <%= epochs %> epochs. These are throughput figures under a
+  shared load of about a dozen runs on a 16-core box, not single-run benchmarks — the mean
+  number of runs in flight was 12.3, 12.4, 9.5 and 11.5 from the narrowest arm to the widest,
+  which if anything flatters the expensive arms.
+</p>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th><span class="mono">max_steps</span></th>
+        <th class="numeric">Epochs per second</th>
+        <th class="numeric">Milliseconds per epoch</th>
+        <th class="numeric">Runs with a copy-rate blip</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% arms.each do |arm| %>
+        <tr>
+          <td class="mono"><%= number_with_delimiter arm.fetch(:steps), delimiter: " " %></td>
+          <td class="numeric mono"><%= number_with_precision arm.fetch(:rate), precision: 1 %></td>
+          <td class="numeric mono"><%= number_with_precision 1_000.0 / arm.fetch(:rate), precision: 1 %></td>
+          <td class="numeric mono">
+            <%= arm.fetch(:blips) %> of <%= seeds - arm.fetch(:flagged) %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p class="text-sm text-muted">
+  Epochs per second is the median of the arm's silent runs; the blip column counts the silent
+  runs whose <span class="mono">copy_rate</span> ever left zero.
 </p>
 
 <p>
-  This stays partial for two reasons. One run has not reached <%= epochs %> epochs, so the
-  denominator above is read live and that run's final observables may still move — though
-  it has transitioned and been census-confirmed already, so the arm counts cannot change.
-  And every arm is censored at <%= epochs %> epochs, where the
+  An epoch at <%= number_with_delimiter arms.last.fetch(:steps), delimiter: " " %> steps costs
+  about <%= (arms.first.fetch(:rate) / arms.last.fetch(:rate)).round %> times what an epoch at
+  <%= arms.first.fetch(:steps) %> costs, and the price is close to linear in the ceiling: each
+  extra step of budget adds
+  <%= arms.each_cons(2).map { |low, high|
+        number_with_precision(((1.0 / high.fetch(:rate) - 1.0 / low.fetch(:rate)) /
+                               (high.fetch(:steps) - low.fetch(:steps))) * 1e6, precision: 1)
+      }.to_sentence(last_word_connector: " and ") %>
+  microseconds per epoch across the three gaps — a marginal price that barely moves over three
+  octaves of budget. That is the shape you get when interactions are still running when the
+  ceiling cuts them off. If most of them halted long before
+  <span class="mono">max_steps</span>, raising the ceiling would cost almost nothing and the
+  marginal price would fall away as the ceiling rose; it does not. The eight-fold budget
+  difference between the widest arm and the only one that works is real work, done and
+  charged for, and it buys nothing.
+</p>
+
+<p>
+  <strong>And the transitions are the expensive runs.</strong> The two runs that crossed are
+  the two slowest in their arm, and each slowed at its own crossing: the first seed ran at
+  31.0 epochs per second before epoch 5 030 and 14.7 after it, the fifth at 32.5 before 7 000
+  and 2.6 after. Neither slowdown is contention — both runs had fewer neighbours on the box
+  after their transition than before, 9.2 and 8.6 against 12.5 and 11.0. A collapsed world is
+  full of tapes that copy themselves and a copy loop is a long program, so the same binary on
+  the same world executes far more instructions per epoch once there is something worth
+  executing. The budget is spent where a program exists to spend it, and the silent arms spend
+  it on tapes that loop until the ceiling stops them.
+</p>
+
+<p>
+  This stays partial rather than published, and not because a run is outstanding — every arm
+  is censored at <%= epochs %> epochs, where the
   <%= link_to "long re-run", finding_path("mutation-rate-long-horizon") %> found that half
-  the emergence in its region of the parameter space happens later. A silent arm here is a
-  silent arm at this budget of epochs, not at any budget.
+  the emergence in its region of the parameter space happens later, so a silent arm here is a
+  silent arm at this budget of epochs and not at any budget. And a silence of ours reads as a
+  fact about the world only once the
+  <%= link_to "BFF positive control", finding_path("bff-control") %> resolves its own census;
+  until then three of these four arms say as much about the instrument.
 </p>
 
 <h2>What next</h2>
@@ -227,9 +292,7 @@
   rather than merely visible. That is a proposal and not a commitment: it is around 400 000
   run-epochs per arm, and the <%= link_to "world-size sweep", finding_path("world-size-scaling") %>
   reads emergence as a hazard per cell-epoch, which makes a wider world the cheaper place to
-  buy events than a finer grid on a parameter that may turn out to be flat. Until the
-  <%= link_to "BFF positive control", finding_path("bff-control") %> resolves, the silent
-  arms here remain evidence about the instrument as well as about the world, and the
-  non-monotonicity is the reason to keep the whole grid rather than fixing
-  <span class="mono">max_steps</span> at its default and never looking again.
+  buy events than a finer grid on a parameter that may turn out to be flat. What the
+  non-monotonicity does argue for is keeping the whole grid rather than fixing
+  <span class="mono">max_steps</span> at its default and never looking at it again.
 </p>

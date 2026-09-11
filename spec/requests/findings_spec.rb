@@ -658,12 +658,39 @@ RSpec.describe "Findings", type: :request do
         expect(response.body).to include(finding_path("mutation-rate-window"))
       end
 
-      it "states the one arm's cost and refuses to invent the others" do
+      it "prices an epoch of every arm and makes the prose quote its own table" do
+        get finding_path(budget)
+
+        rows = response.parsed_body.css("table.data-table").last.css("tbody tr")
+        rates = rows.map { |row| row.css("td")[1].text.squish.to_f }
+
+        expect(rates).to eq([74.4, 62.6, 29.5, 6.0])
+        expect(rates).to eq(rates.sort.reverse)
+        expect(response.body.squish)
+          .to include("about #{(rates.first / rates.last).round} times what an epoch at 256 costs",
+                      "3.3, 2.5 and 2.3 microseconds per epoch",
+                      "the marginal price would fall away as the ceiling rose; it does not")
+      end
+
+      it "counts the copy-rate blips per arm and reads them as rising with the budget" do
+        get finding_path(budget)
+
+        blips = response.parsed_body.css("table.data-table").last.css("tbody tr")
+                        .map { |row| row.css("td").last.text.squish.to_i }
+
+        expect(blips).to eq([1, 2, 4, 5])
+        expect(response.body.squish)
+          .to include("#{blips.sum} of those 38 runs do show a",
+                      "4 of the 8 silent runs at 8 192",
+                      "not noise spread evenly over the arms")
+      end
+
+      it "reads the transitioned runs as the slow ones rather than as contention" do
         get finding_path(budget)
 
         expect(response.body.squish)
-          .to include("17.6 to 20.7 epochs per second", "1 001 to 1 134 seconds per run",
-                      "no honest per-epoch rate can be read for them here")
+          .to include("31.0 epochs per second before epoch 5 030 and 14.7 after it",
+                      "9.2 and 8.6 against 12.5 and 11.0")
       end
 
       it "names the finer grid as a proposal rather than a promise" do
@@ -702,6 +729,7 @@ RSpec.describe "Findings", type: :request do
           get finding_path(budget)
 
           expect(response.body.squish).to include("1 of the 40 runs have reached 20 000 epochs")
+            .and include("recorded once every one of the 40 had finished")
           expect(response.body).to include(%(class="chart-cited"), run_path(run))
         end
       end
