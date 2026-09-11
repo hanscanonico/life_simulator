@@ -206,8 +206,19 @@ RSpec.describe "Findings", type: :request do
           .to include("Three runs still disagree with themselves.",
                       "the ninth seed of the", "the fifth seed of the",
                       "the second seed of the",
-                      "Ranking width is not the explanation",
-                      "the cut stays where DESIGN §1.2 locks it, at 16")
+                      "Ranking width is not the explanation in this sweep",
+                      "the cut stays where DESIGN §1.2 locks it, at 16",
+                      "a wider cut finds a census the locked one misses")
+      end
+
+      it "reads the long runs as a horizon check rather than as extra seeds" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("the floor is not the clock",
+                      "climbed back above the 0.6 line before the run ended",
+                      "a determinism check, and a reminder that those runs are not extra seeds",
+                      "One seed in ten stays one set of seeds until an independent set is run.")
       end
 
       it "keeps the detector, the censoring and the control as caveats" do
@@ -279,9 +290,9 @@ RSpec.describe "Findings", type: :request do
         get finding_path(Findings::Registry.find("bff-control"))
 
         expect(response.body.squish)
-          .to include("in one of its three seeds",
+          .to include("Every seed of the mutated arm has crossed the transition line",
                       "the evidence table below, which reads the runs live",
-                      "controls sit at the random-soup baseline")
+                      "the third has drifted down from the soup values without crossing")
       end
 
       it "reads its census peak as not yet resolved rather than as no evidence" do
@@ -291,9 +302,19 @@ RSpec.describe "Findings", type: :request do
           .to include("And the census is not zero.",
                       "in the lab — thousands of replicating cells at its peak",
                       "no snapshot falls inside the window where the count was high",
-                      "Truncation of the ranking is ruled out",
                       "not yet resolved rather than not evidence",
                       "neither triggered nor retired")
+      end
+
+      it "reads the locked ranking width as an under-count in a world this size" do
+        get finding_path(Findings::Registry.find("bff-control"))
+
+        expect(response.body.squish)
+          .to include("And the locked ranking width under-counts a world this size.",
+                      "to dozens of replicating cells at 64 and at 256",
+                      "reads zero at every width",
+                      "an open question in the design record",
+                      "the cut stays at 16")
       end
 
       it "reads the zero-mutation control as the negative result it is" do
@@ -301,6 +322,7 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.body.squish)
           .to include("What the zero-mutation control shows",
+                      "one of them to under a single bit",
                       "a copying cascade of the tapes the seed handed the world",
                       "an entropy collapse on its own is not evidence of a replicator",
                       "the snapshot forced on the sample where a transition settles")
@@ -336,8 +358,17 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish)
           .to include("Replicators appear only in the largest world.",
                       "no seed of the two smallest worlds moved on either observable",
-                      "three seeds moved on both",
-                      "its fraction can only rise")
+                      "three seeds of ten moved on both",
+                      "no arm's zero can turn into an event when they land")
+      end
+
+      it "reads the seeds that never moved as flat rather than slow" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish)
+          .to include("And the seeds that did not move show nothing at all.",
+                      "within half a bit of the eight a fresh soup carries",
+                      "not runs part-way to a replicator that the budget cut short")
       end
 
       it "keeps the collapse without a census apart from a replicator" do

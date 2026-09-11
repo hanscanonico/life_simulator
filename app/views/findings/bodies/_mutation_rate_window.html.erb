@@ -85,8 +85,11 @@
   tape passing the replicator test at any sample; and the second seed of the
   <span class="mono">2<sup>-8</sup></span> arm carries a census of a couple of cells with
   no flag at all. They are reported as disagreements, not resolved in either direction.
-  Ranking width is not the explanation: rescoring at the top 16, 64 and 256 tapes returns
-  identical metrics, so the cut stays where DESIGN §1.2 locks it, at 16.
+  Ranking width is not the explanation in this sweep: rescoring at the top 16, 64 and 256
+  tapes returns identical metrics on these 128×128 worlds, so the cut stays where DESIGN
+  §1.2 locks it, at 16. That does not hold everywhere — in the far larger well-mixed world
+  of the <%= link_to "positive control", finding_path("bff-control") %> a wider cut finds a
+  census the locked one misses — but nothing here is explained by it.
 </p>
 
 <p>
@@ -118,7 +121,11 @@
   ≥ <span class="mono">2<sup>-13</sup></span>, a one-sided Fisher exact test on that 2×2
   table giving <span class="mono">p ≈ 0.073</span>. That is suggestive and nothing more —
   and the split was drawn after looking at where the transitions fell, which makes it weaker
-  than the number looks.
+  than the number looks. What the follow-up sweep adds is that the floor is not the clock:
+  carried to three times this budget, every seed of the
+  <span class="mono">2<sup>-14</sup></span> arm reached its horizon with a census of zero,
+  and the one run the detector flagged there flagged late, counted no replicator at any
+  sample and climbed back above the 0.6 line before the run ended.
 </p>
 
 <p>
@@ -153,7 +160,14 @@
   <%= link_to "Mutation rate, long runs", experiment_path("mutation-rate-long") %> re-runs
   <span class="mono">2<sup>-14</sup></span>…<span class="mono">2<sup>-11</sup></span> for
   60 000 epochs — three times the budget — to separate "rare" from "slow" and to test the
-  lower cutoff exactly where it was drawn.
+  lower cutoff exactly where it was drawn. It is part-way through its own grid, and what it
+  has shown so far is about the clock and not the rate: it re-runs the same
+  <span class="mono">(params, seed)</span> pairs, so its
+  <span class="mono">2<sup>-13</sup></span> arm reproduces this sweep's two transitions
+  sample for sample over the epochs the two share — a determinism check, and a reminder that
+  those runs are not extra seeds to pool with these. What is new is the silence carried
+  further: no seed of the <span class="mono">2<sup>-14</sup></span> arm counts a replicator
+  in 60 000 epochs. One seed in ten stays one set of seeds until an independent set is run.
   <%= link_to "World size", experiment_path("world-size") %> asks whether emergence is a
   per-world event or a per-cell rate; if it is per-cell, a bigger world is the cheapest way
   to buy events. And the

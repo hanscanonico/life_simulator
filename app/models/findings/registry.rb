@@ -28,13 +28,15 @@ module Findings
         status: :partial,
         summary: "The positive control the design record makes mandatory: a well-mixed " \
                  "soup of 2^17 tapes, the shape the published BFF work used. It shows the " \
-                 "transition in tape statistics in one mutated seed and the largest " \
-                 "replicator census in the lab in another, so the interpreter and the " \
+                 "transition in tape statistics in every mutated seed and the largest " \
+                 "replicator census in the lab in one of them, so the interpreter and the " \
                  "pairing rule are not what the sweeps were measuring. But no stored " \
                  "world brackets that census peak at this experiment's snapshot cadence, " \
-                 "so the count cannot yet be rescored and the census here is not yet " \
-                 "resolved. A zero-mutation control collapses entropy with a census of " \
-                 "zero: compression alone is not a replicator."
+                 "and a stored world after it reads zero replicators at the locked " \
+                 "16-tape ranking width against dozens at 64: in a world this size a " \
+                 "lineage spreads over more tapes than the cut sees, so the census here " \
+                 "is not yet resolved. Zero-mutation controls collapse entropy with a " \
+                 "census of zero at every width: compression alone is not a replicator."
       ),
       Finding.new(
         slug: "world-size-scaling",
@@ -47,9 +49,11 @@ module Findings
                  "per-cell rate, the epoch of the first replicator hardly moves with cell " \
                  "count. Square worlds from 32² to 256² separate them, and all but two " \
                  "runs are terminal: replicators appear only in the largest world, three " \
-                 "seeds of it on both observables, none anywhere below. That is the " \
-                 "lottery reading — except that the mutation-rate sweep found one at 128² " \
-                 "at half this mutation rate, where all ten seeds here found none."
+                 "seeds of ten of it on both observables, none anywhere below, and the " \
+                 "seeds that did not move show no structure at all rather than a slow " \
+                 "start. That is the lottery reading — except that the mutation-rate " \
+                 "sweep transitioned in two seeds at 128² at half this mutation rate, " \
+                 "where all ten seeds here found none."
       ),
       Finding.new(
         slug: "radius-locality",

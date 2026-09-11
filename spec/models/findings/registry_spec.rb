@@ -79,6 +79,7 @@ RSpec.describe Findings::Registry do
 
     expect(finding.status).to eq(:partial)
     expect(finding.summary).to include("largest replicator census in the lab",
+                                       "locked 16-tape ranking width against dozens at 64",
                                        "not yet resolved")
   end
 
@@ -90,7 +91,8 @@ RSpec.describe Findings::Registry do
     finding = described_class.find("world-size-scaling")
 
     expect(finding).to have_attributes(experiment_slug: "world-size", status: :partial)
-    expect(finding.summary).to include("replicators appear only in the largest world")
+    expect(finding.summary).to include("replicators appear only in the largest world",
+                                       "no structure at all rather than a slow start")
   end
 
   it "reads the finished radius sweep as a negative on the speed half of DESIGN 1.3 sweep 3" do

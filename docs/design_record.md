@@ -55,3 +55,35 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   open**: it is a question about the transitioned runs' distinct_tapes and top_share series
   and six runs over four arms are too thin to answer it. The survival/hazard section of the
   sweep page is the lens for the speed question once more seeds exist.
+- 2026-09-11 — Sweep 2 (world size) read at the grid it will report: square tori 32²–256²,
+  ten seeds each, 20 000 epochs, every other parameter at the engine default — so mutation
+  is 2^-12, twice the rate at which sweep 1 first saw emergence. 38 of 40 runs are terminal
+  and both unfinished runs are already-flagged 256² seeds, so no arm's zero can still turn
+  into an event. **Replicators appear only at 256²**, 3 of 10 there on both observables, 0
+  of 10 at 32², 64² and 128², where the one flagged run has a census of zero and every
+  unflagged run ends above `compress_ratio` 0.9 and within half a bit of the soup's 8 bits
+  of entropy: the small arms show no structure rather than a slow start. Read against sweep
+  1, whose 2^-13 arm transitioned in 2 of 10 seeds at 128² where all ten seeds here found
+  none, either the rate matters more than the cell count at that width or both arms are the
+  same rare rate seen twice, and only an independent set of seeds separates them. The
+  finding stays `partial`: the §1.2 censoring caveat and the `bff-control` gate both still
+  apply.
+- 2026-09-11 — `mutation-rate-long` re-runs sweep 1's `(params, seed)` pairs at
+  2^-14…2^-11 for 60 000 epochs, so it is not an independent draw: its 2^-13 arm reproduces
+  sweep 1's two transitions sample for sample over the epochs the two sweeps share, which is
+  a determinism cross-check of §1.1 and not new evidence about the rate. What it does add is
+  the horizon. Every seed of the 2^-14 arm reaches 60 000 epochs with a census of zero, and
+  the one run the detector flags there flags at 39 320, counts no replicator at any sample
+  and climbs back above the 0.6 line before its horizon — so the silence below 2^-13 is not
+  the 20 000-epoch clock, and it is another instance of a transition being a state a world
+  can leave. "About one seed in ten" stays one set of seeds until a sweep draws new ones.
+- 2026-09-11 — **Open question: the `top_k` ranking width.** Rescoring a stored world of the
+  `bff-control` seed that carries the lab's largest census reads 0 replicators at
+  `top_k = 16` and 38 at both 64 and 256: that world holds nearly as many distinct tapes as
+  cells, so a lineage is spread over more of them than the locked cut ranks, while the
+  128×128 sweeps rescore identically at all three widths. The rescored `mutation_rate = 0`
+  seed reads 0 at every width, so widening the cut does not manufacture replicators where
+  there are none and that flag stays a detector event with no census behind it. `top_k`
+  stays at 16 (DESIGN §1.2) until `runner rescore-corpus` has read a whole experiment's
+  stored worlds at 16, 64 and 256 and shown what widening costs elsewhere — in particular
+  that it does not turn the sweeps' census-zero collapses into replicators.

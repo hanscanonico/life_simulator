@@ -31,29 +31,30 @@
 <h2>Result</h2>
 <p>
   Partial, and not yet the reading the hypothesis asked for. It is a reading and not a
-  claim for three reasons: the runs are far from their epoch horizon, the mutated arm has
-  moved in two of its three seeds and no more, and the census that would make the move mean
-  something is not yet resolved here. What follows states shapes; the per-run numbers behind
-  them drift with every sample and are in the evidence table below, which reads the runs
-  live.
+  claim for three reasons: the runs are far from their epoch horizon, only two of the three
+  mutated seeds carry a census behind the detector's flag, and the census that would make
+  the largest of those moves mean something is not yet resolved here. What follows states
+  shapes; the per-run numbers behind them drift with every sample and are in the evidence
+  table below, which reads the runs live.
 </p>
 
 <p>
-  <strong>The instrument produces the signature.</strong> The mutated arm has transitioned
-  in one of its three seeds, and it transitioned the way the mutation-rate sweep's flagged
+  <strong>The instrument produces the signature.</strong> Every seed of the mutated arm has
+  crossed the transition line, and they crossed the way the mutation-rate sweep's flagged
   runs do: <span class="mono">compress_ratio</span> collapses inside a few sampling intervals,
   <span class="mono">distinct_tapes</span> falls from one-per-cell and keeps falling,
   <span class="mono">copy_rate</span> lifts off exactly zero,
   <span class="mono">op_density</span> rises and <span class="mono">entropy_bits</span>
   drops — one joint move, not five independent ones. Two of the three
-  <span class="mono">mutation_rate = 0</span> controls sit at the random-soup baseline, the
-  third is the negative result discussed below, and the last mutated seed has not moved. So
-  the interpreter and the pairing rule do produce the published signature in the published
+  <span class="mono">mutation_rate = 0</span> controls are the negative result discussed
+  below; the third has drifted down from the soup values without crossing. So the
+  interpreter and the pairing rule do produce the published signature in the published
   shape; the harness is not what the sweeps were measuring.
 </p>
 
 <p>
-  <strong>And the census is not zero.</strong> A second mutated seed carries the largest
+  <strong>And the census is not zero.</strong> Two mutated seeds count replicators behind
+  their flag, and one of them carries the largest
   <span class="mono">replicator_count</span> in the lab — thousands of replicating cells at
   its peak, at a <span class="mono">copy_rate</span> of a few percent of all interactions
   where a soup that has not moved sits at zero — which is the shape the mutation-rate sweep
@@ -62,23 +63,45 @@
   no snapshot falls inside the window where the count was high, so the peak rests on in-run
   samples alone and cannot be rescored the way the mutation-rate peaks were — where a stored
   world does bracket a peak, a rescore confirms the count and finds a tape passing the
-  trial. Truncation of the ranking is ruled out either way: widening the cut to the top 16,
-  64 and 256 tapes returns identical metrics at all three widths. So the census here is not
-  yet resolved rather than not evidence, and the falsifier above is neither triggered nor
-  retired.
+  trial. So the census here is not yet resolved rather than not evidence, and the falsifier
+  above is neither triggered nor retired.
+</p>
+
+<p>
+  <strong>And the locked ranking width under-counts a world this size.</strong> A stored
+  world of the seed that carries that peak, taken well after it, rescores to a census of
+  zero at the <span class="mono">top_k = 16</span> DESIGN §1.2 locks and to dozens of
+  replicating cells at 64 and at 256. Nothing about the world changed between those three
+  readings — only how many of its most common tapes the replicator test was offered. In a
+  well-mixed soup of 2<sup>17</sup> tapes a lineage is spread thin: that world holds nearly
+  as many distinct tapes as cells, so its sixteen most common ones need not contain the
+  copiers, and the mutation-rate sweep's finding that width changes nothing does not carry
+  here — those worlds are an eighth the size and their lineages sit at the top of the
+  ranking. The <span class="mono">mutation_rate = 0</span> seed rescored the same way reads
+  zero at every width: widening the cut does not manufacture replicators where there are
+  none, and that flag stays a detector event with no census behind it.
+</p>
+<p>
+  What the width should be is an open question in the design record, and the cut stays at 16
+  until it is answered: a wider cut costs more replicator trials per sample and must be shown
+  not to turn the sweeps' census-zero collapses into replicators. The measurement that
+  settles it is now available — <span class="mono">runner rescore-corpus</span> re-reads
+  every stored world of an experiment at 16, 64 and 256 and stores each reading beside the
+  run — and what it has to show is which of the sweeps' flat arms and census-zero collapses
+  change their reading when the ranking widens.
 </p>
 
 <h2>What the zero-mutation control shows</h2>
 <p>
-  The sharpest result of this experiment is in its negative arm. One
-  <span class="mono">mutation_rate = 0</span> seed collapses
-  <span class="mono">entropy_bits</span> outright and drives
-  <span class="mono">compress_ratio</span> to a tenth of the soup floor with a census of
-  zero throughout. With no mutation there is nothing novel to find, so nothing there can be
-  a replicator that emerged; what the collapse is, is a copying cascade of the tapes the
-  seed handed the world — the control behaving as a control. That is direct evidence that an
-  entropy collapse on its own is not evidence of a replicator, and it is why the census, not
-  the compression, is what decides.
+  The sharpest result of this experiment is in its negative arm. Two of its three
+  <span class="mono">mutation_rate = 0</span> seeds collapse
+  <span class="mono">entropy_bits</span> outright — one of them to under a single bit — and
+  drive <span class="mono">compress_ratio</span> to a fraction of the soup floor with a
+  census of zero throughout. With no mutation there is nothing novel to find, so nothing
+  there can be a replicator that emerged; what the collapse is, is a copying cascade of the
+  tapes the seed handed the world — the control behaving as a control. That is direct
+  evidence that an entropy collapse on its own is not evidence of a replicator, and it is
+  why the census, not the compression, is what decides.
 </p>
 <p>
   The measurement this experiment still owes is a stored world inside a census peak: a finer
@@ -98,6 +121,8 @@
 <p>
   The mutation-rate sweep's strongest transitions have since been confirmed in their stored
   worlds, so the census is real and the instrument can see a lineage. What is still open is
-  this control's own census, and until it is resolved no sweep on this site is readable as a
-  clean negative result. The mutation-rate finding is held on that basis.
+  this control's own census — a peak no stored world brackets, and a ranking width that
+  reads a later world differently at every setting — and until it is resolved no sweep on
+  this site is readable as a clean negative result. The mutation-rate finding is held on that
+  basis.
 </p>
