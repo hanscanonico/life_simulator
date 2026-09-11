@@ -163,7 +163,8 @@ RSpec.describe "Experiments", type: :request do
         25.times { sampled_run(3, transition_epoch: 900) }
         census_queries = []
         collect = lambda do |*, payload|
-          census_queries << payload[:sql] if payload[:sql].include?("replicator_count") &&
+          census_queries << payload[:sql] if payload[:sql].include?(%("samples")) &&
+                                             payload[:sql].include?("replicator_count") &&
                                              payload[:sql].include?("MAX")
         end
 
@@ -200,13 +201,18 @@ RSpec.describe "Experiments", type: :request do
     end
 
     context "with samples behind the finished runs" do
+      let!(:flagged) do
+        create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
+                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+      end
+      let!(:unflagged) do
+        create(:run, experiment: experiment, status: "finished",
+                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+      end
+
       before do
-        flagged = create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
-                               params: Lab::Schema.run_defaults.merge("radius" => 2))
         create(:sample, run: flagged, epoch: 900,
                         values: { "compress_ratio" => 0.4, "replicator_count" => 6 })
-        unflagged = create(:run, experiment: experiment, status: "finished",
-                                 params: Lab::Schema.run_defaults.merge("radius" => 2))
         create(:sample, run: unflagged, epoch: 900,
                         values: { "compress_ratio" => 0.98, "replicator_count" => 0 })
       end
@@ -218,6 +224,28 @@ RSpec.describe "Experiments", type: :request do
         expect(response.body).to match(
           %r{<td class="mono">2</td>\s*<td class="numeric">2</td>\s*<td class="numeric">1</td>}
         )
+      end
+
+      it "names the wider census column as a rescore reading, not a changed default" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include(%(Replicators at <span class="mono">top_k</span> 64))
+      end
+
+      it "leaves the wider census blank for an arm no corpus pass has read" do
+        get experiment_path(experiment)
+
+        expect(response.body).to match(arm_row("2", 2, 1, 1, nil))
+      end
+
+      context "with the same worlds re-read at top_k 64" do
+        before { create(:rescore, run: unflagged, epoch: 900, top_k: 64, replicator_count: 4) }
+
+        it "counts the runs the wider window calls positive beside the locked ones" do
+          get experiment_path(experiment)
+
+          expect(response.body).to match(arm_row("2", 2, 1, 1, 1))
+        end
       end
 
       it "offers the transition report beside the runs CSV" do
@@ -234,6 +262,13 @@ RSpec.describe "Experiments", type: :request do
         expect(response.media_type).to eq("text/csv")
         expect(response.headers["Content-Disposition"]).to include("attachment", "radius-transitions.csv")
         expect(lines).to include("arm,n,n_terminal,flagged,replicators,both,either_but_not_both", "2,2,2,1,1,1,0")
+      end
+
+      def arm_row(label, *counts)
+        cells = [%(<td class="mono">#{label}</td>),
+                 *counts.map { |count| %(<td class="numeric">#{count}</td>) }]
+
+        Regexp.new(cells.map { |cell| Regexp.escape(cell) }.join('\s*'))
       end
     end
 

@@ -7,7 +7,10 @@
   <figcaption class="table-caption text-sm text-muted" id="transition-report">
     Detector against replicator census, per arm —
     flagged runs held <span class="mono">compress_ratio</span> below <%= threshold %>,
-    replicating runs counted at least one replicator
+    replicating runs counted at least one replicator at the locked
+    <span class="mono">top_k</span> 16; the wider column re-reads the stored worlds of the
+    same runs at <span class="mono">top_k</span> 64 and is blank for an arm no corpus pass
+    has measured
   </figcaption>
   <div class="table-scroll">
     <table class="data-table" aria-labelledby="transition-report">
@@ -17,6 +20,7 @@
           <th class="numeric">Sampled runs</th>
           <th class="numeric">Flagged</th>
           <th class="numeric">Replicators</th>
+          <th class="numeric">Replicators at <span class="mono">top_k</span> 64</th>
           <th class="numeric">Both</th>
           <th class="numeric">Either but not both</th>
         </tr>
@@ -28,6 +32,7 @@
             <td class="numeric"><%= arm.runs %></td>
             <td class="numeric"><%= arm.flagged %></td>
             <td class="numeric"><%= arm.replicated %></td>
+            <td class="numeric"><%= arm.replicated_wide %></td>
             <td class="numeric"><%= arm.both %></td>
             <td class="numeric"><%= arm.either_but_not_both %></td>
           </tr>

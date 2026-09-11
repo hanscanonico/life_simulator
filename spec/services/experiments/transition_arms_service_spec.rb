@@ -25,6 +25,44 @@ RSpec.describe Experiments::TransitionArmsService do
     expect(arms.sole.label).to eq("0.000244")
   end
 
+  describe "the census read at the wider window" do
+    it "reads blank where no corpus pass measured the arm" do
+      expect(arms.sole.replicated_wide).to be_nil
+    end
+
+    context "with a corpus pass that read the arm at top_k 16 and 64" do
+      before do
+        run = sampled(transition_epoch: nil, replicators: [0])
+        create(:rescore, run: run, epoch: 100, top_k: 16, replicator_count: 0)
+        create(:rescore, run: run, epoch: 100, top_k: 64, replicator_count: 5)
+      end
+
+      it "counts at 64 a run the locked window calls dead" do
+        expect(arms.sole).to have_attributes(replicated: 2, replicated_wide: 1)
+      end
+    end
+
+    context "with a corpus pass that found nothing at the wider window" do
+      before do
+        create(:rescore, run: sampled(transition_epoch: nil, replicators: [0]),
+                         epoch: 100, top_k: 64, replicator_count: 0)
+      end
+
+      it "reads zero rather than blank" do
+        expect(arms.sole.replicated_wide).to eq(0)
+      end
+    end
+  end
+
+  # TransitionReportService reads `peak_replicator_count.to_f.positive?` off the samples it
+  # has already loaded; this block reads an indexed jsonb predicate. One definition.
+  it "calls the same runs replicators as the transition report does" do
+    report = Experiments::TransitionReportService.call(experiment: experiment, include_running: true)
+
+    expect(arms.map { |arm| [arm.label, arm.replicated] })
+      .to eq(report.arms.map { |arm| [arm.label, arm.replicated] })
+  end
+
   context "with runs in two arms of the grid" do
     before { sampled(transition_epoch: 400, replicators: [7], mutation_rate: 0.0) }
 
