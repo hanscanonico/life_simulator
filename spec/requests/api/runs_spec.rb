@@ -302,6 +302,28 @@ RSpec.describe "Api::Runs", type: :request do
 
       expect(response).to have_http_status(:conflict)
     end
+
+    # A resumed run restarts at whatever epoch the answer names, so the two content types
+    # must agree on it: DESIGN §2, "a claimed run resumes from its latest snapshot".
+    describe "content types" do
+      before { create(:snapshot, run: run, epoch: 300, blob: "newest") }
+
+      it "carries the epoch and the base64 blob as json" do
+        get latest_snapshot_api_run_path(run), params: { runner_id: "runner-1" }, headers: headers, as: :json
+
+        expect(response.parsed_body).to eq("epoch" => 300, "blob" => Base64.strict_encode64("newest"))
+      end
+
+      it "carries the epoch in a header and the blob as bytes as octet-stream" do
+        get latest_snapshot_api_run_path(run),
+            params: { runner_id: "runner-1" },
+            headers: headers.merge("Accept" => "application/octet-stream")
+
+        expect(response.media_type).to eq("application/octet-stream")
+        expect(response.headers["X-Snapshot-Epoch"]).to eq("300")
+        expect(response.body).to eq("newest")
+      end
+    end
   end
 
   describe "GET /api/runs/:id/world" do
