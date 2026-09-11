@@ -1,23 +1,34 @@
 <% sweep = Lab::SWEEPS.fetch("world_size") %>
 <% sides = sweep.fetch(:param_grid).fetch("world_size").map { |arm| arm.fetch("width") } %>
 <% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% rate_exponent = -Math.log2(Lab::Schema.run_defaults.fetch("mutation_rate")).round %>
+
+<%# The recorded result of the sweep. Runs are named by arm and seed, never by a database
+    id, and the live tables further down re-read the same runs. %>
+<% arms = [
+     { label: "32²", side: 32, cells: 1_024, transitions: [], floor: "0.945", entropy: "7.85" },
+     { label: "64²", side: 64, cells: 4_096, transitions: [], floor: "0.949", entropy: "7.88" },
+     { label: "128²", side: 128, cells: 16_384, transitions: [[9, 15_560]], floor: "0.951", entropy: "7.89" },
+     { label: "256²", side: 256, cells: 65_536,
+       transitions: [[5, 4_730], [1, 15_800], [3, 19_550]], floor: "0.950", entropy: "7.89" }
+   ] %>
 
 <h2>Hypothesis</h2>
 <p>
   DESIGN §1.3 sweep 2 sets two readings of emergence against each other, and they predict
   opposite things about a bigger world. If a replicator is a lottery win — one cell
   somewhere stumbles into a tape that copies itself, and the rest of the world only has to
-  not destroy it — then cells are tickets: quadrupling the cell count should cut the
-  expected time to the first transition by about the same factor, and the smallest worlds
-  should mostly never transition inside the budget. If instead emergence is a
-  <em>per-cell rate</em> — each cell needs its own local history of interactions before
-  anything can replicate — then the transition epoch hardly moves with cell count, and the
-  arms land on top of each other.
+  not destroy it — then cells are tickets: the hazard of a first replicator is a rate
+  <em>per cell-epoch</em>, so quadrupling the cell count quadruples the expected number of
+  events in a fixed budget, and the smallest worlds should mostly never transition inside
+  it. If instead emergence is a property of a world rather than of its cells — a global
+  state the soup has to reach — then the hazard is a rate per <em>run</em>-epoch, every arm
+  transitions about as often as every other, and cell count buys nothing.
 </p>
 <p>
   The two readings differ in what a world is for. Under the lottery reading the world is a
-  parallel search and its size is the search budget; under the rate reading the world is a
-  population of independent local experiments, each running at its own speed.
+  parallel search and its size is the search budget; under the per-world reading the size is
+  a detail of the simulation and the clock runs at the same speed in all of them.
 </p>
 
 <h2>Method</h2>
@@ -28,59 +39,168 @@
   <%= sides.map { |side| number_with_delimiter(side * side) }.to_sentence(last_word_connector: " and ") %>
   cells —
   with <%= sweep.fetch(:seeds).size %> seeds each and <%= epochs %> epochs per run. Every
-  other parameter is at its default. The dependent variable is the transition epoch of
-  DESIGN §1.2, the first sampled epoch at which
-  <span class="mono">compress_ratio</span> falls below 0.6 and stays below it for three
-  more samples; a run that never crosses is censored, not zero.
+  other parameter is at its default, which means a mutation rate of
+  <span class="mono">2<sup>-<%= rate_exponent %></sup></span> and a neighbourhood radius of
+  1. The dependent variable is the transition epoch of DESIGN §1.2, the first sampled epoch
+  at which <span class="mono">compress_ratio</span> falls below 0.6 and stays below it for
+  three more samples; a run that never crosses is censored, not zero.
 </p>
 
 <h2>Result</h2>
 <p>
-  Partial. All but two runs of the sweep are terminal, and the shape is already plain, but
-  the two that are still running are in the largest arm — the only arm where a replicator
-  has appeared. What follows states the shape; the per-run epochs and counts are in the
-  phase diagram and the evidence tables below, which read the runs themselves.
+  Partial. Four of the 40 runs transitioned, and the counts rise with cell count. Two of the
+  four — both in the largest arm — are still resuming from their snapshots after a deploy
+  interrupted them, so they have not reported their own last epochs yet; their transitions
+  are recorded and both fell well before the epoch each run has already reached, so neither
+  the counts below nor the hazard depends on their finishing. The table is the recorded
+  per-arm result; the phase diagram, the survival curves and the per-run rows below read the
+  same runs live.
+</p>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>World</th>
+        <th class="numeric">Cells</th>
+        <th class="numeric">Transitioned</th>
+        <th>Transition epochs</th>
+        <th class="numeric">Median final <span class="mono">compress_ratio</span></th>
+        <th class="numeric">Median final <span class="mono">entropy_bits</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% arms.each do |arm| %>
+        <tr>
+          <td class="mono"><%= arm.fetch(:label) %></td>
+          <td class="numeric mono"><%= number_with_delimiter arm.fetch(:cells), delimiter: "\u{00A0}" %></td>
+          <td class="numeric mono"><%= arm.fetch(:transitions).size %> of <%= sweep.fetch(:seeds).size %></td>
+          <td class="mono">
+            <% if arm.fetch(:transitions).empty? %>
+              —
+            <% else %>
+              <%= safe_join(arm.fetch(:transitions).sort_by(&:last).map { |seed, epoch|
+                    safe_join([number_with_delimiter(epoch, delimiter: " "), " (",
+                               findings_run_link(experiment_slug: "world-size", seed: seed,
+                                                 params: { "width" => arm.fetch(:side),
+                                                           "height" => arm.fetch(:side) }),
+                               ")"])
+                  }, ", ") %>
+            <% end %>
+          </td>
+          <td class="numeric mono"><%= arm.fetch(:floor) %></td>
+          <td class="numeric mono"><%= arm.fetch(:entropy) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p class="text-sm text-muted">
+  The two medians are taken over the runs of each arm that did <em>not</em> transition — the
+  soup the arm sits in when nothing emerges — at the last sampled epoch.
 </p>
 
 <p>
-  <strong>Replicators appear only in the largest world.</strong> At this sweep's mutation
-  rate — the engine default, twice the rate at which the
-  <%= link_to "mutation-rate sweep", finding_path("mutation-rate-window") %> first saw
-  emergence — no seed of the two smallest worlds moved on either observable. In the largest
-  world three seeds moved on both: the transition detector flagged them and the
-  <span class="mono">replicator_count</span> census counted a colony in each, one of them
-  the largest census the lab has recorded outside the positive control. The two seeds still
-  running are in that arm, so its fraction can only rise.
+  <strong>Emergence gets more likely as the world gets bigger.</strong> Within the same
+  <%= epochs %>-epoch budget the counts run 0, 0, 1 and 3 of
+  <%= sweep.fetch(:seeds).size %> from the smallest arm to the largest. The two observables
+  agree in the largest arm and only there: all three of its flagged runs also carry a
+  <span class="mono">replicator_count</span> census of at least one replicating cell, the
+  earliest of them sitting at several hundred replicating cells at its latest sample. Nothing
+  below 256² has a census above zero at any sample.
 </p>
 
 <p>
-  <strong>Below it, a collapse that is not a replicator.</strong> One seed of the
-  second-largest world collapses <span class="mono">entropy_bits</span> from the random-soup
-  value to under 5, drives <span class="mono">compress_ratio</span> to a fraction of the soup
-  floor and lifts <span class="mono">copy_rate</span> off zero — with a census of zero at
-  every sample. It is the disagreement class the mutation-rate sweep also reports: a
-  low-entropy attractor the substrate can fall into that is not a replicator by the test
-  DESIGN §1.2 locks. Read with the census, the smaller worlds are not slow versions of the
-  largest one; they are doing something else.
+  <strong>The per-cell reading is the one that fits, and here is the test.</strong> If the
+  hazard were a constant per cell-epoch, the expected number of events in an arm would scale
+  with its cells multiplied by its epochs at risk — so, scaled from the single event at 128²,
+  the arms should show about 0.06, 0.26, 1 and 3.7 events. They show 0, 0, 1 and 3. If
+  instead the hazard were constant per run-epoch, the four events would fall roughly evenly
+  across the arms' observed lifetimes and about 2 of them would land in the two smallest
+  arms, where none did — which happens by chance about one time in eight, so the per-world
+  reading is disfavoured and not excluded. Pooled over all four arms, the hazard is
+  <span class="mono">2.5 × 10<sup>-10</sup></span> per cell-epoch, exact Poisson 95%
+  interval <span class="mono">0.7</span> to <span class="mono">6.4 × 10<sup>-10</sup></span>,
+  on four events and <span class="mono">1.6 × 10<sup>10</sup></span> cell-epochs at risk; the
+  two arms that have events sit at <span class="mono">3.1 × 10<sup>-10</sup></span> (128²)
+  and <span class="mono">2.5 × 10<sup>-10</sup></span> (256²), each inside the other's
+  interval. The sweep's own hazard table says the same thing per <em>run</em>-epoch, over
+  finished runs only: 0 events in 200 000 run-epochs in each of the two smallest arms, and
+  intervals more than 200-fold wide wherever there is one event. Four events cannot measure
+  an exponent. What they support is the sign — more cells, more emergence — not the claim
+  that it is exactly linear in cell count.
 </p>
 
 <p>
-  <strong>The two sweeps do not agree yet.</strong> The mutation-rate sweep found a
-  replicator at the width of this sweep's second-largest arm, at half this sweep's mutation
-  rate, while every seed of that arm here found none. The two differ in nothing else. So
-  either the rate matters more at that width than the cell count does, or emergence there is
-  rare enough that one event in ten seeds and none in ten seeds are the same underlying rate
-  seen twice. <%= link_to "Mutation rate, long runs", experiment_path("mutation-rate-long") %>
-  is the sweep that separates those.
+  <strong>The earliest transition of the whole programme is in the largest world.</strong>
+  <%= findings_run_link(experiment_slug: "world-size", seed: 5,
+                        params: { "width" => 256, "height" => 256 },
+                        label: "The 256² arm's fifth seed") %>
+  crossed at epoch 4 730, ahead of the
+  <%= link_to "mutation-rate", finding_path("mutation-rate-window") %> sweep's 5 030 and the
+  <%= link_to "radius", finding_path("radius-locality") %> sweep's 5 910. That is one run,
+  and it is not evidence that a bigger world runs faster per run beyond what the hazard
+  already implies: a bigger world draws more events per epoch, so its first event tends to
+  be earlier, and with one, one and three events the arms' medians — 15 560 against 15 800 —
+  are not a time to emergence.
 </p>
 
 <p>
-  Two things keep this partial rather than published, and both are about censoring. A run
-  that never crosses is censored, not negative: the <%= epochs %>-epoch budget is short next
-  to the epochs at which the transitions here actually landed, so an arm that shows nothing
-  may be slower rather than silent, and the two unfinished seeds of the largest arm are not
-  a zero either. And a sweep of ours is only readable as a negative once the
-  <%= link_to "BFF positive control", finding_path("bff-control") %> resolves its own
-  census; until then an arm sitting at the censoring line says as much about the instrument
-  as about the world.
+  <strong>Below the largest arm, a collapse that is not a replicator.</strong> The one
+  flagged run of the 128² arm collapses <span class="mono">entropy_bits</span> from the
+  random-soup value to near 7.1, drives <span class="mono">compress_ratio</span> to 0.071 and
+  lifts <span class="mono">copy_rate</span> off zero — with a census of zero at every sample.
+  It is the disagreement class the mutation-rate and radius sweeps also report: a low-entropy
+  attractor the substrate can fall into that is not a replicator by the test DESIGN §1.2
+  locks. Counted on the census rather than the detector the arms read 0, 0, 0 and 3, which
+  is the same direction, steeper.
+</p>
+
+<p>
+  <strong>Size does not change the pre-emergence soup.</strong> Among the runs that never
+  transitioned, the final <span class="mono">compress_ratio</span> sits between 0.93 and 0.96
+  in every arm, and the per-arm medians span 0.945 to 0.951 with no order in them;
+  <span class="mono">entropy_bits</span> ends within a few hundredths of 7.87 everywhere.
+  A 1 024-cell soup and a 65 536-cell soup are the same soup. That is worth stating because
+  the radius sweep found the opposite for its parameter — there the censored runs' floor
+  moved monotonically from 0.951 to 0.859 as a cell's reach widened — so cell count acts on
+  how often something happens, not on what the world looks like while nothing does.
+</p>
+
+<p>
+  <strong>A determinism cross-check, for free.</strong> Every parameter of the 128² arm is a
+  default, so its ten runs repeat the mutation-rate sweep's
+  <span class="mono">2<sup>-<%= rate_exponent %></sup></span> arm and the radius sweep's
+  <span class="mono">radius = 1</span> arm. All three report the same single transition — the
+  ninth seed at epoch 15 560 — and the same final <span class="mono">compress_ratio</span>,
+  digit for digit, across three experiments run weeks apart. That is the guarantee DESIGN
+  §1.1 makes, a run as a function of <span class="mono">(params, seed)</span>, checked rather
+  than asserted. It is also a caveat: that arm is not an independent sample, so this sweep
+  holds 30 runs of new evidence and 10 of a repeat, and its single 128² event is the same
+  event the mutation-rate finding already counted.
+</p>
+
+<p>
+  Two things keep this partial rather than published. The <%= epochs %>-epoch budget is short
+  next to the epochs at which these transitions landed — three of the four fell after 15 000
+  — so every arm is heavily censored and the small arms may be slow rather than silent, which
+  is exactly the reading a per-cell hazard predicts and cannot be told apart from it on four
+  events. And a sweep of ours is only readable as a negative once the
+  <%= link_to "BFF positive control", finding_path("bff-control") %> resolves its own census;
+  until then an arm sitting at the censoring line says as much about the instrument as about
+  the world.
+</p>
+
+<h2>What next</h2>
+<p>
+  The direct extension is already running. The
+  <%= link_to "BFF positive control", experiment_path("bff-control") %> is a well-mixed soup
+  of 2<sup>17</sup> tapes — twice the largest arm here — and its three mutated seeds have all
+  flagged, at 5 400, 9 750 and 14 250 epochs, which is the direction the per-cell reading
+  predicts. It is not a fifth arm of this sweep: it drops the neighbourhood as well as
+  raising the cell count, and its runs are unfinished, so it extends the programme rather
+  than the curve. The lens for the scaling question is the survival and hazard section on the
+  <%= link_to "sweep's page", experiment_path("world-size") %>, which spends a censored run's
+  whole observed lifetime instead of discarding it; the way to narrow those intervals is more
+  seeds or longer runs at the sizes that already produce events, not more sizes.
 </p>

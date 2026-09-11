@@ -43,13 +43,15 @@ module Findings
         experiment_slug: "world-size",
         status: :partial,
         summary: "DESIGN §1.3 sweep 2 sets two readings against each other: if emergence " \
-                 "is a lottery, a world with more cells buys more tickets; if it is a " \
-                 "per-cell rate, the epoch of the first replicator hardly moves with cell " \
-                 "count. Square worlds from 32² to 256² separate them, and all but two " \
-                 "runs are terminal: replicators appear only in the largest world, three " \
-                 "seeds of it on both observables, none anywhere below. That is the " \
-                 "lottery reading — except that the mutation-rate sweep found one at 128² " \
-                 "at half this mutation rate, where all ten seeds here found none."
+                 "is a hazard per cell-epoch, a world with more cells buys more tickets " \
+                 "and events scale with cell count; if it is a hazard per world, cell " \
+                 "count buys nothing. Square worlds from 32² to 256² separate them, and " \
+                 "emergence gets more likely as the world gets bigger: 0, 0, 1 and 3 of " \
+                 "10 seeds transitioned, against the 0.06, 0.26, 1 and 3.7 a constant " \
+                 "per-cell hazard predicts. Pooled, that hazard is 2.5 × 10⁻¹⁰ per " \
+                 "cell-epoch (95% 0.7–6.4). The earliest transition of the whole " \
+                 "programme, epoch 4 730, is a 256² run — but four events cannot measure " \
+                 "an exponent, and two of them are still resuming from their snapshots."
       ),
       Finding.new(
         slug: "radius-locality",

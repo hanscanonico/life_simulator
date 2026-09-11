@@ -55,3 +55,26 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   open**: it is a question about the transitioned runs' distinct_tapes and top_share series
   and six runs over four arms are too thin to answer it. The survival/hazard section of the
   sweep page is the lens for the speed question once more seeds exist.
+- 2026-09-11 — **§1.3 item 2, world size, read as a per-cell hazard.** 40 runs at the
+  engine defaults (mutation_rate 2^-12, radius 1, 20 000 epochs, 10 seeds per arm):
+  transitions 0/10 at 32², 0/10 at 64², 1/10 at 128² (seed 9, epoch 15 560) and 3/10 at
+  256² (seed 5 at 4 730, seed 1 at 15 800, seed 3 at 19 550). **Emergence gets more likely
+  as the world gets bigger**, and the reading recorded is a hazard per cell-epoch rather
+  than per world: scaled from the single 128² event, a constant per-cell hazard predicts
+  0.06, 0.26, 1 and 3.7 events against the observed 0, 0, 1 and 3, while a constant
+  per-world hazard would put about 2 of the 4 events in the two smallest arms, where none
+  fell — a coincidence of probability ≈ 0.13, so that rival is disfavoured and not
+  excluded. Pooled hazard 2.5e-10 per cell-epoch (exact Poisson 95% 0.7e-10–6.4e-10) on 4
+  events and 1.6e10 cell-epochs at risk; 128² alone 3.1e-10, 256² alone 2.5e-10. **Four
+  events cannot measure the exponent**, so the sign is claimed and linearity is not. The
+  earliest transition of the whole programme so far, epoch 4 730, is a 256² run. Only 256²
+  has a replicator census behind its flags (3 of 3); the single 128² flag is another
+  collapse with a census of zero. Size does not move the pre-emergence soup: censored runs
+  end at compress_ratio 0.93–0.96 in every arm, unlike the radius sweep, whose floor moved
+  0.951 → 0.859. The 128² arm is all defaults, so it repeats the mutation-rate 2^-12 arm
+  and the radius-1 arm digit for digit — a `(params, seed)` check and a reminder that
+  10 of the 40 runs are not an independent sample. Held at **partial**: two 256² runs are
+  resuming from snapshots after a deploy (their transitions are already recorded and fell
+  before the epochs they have reached, so the counts and the hazard do not depend on them),
+  and every arm is heavily censored at 20 000 epochs. The direct extension is the
+  `bff-control` 2^17-cell soup; the survival/hazard section of the sweep page is the lens.

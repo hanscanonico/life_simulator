@@ -327,35 +327,72 @@ RSpec.describe "Findings", type: :request do
         get finding_path(Findings::Registry.find("world-size-scaling"))
 
         expect(response).to have_http_status(:ok)
-        expect(response.body.squish).to include("lottery", "per-cell rate")
+        expect(response.body.squish).to include("lottery", "per cell-epoch", "per <em>run</em>-epoch")
       end
 
-      it "states the shape both observables agree on" do
+      it "states the per-arm counts in a table that links the runs by arm and seed" do
         get finding_path(Findings::Registry.find("world-size-scaling"))
 
         expect(response.body.squish)
-          .to include("Replicators appear only in the largest world.",
-                      "no seed of the two smallest worlds moved on either observable",
-                      "three seeds moved on both",
-                      "its fraction can only rise")
+          .to include("Emergence gets more likely as the world gets bigger.",
+                      "the counts run 0, 0, 1 and 3 of 10",
+                      "0 of 10", "1 of 10", "3 of 10",
+                      "15 560", "4 730", "15 800", "19 550")
+      end
+
+      it "states the test of the per-cell hazard and what four events cannot measure" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish)
+          .to include("The per-cell reading is the one that fits, and here is the test.",
+                      "the arms should show about 0.06, 0.26, 1 and 3.7 events",
+                      "about one time in eight",
+                      "2.5 × 10<sup>-10</sup></span> per cell-epoch",
+                      "Four events cannot measure an exponent.")
+      end
+
+      it "names the earliest transition of the programme without over-reading it" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish)
+          .to include("The earliest transition of the whole programme is in the largest world.",
+                      "crossed at epoch 4 730",
+                      "not evidence that a bigger world runs faster per run")
       end
 
       it "keeps the collapse without a census apart from a replicator" do
         get finding_path(Findings::Registry.find("world-size-scaling"))
 
         expect(response.body.squish)
-          .to include("Below it, a collapse that is not a replicator.",
+          .to include("Below the largest arm, a collapse that is not a replicator.",
                       "with a census of zero at every sample",
                       "not a replicator by the test DESIGN §1.2 locks")
       end
 
-      it "names the tension with the mutation-rate sweep" do
+      it "reports the pre-emergence soup as unchanged by size" do
         get finding_path(Findings::Registry.find("world-size-scaling"))
 
         expect(response.body.squish)
-          .to include("The two sweeps do not agree yet.",
-                      "at half this sweep's mutation rate",
-                      "The two differ in nothing else.")
+          .to include("Size does not change the pre-emergence soup.",
+                      "between 0.93 and 0.96 in every arm",
+                      "the same soup")
+      end
+
+      it "reports the determinism cross-check the default arm gives for free" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish)
+          .to include("A determinism cross-check, for free.",
+                      "the ninth seed at epoch 15 560",
+                      "30 runs of new evidence and 10 of a repeat")
+      end
+
+      it "hands the scaling question to the positive control and the survival section" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish)
+          .to include(experiment_path("bff-control"), experiment_path("world-size"),
+                      "the survival and hazard section", "It is not a fifth arm of this sweep")
       end
 
       it "reads its grid from the sweep the lab would build" do
