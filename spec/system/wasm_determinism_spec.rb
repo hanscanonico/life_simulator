@@ -37,7 +37,10 @@ RSpec.describe "The wasm engine", :js, type: :system do
   end
 
   it "runs life to the hash the native build pins" do
-    params = { "substrate" => "life", "width" => 32, "height" => 32, "mutation_rate" => 0.0 }
+    params = {
+      "substrate" => "life", "width" => 32, "height" => 32,
+      "mutation_rate" => 0.0, "init" => "random"
+    }
     expect(hash_after_epochs(params)).to eq(pinned_life_hash)
   end
 end
