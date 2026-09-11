@@ -33,9 +33,13 @@ Rails.application.routes.draw do
         post :samples
         post :snapshots
         post :finish
+        post :rescores
         get "snapshots/latest", action: :latest_snapshot, as: :latest_snapshot
         get :world
       end
+    end
+    resources :experiments, only: [], param: :slug do
+      get :corpus, on: :member
     end
   end
 

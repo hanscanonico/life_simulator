@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_11_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -29,6 +29,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_150000) do
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_experiments_on_name", unique: true
     t.index ["slug"], name: "index_experiments_on_slug", unique: true
+  end
+
+  create_table "rescores", force: :cascade do |t|
+    t.float "compress_ratio"
+    t.datetime "created_at", null: false
+    t.bigint "distinct_tapes"
+    t.float "entropy_bits"
+    t.integer "epoch", null: false
+    t.datetime "measured_at"
+    t.bigint "replicator_count"
+    t.bigint "run_id", null: false
+    t.integer "top_k", null: false
+    t.float "top_share"
+    t.datetime "updated_at", null: false
+    t.index ["run_id", "epoch", "top_k"], name: "index_rescores_on_run_id_and_epoch_and_top_k", unique: true
+    t.index ["run_id"], name: "index_rescores_on_run_id"
   end
 
   create_table "runs", force: :cascade do |t|
@@ -79,6 +95,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_150000) do
     t.index ["run_id", "epoch"], name: "index_snapshots_on_run_id_and_epoch", unique: true
   end
 
+  add_foreign_key "rescores", "runs"
   add_foreign_key "runs", "experiments"
   add_foreign_key "samples", "runs"
   add_foreign_key "snapshots", "runs"

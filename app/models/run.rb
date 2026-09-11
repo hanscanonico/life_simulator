@@ -11,6 +11,7 @@ class Run < ApplicationRecord
   belongs_to :experiment, counter_cache: true
   has_many :samples, dependent: :destroy
   has_many :snapshots, dependent: :destroy
+  has_many :rescores, dependent: :destroy
 
   validates :seed, numericality: { only_integer: true }
   validates :epochs, numericality: { only_integer: true, greater_than: 0 }

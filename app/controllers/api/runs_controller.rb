@@ -7,7 +7,7 @@ module Api
     SNAPSHOT_EPOCH_HEADER = "X-Snapshot-Epoch"
 
     before_action :set_run, except: :claim
-    before_action :authorize_runner!, except: %i[claim world]
+    before_action :authorize_runner!, except: %i[claim world rescores]
 
     def claim
       run = Runs::ClaimService.call(runner_id: runner_id)
@@ -68,6 +68,14 @@ module Api
 
       render json: { id: @run.id, params: @run.params, seed: @run.seed, epoch: snapshot.epoch,
                      blob: Base64.strict_encode64(snapshot.blob) }
+    end
+
+    # What `runner rescore-corpus` stores: a run's worlds re-measured at other `top_k`
+    # settings. Like `world`, not claim-gated — a rescore reads finished runs, which no
+    # runner holds — and it writes only rescore rows, never the run's own metrics.
+    def rescores
+      Runs::RecordRescoresService.call(run: @run, rescores: body_params.fetch("rescores", []))
+      head :no_content
     end
 
     def finish

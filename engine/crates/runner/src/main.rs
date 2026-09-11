@@ -105,6 +105,31 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Re-read every stored world of an experiment at several `top_k` settings and store
+    /// the readings as rescore rows.
+    RescoreCorpus {
+        /// Base URL of the app, e.g. `http://app:8080`.
+        #[arg(long, env = "RUNNER_API")]
+        api: String,
+        /// The shared secret the API expects as a bearer token.
+        #[arg(long, env = "RUNNER_TOKEN")]
+        token: String,
+        /// The experiment whose finished runs to re-read, by slug.
+        #[arg(long)]
+        experiment: String,
+        /// The `top_k` settings to score each world at, comma separated.
+        #[arg(long, value_delimiter = ',', default_value = "16,64,256")]
+        top_k: Vec<u32>,
+        /// Which stored worlds of each run to read.
+        #[arg(long, value_enum, default_value_t = rescore::Epochs::Latest)]
+        epochs: rescore::Epochs,
+        /// Stop after this many worlds.
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Measure and print, store nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Report epochs per second for a short run.
     Bench {
         #[arg(long)]
@@ -192,6 +217,25 @@ fn main() -> Result<()> {
             } else {
                 report.print();
             }
+        }
+        Command::RescoreCorpus {
+            api,
+            token,
+            experiment,
+            top_k,
+            epochs,
+            limit,
+            dry_run,
+        } => {
+            rescore::execute_corpus(rescore::CorpusOptions {
+                api,
+                token,
+                experiment,
+                top_k,
+                epochs,
+                limit,
+                dry_run,
+            })?;
         }
         Command::Bench {
             params,
