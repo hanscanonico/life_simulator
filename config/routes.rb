@@ -9,7 +9,9 @@ Rails.application.routes.draw do
   # get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
   # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
 
-  resources :experiments, only: %i[index show]
+  resources :experiments, only: %i[index show] do
+    get :transitions, on: :member, defaults: { format: :csv }
+  end
   resources :findings, only: %i[index show]
   resources :runs, only: :show do
     get :samples, on: :member, defaults: { format: :csv }

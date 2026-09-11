@@ -113,6 +113,56 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to match(%r{<span class="mono">0/0</span>\s*<span class="text-muted">\s*—})
     end
 
+    context "with samples behind the finished runs" do
+      before do
+        flagged = create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
+                               params: Lab::Schema.run_defaults.merge("radius" => 2))
+        create(:sample, run: flagged, epoch: 900,
+                        values: { "compress_ratio" => 0.4, "replicator_count" => 6 })
+        unflagged = create(:run, experiment: experiment, status: "finished",
+                                 params: Lab::Schema.run_defaults.merge("radius" => 2))
+        create(:sample, run: unflagged, epoch: 900,
+                        values: { "compress_ratio" => 0.98, "replicator_count" => 0 })
+      end
+
+      it "reconciles the detector with the replicator census, arm by arm" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Detector against replicator census", "Either but not both")
+        expect(response.body).to match(
+          %r{<td class="mono">2</td>\s*<td class="numeric">2</td>\s*<td class="numeric">1</td>}
+        )
+      end
+
+      it "offers the transition report beside the runs CSV" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Download transition report (CSV)",
+                                         transitions_experiment_path(experiment))
+      end
+
+      it "streams the transition report as CSV" do
+        get transitions_experiment_path(experiment)
+
+        lines = response.body.lines.map(&:chomp)
+        expect(response.media_type).to eq("text/csv")
+        expect(response.headers["Content-Disposition"]).to include("attachment", "radius-transitions.csv")
+        expect(lines).to include("arm,n,flagged,replicators,both,either_but_not_both", "2,2,1,1,1,0")
+      end
+    end
+
+    context "with a sweep nothing has been sampled from" do
+      it "shows no transition report" do
+        create(:run, experiment: experiment, status: "finished",
+                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+        get experiment_path(experiment)
+
+        expect(response.body).not_to include("Detector against replicator census",
+                                             "Download transition report (CSV)")
+      end
+    end
+
     context "with censored runs alongside runs that emerged" do
       before do
         create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 900,

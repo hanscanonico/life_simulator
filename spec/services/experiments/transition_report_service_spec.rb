@@ -127,6 +127,12 @@ RSpec.describe Experiments::TransitionReportService do
       expect(table[1].first(2)).to eq([true_positive.id.to_s, true_positive.seed.to_s])
     end
 
+    it "heads the arm summary with the columns the published report promises" do
+      table = CSV.parse(report.to_csv)
+
+      expect(table[-2]).to eq(%w[arm n flagged replicators both either_but_not_both])
+    end
+
     it "writes the arm summary as a second section" do
       table = CSV.parse(report.to_csv)
 

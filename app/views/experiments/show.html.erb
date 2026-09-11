@@ -41,6 +41,17 @@
   <p class="text-muted">This experiment sweeps no parameter, so it has no phase diagram.</p>
 <% end %>
 
+<% if @show.transition_report? %>
+  <%= render "experiments/transition_report", arms: @show.transition_arms,
+                                              threshold: @show.transition_threshold %>
+<% end %>
+
 <h2>Runs</h2>
-<p><%= link_to "Download CSV", experiment_path(@show.experiment, format: :csv), class: "btn btn-sm btn-outline" %></p>
+<p class="flex flex-wrap gap-2">
+  <%= link_to "Download CSV", experiment_path(@show.experiment, format: :csv), class: "btn btn-sm btn-outline" %>
+  <% if @show.transition_report? %>
+    <%= link_to "Download transition report (CSV)", transitions_experiment_path(@show.experiment),
+                class: "btn btn-sm btn-outline" %>
+  <% end %>
+</p>
 <%= render "experiments/runs_table", page: @show %>

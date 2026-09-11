@@ -16,4 +16,10 @@ class ExperimentsController < ApplicationController
       end
     end
   end
+
+  def transitions
+    experiment = Experiment.find_by!(slug: params.expect(:id))
+    report = Experiments::TransitionReportService.call(experiment: experiment)
+    stream_csv(report.to_csv.each_line, filename: "#{experiment.slug}-transitions.csv")
+  end
 end

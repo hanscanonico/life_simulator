@@ -1,0 +1,38 @@
+<%# The transition detector read against the replicator census, arm by arm: `arms` are
+    Experiments::TransitionReportService::Arm. The per-run rows behind these counts stay in
+    the transition report CSV. %>
+<figure class="table-figure mt-4">
+  <%# The caption sits outside .table-scroll: inside it, it is laid out at the table's width
+      and clipped mid-word on a phone. %>
+  <figcaption class="table-caption text-sm text-muted" id="transition-report">
+    Detector against replicator census, per arm —
+    flagged runs held <span class="mono">compress_ratio</span> below <%= threshold %>,
+    replicating runs counted at least one replicator
+  </figcaption>
+  <div class="table-scroll">
+    <table class="data-table" aria-labelledby="transition-report">
+      <thead>
+        <tr>
+          <th>Arm</th>
+          <th class="numeric">Sampled runs</th>
+          <th class="numeric">Flagged</th>
+          <th class="numeric">Replicators</th>
+          <th class="numeric">Both</th>
+          <th class="numeric">Either but not both</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% arms.each do |arm| %>
+          <tr>
+            <td class="mono"><%= arm.label %></td>
+            <td class="numeric"><%= arm.runs %></td>
+            <td class="numeric"><%= arm.flagged %></td>
+            <td class="numeric"><%= arm.replicated %></td>
+            <td class="numeric"><%= arm.both %></td>
+            <td class="numeric"><%= arm.either_but_not_both %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</figure>
