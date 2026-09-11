@@ -17,10 +17,22 @@ module Runs
         @run.update!(run_attributes)
         finish_experiment
       end
+      log_outcome
       @run
     end
 
     private
+
+    def log_outcome
+      Rails.logger.info("event=run_finished run_id=#{@run.id} experiment=#{experiment.slug} " \
+                        "status=#{@run.status} epochs_done=#{@run.epochs_done}")
+      return if @error.blank?
+
+      Rails.logger.warn("event=run_failed run_id=#{@run.id} experiment=#{experiment.slug} " \
+                        "error=#{@error.to_s.truncate(200).inspect}")
+    end
+
+    def experiment = @experiment ||= @run.experiment
 
     def run_attributes
       attributes = { status: @error.present? ? "failed" : "finished", finished_at: Time.current,
@@ -34,7 +46,6 @@ module Runs
     end
 
     def finish_experiment
-      experiment = @run.experiment
       return if experiment.runs.where.not(status: Run::TERMINAL_STATUSES).exists?
 
       experiment.finished!

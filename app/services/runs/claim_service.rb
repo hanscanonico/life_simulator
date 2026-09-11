@@ -15,11 +15,13 @@ module Runs
     def call
       ReleaseStaleService.call
 
-      Run.transaction do
-        run = Run.pending.order(priority: :desc, id: :asc).lock("FOR UPDATE SKIP LOCKED").first
-        claim(run) if run
-        run
+      run = Run.transaction do
+        candidate = Run.pending.order(priority: :desc, id: :asc).lock("FOR UPDATE SKIP LOCKED").first
+        claim(candidate) if candidate
+        candidate
       end
+      log_claim(run) if run
+      run
     end
 
     private
@@ -28,6 +30,10 @@ module Runs
       now = Time.current
       run.update!(status: "claimed", runner_id: @runner_id, claimed_at: now, heartbeat_at: now, error: nil)
       run.experiment.running! if run.experiment.queued?
+    end
+
+    def log_claim(run)
+      Rails.logger.info("event=run_claimed run_id=#{run.id} runner_id=#{@runner_id.to_s.truncate(200).inspect}")
     end
   end
 end
