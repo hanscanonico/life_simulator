@@ -61,6 +61,20 @@ RSpec.describe Run, type: :model do
     end
   end
 
+  describe "#persistence_summary" do
+    it "reads the stored summary" do
+      run = build(:run, persistence: { "census_peak" => 108, "peak_epoch" => 9_580,
+                                       "epochs_persisted" => 12_000, "relapsed" => true })
+
+      expect(run.persistence_summary).to have_attributes(census_peak: 108, peak_epoch: 9_580,
+                                                         epochs_persisted: 12_000, relapsed: true)
+    end
+
+    it "is nothing for a run nothing has summarised" do
+      expect(build(:run).persistence_summary).to be_nil
+    end
+  end
+
   describe "#terminal?" do
     it "is true for a failed run" do
       expect(build(:run, status: "failed")).to be_terminal

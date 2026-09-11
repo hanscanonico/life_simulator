@@ -111,7 +111,8 @@ module Experiments
       epochs = run.transition_epoch || observed_epochs(run)
       return nil unless epochs.to_i.positive?
 
-      Charts::Survival::Observation.new(epochs: epochs.to_i, event: run.transition_epoch.present?)
+      Charts::Survival::Observation.new(epochs: epochs.to_i, event: run.transition_epoch.present?,
+                                        persistence: run.persistence_summary)
     end
 
     def observed_epochs(run)
@@ -122,7 +123,7 @@ module Experiments
 
     def observed_runs
       @observed_runs ||= experiment.runs.where.not(status: "pending")
-                                   .select(:id, :params, :status, :epochs_done, :transition_epoch).to_a
+                                   .select(:id, :params, :status, :epochs_done, :transition_epoch, :persistence).to_a
     end
 
     # One grouped query for the whole page, never one per row, served by

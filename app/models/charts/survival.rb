@@ -21,8 +21,12 @@ module Charts
     HAZARD_UNIT = 10_000
 
     # One run: `epochs` is the transition epoch when it emerged, and otherwise how long
-    # the run was watched without an emergence.
-    Observation = Data.define(:epochs, :event)
+    # the run was watched without an emergence. `persistence` is what became of the world
+    # after that emergence (Runs::Persistence), absent for a censored run and for an
+    # emergence nothing has summarised yet.
+    Observation = Data.define(:epochs, :event, :persistence) do
+      def initialize(epochs:, event:, persistence: nil) = super
+    end
 
     Step = Data.define(:epoch, :survival, :at_risk, :events)
 
@@ -44,6 +48,15 @@ module Charts
       # The run-epochs at risk: every epoch a run spent under observation without having
       # emerged yet, which is exactly the denominator of the hazard.
       def exposure = observations.sum(&:epochs)
+
+      # Of the emergences this arm has a persistence summary for, how many the world was
+      # still in at its last sample and how many it climbed back out of. An arm whose
+      # emergences have not been summarised has neither count rather than two zeroes.
+      def summarised = persistences.size
+
+      def persisted = persistences.count { |persistence| !persistence.relapsed? }
+
+      def relapsed = persistences.count(&:relapsed?)
 
       def hazard = @hazard ||= PoissonRate.new(events: events, exposure: exposure)
 
@@ -74,6 +87,8 @@ module Charts
       end
 
       private
+
+      def persistences = @persistences ||= observations.filter_map(&:persistence)
 
       def event_epochs = observations.select(&:event).map(&:epochs).uniq.sort
     end

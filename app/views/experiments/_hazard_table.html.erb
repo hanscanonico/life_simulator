@@ -16,6 +16,7 @@
           <th class="numeric">Events</th>
           <th class="numeric">Run-epochs at risk</th>
           <th class="numeric">Hazard per 10<sup>4</sup> epochs (95% CI)</th>
+          <th class="numeric">Persisted</th>
         </tr>
       </thead>
       <tbody>
@@ -28,4 +29,8 @@
       </tfoot>
     </table>
   </div>
+  <p class="text-sm text-muted mt-2">
+    Persisted counts the emergences whose world was still in the transitioned state at its last
+    sample; the rest climbed back out of it and are counted as relapses.
+  </p>
 </figure>

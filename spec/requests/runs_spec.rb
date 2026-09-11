@@ -78,6 +78,40 @@ RSpec.describe "Runs", type: :request do
       expect(response.body).to include("Compression ratio", "Copy rate", "<svg", "4242", "mutation_rate")
     end
 
+    context "with a transitioned run whose world held the state" do
+      it "shows the census peak, the epochs persisted and no relapse" do
+        run.update!(persistence: { "census_peak" => 867, "peak_epoch" => 5_080,
+                                   "epochs_persisted" => 14_000, "relapsed" => false })
+
+        get run_path(run)
+
+        expect(response.body.squish).to include("Persistence", "867", "5,080", "14,000")
+        expect(response.body).to include(%(<span class="badge badge-success">persisted</span>))
+      end
+    end
+
+    context "with a transitioned run that climbed back out of the state" do
+      it "flags the relapse" do
+        run.update!(persistence: { "census_peak" => 0, "peak_epoch" => nil,
+                                   "epochs_persisted" => 2_000, "relapsed" => true })
+
+        get run_path(run)
+
+        expect(response.body).to include(%(<span class="badge badge-warning">relapsed</span>))
+        expect(response.body.squish).to include("0 (no replicator counted)", "2,000")
+      end
+    end
+
+    context "with a run the detector never flagged" do
+      it "says nothing about persistence" do
+        run.update!(transition_epoch: nil)
+
+        get run_path(run)
+
+        expect(response.body).not_to include("Persistence")
+      end
+    end
+
     it "colours the status badge" do
       run.update!(status: "failed", error: "runner died")
 

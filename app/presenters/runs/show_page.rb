@@ -39,6 +39,10 @@ module Runs
 
     def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)
 
+    # Only a run the detector flagged has one, and only once its finish — or
+    # `rake lab:backfill_persistence` — has derived it from the samples.
+    def persistence = run.persistence_summary
+
     def charts_empty? = charts.all?(&:empty?)
 
     def transition_label

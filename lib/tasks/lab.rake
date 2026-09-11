@@ -79,6 +79,29 @@ namespace :lab do
     puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
   end
 
+  desc "Derive the persistence summary of every terminal run from its stored samples (one experiment, or all)"
+  task :backfill_persistence, [:slug] => :environment do |_task, args|
+    runs = Run.terminal.order(:id)
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+      runs = runs.where(experiment: experiment)
+    end
+
+    terminal = runs.to_a
+    backfilled = terminal.count do |run|
+      summary = Runs::PersistenceSummaryService.call(run: run).to_h
+      next false if summary.stringify_keys == run.persistence
+
+      puts "run #{run.id}: #{summary.presence || 'no transition'}"
+      run.update!(persistence: summary)
+      true
+    end
+
+    puts "summarised #{backfilled} of #{terminal.size} terminal runs"
+  end
+
   desc "Read the transition detector and the replicator census side by side, per run and per arm " \
        "(FORMAT=csv, INCLUDE_RUNNING=1)"
   task :transition_report, [:slug] => :environment do |_task, args|

@@ -23,6 +23,10 @@ class Run < ApplicationRecord
 
   def terminal? = TERMINAL_STATUSES.include?(status)
 
+  # The read-side derivation of Runs::PersistenceSummaryService, stored with the run so a
+  # sweep page can read a whole arm's persistence without reading a sample.
+  def persistence_summary = Runs::Persistence.from(persistence)
+
   def claimed_by?(other_runner_id) = runner_id.present? && runner_id == other_runner_id
 
   # The transition is the FIRST qualifying epoch (DESIGN.md §2), so a resumed runner
