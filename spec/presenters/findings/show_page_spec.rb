@@ -101,6 +101,42 @@ RSpec.describe Findings::ShowPage do
         expect(page.transitions).to be_empty
       end
     end
+
+    context "with a transitioned run whose census never left zero" do
+      it "reports no epoch for a peak that never happened" do
+        run = create(:run, experiment: experiment, status: "finished", transition_epoch: 15_560,
+                           params: Lab::Schema.run_defaults.merge("mutation_rate" => 2.0**-8))
+        create(:sample, run: run, epoch: 0, values: { "replicator_count" => 0, "entropy_bits" => 8.0 })
+        create(:sample, run: run, epoch: 20_000, values: { "replicator_count" => 0, "entropy_bits" => 4.9 })
+
+        expect(page.transitions.sole).to have_attributes(peak_replicator_count: 0.0, peak_epoch: nil,
+                                                         min_entropy_bits: 4.9, max_copy_rate: nil)
+      end
+    end
+
+    context "with a census that reached its peak twice" do
+      it "reports the first epoch that reached it" do
+        run = create(:run, experiment: experiment, status: "finished",
+                           params: Lab::Schema.run_defaults.merge("mutation_rate" => 2.0**-8))
+        create(:sample, run: run, epoch: 800, values: { "replicator_count" => 2 })
+        create(:sample, run: run, epoch: 8_120, values: { "replicator_count" => 2 })
+
+        expect(page.transitions.sole.peak_epoch).to eq(800)
+      end
+    end
+
+    context "with more flagged runs than the cap" do
+      it "rows the cap and says it is capped" do
+        (Findings::ShowPage::MAX_TRANSITIONS + 1).times do |index|
+          create(:run, experiment: experiment, status: "finished", transition_epoch: 1_000 + index,
+                       params: Lab::Schema.run_defaults.merge("mutation_rate" => 2.0**-8))
+        end
+
+        expect(page.transitions.size).to eq(Findings::ShowPage::MAX_TRANSITIONS)
+        expect(page.transitions.last.transition_epoch).to eq(1_049)
+        expect(page).to be_transitions_capped
+      end
+    end
   end
 
   context "with the sweep missing" do

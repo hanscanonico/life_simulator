@@ -51,7 +51,9 @@ module Findings
 
     def transitions_capped? = transition_rows.size > MAX_TRANSITIONS
 
-    def arm_column = arm_axis ? arm_axis.name.to_s.humanize : "Arm"
+    # Headed and labelled by the experiment's own presenter, so a row of this table can be
+    # matched to an arm of the phase diagram and the runs table below it.
+    def arm_column = evidence&.arm_columns&.first || "Arm"
 
     private
 
@@ -62,21 +64,23 @@ module Findings
       peak_epoch, peak = peak_replicators(samples)
       return nil if run.transition_epoch.nil? && !peak.to_f.positive?
 
-      Transition.new(run: run, arm_label: arm_axis&.label_of_run(run.params),
+      Transition.new(run: run, arm_label: evidence&.arm_labels_of(run)&.first,
                      transition_epoch: run.transition_epoch, peak_replicator_count: peak,
                      peak_epoch: peak_epoch, min_entropy_bits: observable(samples, "entropy_bits").min,
                      max_copy_rate: observable(samples, "copy_rate").max)
     end
 
     # Ties go to the earliest epoch: the peak is reported as the first time the census
-    # reached it.
+    # reached it. A census that never left zero peaked nowhere, so it reports no epoch.
     def peak_replicators(samples)
       counted = samples.filter_map do |epoch, values|
         count = numeric(values["replicator_count"])
         [epoch, count] if count
       end
+      epoch, peak = counted.max_by { |sample_epoch, count| [count, -sample_epoch] }
+      return [nil, nil] if peak.nil?
 
-      counted.max_by { |epoch, count| [count, -epoch] } || [nil, nil]
+      [peak.positive? ? epoch : nil, peak]
     end
 
     def observable(samples, name) = samples.filter_map { |_epoch, values| numeric(values[name]) }
@@ -92,9 +96,9 @@ module Findings
     def candidate_ids = finished_runs.where.not(transition_epoch: nil).ids | counted_run_ids
 
     # `runs.summary` carries the newest sample, not a peak, so the census needs the
-    # samples. One grouped scan over the sweep's finished runs names the candidates and the
-    # extrema above then read the samples of those runs alone. Numbers sort above strings
-    # in jsonb, so a non-numeric count never passes the comparison.
+    # samples. One scan over the sweep's finished runs' samples names the candidates and
+    # the extrema above then read the samples of those runs alone. Numbers sort above
+    # strings in jsonb, so a non-numeric count never passes the comparison.
     def counted_run_ids
       Sample.where(run_id: finished_runs.select(:id))
             .where("values -> 'replicator_count' > '0'::jsonb")
@@ -102,7 +106,5 @@ module Findings
     end
 
     def finished_runs = experiment.runs.where(status: "finished")
-
-    def arm_axis = evidence&.axes&.first
   end
 end
