@@ -82,6 +82,19 @@ pub fn encode_compressed(header: &Header, payload: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Inflates a payload one byte past the world the params describe: enough to tell "too
+/// long" from "exactly right", so a corrupt blob can no longer inflate a resuming slot off
+/// the box. The buffer holds that extra byte from the start, so `read_to_end` reaches the
+/// limit without doubling the world-sized allocation it began with.
+fn inflate_bounded(payload: &[u8], expected: usize) -> Result<Vec<u8>, SnapshotError> {
+    let mut cells = Vec::with_capacity(expected + 1);
+    ZlibDecoder::new(payload)
+        .take(expected as u64 + 1)
+        .read_to_end(&mut cells)
+        .map_err(SnapshotError::Corrupt)?;
+    Ok(cells)
+}
+
 /// Reads a snapshot back, checking it describes the world `params` describes.
 pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), SnapshotError> {
     if bytes.len() < HEADER_LEN_V1 {
@@ -138,11 +151,9 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), Snapsh
         return Err(SnapshotError::Mismatch { field: "tape_len" });
     }
 
-    let mut cells = Vec::new();
-    ZlibDecoder::new(&bytes[header_len..])
-        .read_to_end(&mut cells)
-        .map_err(SnapshotError::Corrupt)?;
-    if cells.len() != params.cell_count() * params.stride() {
+    let expected = params.cell_count() * params.stride();
+    let cells = inflate_bounded(&bytes[header_len..], expected)?;
+    if cells.len() != expected {
         return Err(SnapshotError::Mismatch {
             field: "cell count",
         });
@@ -232,6 +243,35 @@ mod tests {
         assert_eq!(decoded, cells);
         assert_eq!(header.epoch, 7);
         assert_eq!(header.transition, TransitionState::default());
+    }
+
+    #[test]
+    fn an_inflating_payload_is_never_buffered_past_the_world_plus_a_byte() {
+        let expected = 64 * 1024;
+        let payload = metrics::compress(&vec![0u8; expected * 8]);
+
+        let cells = inflate_bounded(&payload, expected).expect("a well-formed zlib stream");
+
+        assert_eq!(cells.len(), expected + 1);
+        assert!(
+            cells.capacity() <= expected + 1,
+            "buffered {} bytes for a {expected}-byte world",
+            cells.capacity()
+        );
+    }
+
+    #[test]
+    fn rejects_a_payload_that_inflates_past_the_world() {
+        let params = params();
+        let expected = params.cell_count() * params.stride();
+        let bytes = encode(&header(&params, 0), &vec![0u8; expected * 8]);
+
+        assert!(matches!(
+            decode(&params, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "cell count"
+            })
+        ));
     }
 
     #[test]
