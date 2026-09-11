@@ -218,6 +218,72 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  describe "#census_of" do
+    def sampled_run(counts, transition_epoch: nil)
+      run = create(:run, experiment: experiment, status: "finished", transition_epoch: transition_epoch,
+                         params: Lab::Schema.run_defaults.merge("radius" => 1),
+                         summary: { "replicator_count" => counts.last })
+      counts.each_with_index do |count, index|
+        create(:sample, run: run, epoch: index * 100, values: { "replicator_count" => count })
+      end
+      run
+    end
+
+    it "is the peak count the census ever reached" do
+      run = sampled_run([0, 3, 1], transition_epoch: 900)
+
+      expect(page.census_of(run)).to have_attributes(peak: 3, counted?: true, detector_only?: false,
+                                                     census_only?: false)
+    end
+
+    context "with a transitioned run whose census never left zero" do
+      it "has no peak and reads as the detector alone" do
+        run = sampled_run([0, 0], transition_epoch: 900)
+
+        expect(page.census_of(run)).to have_attributes(peak: nil, counted?: false, detector_only?: true,
+                                                       census_only?: false)
+      end
+    end
+
+    context "with a counted run the detector never flagged" do
+      it "reads as the census alone" do
+        run = sampled_run([0, 2])
+
+        expect(page.census_of(run)).to have_attributes(peak: 2, detector_only?: false, census_only?: true)
+      end
+    end
+
+    context "with a run nothing has been sampled from yet" do
+      it "has no census at all" do
+        run = create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+        expect(page.census_of(run)).to be_nil
+      end
+    end
+
+    context "with the peaks read from the database" do
+      def census_query_count
+        queries = []
+        collect = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
+
+        ActiveSupport::Notifications.subscribed(collect, "sql.active_record") do
+          fresh = described_class.build(experiment: experiment, paginate: paginate)
+          fresh.runs.each { |run| fresh.census_of(run) }
+        end
+
+        queries.size
+      end
+
+      it "costs the same number of queries at six rows as at two" do
+        2.times { sampled_run([0, 4]) }
+        two = census_query_count
+        4.times { sampled_run([0, 4]) }
+
+        expect(census_query_count).to eq(two)
+      end
+    end
+  end
+
   describe "#arm_columns" do
     it "heads one column per swept parameter" do
       expect(page.arm_columns).to eq(["Radius"])

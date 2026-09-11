@@ -3,6 +3,18 @@
 module Experiments
   # One sweep: a phase diagram per swept parameter, then the runs behind it.
   class ShowPage
+    # What the replicator census says about one run, against what the transition detector
+    # said. `transition_epoch` fires on `compress_ratio` alone (DESIGN.md §1.2), so the two
+    # disagree, and every top_k or persistence decision is argued over the runs where they
+    # do. A census that never left zero has no peak: that is a reading, not a gap.
+    Census = Data.define(:peak, :transitioned) do
+      def counted? = peak.present?
+
+      def detector_only? = transitioned && !counted?
+
+      def census_only? = counted? && !transitioned
+    end
+
     def self.build(experiment:, paginate:)
       new(experiment: experiment, paginate: paginate)
     end
@@ -36,6 +48,15 @@ module Experiments
     def runs = page.last
 
     def pagy = page.first
+
+    # A run nothing has been sampled from yet — a pending one above all — has no census at
+    # all, and the table says nothing about it rather than reading a zero into it. The
+    # summary is written with the samples, so it is the sampled flag already at hand.
+    def census_of(run)
+      return nil unless run.summary.key?("replicator_count")
+
+      Census.new(peak: census_peaks[run.id], transitioned: run.transition_epoch.present?)
+    end
 
     def finished_count = finished_runs.size
 
@@ -88,6 +109,17 @@ module Experiments
     def observed_runs
       @observed_runs ||= experiment.runs.where.not(status: "pending")
                                    .select(:id, :params, :status, :epochs_done, :transition_epoch).to_a
+    end
+
+    # One grouped query for the whole page, never one per row, served by
+    # `index_samples_on_run_id_replicated` — whose predicate this `where` has to keep
+    # matching. Numbers sort above strings in jsonb, so a non-numeric count never passes
+    # the comparison.
+    def census_peaks
+      @census_peaks ||= Sample.where(run_id: runs.map(&:id))
+                              .where("values -> 'replicator_count' > '0'::jsonb")
+                              .group(:run_id)
+                              .maximum(Arel.sql("(values ->> 'replicator_count')::numeric"))
     end
 
     def latest_sample_epochs

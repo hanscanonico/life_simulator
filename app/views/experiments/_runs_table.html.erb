@@ -12,6 +12,7 @@
         <th class="numeric">Priority</th>
         <th class="numeric">Epochs done</th>
         <th class="numeric">Transition epoch</th>
+        <th class="numeric">Census</th>
         <th></th>
       </tr>
     </thead>
@@ -26,6 +27,16 @@
           <td class="numeric"><%= run.priority %></td>
           <td class="numeric"><%= number_with_delimiter run.epochs_done %></td>
           <td class="numeric"><%= epoch_value run.transition_epoch %></td>
+          <td class="numeric">
+            <% if (census = page.census_of(run)) %>
+              <%= count_value census.peak %>
+              <% if census.detector_only? %>
+                <span class="badge badge-warning">detector only</span>
+              <% elsif census.census_only? %>
+                <span class="badge badge-info">census only</span>
+              <% end %>
+            <% end %>
+          </td>
           <td><%= link_to "Run", run_path(run) %></td>
         </tr>
       <% end %>
