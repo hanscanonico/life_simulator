@@ -78,13 +78,12 @@ module Charts
       def event_epochs = observations.select(&:event).map(&:epochs).uniq.sort
     end
 
-    def initialize(arms:, title:, epochs:)
+    def initialize(arms:, title:)
       @arms = arms
       @title = title
-      @epochs = epochs
     end
 
-    attr_reader :arms, :title, :epochs
+    attr_reader :arms, :title
 
     def to_partial_path = "charts/survival"
 
@@ -103,15 +102,15 @@ module Charts
       end
     end
 
-    def legend_label(arm)
-      "#{arm.label} — #{arm.events} of #{arm.runs} emerged"
-    end
-
     def x_scale = @x_scale ||= Scale.new(values: [0.0, horizon], length: plot_width)
 
     def y_scale = @y_scale ||= Scale.new(values: [0.0, 1.0], length: plot_height, flip: true)
 
     private
+
+    def legend_label(arm)
+      "#{arm.label} — #{arm.events} of #{arm.runs} emerged"
+    end
 
     # The curve is drawn out to the longest run anywhere in the sweep, so the arms share
     # one x axis; a budget that nothing has reached yet would leave dead space.

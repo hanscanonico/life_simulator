@@ -3,7 +3,7 @@
 require "rails_helper"
 
 RSpec.describe Charts::Survival do
-  subject(:survival) { described_class.new(arms: [arm], title: "Time to emergence", epochs: 10) }
+  subject(:survival) { described_class.new(arms: [arm], title: "Time to emergence") }
 
   def observations(*pairs)
     pairs.map { |epochs, event| Charts::Survival::Observation.new(epochs: epochs, event: event) }
@@ -98,7 +98,7 @@ RSpec.describe Charts::Survival do
   describe "#lines" do
     subject(:survival) do
       described_class.new(arms: [arm, other, Charts::Survival::Arm.new(label: "4", observations: [])],
-                          title: "Time to emergence", epochs: 10)
+                          title: "Time to emergence")
     end
 
     let(:other) { Charts::Survival::Arm.new(label: "2", observations: observations([6, true], [9, false])) }
@@ -122,7 +122,7 @@ RSpec.describe Charts::Survival do
   end
 
   describe "#pooled" do
-    subject(:survival) { described_class.new(arms: [arm, other], title: "Time to emergence", epochs: 10) }
+    subject(:survival) { described_class.new(arms: [arm, other], title: "Time to emergence") }
 
     let(:other) { Charts::Survival::Arm.new(label: "2", observations: observations([6, true], [9, false])) }
 
@@ -139,7 +139,7 @@ RSpec.describe Charts::Survival do
     context "with no arm that has been observed" do
       it "is empty" do
         blank = described_class.new(arms: [Charts::Survival::Arm.new(label: "1", observations: [])],
-                                    title: "Time to emergence", epochs: 10)
+                                    title: "Time to emergence")
 
         expect(blank).to be_empty
       end

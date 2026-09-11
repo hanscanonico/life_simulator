@@ -57,8 +57,7 @@ module Experiments
         observations = observed_runs.select { |run| axis.matches?(run.params, value) }.map { |run| observation(run) }
         Charts::Survival::Arm.new(label: axis.label_of(value), observations: observations.compact)
       end
-      Charts::Survival.new(arms: arms, epochs: experiment.epochs,
-                           title: "Time to emergence vs #{axis.name.to_s.humanize.downcase}")
+      Charts::Survival.new(arms: arms, title: "Time to emergence vs #{axis.name.to_s.humanize.downcase}")
     end
 
     # A run that emerged was watched up to its transition; one that did not is censored at
