@@ -25,7 +25,7 @@
           <tr>
             <td><%= link_to row.experiment.name, experiment_path(row.experiment) %></td>
             <td><%= row.experiment.substrate %></td>
-            <td><span class="badge"><%= row.experiment.status %></span></td>
+            <td><span class="badge <%= status_badge_class(row.experiment.status) %>"><%= row.experiment.status %></span></td>
             <td class="numeric"><%= row.runs_done %> / <%= row.runs_total %></td>
             <td class="numeric">
               <%= percent_value row.transition_rate.fraction %>

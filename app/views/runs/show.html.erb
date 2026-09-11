@@ -18,7 +18,8 @@
 <% end %>
 
 <dl class="facts">
-  <dt>Status</dt><dd><span class="badge"><%= @show.run.status %></span></dd>
+  <dt>Status</dt>
+  <dd><span class="badge <%= status_badge_class(@show.run.status) %>"><%= @show.run.status %></span></dd>
   <dt>Progress</dt>
   <dd><%= number_with_delimiter @show.run.epochs_done %> / <%= number_with_delimiter @show.run.epochs %> epochs
     (<%= @show.progress %>%)</dd>

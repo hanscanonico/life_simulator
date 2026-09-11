@@ -12,6 +12,17 @@ module ApplicationHelper
     content_for(:description) || DEFAULT_DESCRIPTION
   end
 
+  # Colour is a redundant cue on a badge that already spells the status out, so an
+  # unmapped value simply stays neutral rather than raising.
+  STATUS_BADGE_CLASSES = {
+    "finished" => "badge-success",
+    "running" => "badge-info",
+    "claimed" => "badge-info",
+    "failed" => "badge-error"
+  }.freeze
+
+  def status_badge_class(status) = STATUS_BADGE_CLASSES.fetch(status.to_s, "")
+
   def param_value(value)
     return "—" if value.nil?
 
