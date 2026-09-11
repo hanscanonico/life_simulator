@@ -825,6 +825,43 @@ mod tests {
         assert_eq!(world.transition_epoch(), None);
     }
 
+    /// The census is a pure function of the world, so rescoring a stored snapshot must
+    /// return the run's own reading — the one exception is `copy_rate`, which counts the
+    /// interactions of the epoch just run and a restored world has run none.
+    #[test]
+    fn a_world_restored_from_a_snapshot_rescores_the_census_the_run_reported() {
+        let params = Params {
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            ..soup(16, 16)
+        };
+        let seed = 7;
+        let mut world = World::new(&params, seed).unwrap();
+        let tape = replicator::handwritten_replicator();
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        for _ in 0..params.sample_every {
+            world.step();
+        }
+
+        let (live, raw) = world.metrics_with_snapshot();
+        let mut restored = World::from_snapshot(&params, seed, &raw).unwrap();
+        let rescored = restored.metrics();
+
+        assert!(live.replicator_count > 0, "the soup must hold replicators");
+        assert_eq!(restored.epoch(), world.epoch());
+        assert_eq!(rescored.replicator_count, live.replicator_count);
+        assert_eq!(rescored.distinct_tapes, live.distinct_tapes);
+        assert_eq!(rescored.top_share, live.top_share);
+        assert_eq!(rescored.compress_ratio, live.compress_ratio);
+        assert_eq!(rescored.entropy_bits, live.entropy_bits);
+        assert_eq!(rescored.op_density, live.op_density);
+        assert!(live.copy_rate > 0.0);
+        assert_eq!(rescored.copy_rate, 0.0);
+    }
+
     #[test]
     fn the_transition_epoch_is_the_start_of_a_sustained_drop() {
         let params = Params {
