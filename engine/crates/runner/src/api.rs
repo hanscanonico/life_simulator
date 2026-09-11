@@ -148,8 +148,9 @@ impl LabClient {
 
     /// Posts a snapshot, base64-encoding the blob and the PNG straight into `body`,
     /// which the caller owns and reuses. Building a `Value` of two base64 strings and
-    /// letting `send_json` serialise it again held the blob three times over at once, and
-    /// twelve slots snapshotting is what exhausted the mini-pc's memory.
+    /// letting `send_json` serialise it again held the blob three times over at once,
+    /// which is 26 MB of peak RSS per slot on the control world and twelve slots of it
+    /// on the mini-pc.
     pub fn snapshot(
         &self,
         run: i64,
