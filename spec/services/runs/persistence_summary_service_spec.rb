@@ -41,6 +41,29 @@ RSpec.describe Runs::PersistenceSummaryService do
     expect(summary).not_to be_relapsed
   end
 
+  context "with a world back above the threshold for exactly the tracker's hold" do
+    it "waits for one sample more than the hold before calling a relapse" do
+      hold = Lab::TransitionRule::HOLD_SAMPLES
+      record([0.5, 0.4] + ([0.94] * hold) + [0.3, 0.2])
+      run.update!(transition_epoch: 0)
+
+      summary = described_class.call(run: run)
+
+      expect(summary).not_to be_relapsed
+      expect(summary.epochs_persisted).to eq((hold + 3) * 10)
+    end
+
+    it "calls the relapse on the very next sample" do
+      record([0.5, 0.4] + ([0.94] * (Lab::TransitionRule::HOLD_SAMPLES + 1)))
+      run.update!(transition_epoch: 0)
+
+      summary = described_class.call(run: run)
+
+      expect(summary).to be_relapsed
+      expect(summary.epochs_persisted).to eq(10)
+    end
+  end
+
   context "with a world that climbs back above the threshold and stays there" do
     it "flags the relapse and stops the count at the last transitioned sample" do
       record([0.94, 0.94, 0.5, 0.4, 0.3, 0.9, 0.93, 0.94, 0.95, 0.95])

@@ -76,6 +76,7 @@ RSpec.describe Charts::Survival do
         Charts::Survival::Arm.new(
           label: "1",
           observations: [Charts::Survival::Observation.new(epochs: 2, event: true, persistence: persistence(false)),
+                         Charts::Survival::Observation.new(epochs: 3, event: true, persistence: persistence(false)),
                          Charts::Survival::Observation.new(epochs: 4, event: true, persistence: persistence(true)),
                          Charts::Survival::Observation.new(epochs: 5, event: true),
                          Charts::Survival::Observation.new(epochs: 6, event: false)]
@@ -83,7 +84,7 @@ RSpec.describe Charts::Survival do
       end
 
       it "counts the emergences the world stayed in against the ones it left" do
-        expect(arm).to have_attributes(summarised: 2, persisted: 1, relapsed: 1)
+        expect(arm).to have_attributes(summarised: 3, persisted: 2, relapsed: 1)
       end
 
       context "with an arm nothing has summarised" do
