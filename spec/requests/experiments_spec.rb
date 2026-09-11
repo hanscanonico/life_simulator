@@ -217,6 +217,48 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with a corpus pass over the sweep" do
+      let(:run) do
+        create(:run, experiment: experiment, seed: 7, status: "finished",
+                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+      end
+
+      before do
+        create(:rescore, run: run, epoch: 100, top_k: 16, replicator_count: 0)
+        create(:rescore, run: run, epoch: 100, top_k: 64, replicator_count: 3)
+      end
+
+      it "reports the replicator census at each top_k" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Replicator census vs", "Newly positive runs")
+        expect(response.body).to include("Download rescores (CSV)", rescores_experiment_path(experiment))
+      end
+
+      it "streams the readings as CSV" do
+        get rescores_experiment_path(experiment)
+
+        lines = response.body.lines.map(&:chomp)
+        expect(response.media_type).to eq("text/csv")
+        expect(response.headers["Content-Disposition"]).to include("attachment", "radius-rescores.csv")
+        expect(lines.first).to eq(
+          "run_id,seed,arm,epoch,top_k,replicator_count,top_share,distinct_tapes,compress_ratio,entropy_bits"
+        )
+        expect(lines.last).to eq("#{run.id},7,radius 2,100,64,3,0.5,12,0.25,3.5")
+      end
+    end
+
+    context "with a sweep no corpus pass has read" do
+      it "shows no replicator census section" do
+        create(:run, experiment: experiment, status: "finished",
+                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+        get experiment_path(experiment)
+
+        expect(response.body).not_to include("Replicator census vs", "Download rescores (CSV)")
+      end
+    end
+
     context "with a sweep nothing has been sampled from" do
       it "shows no transition report" do
         create(:run, experiment: experiment, status: "finished",
