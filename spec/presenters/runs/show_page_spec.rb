@@ -151,6 +151,26 @@ RSpec.describe Runs::ShowPage do
         expect(page.epochs_per_second).to be_nil
       end
     end
+
+    context "with samples just under a minute apart" do
+      it "refuses a window shorter than the floor it measures against" do
+        recorded_at = Time.current
+        create(:sample, run: run, epoch: 100, created_at: recorded_at - 59.5.seconds)
+        create(:sample, run: run, epoch: 900, created_at: recorded_at)
+
+        expect(page.epochs_per_second).to be_nil
+      end
+    end
+
+    context "with samples a minute apart" do
+      it "measures the rate the minute shows" do
+        recorded_at = Time.current
+        create(:sample, run: run, epoch: 100, created_at: recorded_at - 60.seconds)
+        create(:sample, run: run, epoch: 700, created_at: recorded_at)
+
+        expect(page.epochs_per_second).to eq(10.0)
+      end
+    end
   end
 
   describe "#eta" do

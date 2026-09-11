@@ -72,10 +72,10 @@ module Lab
     # the status counts still call it running, so without this it vanishes from the page.
     # `Runs::ClaimService` releases it the next time a runner asks for work.
     def stale_heartbeat_runs
-      @stale_heartbeat_runs ||= stale_heartbeat_scope.order(:heartbeat_at).limit(STALLED_LIMIT).to_a
+      @stale_heartbeat_runs ||= Run.stale.order(:heartbeat_at).limit(STALLED_LIMIT).to_a
     end
 
-    def stale_heartbeat_count = @stale_heartbeat_count ||= stale_heartbeat_scope.count
+    def stale_heartbeat_count = @stale_heartbeat_count ||= Run.stale.count
 
     def live_run_count = counts_by_status.values_at("claimed", "running").sum
 
@@ -91,10 +91,6 @@ module Lab
     end
 
     def flagged(run, reason, since) = Flagged.new(run: run, reason: reason, since: since)
-
-    def stale_heartbeat_scope
-      Run.where(status: %w[claimed running]).where(heartbeat_at: ...Run::STALE_AFTER.ago)
-    end
 
     def status_counts = @status_counts ||= Run.group(:status).count
 
