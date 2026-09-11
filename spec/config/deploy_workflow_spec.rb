@@ -15,9 +15,9 @@ RSpec.describe ".github/workflows/ci.yml" do
   end
 
   it "sweeps the stack back up whatever the deploy did" do
-    sweep = deploy["steps"].find { |step| step["run"].to_s.include?("deploy/ensure_up") }
-
-    expect(sweep).to include("if" => "always()")
+    expect(deploy["steps"]).to include(
+      a_hash_including("if" => "always()", "run" => a_string_including("deploy/ensure_up"))
+    )
   end
 
   it "ships the sweep as an executable script" do

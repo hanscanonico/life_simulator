@@ -11,8 +11,11 @@ cd "$(dirname "$0")/.."
 down=$(not_running)
 if [ -n "$down" ]; then
   sed 's/^/Not running: /' <<<"$down"
+  # --no-build: app and runner declare a `build:`, which plain `up` would run for
+  # a missing image. One service that refuses to start must not keep the others
+  # down either, so the sweep goes on and wait_healthy below is the verdict.
   while read -r line; do
-    $compose up -d --no-recreate "${line%%:*}"
+    $compose up -d --no-recreate --no-build "${line%%:*}" || true
   done <<<"$down"
 fi
 
