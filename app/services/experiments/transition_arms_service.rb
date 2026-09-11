@@ -21,8 +21,8 @@ module Experiments
     COLUMNS = %w[arm n flagged replicators both either_but_not_both].freeze
 
     # `index_samples_on_run_id_replicated` carries exactly the rows this predicate passes,
-    # and has to keep matching it. Numbers sort above strings in jsonb, so a non-numeric
-    # count never passes the comparison.
+    # and has to keep matching it. Strings and nulls sort below numbers in jsonb, so a
+    # count stored as a string, or missing, never passes the comparison.
     REPLICATED = "values -> 'replicator_count' > '0'::jsonb"
 
     Arm = Data.define(:label, :runs, :flagged, :replicated, :both) do
