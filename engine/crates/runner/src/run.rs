@@ -281,7 +281,7 @@ mod tests {
     fn a_resumed_world_does_not_force_a_second_transition_snapshot() {
         let params = settling_params();
         let mut world = World::new(&params, 3).unwrap();
-        for _ in 0..7 {
+        for _ in 0..6 {
             world.metrics();
             world.step();
         }
@@ -291,7 +291,11 @@ mod tests {
         let mut sink = RecordingSink::default();
         execute_world(restored, 8, &mut sink, &Progress::default()).unwrap();
 
-        assert_eq!(sink.snapshots, vec![8]);
+        assert_eq!(
+            sink.snapshots,
+            vec![8],
+            "the resumed sample at epoch 6 carries a transition already snapshotted"
+        );
     }
 
     #[test]
