@@ -32,6 +32,31 @@ RSpec.describe Home::ShowPage do
     expect(page.worlds.fetch("life")["mutation_rate"]).to eq(0.0)
   end
 
+  describe "#latest_findings" do
+    it "takes the newest write-ups, newest first" do
+      expect(page.latest_findings.map { |row| row.finding.slug })
+        .to eq(Findings::Registry.all.first(described_class::LATEST_FINDINGS).map(&:slug))
+    end
+
+    context "with the sweep in the lab" do
+      it "hands the row its experiment" do
+        experiment = create(:experiment, slug: Findings::Registry.all.first.experiment_slug)
+
+        expect(page.latest_findings.first.experiment).to eq(experiment)
+      end
+    end
+
+    context "with the sweep missing" do
+      it "keeps the row without an experiment" do
+        expect(page.latest_findings.map(&:experiment?)).to all(be(false))
+      end
+    end
+  end
+
+  it "carries the programme status strip" do
+    expect(page.programme_status).to be_a(Programme::Status)
+  end
+
   it "points at the wasm build" do
     expect(page.wasm_url).to match(%r{/assets/life_engine_bg.*\.wasm})
   end

@@ -26,6 +26,8 @@ module Findings
 
     def any? = rows.present?
 
+    def programme_status = @programme_status ||= Programme::Status.build
+
     private
 
     def findings = @findings ||= Registry.all

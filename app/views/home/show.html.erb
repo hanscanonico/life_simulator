@@ -63,6 +63,8 @@
     </dl>
   </div>
 
+  <%= render "shared/programme_status", status: @show.programme_status %>
+
   <div class="viewer-copy">
     <p>
       Every cell above holds a tiny program — 64 random bytes. Each epoch, a cell meets one of
@@ -84,4 +86,23 @@
       seed by seed, is written up in <%= link_to "the findings", findings_path %>.
     </p>
   </div>
+
+  <section>
+    <h2>What the sweeps have found</h2>
+    <ul class="finding-list">
+      <% @show.latest_findings.each do |row| %>
+        <li class="finding-card">
+          <p class="finding-meta text-sm text-muted">
+            <span class="badge <%= row.finding.badge_class %>" title="<%= row.finding.status_meaning %>"><%= row.finding.status_label %></span>
+            <% if row.experiment? %>
+              <%= link_to row.experiment.name, experiment_path(row.experiment) %>
+            <% end %>
+          </p>
+          <h3 class="finding-title"><%= link_to row.finding.title, finding_path(row.finding) %></h3>
+          <p class="truncate"><%= row.finding.summary %></p>
+        </li>
+      <% end %>
+    </ul>
+    <p><%= link_to "Every finding, in full", findings_path %></p>
+  </section>
 </div>

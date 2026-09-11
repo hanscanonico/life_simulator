@@ -1,0 +1,7 @@
+<dl class="facts">
+  <dt>Sweeps</dt><dd><%= number_with_delimiter status.sweeps_queued %></dd>
+  <dt>Runs finished</dt><dd><%= number_with_delimiter status.runs_finished %></dd>
+  <dt>Epochs simulated</dt><dd><%= number_with_delimiter status.epochs_simulated %></dd>
+  <dt>Seeds that transitioned</dt><dd><%= number_with_delimiter status.seeds_transitioned %></dd>
+  <dt>Largest replicator census</dt><dd><%= count_value status.peak_replicator_count %></dd>
+</dl>
