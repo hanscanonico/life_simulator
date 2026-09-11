@@ -88,6 +88,17 @@ RSpec.describe "Findings", type: :request do
                       "18 080 (<a href=\"#{run_path(95)}\">run 95</a>, seed 5)")
       end
 
+      it "separates the compress_ratio floor from emergence" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("climbs arm by arm from ≈ 0.92 at",
+                      "to ≈ 0.99 at",
+                      "without a single reversal",
+                      "those three arms sit between 0.91 and 0.93, with the no-mutation arm the highest",
+                      "it has nothing to do with emergence")
+      end
+
       it "keeps the detector and the control as caveats" do
         get finding_path(finding)
 
