@@ -14,16 +14,19 @@ module Experiments
     include Callable
 
     THRESHOLD = Lab::Schema.transition.fetch("threshold")
+    # Chosen as 10 samples on either side of the crossing; re-measure it over the corpus if
+    # the sampling interval or the detector's hold changes.
+    CONFIRM_WINDOW = 10
 
     RUN_COLUMNS = %w[run_id seed].freeze
     SAMPLE_COLUMNS = %w[
-      transition_epoch collapse_epoch min_entropy_bits min_entropy_epoch peak_replicator_count
-      peak_replicator_epoch first_replicator_epoch peak_copy_rate peak_copy_rate_epoch
-      final_compress_ratio final_distinct_tapes final_top_share
+      transition_epoch collapse_epoch confirmed_epoch confirmed_by min_entropy_bits
+      min_entropy_epoch peak_replicator_count peak_replicator_epoch first_replicator_epoch
+      peak_copy_rate peak_copy_rate_epoch final_compress_ratio final_distinct_tapes final_top_share
     ].freeze
 
     Row = Data.define(:run_id, :seed, :params, :transition_epoch, :collapse_epoch,
-                      :min_entropy_bits, :min_entropy_epoch, :peak_replicator_count,
+                      :confirmed_epoch, :confirmed_by, :min_entropy_bits, :min_entropy_epoch, :peak_replicator_count,
                       :peak_replicator_epoch, :first_replicator_epoch, :peak_copy_rate,
                       :peak_copy_rate_epoch, :final_compress_ratio, :final_distinct_tapes,
                       :final_top_share) do
@@ -112,7 +115,30 @@ module Experiments
 
       { transition_epoch: run.transition_epoch,
         collapse_epoch: samples.find { |(_, values)| below_threshold?(values) }&.first,
+        **confirmation_of(run.transition_epoch, samples),
         min_entropy_bits: value_of(entropy, "entropy_bits"), min_entropy_epoch: entropy&.first }
+    end
+
+    # The crossing reads `compress_ratio` and nothing else; a confirmed epoch is one the
+    # census or the copy rate backs within CONFIRM_WINDOW samples of it, so that a flagged
+    # run with no replicator anywhere near the crossing stays unconfirmed.
+    def confirmation_of(transition_epoch, samples)
+      witness = transition_epoch && confirming_observable(window_around(transition_epoch, samples))
+
+      { confirmed_epoch: witness && transition_epoch, confirmed_by: witness }
+    end
+
+    def window_around(epoch, samples)
+      index = samples.index { |(sample_epoch, _)| sample_epoch >= epoch }
+      return [] if index.nil?
+
+      samples[[index - CONFIRM_WINDOW, 0].max..(index + CONFIRM_WINDOW)]
+    end
+
+    def confirming_observable(window)
+      return "census" if window.any? { |(_, values)| values["replicator_count"].to_f.positive? }
+
+      "copy_rate" if window.any? { |(_, values)| values["copy_rate"].to_f.positive? }
     end
 
     def census_of(samples)
