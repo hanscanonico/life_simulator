@@ -62,6 +62,10 @@ RSpec.describe ApplicationHelper, type: :helper do
     it "addresses the site icon absolutely" do
       expect(helper.og_image_url).to eq("http://test.host/icon.png")
     end
+
+    it "names a file the site actually serves" do
+      expect(Rails.public_path.join("icon.png")).to exist
+    end
   end
 
   describe "#percent_value" do
