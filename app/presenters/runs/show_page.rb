@@ -36,11 +36,7 @@ module Runs
       end
     end
 
-    # The write-ups that rest on this run's sweep, read from the registry rather than
-    # queried: a finding is content in the repo, not a row.
-    def findings
-      @findings ||= Findings::Registry.all.select { |finding| finding.experiment_slug == run.experiment.slug }
-    end
+    def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)
 
     def charts_empty? = charts.all?(&:empty?)
 

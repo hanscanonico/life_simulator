@@ -113,7 +113,32 @@ RSpec.describe Findings::Registry do
                                        "stays open")
   end
 
+  it "gathers the findings resting on one sweep" do
+    findings = described_class.for_experiment("radius")
+
+    expect(findings.map(&:slug)).to eq(["radius-locality"])
+  end
+
+  it "gives a twice-written-up sweep its newest finding first" do
+    stub_const("Findings::Registry::ALL", [
+      finding("older", "radius", Date.new(2026, 9, 1)),
+      finding("elsewhere", "world-size", Date.new(2026, 9, 20)),
+      finding("newer", "radius", Date.new(2026, 9, 10))
+    ])
+
+    expect(described_class.for_experiment("radius").map(&:slug)).to eq(%w[newer older])
+  end
+
+  it "gathers nothing for a sweep nothing was written up from" do
+    expect(described_class.for_experiment("unwritten")).to be_empty
+  end
+
   it "returns nothing for an unknown slug" do
     expect(described_class.find("nope")).to be_nil
+  end
+
+  def finding(slug, experiment_slug, date)
+    Findings::Finding.new(slug: slug, title: slug, date: date, experiment_slug: experiment_slug,
+                          status: :open, summary: slug, body_partial: "findings/bodies/mutation_rate_window")
   end
 end

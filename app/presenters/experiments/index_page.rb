@@ -17,7 +17,7 @@ module Experiments
       @rows ||= experiments.map do |experiment|
         Row.new(experiment: experiment, runs_done: finished_counts[experiment.id].to_i,
                 transitioned: transitioned_counts[experiment.id].to_i,
-                findings: findings_by_slug.fetch(experiment.slug, []))
+                findings: Findings::Registry.for_experiment(experiment.slug))
       end
     end
 
@@ -36,10 +36,6 @@ module Experiments
     end
 
     private
-
-    # The write-ups that rest on each sweep, read from the registry rather than queried: a
-    # finding is content in the repo, not a row.
-    def findings_by_slug = @findings_by_slug ||= Findings::Registry.all.group_by(&:experiment_slug)
 
     def queued_slugs = @queued_slugs ||= experiments.to_set(&:slug)
 
