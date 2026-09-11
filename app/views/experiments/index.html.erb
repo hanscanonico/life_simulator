@@ -2,8 +2,10 @@
 
 <h1>Experiments</h1>
 <p class="text-muted">
-  Every sweep of the research programme, with the share of finished runs in which a
-  self-replicator emerged.
+  Every sweep of the research programme, with the share of finished runs the transition
+  detector flagged: a <span class="mono">compress_ratio</span> collapse that held. A
+  flagged run is not by itself a replicator census — see
+  <%= link_to "the findings", findings_path %>.
 </p>
 
 <% if @index.any? %>

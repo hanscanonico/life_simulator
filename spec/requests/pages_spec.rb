@@ -82,6 +82,25 @@ RSpec.describe "Pages", type: :request do
       end
     end
 
+    it "keeps the transition as a signal instead of calling it emergence" do
+      get how_it_works_path
+
+      expect(response.body.squish)
+        .to include("primary dependent variable of every sweep",
+                    "the signal we sweep on, not a proof of self-replication",
+                    "the replicator census can still read zero")
+      expect(response.body).not_to match(/self-replicator emerged/)
+    end
+
+    it "defines the words the site uses precisely" do
+      get how_it_works_path
+
+      terms = response.parsed_body.css("#glossary ~ dl dt").map(&:text)
+
+      expect(response.body).to include(%(id="glossary"))
+      expect(terms).to include("transition", "flagged", "replicator", "census", "emergence", "arm")
+    end
+
     it "lists the ten instructions" do
       get how_it_works_path
 

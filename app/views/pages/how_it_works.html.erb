@@ -112,7 +112,9 @@
       Recorded once per run: the first sampled epoch at which
       <span class="mono">compress_ratio</span> drops below 0.6 and stays below it for the
       next 3 samples. Null until it happens. It is the primary dependent variable of every
-      sweep — the moment we call emergence.
+      sweep. A flagged run is the signal we sweep on, not a proof of self-replication: the
+      replicator census can still read zero, and
+      <%= link_to "the findings", findings_path %> say where the two disagree.
     </dd>
   </dl>
   <p>
@@ -123,6 +125,36 @@
     of each sample, 16 by default, and
     <span class="mono">replicator_count</span> counts the cells holding a tape that passed.
   </p>
+
+  <h2 id="glossary">Words this site uses precisely</h2>
+  <dl class="facts facts-prose">
+    <dt>transition</dt>
+    <dd>
+      The detector's event: <span class="mono">compress_ratio</span> under 0.6, held for 3
+      samples. It is a property of the compression series, nothing more.
+    </dd>
+
+    <dt>flagged</dt>
+    <dd>Said of a run whose transition the detector recorded.</dd>
+
+    <dt>replicator</dt>
+    <dd>A tape that passes the <span class="mono">T ++ R</span> test above.</dd>
+
+    <dt>census</dt>
+    <dd>
+      <span class="mono">replicator_count</span>: how many cells hold a passing tape at one
+      sample.
+    </dd>
+
+    <dt>emergence</dt>
+    <dd>
+      A transition <em>and</em> a non-zero census in the same run. That is this site's
+      reading, stated here because the design of the instrument does not define the word.
+    </dd>
+
+    <dt>arm</dt>
+    <dd>One grid value of a sweep, with its seeds.</dd>
+  </dl>
 
   <h2>The programme</h2>
   <p>

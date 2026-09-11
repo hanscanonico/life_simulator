@@ -19,6 +19,13 @@ RSpec.describe "Findings", type: :request do
       expect(response.body.squish).to include(*Findings::Finding::STATUS_MEANINGS.values)
     end
 
+    it "points at the glossary for the words the write-ups use" do
+      get findings_path
+
+      expect(response.body.squish).to include("the glossary")
+      expect(response.body).to include(how_it_works_path(anchor: "glossary"))
+    end
+
     context "with the sweep in the lab" do
       it "links to the experiment" do
         create(:experiment, name: "Mutation rate", slug: "mutation-rate")
@@ -36,6 +43,13 @@ RSpec.describe "Findings", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Hypothesis", "Method", "Result", "has not been")
+    end
+
+    it "points its evidence at the glossary" do
+      get finding_path(finding)
+
+      expect(response.body.squish).to include("used here in the senses set out in")
+      expect(response.body).to include(how_it_works_path(anchor: "glossary"))
     end
 
     context "with a sweep that has no finished run" do
@@ -78,14 +92,31 @@ RSpec.describe "Findings", type: :request do
         expect(response.body).to include(samples_run_path(run, format: :csv))
       end
 
+      it "explains what each table rows and what a dash means" do
+        experiment = create(:experiment, slug: "mutation-rate", epochs: 20_000,
+                                         param_grid: { "mutation_rate" => [0.0, 2.0**-16, 2.0**-8] })
+        create(:run, experiment: experiment, seed: 7, status: "finished", transition_epoch: 5_030,
+                     params: Lab::Schema.run_defaults.merge("mutation_rate" => 2.0**-8))
+
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("One row per finished run the detector flagged or that counted at least one replicator",
+                      %("—" means the run never had a value),
+                      "Every run of the sweep, flagged or not, with its seed — the denominator of the rate above")
+      end
+
       context "with nothing flagged yet" do
-        it "says so" do
+        it "says so, and still explains the table" do
           create(:experiment, slug: "mutation-rate", epochs: 20_000,
                               param_grid: { "mutation_rate" => [0.0, 2.0**-16, 2.0**-8] })
 
           get finding_path(finding)
 
-          expect(response.body.squish).to include("No finished run of this sweep has transitioned")
+          expect(response.body.squish)
+            .to include("No finished run of this sweep has transitioned",
+                        "One row per finished run the detector flagged",
+                        "the denominator of the rate above")
         end
       end
     end
