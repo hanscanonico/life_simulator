@@ -30,6 +30,16 @@ pub struct ClaimedRun {
     pub epochs_done: u64,
 }
 
+/// A world the lab has stored, with everything needed to read it again: `runner rescore`
+/// decodes `blob` against `params` and measures it at the run's own seed. The epoch is
+/// the blob's own header's, so it is not carried twice.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredWorld {
+    pub params: Params,
+    pub seed: u64,
+    pub blob: Vec<u8>,
+}
+
 pub struct LabClient {
     agent: ureq::Agent,
     base: String,
@@ -139,7 +149,7 @@ impl LabClient {
     /// the run has not snapshotted yet.
     pub fn latest_snapshot(&self, run: i64, runner_id: &str) -> Result<Option<(u64, Vec<u8>)>> {
         let path = format!("/api/runs/{run}/snapshots/latest");
-        let (status, body) = self.get(&path, runner_id)?;
+        let (status, body) = self.get(&path, &[("runner_id", runner_id.to_string())])?;
         if status == 204 {
             return Ok(None);
         }
@@ -152,6 +162,30 @@ impl LabClient {
             number(&snapshot, "epoch")?,
             BASE64.decode(blob).context("decoding the snapshot blob")?,
         )))
+    }
+
+    /// A stored world of `run`, at `epoch` or at the newest snapshot when it is `None`.
+    /// `None` when the run stored no world to read.
+    pub fn world(&self, run: i64, epoch: Option<u64>) -> Result<Option<StoredWorld>> {
+        let path = format!("/api/runs/{run}/world");
+        let query: Vec<(&str, String)> = epoch
+            .map(|epoch| vec![("epoch", epoch.to_string())])
+            .unwrap_or_default();
+        let (status, body) = self.get(&path, &query)?;
+        if status == 204 {
+            return Ok(None);
+        }
+        let body = accepted(status, body, &format!("GET {path}"))?;
+        let world: Value = serde_json::from_str(&body).context("parsing the stored world")?;
+        let blob = world["blob"]
+            .as_str()
+            .ok_or_else(|| anyhow!("the stored world has no blob"))?;
+        Ok(Some(StoredWorld {
+            params: serde_json::from_value(world["params"].clone())
+                .context("parsing the run params")?,
+            seed: number(&world, "seed")?,
+            blob: BASE64.decode(blob).context("decoding the stored world")?,
+        }))
     }
 
     fn member(&self, run: i64, runner_id: &str, action: &str, mut body: Value) -> Result<()> {
@@ -175,15 +209,14 @@ impl LabClient {
         })
     }
 
-    fn get(&self, path: &str, runner_id: &str) -> Result<(u16, String)> {
+    fn get(&self, path: &str, query: &[(&str, String)]) -> Result<(u16, String)> {
         let url = format!("{}{path}", self.base);
         self.with_retries(&url, || {
-            let mut response = self
-                .agent
-                .get(&url)
-                .header("Authorization", self.bearer())
-                .query("runner_id", runner_id)
-                .call()?;
+            let mut request = self.agent.get(&url).header("Authorization", self.bearer());
+            for (key, value) in query {
+                request = request.query(*key, value);
+            }
+            let mut response = request.call()?;
             let status = response.status().as_u16();
             Ok((status, read_body(&mut response, &url)?))
         })
@@ -344,6 +377,28 @@ mod tests {
         assert!(BASE64.encode(&raw).len() > 10 * 1024 * 1024);
         assert_eq!(epoch, 60);
         assert_eq!(blob, raw);
+    }
+
+    #[test]
+    fn a_stored_world_comes_back_with_the_params_that_describe_it() {
+        let lab = MockLab::start();
+        lab.set_worlds(vec![(100, b"old".to_vec()), (300, b"newest".to_vec())]);
+        let client = client(&lab);
+
+        let newest = client.world(1, None).unwrap().unwrap();
+        let asked = client.world(1, Some(100)).unwrap().unwrap();
+
+        assert_eq!(newest.blob, b"newest".to_vec());
+        assert_eq!(newest.params, MockLab::params());
+        assert_eq!(newest.seed, 7);
+        assert_eq!(asked.blob, b"old".to_vec());
+    }
+
+    #[test]
+    fn a_run_with_no_stored_world_rescores_nothing() {
+        let lab = MockLab::start();
+
+        assert_eq!(client(&lab).world(1, None).unwrap(), None);
     }
 
     #[test]

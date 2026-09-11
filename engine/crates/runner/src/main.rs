@@ -7,6 +7,7 @@ mod http_sink;
 mod lab;
 #[cfg(test)]
 mod mock_lab;
+mod rescore;
 mod run;
 mod sink;
 
@@ -59,6 +60,39 @@ enum Command {
         #[arg(long, env = "RUNNER_ID")]
         runner_id: Option<String>,
     },
+    /// Re-read a stored world at several `top_k` settings, without running anything.
+    Rescore {
+        /// Base URL of the app, e.g. `http://app:8080`.
+        #[arg(long, env = "RUNNER_API")]
+        api: Option<String>,
+        /// The shared secret the API expects as a bearer token.
+        #[arg(long, env = "RUNNER_TOKEN")]
+        token: Option<String>,
+        /// The run whose stored world to read.
+        #[arg(long, conflicts_with = "file")]
+        run: Option<i64>,
+        /// Which snapshot of the run; the newest one when left out.
+        #[arg(long, conflicts_with = "latest")]
+        epoch: Option<u64>,
+        /// Read the newest snapshot of the run — what happens anyway without `--epoch`.
+        #[arg(long)]
+        latest: bool,
+        /// A snapshot blob on disk instead of the lab API; needs `--params`.
+        #[arg(long, requires = "params")]
+        file: Option<PathBuf>,
+        /// Params JSON file describing `--file`, or `-` for stdin.
+        #[arg(long)]
+        params: Option<String>,
+        /// The seed `--file` was run with; the replicator test draws from it.
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
+        /// The `top_k` settings to score the world at, comma separated.
+        #[arg(long, value_delimiter = ',', default_value = "16,64,256")]
+        top_k: Vec<u32>,
+        /// Print the report as JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
     /// Report epochs per second for a short run.
     Bench {
         #[arg(long)]
@@ -101,6 +135,40 @@ fn main() -> Result<()> {
             let parallelism = parallelism.unwrap_or_else(lab::default_parallelism);
             let runner_id = runner_id.unwrap_or_else(default_runner_id);
             Lab::new(&api, &token, &runner_id, parallelism).work()?;
+        }
+        Command::Rescore {
+            api,
+            token,
+            run,
+            epoch,
+            latest,
+            file,
+            params,
+            seed,
+            top_k,
+            json,
+        } => {
+            let epoch = if latest { None } else { epoch };
+            let source = match (run, file) {
+                (Some(run), None) => rescore::Source::Lab {
+                    api: api.context("rescoring a run needs --api")?,
+                    token: token.context("rescoring a run needs --token")?,
+                    run,
+                    epoch,
+                },
+                (None, Some(path)) => rescore::Source::File {
+                    path,
+                    params: read_params(&params.context("--file needs --params")?)?,
+                    seed,
+                },
+                _ => anyhow::bail!("rescore reads either --run <id> or --file <path>"),
+            };
+            let report = rescore::execute(rescore::Options { source, top_k })?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                report.print();
+            }
         }
         Command::Bench {
             params,

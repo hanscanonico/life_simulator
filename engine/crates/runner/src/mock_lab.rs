@@ -19,6 +19,7 @@ struct State {
     queue_empty: bool,
     fail_next: u32,
     latest_snapshot: Option<(u64, Vec<u8>)>,
+    worlds: Vec<(u64, Vec<u8>)>,
 }
 
 pub struct MockLab {
@@ -75,6 +76,11 @@ impl MockLab {
         self.state.lock().unwrap().latest_snapshot = Some((epoch, blob));
     }
 
+    /// The worlds `GET /api/runs/1/world` serves, newest last.
+    pub fn set_worlds(&self, worlds: Vec<(u64, Vec<u8>)>) {
+        self.state.lock().unwrap().worlds = worlds;
+    }
+
     /// Answers the next `times` requests with a 500, as a flaky app would.
     pub fn fail_next(&self, times: u32) {
         self.state.lock().unwrap().fail_next = times;
@@ -119,6 +125,24 @@ impl Drop for MockLab {
     }
 }
 
+/// The world of the `epoch` query, or the newest one when the query names none.
+fn world(url: &str, worlds: &[(u64, Vec<u8>)]) -> Option<Value> {
+    let asked = url
+        .split_once("epoch=")
+        .map(|(_, rest)| rest.split('&').next().unwrap_or_default().to_string());
+    let (epoch, blob) = match asked {
+        Some(epoch) => worlds.iter().find(|(at, _)| at.to_string() == epoch)?,
+        None => worlds.last()?,
+    };
+    Some(json!({
+        "id": 1,
+        "params": MockLab::params(),
+        "seed": 7,
+        "epoch": epoch,
+        "blob": BASE64.encode(blob),
+    }))
+}
+
 fn answer(mut request: Request, state: &Arc<Mutex<State>>) {
     let method = request.method().clone();
     let url = request.url().to_string();
@@ -152,6 +176,7 @@ fn answer(mut request: Request, state: &Arc<Mutex<State>>) {
             "epochs": EPOCHS,
             "epochs_done": 0,
         })),
+        (Method::Get, "/api/runs/1/world") => world(&url, &state.worlds),
         (Method::Get, "/api/runs/1/snapshots/latest") => state
             .latest_snapshot
             .as_ref()

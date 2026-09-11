@@ -33,6 +33,19 @@ removed; quote the whole task name in zsh, brackets and commas included.
 `transition_epoch` from the stored samples of terminal runs, for runs measured before the
 tracker survived a snapshot resume. `lab:db_size` and `lab:prune_snapshots` are the
 maintenance tasks.
+`runner rescore` re-reads a run's stored world at other `top_k` settings, for the question
+"did the replicator test miss the lineage, or is there none?" — it measures only and
+changes no run, no param and no default (DESIGN §1.2 locks `top_k` at 16; moving it needs a
+`docs/design_record.md` entry). It runs in the runner container, which already holds the
+token and reaches the app:
+`docker compose -f deploy/docker-compose.yml exec -T runner runner rescore --api http://app:8080 --run 45 --latest --top-k 16,64,256`
+(`--epoch <n>` for an earlier snapshot, `--json` for a machine-readable report). It prints
+one row per setting — `replicator_count`, `top_share`, `distinct_tapes`, `compress_ratio`,
+`entropy_bits` — and then the five most populous tapes with their cell counts and whether
+each passes the replicator test. Report the table as it stands, per run id; a count that
+only appears at a larger `top_k` is a proposal for a design-record entry, not a change to
+make.
+
 `https://simulator-life.com/lab/status` shows the queue by status
 (`pending`, `claimed`, `running`, `finished`, `failed`), live runners and epochs per hour.
 
