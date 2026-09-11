@@ -10,7 +10,13 @@ RSpec.describe "Findings", type: :request do
       get findings_path
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include(finding.title, "refuted")
+      expect(response.body).to include(finding.title, "partial")
+    end
+
+    it "legends what each status means" do
+      get findings_path
+
+      expect(response.body.squish).to include(*Findings::Finding::STATUS_MEANINGS.values)
     end
 
     context "with the sweep in the lab" do
@@ -130,6 +136,27 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.body.squish).to include("Sampling is sparse for a world this size",
                                                 "25 full-world snapshots per run")
+      end
+    end
+
+    context "with the world-size stub" do
+      it "states the two rival readings and holds off on a claim" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.squish).to include("lottery", "per-cell rate", "no claim is made yet")
+      end
+
+      it "reads its grid from the sweep the lab would build" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish).to include("32×32, 64×64, 128×128 and 256×256")
+      end
+
+      it "names the control and the budget as the reasons a flat sweep is unreadable" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish).to include(finding_path("bff-control"), "20 000-epoch budget is short")
       end
     end
 

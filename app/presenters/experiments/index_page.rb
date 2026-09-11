@@ -32,16 +32,21 @@ module Experiments
     # Experiment yet: the plan is public even before a run exists.
     def planned
       @planned ||= Lab::SWEEPS.filter_map do |key, definition|
-        slug = key.tr("_", "-")
-        next if queued_slugs.include?(slug)
+        slug = Lab.slug_for(key)
+        name = definition.fetch(:name)
+        next if queued_slugs.include?(slug) || queued_names.include?(name.downcase)
 
-        Planned.new(slug: slug, name: definition.fetch(:name), description: definition.fetch(:description))
+        Planned.new(slug: slug, name: name, description: definition.fetch(:description))
       end
     end
 
     private
 
     def queued_slugs = @queued_slugs ||= experiments.to_set(&:slug)
+
+    # A sweep built by hand can carry any slug, so its name is the second way to recognise
+    # it: the plan must not advertise a sweep the lab is already running.
+    def queued_names = @queued_names ||= experiments.to_set { |experiment| experiment.name.downcase }
 
     def experiments = @experiments ||= Experiment.order(:name).to_a
 

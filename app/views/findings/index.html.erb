@@ -7,12 +7,19 @@
     every run keeps its seed, so any of them can be re-run.
   </p>
 
+  <dl class="facts text-sm">
+    <% Findings::Finding::STATUS_MEANINGS.each do |status, meaning| %>
+      <dt><span class="badge <%= Findings::Finding::BADGE_CLASSES.fetch(status) %>"><%= status %></span></dt>
+      <dd class="text-muted"><%= meaning %></dd>
+    <% end %>
+  </dl>
+
   <% if @index.any? %>
     <ul class="finding-list">
       <% @index.rows.each do |row| %>
         <li class="finding-card">
           <p class="finding-meta text-sm text-muted">
-            <span class="badge <%= row.finding.badge_class %>"><%= row.finding.status_label %></span>
+            <span class="badge <%= row.finding.badge_class %>" title="<%= row.finding.status_meaning %>"><%= row.finding.status_label %></span>
             <time datetime="<%= row.finding.date.iso8601 %>"><%= l row.finding.date, format: :long %></time>
           </p>
           <h2 class="finding-title"><%= link_to row.finding.title, finding_path(row.finding) %></h2>

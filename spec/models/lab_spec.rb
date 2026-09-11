@@ -3,6 +3,16 @@
 require "rails_helper"
 
 RSpec.describe Lab do
+  describe ".slug_for" do
+    it "spells a sweep key as its experiment slug" do
+      expect(described_class.slug_for("bff_control")).to eq("bff-control")
+    end
+
+    it "leaves a single-word key alone" do
+      expect(described_class.slug_for("radius")).to eq("radius")
+    end
+  end
+
   describe "SWEEPS" do
     Lab::SWEEPS.each do |slug, definition|
       context "with the #{slug} sweep" do
