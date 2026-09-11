@@ -23,6 +23,14 @@ module ApplicationHelper
 
   def status_badge_class(status) = STATUS_BADGE_CLASSES.fetch(status.to_s, "")
 
+  # A paginated or filtered list is the same document as its bare address, so the head
+  # points every variant back at the query-free URL.
+  def canonical_url = request.original_url.split("?").first
+
+  # The icon is a public/ file, not a pipeline asset, so image_url would raise
+  # Propshaft::MissingAssetError rather than resolve it.
+  def og_image_url = URI.join(root_url, "icon.png").to_s
+
   def param_value(value)
     return "—" if value.nil?
 

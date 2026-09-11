@@ -41,6 +41,33 @@ RSpec.describe ApplicationHelper, type: :helper do
     end
   end
 
+  describe "#canonical_url" do
+    it "is the request's own address" do
+      helper.request.env["PATH_INFO"] = "/experiments"
+
+      expect(helper.canonical_url).to eq("http://test.host/experiments")
+    end
+
+    context "with a query string" do
+      it "drops it" do
+        helper.request.env["QUERY_STRING"] = "page=2"
+        helper.request.env["PATH_INFO"] = "/experiments"
+
+        expect(helper.canonical_url).to eq("http://test.host/experiments")
+      end
+    end
+  end
+
+  describe "#og_image_url" do
+    it "addresses the site icon absolutely" do
+      expect(helper.og_image_url).to eq("http://test.host/icon.png")
+    end
+
+    it "names a file the site actually serves" do
+      expect(Rails.public_path.join("icon.png")).to exist
+    end
+  end
+
   describe "#percent_value" do
     it "reads a fraction as a whole percent" do
       expect(helper.percent_value(0.5)).to eq("50%")
