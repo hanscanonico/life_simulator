@@ -10,9 +10,10 @@
 //!
 //! | bench                                  | median |
 //! |----------------------------------------|--------|
-//! | bff/random_128                         | 82 ns  |
+//! | bff/random_128                         | 71 ns  |
 //! | bff/handwritten_replicator_512         | 4.9 µs |
-//! | world_step_soup/64x64                  | 3.8 ms |
+//! | world_step_soup/64x64                  | 3.6 ms |
+//! | world_step_soup/128x128                | 13 ms  |
 //! | world_metrics_soup/64x64               | 5.0 ms |
 //! | world_metrics_soup/64x64_with_snapshot | 5.0 ms |
 //! | world_step_life/512x512                | 746 µs |
@@ -29,10 +30,10 @@ fn random_bytes(seed: u64, len: usize) -> Vec<u8> {
     (0..len).map(|_| rng::byte(&mut rng)).collect()
 }
 
-fn soup_world() -> World {
+fn soup_world(side: u32) -> World {
     let params = Params {
-        width: 64,
-        height: 64,
+        width: side,
+        height: side,
         sample_every: 1,
         ..Params::default()
     };
@@ -77,17 +78,21 @@ fn bff_run(c: &mut Criterion) {
 }
 
 fn world_step_soup(c: &mut Criterion) {
-    let world = soup_world();
+    let small = soup_world(64);
+    let large = soup_world(128);
     let mut group = c.benchmark_group("world_step_soup");
     group.sample_size(20);
     group.bench_function("64x64", |b| {
-        b.iter_batched_ref(|| world.clone(), World::step, BatchSize::LargeInput)
+        b.iter_batched_ref(|| small.clone(), World::step, BatchSize::LargeInput)
+    });
+    group.bench_function("128x128", |b| {
+        b.iter_batched_ref(|| large.clone(), World::step, BatchSize::LargeInput)
     });
     group.finish();
 }
 
 fn world_metrics_soup(c: &mut Criterion) {
-    let world = soup_world();
+    let world = soup_world(64);
     let mut group = c.benchmark_group("world_metrics_soup");
     group.sample_size(20);
     group.bench_function("64x64", |b| {

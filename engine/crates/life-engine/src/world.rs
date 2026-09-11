@@ -188,7 +188,7 @@ impl World {
     fn step_soup(&mut self, rng: &mut Rng) {
         let stride = self.params.stride();
         let max_steps = self.params.max_steps;
-        let ops = self.params.op_set();
+        let ops = self.params.op_set().table();
         let counting = self.counts_copies();
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
@@ -208,7 +208,7 @@ impl World {
             if counting {
                 before.copy_from_slice(&pair);
             }
-            bff::run_with(&mut pair, max_steps, ops);
+            bff::run_with_table(&mut pair, max_steps, &ops);
             if counting {
                 interactions += 1;
                 // Two halves that arrived identical cannot show a copy: they already end

@@ -15,6 +15,7 @@ pub fn is_replicator(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> 
 /// How many of the `TRIALS` trials left `tape` in the second half.
 fn trials_passed(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> u32 {
     let len = tape.len();
+    let ops = ops.table();
     let mut buf = vec![0u8; len * 2];
     let mut passes = 0;
     for _ in 0..TRIALS {
@@ -22,7 +23,7 @@ fn trials_passed(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> u32 
         for byte in &mut buf[len..] {
             *byte = rng::byte(rng);
         }
-        bff::run_with(&mut buf, max_steps, ops);
+        bff::run_with_table(&mut buf, max_steps, &ops);
         if &buf[len..] == tape {
             passes += 1;
         }

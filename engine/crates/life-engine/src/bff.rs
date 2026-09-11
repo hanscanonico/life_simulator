@@ -68,14 +68,26 @@ impl OpSet {
             .is_some_and(|index| self.0 & (1 << index) != 0)
     }
 
-    /// A byte-indexed lookup, built once per execution so the interpreter's inner loop
-    /// pays one array read instead of a scan over `OPS`.
-    fn table(self) -> [bool; 256] {
+    /// The byte-indexed form of the set. Callers that execute many tapes under one set —
+    /// a soup epoch, the trials of one replicator test — build it once and hand it to
+    /// `run_with_table`.
+    pub fn table(self) -> OpTable {
         let mut table = [false; 256];
         for (index, op) in OPS.iter().enumerate() {
             table[*op as usize] = self.0 & (1 << index) != 0;
         }
-        table
+        OpTable(table)
+    }
+}
+
+/// A byte-indexed `OpSet`, so the interpreter's inner loop pays one array read instead of
+/// a scan over `OPS`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpTable([bool; 256]);
+
+impl OpTable {
+    fn enables(&self, byte: u8) -> bool {
+        self.0[byte as usize]
     }
 }
 
@@ -105,12 +117,16 @@ pub fn run(tape: &mut [u8], max_steps: u32) -> Outcome {
     run_with(tape, max_steps, OpSet::ALL)
 }
 
-/// Executes `tape` in place, running only the ops `enabled` names. The instruction
+/// Executes `tape` in place, running only the ops `enabled` names.
+pub fn run_with(tape: &mut [u8], max_steps: u32, enabled: OpSet) -> Outcome {
+    run_with_table(tape, max_steps, &enabled.table())
+}
+
+/// Executes `tape` in place under an already-built instruction table. The instruction
 /// pointer starts at 0 and runs forward; both heads start at 0 and wrap modulo
 /// `tape.len()`. Bracket matches are scanned at execution time, not precomputed, because
 /// the program rewrites itself as it runs.
-pub fn run_with(tape: &mut [u8], max_steps: u32, enabled: OpSet) -> Outcome {
-    let enabled = enabled.table();
+pub fn run_with_table(tape: &mut [u8], max_steps: u32, enabled: &OpTable) -> Outcome {
     let len = tape.len();
     if len == 0 {
         return Outcome {
@@ -134,11 +150,11 @@ pub fn run_with(tape: &mut [u8], max_steps: u32, enabled: OpSet) -> Outcome {
         steps += 1;
 
         match tape[ip] {
-            byte if !enabled[byte as usize] => {}
-            HEAD0_LEFT => head0 = (head0 + len - 1) % len,
-            HEAD0_RIGHT => head0 = (head0 + 1) % len,
-            HEAD1_LEFT => head1 = (head1 + len - 1) % len,
-            HEAD1_RIGHT => head1 = (head1 + 1) % len,
+            byte if !enabled.enables(byte) => {}
+            HEAD0_LEFT => head0 = step_left(head0, len),
+            HEAD0_RIGHT => head0 = step_right(head0, len),
+            HEAD1_LEFT => head1 = step_left(head1, len),
+            HEAD1_RIGHT => head1 = step_right(head1, len),
             INC => tape[head0] = tape[head0].wrapping_add(1),
             DEC => tape[head0] = tape[head0].wrapping_sub(1),
             COPY_TO_HEAD1 => tape[head1] = tape[head0],
@@ -170,6 +186,26 @@ pub fn run_with(tape: &mut [u8], max_steps: u32, enabled: OpSet) -> Outcome {
     Outcome {
         halt: Halt::EndOfTape,
         steps,
+    }
+}
+
+/// A head moves one cell and wraps around the buffer. Written as a branch rather than
+/// `% len`: `len` is a runtime value, so the modulo is a real integer division on the
+/// four hottest ops.
+fn step_left(head: usize, len: usize) -> usize {
+    if head == 0 {
+        len - 1
+    } else {
+        head - 1
+    }
+}
+
+fn step_right(head: usize, len: usize) -> usize {
+    let next = head + 1;
+    if next == len {
+        0
+    } else {
+        next
     }
 }
 
@@ -358,6 +394,18 @@ mod tests {
             run(&mut by_default, 100)
         );
         assert_eq!(with_all, by_default);
+    }
+
+    #[test]
+    fn a_prebuilt_table_runs_a_tape_exactly_as_its_op_set_does() {
+        let ablated = OpSet::parse("<>{}+-.[]").expect("a legal set");
+        let mut by_table = vec![3, b'[', b'}', b'-', b']', b'.', b',', b'<', b'>', 0];
+        let mut by_set = by_table.clone();
+        assert_eq!(
+            run_with_table(&mut by_table, 100, &ablated.table()),
+            run_with(&mut by_set, 100, ablated)
+        );
+        assert_eq!(by_table, by_set);
     }
 
     #[test]
