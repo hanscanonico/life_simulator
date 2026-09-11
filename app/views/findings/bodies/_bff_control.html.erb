@@ -62,10 +62,18 @@
   no snapshot falls inside the window where the count was high, so the peak rests on in-run
   samples alone and cannot be rescored the way the mutation-rate peaks were — where a stored
   world does bracket a peak, a rescore confirms the count and finds a tape passing the
-  trial. Truncation of the ranking is ruled out either way: widening the cut to the top 16,
-  64 and 256 tapes returns identical metrics at all three widths. So the census here is not
-  yet resolved rather than not evidence, and the falsifier above is neither triggered nor
-  retired.
+  trial. Truncation of the ranking is not ruled out here, and on this control it bites:
+  rescoring a mutated seed's stored world well after that seed's census peak reads a census
+  of zero at the top 16 tapes and 38 at both 64 and 256, with
+  <span class="mono">compress_ratio</span> 0.476 and
+  <span class="mono">entropy_bits</span> 5.52 — a lineage too diffuse for the top of the
+  ranking, living in ranks 17 to 64. Widening the cut is not inflating a non-lineage: the
+  zero-mutation arm's collapsed world reads zero at every width, and of the 178 stored
+  worlds rescored at all three widths only two are zero at 16 and positive at 64. Nor is it
+  a change of the instrument — <span class="mono">top_k</span> stays where DESIGN §1.2
+  locks it, at 16, and what is reported above is a reading of a stored world at a wider cut,
+  not a new default. So the census here is not yet resolved rather than not evidence, and
+  the falsifier above is neither triggered nor retired.
 </p>
 
 <h2>What the zero-mutation control shows</h2>

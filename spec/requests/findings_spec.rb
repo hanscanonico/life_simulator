@@ -367,9 +367,19 @@ RSpec.describe "Findings", type: :request do
           .to include("And the census is not zero.",
                       "in the lab — thousands of replicating cells at its peak",
                       "no snapshot falls inside the window where the count was high",
-                      "Truncation of the ranking is ruled out",
                       "not yet resolved rather than not evidence",
                       "neither triggered nor retired")
+      end
+
+      it "reads the census wider than the locked cut without moving the cut" do
+        get finding_path(Findings::Registry.find("bff-control"))
+
+        expect(response.body.squish)
+          .to include("Truncation of the ranking is not ruled out here",
+                      "zero at the top 16 tapes and 38 at both 64 and 256",
+                      "only two are zero at 16 and positive at 64",
+                      "top_k</span> stays where DESIGN §1.2 locks it, at 16")
+        expect(response.body).not_to include("identical metrics")
       end
 
       it "reads the zero-mutation control as the negative result it is" do
