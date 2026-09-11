@@ -143,6 +143,10 @@ Rails/SkipsModelValidations:
   AllowedMethods:
     - upsert_all
     - update_all
+  # Spec support builds bulk fixture rows, not domain writes: a pruning example needs
+  # dozens of snapshots whose only meaningful column is `epoch`.
+  Exclude:
+    - 'spec/support/**/*'
 
 Rails/Output:
   Exclude:
