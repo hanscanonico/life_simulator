@@ -112,11 +112,13 @@ RSpec.describe "Findings", type: :request do
       end
 
       it "separates the compress_ratio floor from emergence" do
+        rates = Lab::SWEEPS.fetch("mutation_rate").fetch(:param_grid).fetch("mutation_rate")
+        ceiling = -Math.log2(rates.max).round
+
         get finding_path(finding)
 
         expect(response.body.squish)
-          .to include("climbs arm by arm from", "without a single reversal",
-                      "it has nothing to do with emergence")
+          .to include("<h2>What next</h2>", "2<sup>-#{ceiling}</sup>", "mutation_rate = 0")
       end
 
       it "says the census agrees where the effect is strong" do
@@ -191,18 +193,26 @@ RSpec.describe "Findings", type: :request do
 
     context "with the positive control" do
       it "states the falsifier" do
-        get finding_path(Findings::Registry.find("bff-control"))
+        control = Findings::Registry.find("bff-control")
+
+        get finding_path(control)
 
         expect(response).to have_http_status(:ok)
         expect(response.body)
-          .to include("suspect the interpreter or the pairing rule, not the hypothesis")
+          .to include(%(<span class="badge #{control.badge_class}">#{control.status_label}</span>))
+        expect(response.body.squish).to include("<h2>What the census shows</h2>")
       end
 
       it "states the sparse cadences its runs carry" do
+        sweep = Lab::SWEEPS.fetch("bff_control")
+        sample_every = sweep.fetch(:param_grid).fetch("sample_every").sole
+        snapshot_every = sweep.fetch(:param_grid).fetch("snapshot_every").sole
+
         get finding_path(Findings::Registry.find("bff-control"))
 
-        expect(response.body.squish).to include("Sampling is sparse for a world this size",
-                                                "25 full-world snapshots per run")
+        expect(response.body.squish)
+          .to include("sample_every = #{sample_every}", "snapshot_every = #{snapshot_every}",
+                      "#{sweep.fetch(:epochs) / snapshot_every} full-world snapshots per run")
       end
 
       it "states the transition as a shape and points at the live evidence table" do

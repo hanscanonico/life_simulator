@@ -5,7 +5,7 @@ require "rails_helper"
 RSpec.describe Runs::PruneSnapshotsService do
   def snapshotted(epochs, **attributes)
     run = create(:run, status: "finished", finished_at: Time.current, epochs: epochs.max, **attributes)
-    epochs.each { |epoch| create(:snapshot, run: run, epoch: epoch) }
+    insert_snapshots(run, epochs)
     run
   end
 
@@ -63,14 +63,14 @@ RSpec.describe Runs::PruneSnapshotsService do
 
   it "leaves a running run alone: the runner resumes from its latest snapshot" do
     run = create(:run, :claimed, status: "running", epochs: 1_000)
-    (100..1_000).step(100) { |epoch| create(:snapshot, run: run, epoch: epoch) }
+    insert_snapshots(run, (100..1_000).step(100))
 
     expect { described_class.call(run: run, keep_every: 300) }.not_to(change { run.snapshots.count })
   end
 
   it "leaves a pending run alone" do
     run = create(:run, epochs: 1_000)
-    (100..1_000).step(100) { |epoch| create(:snapshot, run: run, epoch: epoch) }
+    insert_snapshots(run, (100..1_000).step(100))
 
     expect(described_class.call(run: run, keep_every: 300)).to eq(0)
   end
@@ -95,27 +95,27 @@ RSpec.describe Runs::PruneSnapshotsService do
 
   describe ".prunable" do
     it "finds a terminal run that finished inside the window and has snapshots to spare" do
-      run = snapshotted((100..20_000).step(100).to_a)
+      run = snapshotted((100..3_000).step(100).to_a)
 
       expect(described_class.prunable(since: 1.day.ago)).to include(run)
     end
 
     it "ignores a run that finished before the window" do
-      run = snapshotted((100..20_000).step(100).to_a)
+      run = snapshotted((100..3_000).step(100).to_a)
       run.update!(finished_at: 2.days.ago)
 
       expect(described_class.prunable(since: 1.day.ago)).to be_empty
     end
 
     it "ignores a run that is still running" do
-      run = create(:run, :claimed, status: "running", epochs: 20_000, finished_at: Time.current)
-      (100..20_000).step(100) { |epoch| create(:snapshot, run: run, epoch: epoch) }
+      run = create(:run, :claimed, status: "running", epochs: 3_000, finished_at: Time.current)
+      insert_snapshots(run, (100..3_000).step(100))
 
       expect(described_class.prunable(since: 1.day.ago)).to be_empty
     end
 
     it "ignores a run already thinned down to its keep set" do
-      snapshotted([1_000, 10_000, 20_000])
+      snapshotted([1_000, 2_000, 3_000])
 
       expect(described_class.prunable(since: 1.day.ago)).to be_empty
     end
