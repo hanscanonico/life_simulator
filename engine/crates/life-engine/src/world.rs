@@ -388,6 +388,45 @@ mod tests {
         }
     }
 
+    fn stepped(params: &Params, seed: u64, epochs: u64) -> World {
+        let mut world = World::new(params, seed).unwrap();
+        for _ in 0..epochs {
+            world.step();
+        }
+        world
+    }
+
+    /// One cell of `determinism_holds_across_the_parameter_matrix`: the same
+    /// `(params, seed)` twice, another seed, and a snapshot taken halfway and resumed.
+    fn assert_deterministic(params: &Params, seed: u64) {
+        const EPOCHS: u64 = 20;
+        let case = format!("{params:?} seed {seed}");
+
+        let expected = stepped(params, seed, EPOCHS).world_hash();
+        assert_eq!(
+            stepped(params, seed, EPOCHS).world_hash(),
+            expected,
+            "two worlds from one (params, seed) diverged: {case}"
+        );
+        assert_ne!(
+            stepped(params, seed + 100, EPOCHS).world_hash(),
+            expected,
+            "another seed reproduced the run: {case}"
+        );
+
+        let halfway = stepped(params, seed, EPOCHS / 2);
+        let mut resumed = World::from_snapshot(params, seed, &halfway.snapshot()).unwrap();
+        assert_eq!(resumed.epoch(), EPOCHS / 2, "{case}");
+        for _ in 0..EPOCHS / 2 {
+            resumed.step();
+        }
+        assert_eq!(
+            resumed.world_hash(),
+            expected,
+            "a resumed run left the uninterrupted one: {case}"
+        );
+    }
+
     fn alive_cells(world: &World) -> Vec<(u32, u32)> {
         let mut cells = Vec::new();
         for y in 0..world.height() {
@@ -458,6 +497,30 @@ mod tests {
         }
         assert_eq!(a.world_hash(), b.world_hash());
         assert_ne!(a.world_hash(), other.world_hash());
+    }
+
+    /// Determinism is a property of the whole parameter space, not of one configuration:
+    /// the interaction order, the mutation draws and the snapshot round-trip all have to
+    /// hold whatever the neighbourhood, the tape length and the mutation rate are.
+    #[test]
+    fn determinism_holds_across_the_parameter_matrix() {
+        for radius in [0, 1, 2] {
+            for tape_len in [16, 64] {
+                for mutation_rate in [0.0, 1.0 / 256.0] {
+                    for seed in [1, 2, 3] {
+                        assert_deterministic(
+                            &Params {
+                                radius,
+                                tape_len,
+                                mutation_rate,
+                                ..soup(16, 16)
+                            },
+                            seed,
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
