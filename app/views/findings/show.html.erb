@@ -13,6 +13,10 @@
   <%= render @show.finding.body_partial %>
 
   <h2>Evidence</h2>
+  <p class="text-sm text-muted">
+    Transition, flagged, census and arm are used here in the senses set out in
+    <%= link_to "the glossary", how_it_works_path(anchor: "glossary") %>.
+  </p>
   <% if @show.experiment? %>
     <p class="text-sm">
       Sweep: <%= link_to @show.experiment.name, experiment_path(@show.experiment) %>
@@ -40,8 +44,18 @@
   <% end %>
 
   <h3>Transitions and replicator counts</h3>
+  <p class="text-sm text-muted">
+    One row per finished run the detector flagged or that counted at least one replicator.
+    "Transition epoch" is the detector's event; "Peak replicators" is the largest census
+    the run reached, with the epoch it first reached it in brackets;
+    "—" means the run never had a value.
+  </p>
   <%= render "findings/transitions_table", page: @show %>
 
   <h3>Runs</h3>
+  <p class="text-sm text-muted">
+    Every run of the sweep, flagged or not, with its seed — the denominator of the rate
+    above.
+  </p>
   <%= render "experiments/runs_table", page: @show.evidence %>
 <% end %>

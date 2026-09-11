@@ -19,6 +19,16 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to include("Neighbourhood radius", "50%")
     end
 
+    it "reads the rate as the detector's flag rather than as emergence" do
+      get experiments_path
+
+      expect(response.body.squish)
+        .to include("the share of finished runs the transition detector flagged",
+                    "not by itself a replicator census")
+      expect(response.body).to include(findings_path)
+      expect(response.body).not_to match(/self-replicator emerged/)
+    end
+
     it "lists the sweeps of the programme that are not queued yet" do
       experiment
 
