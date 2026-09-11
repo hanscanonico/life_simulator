@@ -23,7 +23,7 @@
           <% page.arm_labels_of(run).each do |label| %>
             <td class="numeric mono"><%= label || "—" %></td>
           <% end %>
-          <td><span class="badge"><%= run.status %></span></td>
+          <td><span class="badge <%= status_badge_class(run.status) %>"><%= run.status %></span></td>
           <td class="numeric"><%= run.priority %></td>
           <td class="numeric"><%= number_with_delimiter run.epochs_done %></td>
           <td class="numeric"><%= epoch_value run.transition_epoch %></td>

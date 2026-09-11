@@ -3,6 +3,44 @@
 require "rails_helper"
 
 RSpec.describe ApplicationHelper, type: :helper do
+  describe "#status_badge_class" do
+    it "reads a finished run as success" do
+      expect(helper.status_badge_class("finished")).to eq("badge-success")
+    end
+
+    it "reads a failed run as an error" do
+      expect(helper.status_badge_class("failed")).to eq("badge-error")
+    end
+
+    it "reads a running run as information" do
+      expect(helper.status_badge_class("running")).to eq("badge-info")
+    end
+
+    it "reads a claimed run as information" do
+      expect(helper.status_badge_class("claimed")).to eq("badge-info")
+    end
+
+    it "leaves a pending run neutral" do
+      expect(helper.status_badge_class("pending")).to eq("")
+    end
+
+    it "leaves a queued experiment neutral" do
+      expect(helper.status_badge_class("queued")).to eq("")
+    end
+
+    context "with an unknown status" do
+      it "is neutral" do
+        expect(helper.status_badge_class("abandoned")).to eq("")
+      end
+    end
+
+    context "with no status" do
+      it "is neutral" do
+        expect(helper.status_badge_class(nil)).to eq("")
+      end
+    end
+  end
+
   describe "#percent_value" do
     it "reads a fraction as a whole percent" do
       expect(helper.percent_value(0.5)).to eq("50%")
