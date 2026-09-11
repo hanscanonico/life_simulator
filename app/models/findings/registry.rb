@@ -24,11 +24,16 @@ module Findings
         title: "Does the engine reproduce BFF emergence at all?",
         date: Date.new(2026, 9, 11),
         experiment_slug: "bff-control",
-        status: :open,
+        status: :partial,
         summary: "The positive control the design record makes mandatory: a well-mixed " \
-                 "soup of 2^17 tapes, the shape the published BFF work used. Until this " \
-                 "one transitions, no sweep of ours is readable as a negative result — a " \
-                 "flat sweep would only say the instrument is untested."
+                 "soup of 2^17 tapes, the shape the published BFF work used. It shows the " \
+                 "transition in tape statistics — one mutated seed of three, the " \
+                 "unmutated controls at baseline — so the interpreter and the pairing " \
+                 "rule are not what the sweeps were measuring. But the replicator census " \
+                 "reads zero at every snapshot inspected and widening the ranking cut to " \
+                 "256 tapes changes nothing, so this is not yet evidence of " \
+                 "self-replicators: one seed of three, the epoch horizon far off, the " \
+                 "census unresolved."
       ),
       Finding.new(
         slug: "world-size-scaling",

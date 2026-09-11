@@ -50,6 +50,13 @@ RSpec.describe Findings::Registry do
     expect(described_class.find("bff-control").experiment_slug).to eq("bff-control")
   end
 
+  it "holds the positive control at partial while its census is unresolved" do
+    finding = described_class.find("bff-control")
+
+    expect(finding.status).to eq(:partial)
+    expect(finding.summary).to include("one mutated seed of three", "census unresolved")
+  end
+
   it "finds a finding by slug" do
     expect(described_class.find("mutation-rate-window").status).to eq(:partial)
   end

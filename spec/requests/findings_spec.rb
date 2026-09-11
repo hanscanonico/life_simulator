@@ -152,6 +152,51 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish).to include("Sampling is sparse for a world this size",
                                                 "25 full-world snapshots per run")
       end
+
+      it "states the transition as a shape and points at the live evidence table" do
+        get finding_path(Findings::Registry.find("bff-control"))
+
+        expect(response.body.squish)
+          .to include("in one of three seeds",
+                      "the evidence table below, which reads the runs live",
+                      "controls sit at the random-soup baseline")
+      end
+
+      it "refuses to read the collapse as self-replicators while the census reads zero" do
+        get finding_path(Findings::Registry.find("bff-control"))
+
+        expect(response.body.squish)
+          .to include("zero at every snapshot inspected",
+                      "Truncation of the ranking is ruled out",
+                      "not yet evidence of self-replicators",
+                      "neither triggered nor retired")
+      end
+
+      it "opens the two readings of the census and names the next measurement" do
+        get finding_path(Findings::Registry.find("bff-control"))
+
+        expect(response.body.squish)
+          .to include("What the census shows",
+                      "less flat than flickering",
+                      "the 3-of-4 trial rule misses it",
+                      "the collapse is degenerate",
+                      "a persistence requirement on the census")
+      end
+
+      it "keeps the requeue history" do
+        get finding_path(Findings::Registry.find("bff-control"))
+
+        expect(response.body.squish).to include("10 MiB cap on an API response",
+                                                "requeued from their last snapshot")
+      end
+
+      it "leaves lab timestamps and per-run facts out of the body" do
+        get finding_path(Findings::Registry.find("bff-control"))
+
+        expect(response.body).not_to match(/\d{2}:\d{2} CEST/)
+        expect(response.body).not_to match(/\brun \d+/i)
+        expect(response.body).not_to match(/epoch \d ?\d{3}/)
+      end
     end
 
     context "with the world-size stub" do
