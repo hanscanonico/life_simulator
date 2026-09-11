@@ -15,10 +15,10 @@ RSpec.describe Pages::HowItWorksPage do
     end
 
     it "names no experiment and no finding for a sweep the lab has not queued" do
-      radius = page.sweeps.find { |sweep| sweep.name == "Neighbourhood radius" }
+      ablations = page.sweeps.find { |sweep| sweep.name == "Instruction set ablations" }
 
-      expect(radius).not_to be_experiment
-      expect(radius).not_to be_finding
+      expect(ablations).not_to be_experiment
+      expect(ablations).not_to be_finding
     end
 
     context "with a queued sweep a finding cites" do

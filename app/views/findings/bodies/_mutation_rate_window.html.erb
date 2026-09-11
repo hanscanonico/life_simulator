@@ -50,6 +50,43 @@
                        params: { "mutation_rate" => Lab::EMERGENT_MUTATION_RATE }) %>
 
 <p>
+  <strong>The census agrees where the effect is strong.</strong> The two strongest
+  transitions of the sweep — the first and the fifth seed of the
+  <span class="mono">2<sup>-13</sup></span> arm — carry a large
+  <span class="mono">replicator_count</span> while they are running: hundreds of
+  replicating cells at the peak, with <span class="mono">entropy_bits</span> falling from
+  the random-soup value near 7.85 to under 5 and <span class="mono">compress_ratio</span>
+  down to a fraction of the soup floor. Where the effect is strong the detector and the
+  census agree, and they agree in the stored worlds too: rescoring the first seed's
+  snapshot near its peak counts several hundred replicating cells and one tape holding a
+  few percent of the torus and passing the 3-of-4 replicator trial. The lineage is in the
+  world, not in the sampling.
+</p>
+
+<p>
+  <strong>The census fades; the compression does not.</strong> After the peak the count
+  falls back towards zero over the following samples while
+  <span class="mono">compress_ratio</span> stays collapsed for the rest of the run — a
+  lineage that spread, saturated and dissolved, leaving the compressible debris behind.
+  That is why a terminal snapshot under-counts: a rescore of a run's last stored world, the
+  cheapest thing to ask for, reads the world after the lineage is gone and reports none.
+  The zero censuses read that way earlier in this sweep are a snapshot-retention artefact
+  and not evidence that the census never sees a lineage.
+</p>
+
+<p>
+  <strong>Three runs still disagree with themselves.</strong> Two flagged runs — the ninth
+  seed of the <span class="mono">2<sup>-12</sup></span> arm and the fifth seed of the
+  <span class="mono">2<sup>-8</sup></span> arm — collapse entropy and lift
+  <span class="mono">copy_rate</span> off the floor with a peak census of zero, no ranked
+  tape passing the replicator test at any sample; and the second seed of the
+  <span class="mono">2<sup>-8</sup></span> arm carries a census of a couple of cells with
+  no flag at all. They are reported as disagreements, not resolved in either direction.
+  Ranking width is not the explanation: rescoring at the top 16, 64 and 256 tapes returns
+  identical metrics, so the cut stays where DESIGN §1.2 locks it, at 16.
+</p>
+
+<p>
   <strong>A floor, and no ceiling.</strong> Nothing transitioned at any rate at or below
   <span class="mono">2<sup>-14</sup></span> — the zero-mutation control included, which the
   hypothesis expected to be slow rather than silent. Transitions appear only at

@@ -46,24 +46,40 @@ RSpec.describe Findings::Registry do
     expect(body).not_to match(/run 41/i)
   end
 
+  it "leaves lab timestamps out of every body" do
+    described_class.all.to_a.each do |finding|
+      expect(ApplicationController.render(partial: finding.body_partial)).not_to include("CEST")
+    end
+  end
+
   it "publishes the positive control the design record makes mandatory" do
     expect(described_class.find("bff-control").experiment_slug).to eq("bff-control")
   end
 
-  it "holds the positive control at partial while its census is unresolved" do
+  it "holds the positive control at partial while its census peak cannot be rescored" do
     finding = described_class.find("bff-control")
 
     expect(finding.status).to eq(:partial)
-    expect(finding.summary).to include("one mutated seed of three", "census unresolved")
+    expect(finding.summary).to include("largest replicator census in the lab",
+                                       "not yet resolved")
   end
 
   it "finds a finding by slug" do
     expect(described_class.find("mutation-rate-window").status).to eq(:partial)
   end
 
-  it "opens the world-size sweep against DESIGN 1.3 sweep 2" do
-    expect(described_class.find("world-size-scaling"))
-      .to have_attributes(experiment_slug: "world-size", status: :open)
+  it "reads the world-size sweep as partial while its largest arm finishes" do
+    finding = described_class.find("world-size-scaling")
+
+    expect(finding).to have_attributes(experiment_slug: "world-size", status: :partial)
+    expect(finding.summary).to include("replicators appear only in the largest world")
+  end
+
+  it "opens the radius sweep against DESIGN 1.3 sweep 3" do
+    finding = described_class.find("radius-locality")
+
+    expect(finding).to have_attributes(experiment_slug: "radius", status: :open)
+    expect(finding.summary).to include("connectivity buys emergence")
   end
 
   it "returns nothing for an unknown slug" do

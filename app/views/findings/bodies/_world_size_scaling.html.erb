@@ -36,16 +36,51 @@
 
 <h2>Result</h2>
 <p>
-  Open: the sweep is queued and no claim is made yet. The arms, the seeds that have
-  finished and the transition epochs behind them are in the phase diagram and the runs
-  table below, which read from the runs themselves — nothing on this page restates them.
+  Partial. All but two runs of the sweep are terminal, and the shape is already plain, but
+  the two that are still running are in the largest arm — the only arm where a replicator
+  has appeared. What follows states the shape; the per-run epochs and counts are in the
+  phase diagram and the evidence tables below, which read the runs themselves.
 </p>
+
 <p>
-  Two things will decide how a flat sweep may be read. A flat result is not readable as a
-  per-cell rate until the
-  <%= link_to "BFF positive control", finding_path("bff-control") %> transitions; before
-  that, arms that all sit at the censoring line say only that the instrument is untested.
-  And the <%= epochs %>-epoch budget is short next to the earliest transition any sweep of
-  ours has seen — around epoch 5 000 — so a sweep in which nothing transitions anywhere is
-  explained just as well by too small a budget as by the size of the world.
+  <strong>Replicators appear only in the largest world.</strong> At this sweep's mutation
+  rate — the engine default, twice the rate at which the
+  <%= link_to "mutation-rate sweep", finding_path("mutation-rate-window") %> first saw
+  emergence — no seed of the two smallest worlds moved on either observable. In the largest
+  world three seeds moved on both: the transition detector flagged them and the
+  <span class="mono">replicator_count</span> census counted a colony in each, one of them
+  the largest census the lab has recorded outside the positive control. The two seeds still
+  running are in that arm, so its fraction can only rise.
+</p>
+
+<p>
+  <strong>Below it, a collapse that is not a replicator.</strong> One seed of the
+  second-largest world collapses <span class="mono">entropy_bits</span> from the random-soup
+  value to under 5, drives <span class="mono">compress_ratio</span> to a fraction of the soup
+  floor and lifts <span class="mono">copy_rate</span> off zero — with a census of zero at
+  every sample. It is the disagreement class the mutation-rate sweep also reports: a
+  low-entropy attractor the substrate can fall into that is not a replicator by the test
+  DESIGN §1.2 locks. Read with the census, the smaller worlds are not slow versions of the
+  largest one; they are doing something else.
+</p>
+
+<p>
+  <strong>The two sweeps do not agree yet.</strong> The mutation-rate sweep found a
+  replicator at the width of this sweep's second-largest arm, at half this sweep's mutation
+  rate, while every seed of that arm here found none. The two differ in nothing else. So
+  either the rate matters more at that width than the cell count does, or emergence there is
+  rare enough that one event in ten seeds and none in ten seeds are the same underlying rate
+  seen twice. <%= link_to "Mutation rate, long runs", experiment_path("mutation-rate-long") %>
+  is the sweep that separates those.
+</p>
+
+<p>
+  Two things keep this partial rather than published, and both are about censoring. A run
+  that never crosses is censored, not negative: the <%= epochs %>-epoch budget is short next
+  to the epochs at which the transitions here actually landed, so an arm that shows nothing
+  may be slower rather than silent, and the two unfinished seeds of the largest arm are not
+  a zero either. And a sweep of ours is only readable as a negative once the
+  <%= link_to "BFF positive control", finding_path("bff-control") %> resolves its own
+  census; until then an arm sitting at the censoring line says as much about the instrument
+  as about the world.
 </p>
