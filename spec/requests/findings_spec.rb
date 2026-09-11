@@ -39,6 +39,15 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish).to include("2 / 3 runs finished · 1 transitioned (50%)")
       end
     end
+
+    context "with the sweep missing" do
+      it "says so instead of stating progress" do
+        get findings_path
+
+        expect(response.body.squish).to include("is not in the lab yet")
+        expect(response.body.squish).not_to match(%r{\d+ / \d+ runs finished})
+      end
+    end
   end
 
   describe "GET /findings/:slug" do

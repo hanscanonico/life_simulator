@@ -22,8 +22,7 @@ RSpec.describe Findings::Registry do
   it "leads a shared date with the strongest current result" do
     slugs = described_class.all.map(&:slug)
 
-    expect(slugs.first).to eq("mutation-rate-window")
-    expect(slugs.index("bff-control")).to be < slugs.index("world-size-scaling")
+    expect(slugs.first(3)).to eq(%w[mutation-rate-window bff-control world-size-scaling])
   end
 
   it "keeps the order of findings sharing a date fixed across calls" do
