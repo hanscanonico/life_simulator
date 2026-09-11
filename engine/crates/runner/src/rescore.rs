@@ -245,6 +245,70 @@ mod tests {
         }
     }
 
+    /// The same 16×16 zero world, but with `variants` cells each holding its own variant
+    /// of the hand-written replicator: one byte of the filler the interpreter never
+    /// executes carries the cell's index, so the variants are distinct tapes of one cell
+    /// each, ranked behind the zero tape in ascending byte order. The carried byte stays
+    /// non-zero because a zero there would end the copy loop early and stop the tape
+    /// replicating.
+    fn world_of_replicator_variants(variants: u32) -> StoredWorld {
+        let params = Params {
+            width: 16,
+            height: 16,
+            tape_len: 256,
+            init: Init::Zero,
+            ..Params::default()
+        };
+        let mut world = World::new(&params, 3).expect("legal params");
+        for variant in 0..variants {
+            let mut tape = replicator::handwritten_replicator();
+            *tape.last_mut().expect("the tape is not empty") = variant as u8 + 1;
+            world.set_cell(variant % params.width, variant / params.width, &tape);
+        }
+        StoredWorld {
+            params,
+            seed: 3,
+            blob: world.snapshot(),
+        }
+    }
+
+    /// Run 186 of bff-control read a census of 0 replicators at `top_k` 16 and 38 at 64:
+    /// the lineage had diffused across more tape variants than the default census looks
+    /// at, so most of its cells sat below the cut and went uncounted.
+    #[test]
+    fn a_lineage_spread_over_many_tapes_is_undercounted_at_the_default_top_k() {
+        const VARIANTS: u32 = 30;
+        let stored = world_of_replicator_variants(VARIANTS);
+
+        let report = measure(&stored, None, &[16, 64]).unwrap();
+
+        let (at_16, at_64) = (
+            report.settings[0].replicator_count,
+            report.settings[1].replicator_count,
+        );
+        assert!(at_16 < at_64, "{at_16} at top_k 16, {at_64} at 64");
+        assert_eq!(
+            at_64,
+            u64::from(VARIANTS),
+            "every variant replicates, so the census at 64 holds one cell per variant"
+        );
+        assert_eq!(at_64 - at_16, variants_ranked_below_the_default(&stored));
+    }
+
+    /// How many of the variants the census at `top_k` 64 reaches and the one at 16 does
+    /// not — the cells the default cut loses.
+    fn variants_ranked_below_the_default(stored: &StoredWorld) -> u64 {
+        let (_, cells) = life_engine::snapshot::decode(&stored.params, &stored.blob).unwrap();
+        let zero_tape = vec![0u8; stored.params.stride()];
+        metrics::ranked_tapes(&cells, stored.params.stride())
+            .iter()
+            .take(64)
+            .skip(16)
+            .filter(|(tape, _)| *tape != &zero_tape[..])
+            .map(|(_, count)| *count)
+            .sum()
+    }
+
     #[test]
     fn a_tape_outside_top_k_goes_uncounted_and_inside_it_counts_its_cells() {
         let stored = seeded_world(3);
