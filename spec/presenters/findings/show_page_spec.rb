@@ -134,22 +134,23 @@ RSpec.describe Findings::ShowPage do
         end
       end
 
-      def queries_rowing
+      def row_query_count
         queries = []
         collect = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
 
         ActiveSupport::Notifications.subscribed(collect, "sql.active_record") do
           described_class.build(finding: finding, paginate: paginate).transitions
         end
+
         queries.size
       end
 
       it "costs the same number of queries at twelve rows as at four" do
         add_sampled_runs(4)
-        four = queries_rowing
+        four = row_query_count
         add_sampled_runs(8)
 
-        expect(queries_rowing).to eq(four)
+        expect(row_query_count).to eq(four)
       end
     end
 
