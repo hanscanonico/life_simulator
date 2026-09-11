@@ -15,6 +15,12 @@ FactoryBot.define do
       heartbeat_at { Time.current }
     end
 
+    trait :just_failed do
+      status { "failed" }
+      finished_at { 1.hour.ago }
+      error { "runner exited with status 101" }
+    end
+
     trait :stale do
       claimed
       heartbeat_at { 10.minutes.ago }
