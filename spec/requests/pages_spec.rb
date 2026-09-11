@@ -3,6 +3,18 @@
 require "rails_helper"
 
 RSpec.describe "Pages", type: :request do
+  describe "GET /" do
+    it "titles itself with the bare site name and falls back to the site description" do
+      get root_path
+
+      expect(response.body).to include(
+        "<title>Life Simulator</title>",
+        %(<meta name="description" content="A research instrument for the spontaneous emergence of ) +
+        %(self-replicators in a spatial program soup.">)
+      )
+    end
+  end
+
   describe "GET /how-it-works" do
     let(:observables) do
       %w[compress_ratio distinct_tapes top_share op_density replicator_count entropy_bits copy_rate
@@ -26,7 +38,7 @@ RSpec.describe "Pages", type: :request do
       get how_it_works_path
 
       expect(response.body).to include(
-        "<title>How it works</title>",
+        "<title>How it works — Life Simulator</title>",
         %(<meta name="description" content="The substrate, the ten-instruction language)
       )
     end

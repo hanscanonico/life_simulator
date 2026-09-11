@@ -72,6 +72,18 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     expect(viewport_and_content_width).to eq([phone_width, phone_width])
   end
 
+  it "marks the current nav entry and hides the skip link until it is focused" do
+    visit experiments_path
+
+    expect(page).to have_css("nav.site-nav a[aria-current='page']", text: "Experiments")
+    expect(page).to have_css(".skip-link", visible: :hidden)
+    expect(page).to have_no_css(".skip-link", visible: :visible)
+
+    page.send_keys(:tab)
+
+    expect(page).to have_css(".skip-link", text: "Skip to content")
+  end
+
   it "keeps a finding inside the viewport, diagram and runs table included" do
     sweep = create(:experiment, slug: "mutation-rate", epochs: 20_000,
                                 param_grid: { "mutation_rate" => [0.0, 0.001] })
