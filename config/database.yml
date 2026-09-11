@@ -101,6 +101,11 @@ production:
     <<: *primary_production
     database: life_simulator_production_queue
     migrations_paths: db/queue_migrate
+    # Solid Queue's worker needs one connection per job thread plus two, for its
+    # polling and heartbeat threads: five for the three threads in config/queue.yml
+    # (keep in sync with them). RAILS_MAX_THREADS, three on the deployed stack, sizes
+    # the pool for a Puma worker and is below that floor.
+    max_connections: <%= [ENV.fetch("RAILS_MAX_THREADS") { 5 }.to_i, 5].max %>
     url: <%= URI.parse(ENV["DATABASE_URL"]).tap { |url| url.path += "_queue" } if ENV["DATABASE_URL"] %>
   cable:
     <<: *primary_production

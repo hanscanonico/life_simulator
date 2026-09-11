@@ -16,7 +16,10 @@ x-logging: &logging
 # `stock_market-*`, ~750 MiB together) and the deploy overlap, when the old and the new
 # app are briefly co-resident. Each limit is at least 3x the steady state measured by
 # `deploy/memory_report` with 24 runs live (runner 143, app 448, db 236,
-# cloudflared 21 MiB), so a limit can only catch a leak, never normal work.
+# cloudflared 21 MiB), so a limit can only catch a leak, never normal work. Two of those
+# readings move with this file and have to be re-measured after the deploy: the app now
+# forks a second Puma worker (both mostly copy-on-write pages of the preloaded master)
+# and db now takes 512MB of shared_buffers.
 #
 #   runner      6g   limit / 1g reservation   (RUNNER_MAX_MEMORY claims under 5g)
 #   db          2g   limit / 1g reservation
@@ -28,23 +31,23 @@ services:
     image: postgres:17
     # Tuned for the 2g limit below rather than for postgres' 128MB defaults.
     # shared_buffers is the usual quarter of the budget and effective_cache_size the
-    # usual three quarters (a planner hint, it allocates nothing). work_mem is per sort
-    # node: 40 connections x 16MB is 640MB on top of shared_buffers, which still fits.
-    # maintenance_work_mem pays for the nightly dump's index work on `snapshots`, almost
-    # the whole database. max_wal_size keeps a snapshot burst from checkpointing mid-write.
-    # max_connections 40 against the app's demand: 2 Puma workers x 3 threads = 6 request
-    # threads, each able to hold a pool connection to all four databases (primary, cache,
-    # queue, cable) = 24 at the ceiling; Solid Queue in Puma adds its supervisor, one
-    # dispatcher and JOB_CONCURRENCY=1 worker of 3 threads, ~9; the nightly backup and an
-    # operator psql, 2. Steady demand is ~15, so 40 is more than double it and still above
-    # the 35-connection ceiling — the largest number 16MB of work_mem affords inside 2g.
+    # usual three quarters (a planner hint, it allocates nothing). maintenance_work_mem
+    # pays for the nightly dump's index work on `snapshots`, almost the whole database.
+    # max_wal_size keeps a snapshot burst from checkpointing mid-write.
+    # max_connections 80 is double the app's ceiling: 2 Puma workers x 3 threads, each
+    # thread able to hold a pool connection to all four databases (primary, cache, queue,
+    # cable) = 24; Solid Queue in Puma adds a supervisor, a dispatcher, a scheduler and
+    # the JOB_CONCURRENCY=1 worker, whose queue pool is 5 (config/database.yml) on top of
+    # the primary connections its jobs run, ~13; the nightly backup and an operator
+    # psql, 2. work_mem is per sort node, so its worst case is bounded by those ~39
+    # sessions rather than by max_connections: 39 x 16MB above shared_buffers fits 2g.
     command: >
       postgres
       -c shared_buffers=512MB
       -c effective_cache_size=1536MB
       -c work_mem=16MB
       -c maintenance_work_mem=256MB
-      -c max_connections=40
+      -c max_connections=80
       -c max_wal_size=2GB
     restart: unless-stopped
     logging: *logging

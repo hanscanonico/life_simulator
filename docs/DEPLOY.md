@@ -98,20 +98,29 @@ That leaves ~3.75 GiB for the host, the sibling stacks and the deploy overlap, w
 old and the new app are briefly co-resident. Every limit is at least three times the
 steady state it covers, so a limit can only catch a leak, never normal work — and a
 limit *below* real steady state would be an OOM-restart loop, which is why none of them
-is tightened towards the measurements.
+is tightened towards the measurements. Two of those steady states move with this change
+and are worth re-measuring on the next visit: the app forks a second Puma worker (both
+mostly copy-on-write pages of the preloaded master) and db keeps 512 MB of
+`shared_buffers` resident.
 
 Postgres is tuned for its 2 GiB (the defaults assume 128 MB): `shared_buffers=512MB`,
 `effective_cache_size=1536MB`, `work_mem=16MB`, `maintenance_work_mem=256MB`,
-`max_connections=40`, `max_wal_size=2GB`. The app asks for 24 connections at its
+`max_connections=80`, `max_wal_size=2GB`. The app asks for 24 connections at its
 ceiling (2 Puma workers x 3 threads, each able to hold a pool connection to all four
-databases) plus ~9 for Solid Queue in Puma and 2 for the backup and an operator `psql`;
-40 covers that and is the largest number 16 MB of `work_mem` affords inside the limit.
+databases) plus ~13 for Solid Queue in Puma (supervisor, dispatcher, scheduler and a
+worker holding its 5-connection queue pool) and 2 for the backup and an operator `psql`
+— ~39, so `max_connections` is double the ceiling. `work_mem` is per sort node, so its
+worst case is bounded by those sessions, not by `max_connections`.
 
 The web process is two forked Puma workers of three threads each, plus one Solid Queue
 worker process — `WEB_CONCURRENCY`, `RAILS_MAX_THREADS` and `JOB_CONCURRENCY` on the
 `app` service. `config/puma.rb` preloads the app and drops the master's database
 connections before forking; with `WEB_CONCURRENCY` unset (development, CI) it stays
-single-process. `spec/config/puma_spec.rb` pins both shapes.
+single-process. `spec/config/puma_spec.rb` pins both shapes. `RAILS_MAX_THREADS` also
+sizes the Active Record pools, and three is below the five connections Solid Queue's
+worker needs (a thread per job plus polling and heartbeat), so the production `queue`
+database in `config/database.yml` carries its own floor —
+`spec/config/database_pool_spec.rb` pins that against `config/queue.yml`.
 
 After a deploy that touches any of this, check on the host:
 
@@ -119,7 +128,10 @@ After a deploy that touches any of this, check on the host:
 deploy/memory_report                                   # no container near its limit, swap 0
 docker compose -f deploy/docker-compose.yml exec -T db \
   psql -U life_simulator -d life_simulator_production \
-  -c 'show shared_buffers' -c 'show max_connections'   # 512MB, 40
+  -c 'show shared_buffers' -c 'show max_connections'   # 512MB, 80
+docker compose -f deploy/docker-compose.yml exec -T db \
+  psql -U life_simulator -d life_simulator_production -c \
+  "select datname, count(*) from pg_stat_activity group by datname"  # ~25 idle, of 80
 docker compose -f deploy/docker-compose.yml logs app | grep -i "solid.queue\|puma"
 docker compose -f deploy/docker-compose.yml exec -T db \
   psql -U life_simulator -d life_simulator_production_queue \
