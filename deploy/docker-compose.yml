@@ -120,10 +120,20 @@ services:
           memory: 1g
 
   runner:
-    # The same image as the app — one build, two commands — so a deploy always
-    # runs the engine that matches the schema and the API it talks to.
-    image: life-simulator-app:latest
-    command: runner lab --api http://app:8080 --parallelism ${RUNNER_PARALLELISM:-12}
+    # Its own image, not the app's. A container is recreated when the image it
+    # runs changes, and recreating this one interrupts every run in flight (they
+    # are re-queued 5 minutes later and resume from their last snapshot), so
+    # sharing life-simulator-app:latest meant an app-only merge cost the lab
+    # work. The `runner` target's layers depend only on engine/, the Makefile and
+    # the wasm-bindgen pin, so an app-only build reuses them, the image ID does
+    # not move and `up -d` leaves this container running.
+    image: life-simulator-runner:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runner
+    # The image's ENTRYPOINT is `runner`, so this is the subcommand and its flags.
+    command: lab --api http://app:8080 --parallelism ${RUNNER_PARALLELISM:-12}
     restart: unless-stopped
     logging: *logging
     environment:

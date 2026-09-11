@@ -36,7 +36,7 @@ cd ~/Documents/life_simulator && deploy/deploy
 ```
 
 It fast-forwards to `origin/main` (`DEPLOY_REF=<sha> deploy/deploy` pins another
-commit), tags the image currently serving `:previous`, rebuilds, brings the stack up
+commit), tags the app and runner images currently serving `:previous`, rebuilds both, brings the stack up
 and waits for both `http://127.0.0.1:8070/up` and every service of the stack being
 in state `running` — a container whose start failed is left `Created`, which
 `restart: unless-stopped` never acts on, so `up -d` alone is not proof that the site
@@ -46,12 +46,42 @@ once, and only then rolls back. `bin/docker-entrypoint` runs `db:prepare` on boo
 so migrations apply themselves. A healthy deploy ends by pruning untagged images
 older than a week; `:previous` is tagged, so it always survives.
 
+## Two images
+
+The stack builds two images from the same `Dockerfile`:
+
+| Image | Stage | Contents | Rebuilt by a change to |
+|---|---|---|---|
+| `life-simulator-app:latest` | the last (default) stage | Rails, gems, precompiled assets, the wasm bundle | anything |
+| `life-simulator-runner:latest` | `--target runner` | a debian-slim base, `ca-certificates` and the release `runner` binary, run as a non-root user | `engine/`, the `Makefile`, the wasm-bindgen pin in `engine/Cargo.lock` |
+
+They used to be one image, and that made every app-only merge restart the runner: a
+container is recreated when the image it runs changes, and each recreate interrupts all
+the runs in flight, which only come back after the five-minute stale release and resume
+from their last snapshot. The `runner` stage copies no app file — its only input is the
+Rust build stage — so an app-only build produces byte-identical layers, BuildKit reuses
+them from cache, the runner image keeps the same image ID, and `docker compose up -d`
+leaves the runner container running instead of recreating it. Only an engine change
+restarts the runs now, which is the restart you actually asked for.
+
+`deploy/deploy` builds both (`docker compose build app runner`), tags both `:previous`
+before building, and rolls both back together. To check the behaviour by hand after an
+app-only commit:
+
+```sh
+docker image inspect --format '{{.Id}}' life-simulator-runner:latest   # before
+docker compose -f deploy/docker-compose.yml build app runner
+docker image inspect --format '{{.Id}}' life-simulator-runner:latest   # same id
+docker compose -f deploy/docker-compose.yml up -d                      # runner: Running
+```
+
 ## Runner
 
-`runner` runs the same image as `app` with a different command: `runner lab` claims
-runs from `POST /api/runs/claim` with `RUNNER_TOKEN`, streams samples and snapshots
-back, and heartbeats every 30 s. It holds no state of its own — everything it knows
-comes from the app.
+`runner` runs `life-simulator-runner:latest`, whose entrypoint is the binary, so the
+compose `command:` is the subcommand alone: `lab --api http://app:8080`. It claims runs
+from `POST /api/runs/claim` with `RUNNER_TOKEN`, streams samples and snapshots back, and
+heartbeats every 30 s. It holds no state of its own — everything it knows comes from the
+app.
 
 ```sh
 docker compose -f deploy/docker-compose.yml logs -f runner
@@ -201,6 +231,14 @@ To roll back by hand afterwards:
 ```sh
 docker image tag life-simulator-app:previous life-simulator-app:latest
 docker compose -f deploy/docker-compose.yml up -d app
+```
+
+The runner has its own pair of tags; roll it back only when the engine is what broke,
+since `up -d runner` restarts the runs:
+
+```sh
+docker image tag life-simulator-runner:previous life-simulator-runner:latest
+docker compose -f deploy/docker-compose.yml up -d runner
 ```
 
 ## Logs and backups
