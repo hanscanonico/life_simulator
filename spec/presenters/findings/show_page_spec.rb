@@ -43,6 +43,64 @@ RSpec.describe Findings::ShowPage do
         expect(page).not_to be_pending
       end
     end
+
+    context "with runs either observable flagged" do
+      let!(:transitioned) do
+        create(:run, experiment: experiment, seed: 1, status: "finished", transition_epoch: 5_030,
+                     params: Lab::Schema.run_defaults.merge("mutation_rate" => 2.0**-8))
+      end
+      let!(:counted) do
+        create(:run, experiment: experiment, seed: 2, status: "finished",
+                     params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.0))
+      end
+
+      before do
+        create(:sample, run: transitioned, epoch: 5_000,
+                        values: { "replicator_count" => 0, "entropy_bits" => 5.6, "copy_rate" => 0.0 })
+        create(:sample, run: transitioned, epoch: 5_030,
+                        values: { "replicator_count" => 867, "entropy_bits" => 1.2, "copy_rate" => 0.31 })
+        create(:sample, run: transitioned, epoch: 6_000,
+                        values: { "replicator_count" => 0, "entropy_bits" => 2.4, "copy_rate" => "n/a" })
+        create(:sample, run: counted, epoch: 900,
+                        values: { "replicator_count" => 14, "entropy_bits" => 6.1, "copy_rate" => 0.02 })
+        create(:run, experiment: experiment, seed: 3, status: "finished",
+                     params: Lab::Schema.run_defaults.merge("mutation_rate" => 2.0**-16))
+      end
+
+      it "rows the flagged runs, transitions first, and leaves the censored one out" do
+        expect(page.transitions.map { |row| row.run.seed }).to eq([1, 2])
+      end
+
+      it "reads the extrema of each flagged run from its own samples" do
+        row = page.transitions.first
+
+        expect(row).to have_attributes(arm_label: "0.00391", transition_epoch: 5_030,
+                                       peak_replicator_count: 867.0, peak_epoch: 5_030,
+                                       min_entropy_bits: 1.2, max_copy_rate: 0.31)
+      end
+
+      it "rows a run the census counted with no transition of its own" do
+        expect(page.transitions.last).to have_attributes(transition_epoch: nil, peak_replicator_count: 14.0,
+                                                         peak_epoch: 900)
+      end
+
+      it "names the swept axis the rows are labelled by" do
+        expect(page.arm_column).to eq("Mutation rate")
+      end
+
+      it "is not capped" do
+        expect(page).not_to be_transitions_capped
+      end
+    end
+
+    context "with no run flagged" do
+      it "has no rows" do
+        create(:run, experiment: experiment, status: "finished",
+                     params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.0))
+
+        expect(page.transitions).to be_empty
+      end
+    end
   end
 
   context "with the sweep missing" do
@@ -50,6 +108,7 @@ RSpec.describe Findings::ShowPage do
       expect(page.experiment).to be_nil
       expect(page.diagrams).to be_empty
       expect(page.evidence).to be_nil
+      expect(page.transitions).to be_empty
     end
 
     it "is pending" do

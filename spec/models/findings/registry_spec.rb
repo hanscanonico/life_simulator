@@ -39,6 +39,13 @@ RSpec.describe Findings::Registry do
     end
   end
 
+  it "leaves per-run facts out of the mutation-rate body" do
+    body = ApplicationController.render(partial: described_class.find("mutation-rate-window").body_partial)
+
+    expect(body).not_to match(/\d{2}:\d{2} CEST/)
+    expect(body).not_to match(/run 41/i)
+  end
+
   it "publishes the positive control the design record makes mandatory" do
     expect(described_class.find("bff-control").experiment_slug).to eq("bff-control")
   end

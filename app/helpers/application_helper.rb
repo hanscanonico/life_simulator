@@ -18,12 +18,22 @@ module ApplicationHelper
     value.is_a?(Numeric) ? Charts.format_value(value.to_f) : value.to_s
   end
 
-  # A hazard, already scaled to its reporting unit. Three significant figures keep an arm
-  # with one event apart from an arm with none.
-  def hazard_value(rate)
-    return "—" if rate.nil?
+  # One sampled observable. Three significant figures keep a copy rate that barely left
+  # zero apart from a true zero.
+  def metric_value(value)
+    return "—" if value.nil?
 
-    number_with_precision(rate, precision: 3, significant: true, strip_insignificant_zeros: true)
+    number_with_precision(value, precision: 3, significant: true, strip_insignificant_zeros: true)
+  end
+
+  # A hazard, already scaled to its reporting unit, reads at the same precision.
+  def hazard_value(rate) = metric_value(rate)
+
+  # A census count, integral even though jsonb hands it back as a float.
+  def count_value(count)
+    return "—" if count.nil?
+
+    number_with_delimiter(count.round)
   end
 
   def hazard_interval(interval)

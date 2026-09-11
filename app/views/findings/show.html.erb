@@ -39,6 +39,9 @@
     <%= render diagram %>
   <% end %>
 
+  <h3>Transitions and replicator counts</h3>
+  <%= render "findings/transitions_table", page: @show %>
+
   <h3>Runs</h3>
   <%= render "experiments/runs_table", page: @show.evidence %>
 <% end %>
