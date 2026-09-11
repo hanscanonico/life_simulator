@@ -12,6 +12,11 @@ module Charts
     WIDTH = 828
     HEIGHT = 328
     PADDING = { top: 24, right: 40, bottom: 64, left: 120 }.freeze
+    # How far the outermost x labels are pulled back inside the plot. At phone width a
+    # label is 23 units tall, and the two ends of the axis are the crowded places: the
+    # last one all but touches the card border, and the first shares the origin with the y
+    # axis's own zero.
+    EDGE_INSET = 14
 
     Tick = Data.define(:label, :position)
 
@@ -35,6 +40,13 @@ module Charts
       return "end" if position >= plot_right
 
       "middle"
+    end
+
+    def x_tick_label_x(position)
+      return position + EDGE_INSET if position <= plot_left
+      return position - EDGE_INSET if position >= plot_right
+
+      position
     end
 
     def x_pixel(value) = plot_left + x_scale.position(value)

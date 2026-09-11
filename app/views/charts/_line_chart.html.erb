@@ -6,6 +6,8 @@
     <svg class="chart-svg" viewBox="0 0 <%= line_chart.width %> <%= line_chart.height %>"
          role="img" aria-label="<%= line_chart.title %>" preserveAspectRatio="xMidYMid meet">
       <%= render "charts/axes", chart: line_chart %>
+      <path class="chart-line" d="<%= line_chart.path %>"></path>
+      <%# Drawn after the series so the halo on its label cuts the line out from under it. %>
       <% if line_chart.marker_pixel %>
         <g class="chart-marker">
           <line x1="<%= line_chart.marker_pixel.round(2) %>" y1="<%= line_chart.plot_top %>"
@@ -13,7 +15,6 @@
           <text x="<%= (line_chart.marker_pixel + 4).round(2) %>" y="<%= line_chart.plot_top + 12 %>">transition</text>
         </g>
       <% end %>
-      <path class="chart-line" d="<%= line_chart.path %>"></path>
     </svg>
   <% end %>
 </figure>

@@ -48,6 +48,16 @@ module Experiments
       value.nil? ? nil : label_of(value)
     end
 
+    # The same label, named so it stands on its own away from the sweep's tables: a bare
+    # "1" says nothing about what was varied, while a label that is already a word
+    # ("well-mixed") names its arm by itself.
+    def named_label_of_run(run_params)
+      label = label_of_run(run_params)
+      return label if label.nil? || label.match?(/\A\p{Alpha}/)
+
+      "#{prose_name} #{label}"
+    end
+
     # More than two decades of span (the mutation-rate grid) is unreadable on a linear
     # axis: every value but the largest collapses onto the origin.
     def log?
@@ -57,7 +67,9 @@ module Experiments
       positive.max / positive.min > 100
     end
 
-    def title = "Transition epoch vs #{name.to_s.humanize.downcase}"
+    def title = "Transition epoch vs #{prose_name}"
+
+    def prose_name = name.to_s.humanize.downcase
 
     private
 

@@ -65,7 +65,29 @@ RSpec.describe "A chart on a narrow screen", :js, type: :system do
     JS
   end
 
+  # The data line runs through the transition label on any metric that rises to a plateau,
+  # so the label is painted with a halo of the plot's background instead of on top of it.
+  def marker_label_halo
+    page.evaluate_script(<<~JS)
+      (() => {
+        const label = document.querySelector('svg.chart-svg .chart-marker text');
+        const style = window.getComputedStyle(label);
+        return [style.paintOrder, style.stroke, parseFloat(style.strokeWidth)];
+      })()
+    JS
+  end
+
   shared_examples "a chart whose labels can be read" do
+    it "cuts the transition label out of the line drawn across it" do
+      visit run_path(run)
+
+      order, colour, stroke_width = marker_label_halo
+
+      expect(order).to start_with("stroke")
+      expect(colour).not_to eq("none")
+      expect(stroke_width).to be > 1
+    end
+
     it "draws a run's metrics unclipped and clear of one another" do
       visit run_path(run)
 

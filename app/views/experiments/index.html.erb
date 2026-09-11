@@ -39,7 +39,7 @@
 
 <% if @index.planned.any? %>
   <h2>Not queued yet</h2>
-  <dl class="facts">
+  <dl class="facts facts-prose">
     <% @index.planned.each do |sweep| %>
       <dt><%= sweep.name %></dt>
       <dd><%= sweep.description %></dd>

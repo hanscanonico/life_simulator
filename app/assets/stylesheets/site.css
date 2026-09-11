@@ -166,6 +166,20 @@
   row-gap: var(--space-4);
 }
 
+/* And on a phone the term column leaves a sentence a ribbon a few words wide, so the term
+   sits above its definition instead. Short pairs (a run's facts, its parameters) keep
+   their two columns: stacking those would only make them twice as tall. */
+@media (max-width: 40rem) {
+  .facts-prose {
+    grid-template-columns: 1fr;
+    row-gap: var(--space-1);
+  }
+
+  .facts-prose dd:not(:last-child) {
+    margin-bottom: var(--space-4);
+  }
+}
+
 .chart {
   margin: var(--space-6) 0;
 }
@@ -258,6 +272,13 @@
   fill: var(--negative);
   font-family: var(--font-mono);
   font-size: var(--chart-label-size);
+  /* On a rising metric the plateau runs straight through this label — the narrower the
+     chart, the bigger the label and the surer the collision — so the glyphs are cut out
+     of the plot with a halo of the chart's own background. */
+  paint-order: stroke;
+  stroke: var(--paper-soft);
+  stroke-width: 0.3em;
+  stroke-linejoin: round;
 }
 
 /* A chart that has the page to itself, drawn around 600 px wide. */

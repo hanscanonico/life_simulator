@@ -90,7 +90,7 @@ module Runs
     def remaining_epochs = [run.epochs - run.epochs_done, 0].max
 
     def arm_labels
-      Experiments::Axis.sweep(run.experiment.param_grid).filter_map { |axis| axis.label_of_run(run.params) }
+      Experiments::Axis.sweep(run.experiment.param_grid).filter_map { |axis| axis.named_label_of_run(run.params) }
     end
   end
 end

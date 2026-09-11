@@ -57,13 +57,23 @@ RSpec.describe "Runs", type: :request do
         expect(response.body).to include("well-mixed, soup substrate, seed")
       end
 
+      context "with a numbered arm" do
+        let(:run) { create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 1)) }
+
+        it "names the axis the value belongs to" do
+          get run_path(run)
+
+          expect(response.body).to include("radius 1, soup substrate, seed")
+        end
+      end
+
       context "with a run off the grid" do
         let(:run) { create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 7)) }
 
         it "names the run's own value" do
           get run_path(run)
 
-          expect(response.body).to include("7, soup substrate, seed")
+          expect(response.body).to include("radius 7, soup substrate, seed")
         end
       end
     end

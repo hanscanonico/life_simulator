@@ -40,14 +40,17 @@
   reproduced here with nothing selecting for it.
 </p>
 
-<p>
-  The earliest transition of the sweep is the <span class="mono">2<sup>-13</sup></span>
-  arm's first seed, and its <span class="mono">compress_ratio</span> has the shape every
-  transitioning run has — the random-soup plateau, a cliff, then a floor it never leaves.
-</p>
+<% cited_chart = findings_run_chart(experiment_slug: "mutation-rate", seed: 1, metric: "compress_ratio",
+                                   params: { "mutation_rate" => Lab::EMERGENT_MUTATION_RATE }) %>
+<% if cited_chart %>
+  <p>
+    The earliest transition of the sweep is the <span class="mono">2<sup>-13</sup></span>
+    arm's first seed, and its <span class="mono">compress_ratio</span> has the shape every
+    transitioning run has — the random-soup plateau, a cliff, then a floor it never leaves.
+  </p>
 
-<%= findings_run_chart(experiment_slug: "mutation-rate", seed: 1, metric: "compress_ratio",
-                       params: { "mutation_rate" => Lab::EMERGENT_MUTATION_RATE }) %>
+  <%= cited_chart %>
+<% end %>
 
 <p>
   <strong>The census agrees where the effect is strong.</strong> The two strongest

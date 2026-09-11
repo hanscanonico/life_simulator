@@ -172,10 +172,10 @@ RSpec.describe "Findings", type: :request do
       end
 
       context "with none of its runs in this database" do
-        it "prints the narrative without the inline chart" do
+        it "prints the narrative without promising a chart it cannot draw" do
           get finding_path(finding)
 
-          expect(response.body).to include("The earliest transition of the sweep")
+          expect(response.body).not_to include("The earliest transition of the sweep")
           expect(response.body).not_to include("chart-cited")
         end
       end
