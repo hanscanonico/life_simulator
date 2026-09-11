@@ -119,6 +119,35 @@ RSpec.describe "Findings", type: :request do
                       "it has nothing to do with emergence")
       end
 
+      it "says the census agrees where the effect is strong" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("The census agrees where the effect is strong.",
+                      "the first and the fifth seed of the",
+                      "The lineage is in the world, not in the sampling.")
+      end
+
+      it "explains why a terminal snapshot under-counts the census" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("The census fades; the compression does not.",
+                      "reads the world after the lineage is gone and reports none",
+                      "a snapshot-retention artefact")
+      end
+
+      it "reports the three single-observable disagreements as disagreements" do
+        get finding_path(finding)
+
+        expect(response.body.squish)
+          .to include("Three runs still disagree with themselves.",
+                      "the ninth seed of the", "the fifth seed of the",
+                      "the second seed of the",
+                      "Ranking width is not the explanation",
+                      "the cut stays where DESIGN §1.2 locks it, at 16")
+      end
+
       it "keeps the detector, the censoring and the control as caveats" do
         get finding_path(finding)
 
@@ -180,30 +209,31 @@ RSpec.describe "Findings", type: :request do
         get finding_path(Findings::Registry.find("bff-control"))
 
         expect(response.body.squish)
-          .to include("in one of three seeds",
+          .to include("in one of its three seeds",
                       "the evidence table below, which reads the runs live",
                       "controls sit at the random-soup baseline")
       end
 
-      it "refuses to read the collapse as self-replicators while the census reads zero" do
+      it "reads its census peak as not yet resolved rather than as no evidence" do
         get finding_path(Findings::Registry.find("bff-control"))
 
         expect(response.body.squish)
-          .to include("zero at every snapshot inspected",
+          .to include("And the census is not zero.",
+                      "largest", "in the lab",
+                      "no snapshot falls inside the window where the count was high",
                       "Truncation of the ranking is ruled out",
-                      "not yet evidence of self-replicators",
+                      "not yet resolved rather than not evidence",
                       "neither triggered nor retired")
       end
 
-      it "opens the two readings of the census and names the next measurement" do
+      it "reads the zero-mutation control as the negative result it is" do
         get finding_path(Findings::Registry.find("bff-control"))
 
         expect(response.body.squish)
-          .to include("What the census shows",
-                      "less flat than flickering",
-                      "the 3-of-4 trial rule misses it",
-                      "the collapse is degenerate",
-                      "a persistence requirement on the census")
+          .to include("What the zero-mutation control shows",
+                      "a copying cascade of the tapes the seed handed the world",
+                      "an entropy collapse on its own is not evidence of a replicator",
+                      "the snapshot forced on the sample where a transition settles")
       end
 
       it "keeps the requeue history" do
@@ -223,11 +253,39 @@ RSpec.describe "Findings", type: :request do
     end
 
     context "with the world-size stub" do
-      it "states the two rival readings and holds off on a claim" do
+      it "states the two rival readings the sweep separates" do
         get finding_path(Findings::Registry.find("world-size-scaling"))
 
         expect(response).to have_http_status(:ok)
-        expect(response.body.squish).to include("lottery", "per-cell rate", "no claim is made yet")
+        expect(response.body.squish).to include("lottery", "per-cell rate")
+      end
+
+      it "states the shape both observables agree on" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish)
+          .to include("Replicators appear only in the largest world.",
+                      "no seed of the two smallest worlds moved on either observable",
+                      "three seeds moved on both",
+                      "its fraction can only rise")
+      end
+
+      it "keeps the collapse without a census apart from a replicator" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish)
+          .to include("Below it, a collapse that is not a replicator.",
+                      "with a census of zero at every sample",
+                      "not a replicator by the test DESIGN §1.2 locks")
+      end
+
+      it "names the tension with the mutation-rate sweep" do
+        get finding_path(Findings::Registry.find("world-size-scaling"))
+
+        expect(response.body.squish)
+          .to include("The two sweeps do not agree yet.",
+                      "at half this sweep's mutation rate",
+                      "The two differ in nothing else.")
       end
 
       it "reads its grid from the sweep the lab would build" do
@@ -253,6 +311,28 @@ RSpec.describe "Findings", type: :request do
         get finding_path(Findings::Registry.find("world-size-scaling"))
 
         expect(response.body.squish).to include(finding_path("bff-control"), "20 000-epoch budget is short")
+      end
+    end
+
+    context "with the radius stub" do
+      it "states the shape so far and holds off on a claim" do
+        get finding_path(Findings::Registry.find("radius-locality"))
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.squish)
+          .to include("no claim is made here yet",
+                      "connectivity buys emergence",
+                      "the two tightest arms produce none")
+      end
+
+      it "reads its arms from the sweep the lab would build" do
+        sweep = Lab::SWEEPS.fetch("radius")
+        redefined = sweep.merge(param_grid: sweep.fetch(:param_grid).merge("radius" => [3, 0]), epochs: 512)
+        stub_const("Lab::SWEEPS", Lab::SWEEPS.merge("radius" => redefined))
+
+        get finding_path(Findings::Registry.find("radius-locality"))
+
+        expect(response.body.squish).to include("3 and 0", "512 epochs per run")
       end
     end
 

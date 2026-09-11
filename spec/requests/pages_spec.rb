@@ -77,8 +77,8 @@ RSpec.describe "Pages", type: :request do
 
         links = response.parsed_body.css("ol li strong a").map(&:text)
 
-        expect(links).not_to include("Neighbourhood radius")
-        expect(response.body).to include("Neighbourhood radius")
+        expect(links).not_to include("Instruction set ablations")
+        expect(response.body).to include("Instruction set ablations")
       end
     end
 

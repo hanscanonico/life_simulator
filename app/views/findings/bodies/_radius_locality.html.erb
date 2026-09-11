@@ -1,0 +1,46 @@
+<% sweep = Lab::SWEEPS.fetch("radius") %>
+<% radii = sweep.fetch(:param_grid).fetch("radius") %>
+<% local_radii = radii.reject(&:zero?) %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+
+<h2>Hypothesis</h2>
+<p>
+  DESIGN §1.3 sweep 3 asks what spatial locality buys. A neighbourhood radius decides who a
+  cell can interact with: at
+  <span class="mono"><%= local_radii.to_sentence(last_word_connector: " and ") %></span>
+  a tape only ever meets its neighbours, while
+  <span class="mono">radius = 0</span> is the well-mixed world — a partner drawn uniformly
+  from the whole torus, the infinity arm of the design record. Locality is supposed to cut
+  both ways: a tight neighbourhood shelters a new lineage from the soup long enough to take
+  hold, and it also starves it of the variety a copy needs, so a tight world should be
+  slower to produce anything at all.
+</p>
+
+<h2>Method</h2>
+<p>
+  A single world shape, <%= sweep.fetch(:seeds).size %> seeds per arm and <%= epochs %>
+  epochs per run, with the radius as the only parameter that moves:
+  <span class="mono"><%= radii.to_sentence(last_word_connector: " and ") %></span>. The
+  dependent variables are both observables of DESIGN §1.2 — the transition epoch and the
+  <span class="mono">replicator_count</span> census — read from the samples themselves in
+  the tables below.
+</p>
+
+<h2>Result</h2>
+<p>
+  Open: most of the grid is terminal but no claim is made here yet. The shape so far is that
+  connectivity buys emergence. The widest local neighbourhood and the well-mixed arm both
+  produce transitions that the detector and the census agree on; the two tightest arms
+  produce none, and each of them has instead a single seed that collapses
+  <span class="mono">entropy_bits</span> with a census of zero — the same disagreement class
+  the <%= link_to "mutation-rate", finding_path("mutation-rate-window") %> and
+  <%= link_to "world-size", finding_path("world-size-scaling") %> sweeps report, a
+  low-entropy attractor that is not a replicator by the locked test.
+</p>
+<p>
+  Two readings of that are still open, and this sweep alone cannot separate them: either a
+  tight neighbourhood is genuinely hostile to a replicator, or it is merely slower than the
+  budget, in which case the arms that show nothing are censored rather than negative. The
+  arms and the per-run numbers are in the phase diagram and the evidence tables below, which
+  read the runs live.
+</p>
