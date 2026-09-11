@@ -86,11 +86,13 @@ RSpec.describe Findings::Registry do
     expect(described_class.find("mutation-rate-window").status).to eq(:partial)
   end
 
-  it "reads the world-size sweep as partial while its largest arm finishes" do
+  it "reads the world-size sweep as partial while two of its runs resume" do
     finding = described_class.find("world-size-scaling")
 
     expect(finding).to have_attributes(experiment_slug: "world-size", status: :partial)
-    expect(finding.summary).to include("replicators appear only in the largest world")
+    expect(finding.summary).to include("emergence gets more likely as the world gets bigger",
+                                       "2.5 × 10⁻¹⁰ per cell-epoch",
+                                       "still resuming from their snapshots")
   end
 
   it "reads the finished radius sweep as a negative on the speed half of DESIGN 1.3 sweep 3" do
