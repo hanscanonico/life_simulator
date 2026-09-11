@@ -26,6 +26,23 @@ RSpec.describe Snapshot, type: :model do
     expect(build(:snapshot, blob: "w" * described_class::MAX_BYTES)).to be_valid
   end
 
+  it "takes the cadence reason by default" do
+    expect(create(:snapshot).reason).to eq("cadence")
+  end
+
+  it "accepts every reason the run loop gives" do
+    described_class::REASONS.each do |reason|
+      expect(build(:snapshot, reason: reason)).to be_valid
+    end
+  end
+
+  it "rejects a reason the run loop cannot give" do
+    snapshot = build(:snapshot, reason: "whim")
+
+    expect(snapshot).not_to be_valid
+    expect(snapshot.errors[:reason]).to be_present
+  end
+
   it "round-trips binary payloads" do
     snapshot = create(:snapshot, blob: "\x00\x01\x02", png: "\x89PNG")
 

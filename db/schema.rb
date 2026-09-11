@@ -73,6 +73,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_150000) do
     t.datetime "created_at", null: false
     t.integer "epoch", null: false
     t.binary "png"
+    t.string "reason", default: "cadence", null: false
     t.bigint "run_id", null: false
     t.datetime "updated_at", null: false
     t.index ["run_id", "epoch"], name: "index_snapshots_on_run_id_and_epoch", unique: true

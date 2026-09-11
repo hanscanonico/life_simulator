@@ -38,7 +38,7 @@ module Api
 
     def snapshots
       snapshot = @run.snapshots.find_or_initialize_by(epoch: params.fetch(:epoch))
-      snapshot.update!(blob: binary(params[:blob]), png: binary(params[:png]))
+      snapshot.update!(blob: binary(params[:blob]), png: binary(params[:png]), reason: reason)
       head :no_content
     end
 
@@ -104,6 +104,10 @@ module Api
     end
 
     def runner_id = params.require(:runner_id)
+
+    # A runner that predates the reason — one resumed mid-run over a deploy — posts
+    # without it, and its snapshot is a cadence one.
+    def reason = params.fetch(:reason, Snapshot::DEFAULT_REASON)
 
     def binary_wanted? = request.accepts.any? { |type| type == BINARY_TYPE }
 

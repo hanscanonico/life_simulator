@@ -8,6 +8,13 @@ class Snapshot < ApplicationRecord
   # change to a Params range or to the sweep grid, since engine Params is the single
   # authority on world size (DESIGN §3).
   MAX_BYTES = 64.megabytes
+  # Why the run loop took it: the epoch cadence, the runner's wall-clock ceiling on
+  # snapshot age, or the sample that settled the transition. Keep in step with
+  # `SnapshotReason` in engine/crates/runner/src/sink.rs, which names them.
+  REASONS = %w[cadence age transition].freeze
+  DEFAULT_REASON = "cadence"
+
+  enum :reason, REASONS.index_by(&:itself), validate: true
 
   belongs_to :run
 

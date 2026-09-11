@@ -272,6 +272,38 @@ RSpec.describe "Api::Runs", type: :request do
       end
     end
 
+    # A runner resumed over a deploy can still be the pre-reason build, and its snapshots
+    # are cadence ones.
+    it "stores a payload posted without a reason as a cadence snapshot" do
+      post snapshots_api_run_path(run),
+           params: { runner_id: "runner-1", epoch: 300, blob: Base64.encode64("world") },
+           headers: headers, as: :json
+
+      expect(run.snapshots.sole.reason).to eq("cadence")
+    end
+
+    it "stores every reason the run loop gives" do
+      Snapshot::REASONS.each_with_index do |reason, index|
+        post snapshots_api_run_path(run),
+             params: { runner_id: "runner-1", epoch: 300 + index, blob: Base64.encode64("world"),
+                       reason: reason },
+             headers: headers, as: :json
+      end
+
+      expect(run.snapshots.order(:epoch).pluck(:reason)).to eq(Snapshot::REASONS)
+    end
+
+    context "with a reason the run loop cannot give" do
+      it "answers unprocessable content and stores nothing" do
+        post snapshots_api_run_path(run),
+             params: { runner_id: "runner-1", epoch: 300, blob: Base64.encode64("world"), reason: "whim" },
+             headers: headers, as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(run.snapshots).to be_empty
+      end
+    end
+
     it "rejects a runner that does not hold the run" do
       post snapshots_api_run_path(run), params: { runner_id: "runner-9", epoch: 300 }, headers: headers, as: :json
 

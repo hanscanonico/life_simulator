@@ -2,7 +2,7 @@
 //! run has settled on, snapshots posted as they are taken, and one `finish` carrying
 //! that epoch again with the last metrics.
 
-use crate::api::LabClient;
+use crate::api::{LabClient, Snapshot};
 use crate::lab::Slot;
 use crate::sink::{RunResult, RunSink, SnapshotReason};
 use anyhow::Result;
@@ -96,14 +96,14 @@ impl RunSink for HttpSink<'_> {
         png: &[u8],
         reason: SnapshotReason,
     ) -> Result<()> {
-        self.client.snapshot(
-            self.run,
-            &self.slot.claim_id,
+        let snapshot = Snapshot {
             epoch,
             raw,
             png,
-            &mut self.body,
-        )?;
+            reason,
+        };
+        self.client
+            .snapshot(self.run, &self.slot.claim_id, snapshot, &mut self.body)?;
         self.slot.log(
             "snapshot",
             &[
@@ -255,6 +255,11 @@ mod tests {
             "two cadence epochs and the settling sample"
         );
         assert_eq!(posted[2]["epoch"], json!(6));
+        let reasons: Vec<_> = posted.iter().map(|body| body["reason"].clone()).collect();
+        assert_eq!(
+            reasons,
+            vec![json!("cadence"), json!("cadence"), json!("transition")]
+        );
     }
 
     #[test]
