@@ -38,7 +38,7 @@
       </p>
     <% end %>
     <% if @status.runners.any? %>
-      <div class="table-scroll">
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Runners">
         <table class="data-table">
           <thead>
             <tr>
@@ -88,7 +88,7 @@
 
     <h2>Worth a look</h2>
     <% if @status.worth_a_look.any? %>
-      <div class="table-scroll">
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Worth a look">
         <table class="data-table">
           <thead>
             <tr>
@@ -123,7 +123,7 @@
 
     <% if @status.recent_failure_count.positive? %>
       <h2>Recent failures</h2>
-      <div class="table-scroll">
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Recent failures">
         <table class="data-table">
           <thead>
             <tr>

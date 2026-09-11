@@ -58,6 +58,27 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     JS
   end
 
+  def focus_overflowing_table
+    page.execute_script(<<~JS)
+      document.querySelector('.table-scroll').focus();
+    JS
+  end
+
+  def focused_table_scroll_left
+    page.evaluate_script("document.activeElement.scrollLeft")
+  end
+
+  # The fade the scroll-driven animation drives: 0 at an edge with nothing beyond it.
+  def table_fades
+    page.evaluate_script(<<~JS)
+      (() => {
+        const style = getComputedStyle(document.querySelector('.table-scroll'));
+        return ['--table-scroll-fade-start', '--table-scroll-fade-end']
+          .map((name) => parseFloat(style.getPropertyValue(name)));
+      })()
+    JS
+  end
+
   def skip_link_covers_wordmark?
     page.evaluate_script(<<~JS)
       (() => {
@@ -150,6 +171,28 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     expect(caption_boxes).to eq(boxes)
     expect(boxes.map(&:third)).to all(eq(0))
     expect(boxes.map(&:second)).to all(be <= phone_width - 16)
+  end
+
+  it "lets a keyboard scroll a wide table without the page moving sideways" do
+    visit experiment_path(experiment)
+
+    expect(page).to have_css(".table-scroll[role='region'][tabindex='0'] table.data-table")
+    focus_overflowing_table
+    10.times { page.send_keys(:arrow_right) }
+
+    expect(focused_table_scroll_left).to be > 0
+    expect(viewport_and_content_width).to eq([phone_width, phone_width])
+  end
+
+  it "fades the edge of a wide table only while there is table beyond it" do
+    visit experiment_path(experiment)
+
+    expect(page).to have_css("table.data-table")
+    expect(table_fades).to eq([0, 32])
+
+    scroll_tables_right
+
+    expect(table_fades).to eq([32, 0])
   end
 
   it "keeps a finding inside the viewport, diagram and runs table included" do

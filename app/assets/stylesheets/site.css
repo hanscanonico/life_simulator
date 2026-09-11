@@ -99,6 +99,52 @@
     radial-gradient(farthest-side at 100% 50%, var(--line-strong), transparent);
 }
 
+/* The markup makes the box a focusable region so a keyboard can scroll it, which means it
+   needs a ring of its own; it matches the button ring in 01-buttons.css. */
+.table-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The background shadows sit behind the cells, so a status pill at the edge is still cut
+   in half and reads as broken rather than as more table. Masking the box's own edge fades
+   the clipped column out instead, and the two scroll-driven animations widen each fade
+   only while there is table left that way: the first over the opening 2rem of the scroll
+   range, the second over its closing 2rem. Black and transparent here are mask alpha, not
+   paint, so no colour token applies. */
+@property --table-scroll-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --table-scroll-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes table-scroll-fade-start {
+  to { --table-scroll-fade-start: var(--space-8); }
+}
+
+@keyframes table-scroll-fade-end {
+  from { --table-scroll-fade-end: var(--space-8); }
+}
+
+@supports (animation-timeline: scroll(self inline)) {
+  .table-scroll {
+    mask-image: linear-gradient(to right,
+      transparent,
+      black var(--table-scroll-fade-start),
+      black calc(100% - var(--table-scroll-fade-end)),
+      transparent);
+    animation: table-scroll-fade-start linear both, table-scroll-fade-end linear both;
+    animation-timeline: scroll(self inline), scroll(self inline);
+    animation-range: 0px var(--space-8), calc(100% - var(--space-8)) 100%;
+  }
+}
+
 /* A finding's prose is set to a measure, but a table inside it is evidence, not prose, and
    its columns cannot be read through a 600 px window. Once the page is wide enough to hold
    62rem plus its own gutter, a table breaks out of the measure, centred on it. The 37.5rem
