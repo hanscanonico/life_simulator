@@ -8,7 +8,7 @@ module Findings
     ALL = [
       Finding.new(
         slug: "mutation-rate-long-horizon",
-        title: "Emergence is rare, and it is also slow",
+        title: "Emergence is rare, and half of it happens after epoch 20 000",
         date: Date.new(2026, 9, 11),
         experiment_slug: "mutation-rate-long",
         status: :partial,

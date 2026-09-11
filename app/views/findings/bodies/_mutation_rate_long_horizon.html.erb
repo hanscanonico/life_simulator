@@ -37,14 +37,16 @@
   <span class="mono">2<sup>-14</sup></span> to <span class="mono">2<sup>-11</sup></span>,
   the arm below the lowest transition through the arm above the highest of this
   neighbourhood — on the same 128×128 torus of 64-byte tapes, <%= seeds %> seeds each,
-  <%= epochs %> epochs per run. Every other parameter is at its default, so a run here is
-  the same run the short sweep made, byte for byte, up to epoch <%= short_epochs %>, and
-  then keeps going: this is a re-run rather than a new sample, which is what makes the two
-  sweeps directly comparable and also what stops the overlap from counting twice. The
-  dependent variable is the transition epoch of DESIGN §1.2 — the first sampled epoch at
-  which <span class="mono">compress_ratio</span> falls below 0.6 and stays below for three
-  further samples — and beside it the <span class="mono">replicator_count</span> census.
-  A run is called census-confirmed here when both fire in it.
+  <%= epochs %> epochs per run. Every parameter that enters the simulation is at the short
+  sweep's value, and only the snapshot cadence is sparser — a snapshot is written output
+  and not state — so a run here is the same run the short sweep made, byte for byte, up to
+  epoch <%= short_epochs %>, and then keeps going: this is a re-run rather than a new
+  sample, which is what makes the two sweeps directly comparable and also what stops the
+  overlap from counting twice. The dependent variable is the transition epoch of DESIGN
+  §1.2 — the first sampled epoch at which <span class="mono">compress_ratio</span> falls
+  below 0.6 and stays below for three further samples — and beside it the
+  <span class="mono">replicator_count</span> census. A run is called census-confirmed here
+  when both fire in it.
 </p>
 
 <h2>Result</h2>
@@ -112,7 +114,7 @@
 <p>
   <strong>The short sweep was right, and it under-counted.</strong> Within the same four
   arms the <%= short_epochs %>-epoch budget found three transitions; the
-  <%= epochs %>-epoch budget finds seven, six of them census-confirmed — 6 of
+  <%= epochs %>-epoch budget finds eight, six of them census-confirmed — 6 of
   <%= planned %> runs, 15%. The six confirmed transitions land at 5 030, 7 000, 15 560,
   21 540, 42 730 and 47 820 epochs, a median of 18 550, and three of them fall after epoch
   <%= short_epochs %>: half of the emergence in this region of the parameter space happens
@@ -177,7 +179,7 @@
   <span class="mono">2<sup>-12</sup></span> arm's fifth seed at 43 220, 2 of
   <%= planned %> runs — and the second of those ends with
   <span class="mono">compress_ratio</span> back at 0.951 and every tape distinct, which is
-  the soup it started in. Read on the detector alone this sweep has 7 events; read on the
+  the soup it started in. Read on the detector alone this sweep has 8 events; read on the
   census it has 6, and the two disagree in both directions across the programme. Separately,
   the <span class="mono">2<sup>-12</sup></span> arm's tenth seed shows that a confirmed
   emergence is not a terminal state: it transitions at 21 540, its census peaks at 123 cells

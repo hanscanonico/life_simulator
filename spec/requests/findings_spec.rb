@@ -260,9 +260,19 @@ RSpec.describe "Findings", type: :request do
         expect(response).to have_http_status(:ok)
         expect(response.body.squish)
           .to include("The short sweep was right, and it under-counted.",
-                      "three transitions; the 60 000-epoch budget finds seven",
+                      "three transitions; the 60 000-epoch budget finds eight",
                       "three of them fall after epoch 20 000")
         expect(response.body).to include(finding_path("mutation-rate-window"))
+      end
+
+      it "counts the same flagged runs in its prose as in its per-arm table" do
+        get finding_path(long_run)
+
+        flagged = response.parsed_body.css("table.data-table").first.css("tbody tr")
+                          .sum { |row| row.css("td")[1].text.squish.to_i }
+
+        expect(flagged).to eq(8)
+        expect(response.body.squish).to include("budget finds eight", "this sweep has 8 events")
       end
 
       it "reports the disagreement the longer clock resolved" do

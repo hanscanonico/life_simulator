@@ -83,7 +83,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   the same 128×128 world, 10 seeds each, 60 000 epochs, snapshot_every 500; a run repeats
   its sweep-1 counterpart byte for byte to epoch 20 000, so the two sweeps are nested and
   the overlap is not counted twice. 37 of 40 terminal at the time of writing, the other 3
-  already past their transitions and their census peaks. Seven runs flagged, six
+  already past their transitions and their census peaks. Eight runs flagged, six
   census-confirmed (0/10, 2/10, 3/10, 1/10 from 2^-14 up; 15% overall): 2^-13 seed 1 at
   5 030 (peak census 867) and seed 5 at 7 000 (108); 2^-12 seed 9 at 15 560 (57), seed 10
   at 21 540 (123) and seed 2 at 47 820 (105); 2^-11 seed 10 at 42 730 (36). **Sweep 1's
