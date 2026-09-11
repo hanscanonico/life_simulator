@@ -69,12 +69,14 @@ module Lab
     # control run at `sample_every` 50 posts a batch roughly every 25 minutes. `epochs_done`
     # rides every heartbeat instead, and `epochs_done_at` records when it last moved.
     def stalled_runs
-      @stalled_runs ||= Run.where(status: %w[claimed running], heartbeat_at: Run::STALE_AFTER.ago..)
-                           .where("#{LAST_PROGRESS} < ?", STALL_AFTER.ago)
-                           .select("runs.*", "#{LAST_PROGRESS} AS last_progress_at")
-                           .order(Arel.sql("#{LAST_PROGRESS} ASC"))
-                           .limit(STALLED_LIMIT).to_a
+      @stalled_runs ||= stalled.select("runs.*", "#{LAST_PROGRESS} AS last_progress_at")
+                               .order(Arel.sql("#{LAST_PROGRESS} ASC"))
+                               .limit(STALLED_LIMIT).to_a
     end
+
+    # How many slots are wedged, counted apart from `stalled_runs` so the header keeps
+    # telling the truth once there are more of them than the table shows.
+    def stalled_count = @stalled_count ||= stalled.count
 
     # Everything the page asks the reader to look at, worst first: the runs that heartbeat
     # but make no progress, then the ones whose runner stopped heartbeating altogether.
@@ -118,6 +120,11 @@ module Lab
     def silent?(runner) = runner.last_seen < SLOT_SILENT_AFTER.ago
 
     def flagged(run, reason, since) = Flagged.new(run: run, reason: reason, since: since)
+
+    def stalled
+      Run.where(status: %w[claimed running], heartbeat_at: Run::STALE_AFTER.ago..)
+         .where("#{LAST_PROGRESS} < ?", STALL_AFTER.ago)
+    end
 
     def recently_failed = Run.failed.where(finished_at: FAILURE_WINDOW.ago..)
 

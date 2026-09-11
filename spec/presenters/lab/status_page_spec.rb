@@ -222,6 +222,22 @@ RSpec.describe Lab::StatusPage do
     end
   end
 
+  describe "#stalled_count" do
+    it "counts every wedged slot, not just the screenful the table lists" do
+      create_list(:run, Lab::StatusPage::STALLED_LIMIT + 3, :claimed,
+                  status: "running", started_at: 3.hours.ago)
+      create(:run, :claimed, epochs_done: 400, epochs_done_at: Time.current)
+
+      expect(page.stalled_count).to eq(Lab::StatusPage::STALLED_LIMIT + 3)
+    end
+
+    it "counts none while every live run keeps advancing" do
+      create(:run, :claimed, epochs_done: 400, epochs_done_at: Time.current)
+
+      expect(page.stalled_count).to be_zero
+    end
+  end
+
   describe "#stale_heartbeat_runs" do
     it "flags a claimed run whose runner stopped heartbeating" do
       run = create(:run, :stale, status: "running", heartbeat_at: 30.minutes.ago)
