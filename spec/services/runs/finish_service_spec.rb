@@ -42,6 +42,15 @@ RSpec.describe Runs::FinishService do
     expect(experiment.reload).to be_running
   end
 
+  it "logs the terminal state for the runner log" do
+    allow(Rails.logger).to receive(:info)
+
+    described_class.call(run: run)
+
+    expect(Rails.logger).to have_received(:info)
+      .with(/event=run_finished run_id=#{run.id} experiment=#{experiment.slug} status=finished epochs_done=/)
+  end
+
   context "with an error reported" do
     it "fails the run" do
       described_class.call(run: run, error: "engine panicked")
@@ -55,6 +64,24 @@ RSpec.describe Runs::FinishService do
       described_class.call(run: run, error: "engine panicked")
 
       expect(run.reload.epochs_done).to eq(19_342)
+    end
+
+    it "logs the failure with the error the runner reported" do
+      allow(Rails.logger).to receive(:warn)
+
+      described_class.call(run: run, error: "engine panicked")
+
+      expect(Rails.logger).to have_received(:warn)
+        .with(/event=run_failed run_id=#{run.id} experiment=#{experiment.slug} error="engine panicked"/)
+    end
+
+    it "truncates a runaway error down to one log line" do
+      allow(Rails.logger).to receive(:warn)
+
+      described_class.call(run: run, error: "panic\n#{'x' * 500}")
+
+      expect(Rails.logger).to have_received(:warn).with(a_string_including('error="panic\\n'))
+      expect(Rails.logger).to have_received(:warn).with(satisfy { |line| line.length < 300 })
     end
 
     it "still lets the experiment finish" do

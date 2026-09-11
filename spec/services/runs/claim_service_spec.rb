@@ -65,6 +65,15 @@ RSpec.describe Runs::ClaimService do
     expect(claim).to eq(stale)
   end
 
+  it "logs the claim for the runner log" do
+    run = create(:run)
+    allow(Rails.logger).to receive(:info)
+
+    claim
+
+    expect(Rails.logger).to have_received(:info).with(/event=run_claimed run_id=#{run.id} runner_id="runner-1"/)
+  end
+
   context "with an empty queue" do
     it "returns nothing" do
       create(:run, :claimed)
