@@ -9,6 +9,9 @@ RSpec.describe "A chart on a narrow screen", :js, type: :system do
   # The rect of an SVG <text> is its em box, around 1.3 times the font size, so 11 px of
   # box is roughly 8.5 px of type — the floor under which a label stops being readable.
   let(:minimum_label_box) { 11 }
+  # The two axes' zeros meet at the origin, a hair apart before the ends of the x axis
+  # were inset: 6 px is half a phone-width glyph, enough to read them as two labels.
+  let(:minimum_origin_gap) { 6 }
 
   before do
     rates.each_with_index do |rate, index|
@@ -77,7 +80,33 @@ RSpec.describe "A chart on a narrow screen", :js, type: :system do
     JS
   end
 
+  # The x tick labels share one row under the plot and the y ones a column beside it, so
+  # the narrowest space between the two groups is the one at the origin.
+  def origin_label_gaps
+    page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll('svg.chart-svg')).map((svg) => {
+        const labels = Array.from(svg.querySelectorAll('.chart-tick-label text'))
+          .map((text) => text.getBoundingClientRect())
+          .filter((box) => box.width > 0);
+        const row = Math.max(...labels.map((box) => Math.round(box.top)));
+        const alongX = labels.filter((box) => Math.round(box.top) === row);
+        const alongY = labels.filter((box) => Math.round(box.top) !== row);
+        return Math.min(...alongY.flatMap((y) => alongX.map((x) => x.left - y.right)));
+      })
+    JS
+  end
+
   shared_examples "a chart whose labels can be read" do
+    it "keeps the x axis clear of the y labels at the origin" do
+      visit run_path(run)
+
+      expect(origin_label_gaps).to all(be >= minimum_origin_gap)
+
+      visit experiment_path(sweep)
+
+      expect(origin_label_gaps).to all(be >= minimum_origin_gap)
+    end
+
     it "cuts the transition label out of the line drawn across it" do
       visit run_path(run)
 
