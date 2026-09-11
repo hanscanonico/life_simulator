@@ -260,6 +260,15 @@ RSpec.describe Experiments::ShowPage do
 
         expect(page.arm_labels_of(run)).to eq(["64"])
       end
+
+      context "with a pair off the grid" do
+        it "names no arm, so the table can show a dash" do
+          run = create(:run, experiment: experiment,
+                             params: Lab::Schema.run_defaults.merge("width" => 48, "height" => 48))
+
+          expect(page.arm_labels_of(run)).to eq([nil])
+        end
+      end
     end
   end
 end

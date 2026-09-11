@@ -10,13 +10,11 @@
   <line x1="<%= chart.plot_left %>" y1="<%= chart.plot_bottom %>"
         x2="<%= chart.plot_right %>" y2="<%= chart.plot_bottom %>"></line>
 </g>
-<g class="chart-tick-label chart-tick-x">
+<g class="chart-tick-label">
   <% chart.x_ticks.each do |tick| %>
     <text x="<%= tick.position.round(2) %>" y="<%= chart.plot_bottom + 20 %>"
           text-anchor="<%= chart.x_tick_anchor(tick.position) %>"><%= tick.label %></text>
   <% end %>
-</g>
-<g class="chart-tick-label chart-tick-y">
   <% chart.y_ticks.each do |tick| %>
     <text x="<%= chart.plot_left - 8 %>" y="<%= (tick.position + 5).round(2) %>" text-anchor="end"><%= tick.label %></text>
   <% end %>
