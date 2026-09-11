@@ -1,0 +1,34 @@
+<figure class="chart">
+  <figcaption class="chart-title"><%= agreement_chart.title %></figcaption>
+  <% if agreement_chart.empty? %>
+    <p class="chart-empty text-muted">No sampled run has been flagged or held a replicator yet.</p>
+  <% else %>
+    <svg class="chart-svg" viewBox="0 0 <%= agreement_chart.width %> <%= agreement_chart.height %>"
+         role="img" aria-label="<%= agreement_chart.title %>" preserveAspectRatio="xMidYMid meet">
+      <%= render "charts/axes", chart: agreement_chart %>
+      <g class="chart-bars">
+        <% agreement_chart.bars.each do |bar| %>
+          <rect class="chart-bar-<%= bar.series.key %>" x="<%= bar.x.round(2) %>" y="<%= bar.y.round(2) %>"
+                width="<%= bar.width.round(2) %>" height="<%= bar.height.round(2) %>">
+            <title><%= bar.label %></title>
+          </rect>
+        <% end %>
+      </g>
+    </svg>
+    <%# A figure carries at most one figcaption, and it is the title above the plot. %>
+    <ul class="chart-legend text-sm text-muted">
+      <% agreement_chart.series.each do |series| %>
+        <li>
+          <svg class="chart-swatch" viewBox="0 0 28 8" aria-hidden="true">
+            <rect class="chart-bar-<%= series.key %>" width="28" height="8"></rect>
+          </svg>
+          <%= series.name %>
+        </li>
+      <% end %>
+    </ul>
+    <p class="chart-legend text-sm text-muted">
+      The two outer bars of an arm are its disagreements: runs the detector flagged with no
+      replicator ever counted, and runs that counted one without being flagged.
+    </p>
+  <% end %>
+</figure>

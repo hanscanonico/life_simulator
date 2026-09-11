@@ -15,9 +15,13 @@ RSpec.describe "A chart on a narrow screen", :js, type: :system do
 
   before do
     rates.each_with_index do |rate, index|
-      create(:run, experiment: sweep, status: "finished", epochs_done: 20_000,
-                   transition_epoch: (index.even? ? nil : 15_560),
-                   params: Lab::Schema.run_defaults.merge("mutation_rate" => rate))
+      arm_run = create(:run, experiment: sweep, status: "finished", epochs_done: 20_000,
+                             transition_epoch: (index.even? ? nil : 15_560),
+                             params: Lab::Schema.run_defaults.merge("mutation_rate" => rate))
+      # Every arm is sampled, so the agreement chart is drawn over the whole ten-value
+      # grid rather than over the one arm the run below belongs to.
+      create(:sample, run: arm_run, epoch: 20_000,
+                      values: { "compress_ratio" => 0.6, "replicator_count" => index % 3 })
     end
     [100, 8_000, 15_560].each_with_index do |epoch, index|
       create(:sample, run: run, epoch: epoch,
@@ -124,6 +128,15 @@ RSpec.describe "A chart on a narrow screen", :js, type: :system do
       expect(overlapping_chart_labels).to eq([])
       expect(clipped_chart_labels).to eq([])
       expect(chart_label_boxes).to all(be >= minimum_label_box)
+    end
+
+    it "names the three series of the agreement chart" do
+      visit experiment_path(sweep)
+
+      expect(page).to have_css("svg.chart-svg .chart-bars rect")
+      expect(page).to have_css("ul.chart-legend li", text: "Flagged only")
+      expect(page).to have_css("ul.chart-legend li", text: "Replicators only")
+      expect(page).to have_css("ul.chart-legend li", text: "Both")
     end
 
     it "draws a sweep's phase diagram unclipped and clear of one another" do

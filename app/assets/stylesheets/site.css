@@ -262,6 +262,21 @@
   font-size: var(--chart-label-size);
 }
 
+/* The agreement chart's three bars per arm: the two disagreements in the signal colours,
+   the agreement in the brand's own. Their lightness differs as much as their hue, so the
+   bars stay apart in greyscale and in print. */
+.chart-bar-flagged {
+  fill: var(--negative);
+}
+
+.chart-bar-replicated {
+  fill: var(--premium);
+}
+
+.chart-bar-both {
+  fill: var(--accent);
+}
+
 .chart-marker line {
   stroke: var(--negative);
   stroke-width: 1.5;

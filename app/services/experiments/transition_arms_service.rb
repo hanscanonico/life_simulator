@@ -26,7 +26,11 @@ module Experiments
     REPLICATED = "values -> 'replicator_count' > '0'::jsonb"
 
     Arm = Data.define(:label, :runs, :flagged, :replicated, :both) do
-      def either_but_not_both = flagged + replicated - (2 * both)
+      def flagged_only = flagged - both
+
+      def replicated_only = replicated - both
+
+      def either_but_not_both = flagged_only + replicated_only
 
       def cells = [label, runs, flagged, replicated, both, either_but_not_both]
     end
