@@ -39,7 +39,6 @@ RSpec.describe Experiments::RescoreSummary do
       expect(baseline.worlds).to eq(3)
       expect(baseline.runs_measured).to eq(2)
       expect(baseline.runs_with_replicators).to eq(1)
-      expect(baseline).to be_baseline
     end
 
     it "reads the median and the peak over the readings of the window" do
@@ -50,7 +49,7 @@ RSpec.describe Experiments::RescoreSummary do
     end
 
     it "counts the runs the baseline calls dead and the wider window calls alive" do
-      expect(summary.rows.map(&:newly_positive_runs)).to eq([0, 1])
+      expect(summary.rows.map(&:newly_positive_runs)).to eq([nil, 1])
     end
 
     it "costs the same two queries whatever the sweep holds" do
@@ -72,6 +71,15 @@ RSpec.describe Experiments::RescoreSummary do
 
         expect(summary.rows.last.newly_positive_runs).to eq(1)
         expect(summary.rows.last.runs_measured).to eq(3)
+      end
+    end
+
+    context "with a pass that skipped the baseline window" do
+      it "counts nothing rather than reporting a zero" do
+        Rescore.where(top_k: 16).delete_all
+
+        expect(summary.rows.map(&:top_k)).to eq([64])
+        expect(summary.rows.map(&:newly_positive_runs)).to eq([nil])
       end
     end
 

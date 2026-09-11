@@ -32,7 +32,7 @@
             </td>
             <td class="numeric mono"><%= metric_value row.median_replicator_count %></td>
             <td class="numeric mono"><%= count_value row.max_replicator_count %></td>
-            <td class="numeric"><%= row.baseline? ? "—" : row.newly_positive_runs %></td>
+            <td class="numeric"><%= row.newly_positive_runs || "—" %></td>
           </tr>
         <% end %>
       </tbody>

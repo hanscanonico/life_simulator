@@ -15,9 +15,7 @@ module Experiments
     MEDIAN = "percentile_cont(0.5) within group (order by replicator_count::double precision)"
 
     Row = Data.define(:top_k, :worlds, :runs_measured, :runs_with_replicators,
-                      :median_replicator_count, :max_replicator_count, :newly_positive_runs) do
-      def baseline? = top_k == BASELINE_TOP_K
-    end
+                      :median_replicator_count, :max_replicator_count, :newly_positive_runs)
 
     def self.build(experiment:) = new(experiment: experiment)
 
@@ -44,9 +42,11 @@ module Experiments
     end
 
     # A run with no reading at the baseline is no evidence either way: only a run the
-    # corpus pass measured at both windows can be said to have changed verdict.
+    # corpus pass measured at both windows can be said to have changed verdict. A pass
+    # that skipped the baseline window altogether counts nothing rather than reporting a
+    # zero that would read as "no run changed verdict".
     def newly_positive(top_k, peaks)
-      return 0 if top_k == BASELINE_TOP_K
+      return nil if top_k == BASELINE_TOP_K || baseline_peaks.empty?
 
       peaks.count do |run_id, peak|
         baseline = baseline_peaks[run_id]
