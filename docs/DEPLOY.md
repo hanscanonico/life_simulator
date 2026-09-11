@@ -82,6 +82,54 @@ crashes is reported as `failed` with its error and is not retried.
 
 ## Memory
 
+The box has 15 215 MiB (`free -m`) and three stacks on it: this one, `web-*` and
+`stock_market-*` (~750 MiB together). Every service of this stack carries a hard limit
+and a reservation, budgeted in `deploy/docker-compose.yml`:
+
+| Service | Limit | Reservation | Steady state, 24 runs live |
+|---|---|---|---|
+| `runner` | 6 GiB | 1 GiB | 143 MiB (claims under `RUNNER_MAX_MEMORY`, 5g) |
+| `app` | 2 GiB | 1 GiB | 448 MiB |
+| `db` | 2 GiB | 1 GiB | 236 MiB |
+| `cloudflared` | 256 MiB | 64 MiB | 21 MiB |
+| **total** | **10.25 GiB** | **3.06 GiB** | ~850 MiB |
+
+That leaves ~3.75 GiB for the host, the sibling stacks and the deploy overlap, when the
+old and the new app are briefly co-resident. Every limit is at least three times the
+steady state it covers, so a limit can only catch a leak, never normal work — and a
+limit *below* real steady state would be an OOM-restart loop, which is why none of them
+is tightened towards the measurements.
+
+Postgres is tuned for its 2 GiB (the defaults assume 128 MB): `shared_buffers=512MB`,
+`effective_cache_size=1536MB`, `work_mem=16MB`, `maintenance_work_mem=256MB`,
+`max_connections=40`, `max_wal_size=2GB`. The app asks for 24 connections at its
+ceiling (2 Puma workers x 3 threads, each able to hold a pool connection to all four
+databases) plus ~9 for Solid Queue in Puma and 2 for the backup and an operator `psql`;
+40 covers that and is the largest number 16 MB of `work_mem` affords inside the limit.
+
+The web process is two forked Puma workers of three threads each, plus one Solid Queue
+worker process — `WEB_CONCURRENCY`, `RAILS_MAX_THREADS` and `JOB_CONCURRENCY` on the
+`app` service. `config/puma.rb` preloads the app and drops the master's database
+connections before forking; with `WEB_CONCURRENCY` unset (development, CI) it stays
+single-process. `spec/config/puma_spec.rb` pins both shapes.
+
+After a deploy that touches any of this, check on the host:
+
+```sh
+deploy/memory_report                                   # no container near its limit, swap 0
+docker compose -f deploy/docker-compose.yml exec -T db \
+  psql -U life_simulator -d life_simulator_production \
+  -c 'show shared_buffers' -c 'show max_connections'   # 512MB, 40
+docker compose -f deploy/docker-compose.yml logs app | grep -i "solid.queue\|puma"
+docker compose -f deploy/docker-compose.yml exec -T db \
+  psql -U life_simulator -d life_simulator_production_queue \
+  -c "select count(*) from solid_queue_jobs where finished_at > now() - interval '10 minutes'"
+```
+
+The last one is the check that matters: `release_stale_runs` runs every five minutes, so
+a count of zero ten minutes after a deploy means the forked Puma never started the Solid
+Queue supervisor, whatever the site looks like.
+
 `deploy/memory_report` prints the one table every memory question on this box needs,
 always measured the same way so two visits are comparable: host memory from `free -m`
 (total, used, available, swap used), run counts by status, and one row per container

@@ -28,6 +28,21 @@
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
 threads threads_count, threads_count
 
+# Forked workers, so one wedged request cannot take the site down with it. The deployed
+# stack sets WEB_CONCURRENCY=2 (see deploy/docker-compose.yml and its memory budget);
+# left unset — development, the test suite, `bin/rails server` — Puma stays single-process.
+workers_count = ENV.fetch("WEB_CONCURRENCY", 0).to_i
+workers workers_count
+
+if workers_count.positive?
+  preload_app!
+
+  # The preloaded master's pools would otherwise be inherited by every fork, four
+  # databases at a time (primary, cache, queue, cable); each pool reconnects lazily in
+  # the child. The Solid Queue supervisor the plugin below forks needs the same.
+  before_fork { ActiveRecord::Base.connection_handler.clear_all_connections! }
+end
+
 # Specifies the `port` that Puma will listen on to receive requests; default is 3000.
 port ENV.fetch("PORT", 3000)
 
