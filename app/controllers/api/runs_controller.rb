@@ -3,7 +3,7 @@
 module Api
   class RunsController < BaseController
     before_action :set_run, except: :claim
-    before_action :authorize_runner!, except: :claim
+    before_action :authorize_runner!, except: %i[claim world]
 
     def claim
       run = Runs::ClaimService.call(runner_id: runner_id)
@@ -46,6 +46,17 @@ module Api
       render json: { epoch: snapshot.epoch, blob: Base64.strict_encode64(snapshot.blob) }
     end
 
+    # What `runner rescore` re-reads: a stored world of the run, with the params that
+    # describe its bytes. Read-only, and deliberately not claim-gated — a rescore measures
+    # finished runs, which no runner holds.
+    def world
+      snapshot = stored_snapshot
+      return head :no_content if snapshot.nil?
+
+      render json: { id: @run.id, params: @run.params, seed: @run.seed, epoch: snapshot.epoch,
+                     blob: Base64.strict_encode64(snapshot.blob) }
+    end
+
     def finish
       Runs::FinishService.call(run: @run, transition_epoch: params[:transition_epoch],
                                summary: body_params["summary"], error: params[:error])
@@ -56,6 +67,13 @@ module Api
 
     def set_run
       @run = Run.find(params.fetch(:id))
+    end
+
+    def stored_snapshot
+      snapshots = @run.snapshots.restorable.select(:id, :epoch, :blob)
+      return snapshots.order(epoch: :desc).first if params[:epoch].blank?
+
+      snapshots.find_by(epoch: params[:epoch])
     end
 
     def authorize_runner!

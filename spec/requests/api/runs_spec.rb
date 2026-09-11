@@ -34,10 +34,11 @@ RSpec.describe "Api::Runs", type: :request do
         },
         "latest_snapshot" => lambda { |sent|
           get latest_snapshot_api_run_path(run), params: { runner_id: "runner-1" }, headers: sent, as: :json
-        } }
+        },
+        "world" => ->(sent) { get world_api_run_path(run), headers: sent, as: :json } }
     end
 
-    %w[claim heartbeat samples snapshots finish latest_snapshot].each do |endpoint|
+    %w[claim heartbeat samples snapshots finish latest_snapshot world].each do |endpoint|
       context "for #{endpoint}" do
         it "rejects a request with no token" do
           requests.fetch(endpoint).call({})
@@ -300,6 +301,56 @@ RSpec.describe "Api::Runs", type: :request do
       get latest_snapshot_api_run_path(run), params: { runner_id: "runner-9" }, headers: headers, as: :json
 
       expect(response).to have_http_status(:conflict)
+    end
+  end
+
+  describe "GET /api/runs/:id/world" do
+    let(:run) { create(:run, experiment: experiment, status: "finished", seed: 7) }
+
+    it "hands back the newest stored world with the params that describe it" do
+      create(:snapshot, run: run, epoch: 100, blob: "old")
+      create(:snapshot, run: run, epoch: 300, blob: "newest")
+
+      get world_api_run_path(run), headers: headers, as: :json
+
+      expect(response.parsed_body).to eq("id" => run.id, "params" => run.params, "seed" => 7,
+                                         "epoch" => 300, "blob" => Base64.strict_encode64("newest"))
+    end
+
+    it "hands back the world of the epoch asked for" do
+      create(:snapshot, run: run, epoch: 100, blob: "old")
+      create(:snapshot, run: run, epoch: 300, blob: "newest")
+
+      get world_api_run_path(run), params: { epoch: 100 }, headers: headers, as: :json
+
+      expect(response.parsed_body.values_at("epoch", "blob")).to eq([100, Base64.strict_encode64("old")])
+    end
+
+    it "ignores a snapshot with no world bytes to read" do
+      create(:snapshot, run: run, epoch: 100, blob: "readable")
+      create(:snapshot, run: run, epoch: 300, blob: nil)
+
+      get world_api_run_path(run), headers: headers, as: :json
+
+      expect(response.parsed_body["epoch"]).to eq(100)
+    end
+
+    context "with no snapshot at that epoch" do
+      it "answers no content" do
+        get world_api_run_path(run), params: { epoch: 42 }, headers: headers, as: :json
+
+        expect(response).to have_http_status(:no_content)
+      end
+    end
+
+    # A rescore reads runs nobody is running, so this endpoint is the one the runner
+    # reaches without holding the run.
+    it "serves a run no runner holds" do
+      create(:snapshot, run: run, epoch: 300, blob: "newest")
+
+      get world_api_run_path(run), headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
     end
   end
 

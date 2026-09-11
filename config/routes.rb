@@ -32,6 +32,7 @@ Rails.application.routes.draw do
         post :snapshots
         post :finish
         get "snapshots/latest", action: :latest_snapshot, as: :latest_snapshot
+        get :world
       end
     end
   end
