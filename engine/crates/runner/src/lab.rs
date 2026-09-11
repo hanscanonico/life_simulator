@@ -38,6 +38,7 @@ pub struct Lab {
     heartbeat: Duration,
     stagger: Duration,
     memory: Option<MemoryGuard>,
+    snapshot_max_age: Option<Duration>,
     once: bool,
     stop: Arc<AtomicBool>,
 }
@@ -49,6 +50,7 @@ impl Lab {
         runner_id: &str,
         parallelism: usize,
         max_memory: Option<u64>,
+        snapshot_max_age: Duration,
     ) -> Self {
         Self {
             client: LabClient::new(api, token),
@@ -58,6 +60,7 @@ impl Lab {
             heartbeat: HEARTBEAT,
             stagger: STAGGER,
             memory: max_memory.map(MemoryGuard::detect),
+            snapshot_max_age: Some(snapshot_max_age),
             once: false,
             stop: Arc::new(AtomicBool::new(false)),
         }
@@ -213,8 +216,14 @@ impl Lab {
             scope.spawn(|| self.beat(claimed.id, slot, &progress, &done));
             let _beating = StopOnDrop(&done);
 
-            let mut sink = HttpSink::new(&self.client, claimed.id, &slot.claim_id);
-            let completion = run::execute_world(world, claimed.epochs, &mut sink, &progress)?;
+            let mut sink = HttpSink::new(&self.client, claimed.id, slot);
+            let completion = run::execute_world(
+                world,
+                claimed.epochs,
+                self.snapshot_max_age,
+                &mut sink,
+                &progress,
+            )?;
             if let Completion::Stopped { epochs_done } = completion {
                 sink.flush()?;
                 self.client
@@ -282,11 +291,11 @@ impl Lab {
     }
 
     fn log(&self, slot: &Slot, event: &str, fields: &[(&str, String)]) {
-        println!("{}", log_line(event, &self.runner_id, slot.index, fields));
+        slot.log(event, fields);
     }
 
     fn report(&self, slot: &Slot, fields: &[(&str, String)]) {
-        eprintln!("{}", log_line("error", &self.runner_id, slot.index, fields));
+        slot.report(fields);
     }
 
     fn stopping(&self) -> bool {
@@ -302,18 +311,30 @@ impl Lab {
     }
 }
 
-/// One worker of the runner: which slot it is in the log, and the id it claims with.
-struct Slot {
+/// One worker of the runner: which slot it is in the log, the id it claims with, and the
+/// runner it belongs to. It writes the slot's own log lines, so the lab-mode sink can
+/// report what it posts under the same `runner=`/`slot=` prefix as the loop around it.
+pub struct Slot {
     index: usize,
-    claim_id: String,
+    runner_id: String,
+    pub claim_id: String,
 }
 
 impl Slot {
-    fn new(runner_id: &str, index: usize) -> Self {
+    pub fn new(runner_id: &str, index: usize) -> Self {
         Self {
             index,
+            runner_id: runner_id.to_string(),
             claim_id: format!("{runner_id}-{index}"),
         }
+    }
+
+    pub fn log(&self, event: &str, fields: &[(&str, String)]) {
+        println!("{}", log_line(event, &self.runner_id, self.index, fields));
+    }
+
+    pub fn report(&self, fields: &[(&str, String)]) {
+        eprintln!("{}", log_line("error", &self.runner_id, self.index, fields));
     }
 }
 
@@ -533,6 +554,7 @@ mod tests {
             heartbeat: Duration::from_millis(10),
             stagger: Duration::ZERO,
             memory: None,
+            snapshot_max_age: Some(run::SNAPSHOT_MAX_AGE),
             once: false,
             stop: Arc::new(AtomicBool::new(false)),
         }
@@ -605,6 +627,28 @@ mod tests {
 
         assert!(mock.count("POST /api/runs/claim") >= 1);
         assert_eq!(mock.count("POST /api/runs/1/finish"), 0);
+    }
+
+    /// The ceiling reaches the app, not just the loop: a run past it posts a snapshot on
+    /// every sampled epoch rather than only on its `snapshot_every` cadence.
+    #[test]
+    fn a_lab_run_past_the_age_ceiling_posts_a_snapshot_per_sample() {
+        let mock = MockLab::start();
+        let mut lab = lab(&mock);
+        lab.snapshot_max_age = Some(Duration::ZERO);
+        let sparse = Params {
+            snapshot_every: 1000,
+            ..MockLab::params()
+        };
+
+        lab.execute(&Slot::new("runner-1", 0), &claimed(sparse, 6, 0));
+
+        let epochs: Vec<_> = mock
+            .requests("POST /api/runs/1/snapshots")
+            .iter()
+            .map(|body| body["epoch"].as_u64().unwrap_or_default())
+            .collect();
+        assert_eq!(epochs, vec![0, 2, 4, 6]);
     }
 
     #[test]

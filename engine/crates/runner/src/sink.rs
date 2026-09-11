@@ -15,6 +15,26 @@ pub struct RunResult {
     pub epochs_per_second: f64,
 }
 
+/// Why the loop took a snapshot: the epoch cadence, the wall-clock ceiling on snapshot
+/// age, or the sample that settled the transition. Lab mode logs it so a shift's restart
+/// cost can be read off the log rather than inferred from the snapshot epochs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapshotReason {
+    Cadence,
+    Age,
+    Transition,
+}
+
+impl SnapshotReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cadence => "cadence",
+            Self::Age => "age",
+            Self::Transition => "transition",
+        }
+    }
+}
+
 pub trait RunSink {
     /// One sampled epoch, with the transition epoch the engine has settled on so far so
     /// a run that dies before `finish` still reports its measurement.
@@ -24,7 +44,13 @@ pub trait RunSink {
         metrics: &Metrics,
         transition_epoch: Option<u64>,
     ) -> Result<()>;
-    fn snapshot(&mut self, epoch: u64, raw: &[u8], png: &[u8]) -> Result<()>;
+    fn snapshot(
+        &mut self,
+        epoch: u64,
+        raw: &[u8],
+        png: &[u8],
+        reason: SnapshotReason,
+    ) -> Result<()>;
     fn finish(&mut self, result: &RunResult) -> Result<()>;
 }
 
@@ -41,7 +67,13 @@ impl RunSink for NullSink {
         Ok(())
     }
 
-    fn snapshot(&mut self, _epoch: u64, _raw: &[u8], _png: &[u8]) -> Result<()> {
+    fn snapshot(
+        &mut self,
+        _epoch: u64,
+        _raw: &[u8],
+        _png: &[u8],
+        _reason: SnapshotReason,
+    ) -> Result<()> {
         Ok(())
     }
 

@@ -132,6 +132,10 @@ services:
       # waits instead. The OOM kill it avoids costs every in-flight run the
       # 5-minute stale release before anyone can resume it.
       RUNNER_MAX_MEMORY: ${RUNNER_MAX_MEMORY:-5g}
+      # The wall-clock floor under `snapshot_every`: past this the next sampled epoch
+      # snapshots, so a container restart never costs a slot more than this much
+      # compute. Set explicitly to the runner's own default, so it is visible here.
+      RUNNER_SNAPSHOT_MAX_AGE: ${RUNNER_SNAPSHOT_MAX_AGE:-30m}
     depends_on:
       app:
         condition: service_healthy
