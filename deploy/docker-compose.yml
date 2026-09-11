@@ -10,9 +10,45 @@ x-logging: &logging
     max-size: "10m"
     max-file: "5"
 
+# Memory budget for the 14 GiB box (`free -m` reports 15 215 MiB total). Every service
+# carries a hard limit and a reservation; the limits add up to 10.25 GiB, which leaves
+# ~3.75 GiB for the host, the two unrelated stacks that share the machine (`web-*`,
+# `stock_market-*`, ~750 MiB together) and the deploy overlap, when the old and the new
+# app are briefly co-resident. Each limit is at least 3x the steady state measured by
+# `deploy/memory_report` with 24 runs live (runner 143, app 448, db 236,
+# cloudflared 21 MiB), so a limit can only catch a leak, never normal work. Two of those
+# readings move with this file and have to be re-measured after the deploy: the app now
+# forks a second Puma worker (both mostly copy-on-write pages of the preloaded master)
+# and db now takes 512MB of shared_buffers.
+#
+#   runner      6g   limit / 1g reservation   (RUNNER_MAX_MEMORY claims under 5g)
+#   db          2g   limit / 1g reservation
+#   app         2g   limit / 1g reservation
+#   cloudflared 256m limit / 64m reservation
+
 services:
   db:
     image: postgres:17
+    # Tuned for the 2g limit below rather than for postgres' 128MB defaults.
+    # shared_buffers is the usual quarter of the budget and effective_cache_size the
+    # usual three quarters (a planner hint, it allocates nothing). maintenance_work_mem
+    # pays for the nightly dump's index work on `snapshots`, almost the whole database.
+    # max_wal_size keeps a snapshot burst from checkpointing mid-write.
+    # max_connections 80 is double the app's ceiling: 2 Puma workers x 3 threads, each
+    # thread able to hold a pool connection to all four databases (primary, cache, queue,
+    # cable) = 24; Solid Queue in Puma adds a supervisor, a dispatcher, a scheduler and
+    # the JOB_CONCURRENCY=1 worker, whose queue pool is 5 (config/database.yml) on top of
+    # the primary connections its jobs run, ~13; the nightly backup and an operator
+    # psql, 2. work_mem is per sort node, so its worst case is bounded by those ~39
+    # sessions rather than by max_connections: 39 x 16MB above shared_buffers fits 2g.
+    command: >
+      postgres
+      -c shared_buffers=512MB
+      -c effective_cache_size=1536MB
+      -c work_mem=16MB
+      -c maintenance_work_mem=256MB
+      -c max_connections=80
+      -c max_wal_size=2GB
     restart: unless-stopped
     logging: *logging
     environment:
@@ -30,6 +66,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
 
   app:
     # Named rather than left to compose's project-derived default, so
@@ -46,6 +88,12 @@ services:
       # is the knob, not PORT.
       HTTP_PORT: "8080"
       SOLID_QUEUE_IN_PUMA: "1"
+      # Two forked Puma workers of three threads each, and a single Solid Queue worker
+      # process beside them: 448 MiB of steady app under a 2g limit has room for the
+      # second worker, and a forked worker is what survives one request wedging a thread.
+      WEB_CONCURRENCY: "2"
+      RAILS_MAX_THREADS: "3"
+      JOB_CONCURRENCY: "1"
       DATABASE_URL: postgres://life_simulator:${POSTGRES_PASSWORD}@db:5432/life_simulator_production
       RAILS_MASTER_KEY: ${RAILS_MASTER_KEY:?set in deploy/.env}
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
@@ -64,6 +112,12 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
 
   runner:
     # The same image as the app — one build, two commands — so a deploy always
@@ -84,12 +138,17 @@ services:
     # SIGTERM makes the runner flush its samples and heartbeat before it exits;
     # the app then releases the run and the next claim resumes it.
     stop_grace_period: 60s
+    # No `mem_swappiness: 0` here: compose accepts the key, but 0 is its zero value and is
+    # dropped from `docker compose config`, so the setting cannot be verified — and the
+    # host has reported no swap in use since the memory guard landed.
     deploy:
       resources:
         limits:
           # 14 of the 16 cores: the site keeps two whatever the soup is doing.
           cpus: "14"
           memory: 6g
+        reservations:
+          memory: 1g
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -101,6 +160,12 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+        reservations:
+          memory: 64m
 
 volumes:
   pgdata:
