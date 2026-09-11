@@ -180,6 +180,10 @@ RSpec.describe Experiments::TransitionReportService do
       expect(report.rows.map(&:status).tally).to eq("finished" => 8, "running" => 2)
     end
 
+    it "writes the terminal-only counts the text prints to the arm section of the CSV" do
+      expect(CSV.parse(report.to_csv).last).to eq(%w[0.000244 10 8 7 7 6 2])
+    end
+
     context "with the in-flight runs counted in" do
       let(:include_running) { true }
 
