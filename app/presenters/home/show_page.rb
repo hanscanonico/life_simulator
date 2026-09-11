@@ -6,6 +6,11 @@ module Home
   # the wasm build's URL. The world itself is the engine's, stepped in the browser
   # (`docs/DESIGN.md` §2).
   class ShowPage
+    Row = Data.define(:finding, :experiment) do
+      def experiment? = experiment.present?
+    end
+
+    LATEST_FINDINGS = 3
     VIEWER_SIZE = 96
     STEPS_PER_FRAME = 1
     MAX_SEED = 2**32
@@ -19,6 +24,18 @@ module Home
     end
 
     attr_reader :seed
+
+    def programme_status = @programme_status ||= Programme::Status.build
+
+    # The newest write-ups, each with the sweep it rests on. A sweep a finding names may
+    # not be in this database yet, and that must not take the home page down.
+    def latest_findings
+      @latest_findings ||= begin
+        findings = Findings::Registry.all.first(LATEST_FINDINGS)
+        experiments = Experiment.where(slug: findings.map(&:experiment_slug)).index_by(&:slug)
+        findings.map { |finding| Row.new(finding: finding, experiment: experiments[finding.experiment_slug]) }
+      end
+    end
 
     def substrates = Lab::Schema.values_for("substrate")
 

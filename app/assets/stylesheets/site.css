@@ -377,6 +377,8 @@ ul.chart-legend li {
 .finding-card {
   border-top: 1px solid var(--line);
   padding-top: var(--space-5);
+  /* A summary held to one line must ellipsize inside the card, not widen the grid. */
+  min-width: 0;
 }
 
 .finding-title {

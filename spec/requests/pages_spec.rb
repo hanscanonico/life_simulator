@@ -13,6 +13,39 @@ RSpec.describe "Pages", type: :request do
         %(self-replicators in a spatial program soup.">)
       )
     end
+
+    it "strips the programme's standing above the copy" do
+      create(:experiment)
+      create(:run, status: "finished", epochs_done: 1_234, transition_epoch: 5_030)
+
+      get root_path
+
+      strip = response.parsed_body.css(".facts").first
+
+      expect(strip.css("dt").map(&:text)).to eq(["Sweeps", "Runs finished", "Epochs simulated",
+                                                 "Seeds that transitioned", "Largest replicator census"])
+      expect(strip.css("dd").map(&:text)).to eq(%w[2 1 1,234 1 —])
+    end
+
+    it "digests the newest findings without stating a figure of its own" do
+      newest = Findings::Registry.all.first
+
+      get root_path
+
+      expect(response.body.squish).to include("What the sweeps have found", newest.title,
+                                              newest.status_label)
+      expect(response.body).to include(finding_path(newest), findings_path)
+    end
+
+    context "with the newest finding's sweep in the lab" do
+      it "links the sweep beside it" do
+        experiment = create(:experiment, slug: Findings::Registry.all.first.experiment_slug)
+
+        get root_path
+
+        expect(response.body).to include(experiment_path(experiment))
+      end
+    end
   end
 
   describe "GET /how-it-works" do

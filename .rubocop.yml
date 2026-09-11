@@ -148,6 +148,13 @@ Rails/SkipsModelValidations:
   Exclude:
     - 'spec/support/**/*'
 
+Rails/RedundantActiveRecordAllMethod:
+  # `Findings::Registry.all` is the findings log held in Ruby, not a relation: without
+  # `all` the call would land on `Module#first`.
+  AllowedReceivers:
+    - Findings::Registry
+    - Registry
+
 Rails/Output:
   Exclude:
     - 'lib/tasks/**/*'

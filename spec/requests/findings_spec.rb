@@ -26,6 +26,14 @@ RSpec.describe "Findings", type: :request do
       expect(response.body).to include(how_it_works_path(anchor: "glossary"))
     end
 
+    it "strips the programme's standing under the heading" do
+      create(:run, status: "finished", epochs_done: 90, transition_epoch: 12)
+
+      get findings_path
+
+      expect(response.parsed_body.css(".facts").first.css("dd").map(&:text)).to eq(%w[1 1 90 1 —])
+    end
+
     context "with the sweep in the lab" do
       it "links to the experiment" do
         create(:experiment, name: "Mutation rate", slug: "mutation-rate")
