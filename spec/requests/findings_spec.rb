@@ -219,7 +219,7 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.body.squish)
           .to include("And the census is not zero.",
-                      "largest", "in the lab",
+                      "in the lab — thousands of replicating cells at its peak",
                       "no snapshot falls inside the window where the count was high",
                       "Truncation of the ranking is ruled out",
                       "not yet resolved rather than not evidence",
