@@ -116,6 +116,21 @@ older than it, the next sampled epoch snapshots whatever `snapshot_every` says, 
 slot redoes more than half an hour of compute. A run that crashes is reported as `failed`
 with its error and is not retried.
 
+Outages: since the runner container survives an app-only deploy, it keeps running while
+the app container is recreated, and for the minute or two that takes every API call fails
+to resolve `app` or to connect to it. Those failures are transient — DNS, connect,
+timeout, a reset socket, a 5xx — and the runner rides them out instead of failing the
+run: the call is retried with a doubling backoff capped at 30 s, the simulation stays
+paused with its world in memory, and the endpoint says so in one log line a minute
+(`event=outage endpoint=… waited_s=…`, then `event=recovered`) rather than one per
+attempt. `RUNNER_OUTAGE_GRACE` / `--outage-grace` is how long that lasts, default `15m`;
+only past it is the run failed, with an error naming the endpoint, the window and the
+last failure. A rejected call — a 4xx other than 408/429, a malformed or oversized answer
+— is the app's verdict and fails the run at once, as before. Heartbeats are the exception:
+a beat gives up after 5 s and the next tick beats again, so a missed beat never ends a
+run. SIGTERM interrupts a wait within a tick, and the run is then left claimed, not
+failed, for the next claim to resume.
+
 ## Memory
 
 The box has 15 215 MiB (`free -m`) and three stacks on it: this one, `web-*` and

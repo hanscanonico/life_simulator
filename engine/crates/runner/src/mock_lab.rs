@@ -20,15 +20,17 @@ struct State {
     requests: Vec<(String, Value)>,
     queue_empty: bool,
     fail_next: u32,
+    fail_next_at: BTreeMap<String, u32>,
     latest_snapshot: Option<(u64, Vec<u8>)>,
     worlds: BTreeMap<i64, Vec<(u64, Vec<u8>)>>,
     corpus: Option<Value>,
 }
 
 pub struct MockLab {
-    server: Arc<Server>,
+    /// `None` while the lab has vanished; the port stays reserved to this instance, so
+    /// what a client meets in the meantime is a refused connection.
+    listener: Mutex<Option<(Arc<Server>, JoinHandle<()>)>>,
     state: Arc<Mutex<State>>,
-    handler: Option<JoinHandle<()>>,
     port: u16,
 }
 
@@ -37,25 +39,47 @@ impl MockLab {
         let server = Arc::new(Server::http("127.0.0.1:0").expect("binding the mock lab"));
         let port = server.server_addr().to_ip().expect("an ip address").port();
         let state = Arc::new(Mutex::new(State::default()));
+        let lab = Self {
+            listener: Mutex::new(None),
+            state,
+            port,
+        };
+        lab.serve(server);
+        lab
+    }
+
+    pub fn base_url(&self) -> String {
+        format!("http://127.0.0.1:{}", self.port)
+    }
+
+    /// Takes the lab off the network, as recreating the app container does: the port
+    /// stops listening and every call refuses to connect until `revive`.
+    pub fn vanish(&self) {
+        if let Some((server, handler)) = self.listener.lock().unwrap().take() {
+            server.unblock();
+            let _ = handler.join();
+        }
+    }
+
+    /// Puts the lab back on the same port, as the new container does.
+    pub fn revive(&self) {
+        let address = format!("127.0.0.1:{}", self.port);
+        self.serve(Arc::new(
+            Server::http(&address).expect("rebinding the mock lab"),
+        ));
+    }
+
+    fn serve(&self, server: Arc<Server>) {
         let handler = thread::spawn({
             let server = Arc::clone(&server);
-            let state = Arc::clone(&state);
+            let state = Arc::clone(&self.state);
             move || {
                 for request in server.incoming_requests() {
                     answer(request, &state);
                 }
             }
         });
-        Self {
-            server,
-            state,
-            handler: Some(handler),
-            port,
-        }
-    }
-
-    pub fn base_url(&self) -> String {
-        format!("http://127.0.0.1:{}", self.port)
+        *self.listener.lock().unwrap() = Some((server, handler));
     }
 
     /// The params the mock hands out, small enough for a test to actually run.
@@ -99,6 +123,16 @@ impl MockLab {
         self.state.lock().unwrap().fail_next = times;
     }
 
+    /// Answers the next `times` requests to one path with a 500, leaving the rest of the
+    /// API working — the endpoint a caller is stuck on, told apart from the whole app.
+    pub fn fail_next_at(&self, path: &str, times: u32) {
+        self.state
+            .lock()
+            .unwrap()
+            .fail_next_at
+            .insert(path.to_string(), times);
+    }
+
     pub fn count(&self, what: &str) -> u32 {
         self.state
             .lock()
@@ -131,10 +165,7 @@ impl MockLab {
 
 impl Drop for MockLab {
     fn drop(&mut self) {
-        self.server.unblock();
-        if let Some(handler) = self.handler.take() {
-            let _ = handler.join();
-        }
+        self.vanish();
     }
 }
 
@@ -191,6 +222,13 @@ fn answer(mut request: Request, state: &Arc<Mutex<State>>) {
         state.fail_next -= 1;
         let _ = request.respond(Response::empty(500));
         return;
+    }
+    if let Some(left) = state.fail_next_at.get_mut(&path) {
+        if *left > 0 {
+            *left -= 1;
+            let _ = request.respond(Response::empty(500));
+            return;
+        }
     }
 
     if wants_binary && method == Method::Get && path == "/api/runs/1/snapshots/latest" {

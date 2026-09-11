@@ -66,8 +66,13 @@ enum Command {
         max_memory: Option<u64>,
         /// A snapshot this old makes the next sampled epoch snapshot, whatever
         /// `snapshot_every` says — `10m`, `90s` or a second count.
-        #[arg(long, env = "RUNNER_SNAPSHOT_MAX_AGE", value_parser = run::parse_snapshot_max_age)]
+        #[arg(long, env = "RUNNER_SNAPSHOT_MAX_AGE", value_parser = run::parse_duration)]
         snapshot_max_age: Option<Duration>,
+        /// How long a run waits an unreachable app out before it is failed — `15m`,
+        /// `900s` or a second count. A deploy recreates the app container for a minute
+        /// or two, and the run's world is in memory throughout.
+        #[arg(long, env = "RUNNER_OUTAGE_GRACE", value_parser = run::parse_duration)]
+        outage_grace: Option<Duration>,
         /// Dry run: one worker, one claim, then exit — nothing is left claiming.
         #[arg(long)]
         once: bool,
@@ -170,6 +175,7 @@ fn main() -> Result<()> {
             runner_id,
             max_memory,
             snapshot_max_age,
+            outage_grace,
             once,
         } => {
             let parallelism = parallelism.unwrap_or_else(lab::default_parallelism);
@@ -181,6 +187,7 @@ fn main() -> Result<()> {
                 parallelism,
                 max_memory,
                 snapshot_max_age.unwrap_or(run::SNAPSHOT_MAX_AGE),
+                outage_grace.unwrap_or(api::OUTAGE_GRACE),
             );
             if once { lab.once() } else { lab }.work()?;
         }

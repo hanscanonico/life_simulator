@@ -2,9 +2,12 @@
 //! the app, streams it back through `HttpSink`, heartbeats while it works, and either
 //! finishes the run or reports the failure that ended it. On SIGTERM the current sample
 //! batch and a last heartbeat go out and the process exits; the app releases the run as
-//! stale and the next claim resumes it from its latest snapshot.
+//! stale and the next claim resumes it from its latest snapshot. An app that is briefly
+//! unreachable — a deploy recreating its container — is waited out rather than failed:
+//! the client rides transient failures out for `--outage-grace` while the world stays in
+//! memory, and only a window that runs out ends the run.
 
-use crate::api::{ClaimedRun, LabClient};
+use crate::api::{self, ClaimedRun, LabClient};
 use crate::http_sink::HttpSink;
 use crate::run::{self, Completion, Progress};
 use anyhow::Result;
@@ -51,9 +54,13 @@ impl Lab {
         parallelism: usize,
         max_memory: Option<u64>,
         snapshot_max_age: Duration,
+        outage_grace: Duration,
     ) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
         Self {
-            client: LabClient::new(api, token),
+            client: LabClient::new(api, token)
+                .with_grace(outage_grace)
+                .stopping_on(Arc::clone(&stop)),
             runner_id: runner_id.to_string(),
             parallelism: parallelism.max(1),
             idle: IDLE,
@@ -62,7 +69,7 @@ impl Lab {
             memory: max_memory.map(MemoryGuard::detect),
             snapshot_max_age: Some(snapshot_max_age),
             once: false,
-            stop: Arc::new(AtomicBool::new(false)),
+            stop,
         }
     }
 
@@ -183,6 +190,17 @@ impl Lab {
                     slot,
                     "stopped",
                     &[("run", run), ("epoch", epochs_done.to_string())],
+                );
+                return;
+            }
+            // A call the stop cut short mid-outage ends the run no more than SIGTERM
+            // between two epochs does: the app releases it as stale and the next claim
+            // resumes it, where failing it here would throw its snapshot away.
+            Ok(Err(error)) if api::interrupted(&error) => {
+                self.log(
+                    slot,
+                    "stopped",
+                    &[("run", run), ("message", quoted(&format!("{error:#}")))],
                 );
                 return;
             }
@@ -543,11 +561,18 @@ mod tests {
     use life_engine::Params;
     use serde_json::json;
 
+    /// The outage window the tests give a call: long enough to ride a mock lab that
+    /// vanishes for a moment out, short enough to run out inside a test.
+    const GRACE: Duration = Duration::from_millis(800);
+
     /// A lab wired to the mock, with every wait short enough for a test.
     fn lab(mock: &MockLab) -> Lab {
+        let stop = Arc::new(AtomicBool::new(false));
         Lab {
             client: LabClient::new(&mock.base_url(), mock_lab::TOKEN)
-                .with_backoff(Duration::from_millis(1)),
+                .with_backoff(Duration::from_millis(1))
+                .with_grace(GRACE)
+                .stopping_on(Arc::clone(&stop)),
             runner_id: "runner-test".to_string(),
             parallelism: 1,
             idle: Duration::from_millis(10),
@@ -556,7 +581,7 @@ mod tests {
             memory: None,
             snapshot_max_age: Some(run::SNAPSHOT_MAX_AGE),
             once: false,
-            stop: Arc::new(AtomicBool::new(false)),
+            stop,
         }
     }
 
@@ -688,7 +713,7 @@ mod tests {
     fn a_snapshot_that_cannot_be_fetched_fails_the_run_rather_than_starting_it_over() {
         let mock = MockLab::start();
         mock.set_latest_snapshot(4, World::new(&MockLab::params(), 7).unwrap().snapshot());
-        mock.fail_next(crate::api::MAX_ATTEMPTS);
+        mock.fail_next_at("/api/runs/1/snapshots/latest", u32::MAX);
 
         lab(&mock).execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 4));
 
@@ -696,6 +721,93 @@ mod tests {
         let error = failure["error"].as_str().unwrap_or_default();
         assert!(error.contains("/api/runs/1/snapshots/latest"), "{failure}");
         assert_eq!(mock.count("POST /api/runs/1/samples"), 0);
+    }
+
+    /// The 08:2x deploy: the app is unreachable for a stretch of the run. The world is
+    /// in memory, so the run waits, resumes where it paused, and reaches `finish` with
+    /// every sample posted exactly once.
+    #[test]
+    fn a_run_whose_app_disappears_mid_run_finishes_without_losing_a_sample() {
+        let mock = MockLab::start();
+        let lab = lab(&mock);
+        mock.vanish();
+
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                thread::sleep(Duration::from_millis(150));
+                mock.revive();
+            });
+            lab.execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 0));
+        });
+
+        let posted: Vec<u64> = mock
+            .requests("POST /api/runs/1/samples")
+            .iter()
+            .flat_map(|body| body["samples"].as_array().cloned().unwrap_or_default())
+            .map(|sample| sample["epoch"].as_u64().unwrap_or_default())
+            .collect();
+        assert_eq!(posted, vec![0, 2, 4, 6]);
+        assert_eq!(mock.count("POST /api/runs/1/finish"), 1);
+        assert!(mock.request("POST /api/runs/1/finish")["error"].is_null());
+    }
+
+    /// Past the window the run does fail, and says which endpoint was unreachable for
+    /// how long — everything the operator needs without the runner's own log.
+    #[test]
+    fn a_run_whose_endpoint_never_comes_back_fails_naming_it_and_the_window() {
+        let mock = MockLab::start();
+        let lab = lab(&mock);
+        mock.fail_next_at("/api/runs/1/samples", u32::MAX);
+
+        lab.execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 0));
+
+        let failure = mock.request("POST /api/runs/1/finish");
+        let error = failure["error"].as_str().unwrap_or_default();
+        assert!(error.contains("/api/runs/1/samples"), "{failure}");
+        assert!(error.contains(&format!("{GRACE:?}")), "{failure}");
+        assert!(error.contains("unreachable"), "{failure}");
+    }
+
+    /// A beat the app misses is the next tick's problem: the run itself carries on and
+    /// finishes, where an aborted run would cost the epochs since its last snapshot.
+    #[test]
+    fn a_run_whose_heartbeats_all_fail_still_finishes() {
+        let mock = MockLab::start();
+        let lab = lab(&mock);
+        mock.fail_next_at("/api/runs/1/heartbeat", u32::MAX);
+
+        lab.execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 0));
+
+        assert_eq!(mock.count("POST /api/runs/1/finish"), 1);
+        assert!(mock.request("POST /api/runs/1/finish")["error"].is_null());
+    }
+
+    /// SIGTERM while a run waits an outage out: it returns within a tick rather than at
+    /// the end of the backoff, and the run is left claimed rather than failed — the app
+    /// releases it as stale and the next claim resumes it from its snapshot.
+    #[test]
+    fn a_stop_during_an_outage_ends_the_run_promptly_without_failing_it() {
+        let mock = MockLab::start();
+        let mut lab = lab(&mock);
+        lab.client = LabClient::new(&mock.base_url(), mock_lab::TOKEN)
+            .with_backoff(Duration::from_secs(30))
+            .with_grace(Duration::from_secs(600))
+            .stopping_on(Arc::clone(&lab.stop));
+        mock.vanish();
+
+        let waited = thread::scope(|scope| {
+            scope.spawn(|| {
+                thread::sleep(Duration::from_millis(100));
+                lab.stop.store(true, Ordering::Relaxed);
+            });
+            let started = Instant::now();
+            lab.execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 0));
+            started.elapsed()
+        });
+
+        mock.revive();
+        assert!(waited < Duration::from_secs(1), "{waited:?}");
+        assert_eq!(mock.count("POST /api/runs/1/finish"), 0);
     }
 
     #[test]
