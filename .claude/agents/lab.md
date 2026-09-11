@@ -51,6 +51,19 @@ each passes the replicator test. Report the table as it stands, per run id; a co
 only appears at a larger `top_k` is a proposal for a design-record entry, not a change to
 make.
 
+The runner writes one `event=` line per thing that happens, in the shape
+`event=<name> runner=<id> slot=<n> ...`: `claim`, `resume`, `progress` (each heartbeat,
+with `epochs_per_s` measured between beats), `finish`, `stopped`, `idle` and `error`. Read
+a shift by event or by slot —
+`docker compose -f deploy/docker-compose.yml logs runner | grep event=finish`,
+`... | grep 'event=error'`, `... | grep 'slot=3'` — rather than by eye.
+`runner lab --once` is the dry run: one worker, one claim, then exit 0, so nothing is left
+claiming. Use it to check a runner reaches the app and can execute a queued run:
+`docker compose -f deploy/docker-compose.yml exec -T runner runner lab --api http://app:8080 --once`
+(it prints `event=idle reason=empty_queue` and returns at once when the queue is empty, and
+exits non-zero when the claim itself fails). It executes a real queued run to completion,
+so it is a check, not a way to work the queue.
+
 `https://simulator-life.com/lab/status` shows the queue by status
 (`pending`, `claimed`, `running`, `finished`, `failed`), live runners and epochs per hour.
 

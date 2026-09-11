@@ -63,6 +63,9 @@ enum Command {
         /// byte count. Left out, nothing is held back.
         #[arg(long, env = "RUNNER_MAX_MEMORY", value_parser = lab::parse_memory_size)]
         max_memory: Option<u64>,
+        /// Dry run: one worker, one claim, then exit — nothing is left claiming.
+        #[arg(long)]
+        once: bool,
     },
     /// Re-read a stored world at several `top_k` settings, without running anything.
     Rescore {
@@ -136,10 +139,12 @@ fn main() -> Result<()> {
             parallelism,
             runner_id,
             max_memory,
+            once,
         } => {
             let parallelism = parallelism.unwrap_or_else(lab::default_parallelism);
             let runner_id = runner_id.unwrap_or_else(default_runner_id);
-            Lab::new(&api, &token, &runner_id, parallelism, max_memory).work()?;
+            let lab = Lab::new(&api, &token, &runner_id, parallelism, max_memory);
+            if once { lab.once() } else { lab }.work()?;
         }
         Command::Rescore {
             api,

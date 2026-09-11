@@ -38,6 +38,7 @@ pub struct Lab {
     heartbeat: Duration,
     stagger: Duration,
     memory: Option<MemoryGuard>,
+    once: bool,
     stop: Arc<AtomicBool>,
 }
 
@@ -57,8 +58,18 @@ impl Lab {
             heartbeat: HEARTBEAT,
             stagger: STAGGER,
             memory: max_memory.map(MemoryGuard::detect),
+            once: false,
             stop: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// `--once`: one slot, no stagger, and a return after the first claim outcome, so
+    /// an operator can dry-run a runner against the lab without leaving it claiming.
+    pub fn once(mut self) -> Self {
+        self.once = true;
+        self.parallelism = 1;
+        self.stagger = Duration::ZERO;
+        self
     }
 
     /// Claims and executes runs until a signal asks for a stop.
@@ -76,35 +87,54 @@ impl Lab {
             }
         );
         thread::scope(|scope| {
-            for worker in 0..self.parallelism {
-                scope.spawn(move || self.claim_loop(worker));
+            let workers: Vec<_> = (0..self.parallelism)
+                .map(|worker| scope.spawn(move || self.claim_loop(worker)))
+                .collect();
+            for worker in workers {
+                worker
+                    .join()
+                    .unwrap_or_else(|panic| panic::resume_unwind(panic))?;
             }
-        });
-        Ok(())
+            Ok(())
+        })
     }
 
-    /// One worker: its own runner id, so the app hands it its own runs.
-    fn claim_loop(&self, worker: usize) {
-        let runner_id = format!("{}-{worker}", self.runner_id);
+    /// One worker: its own runner id, so the app hands it its own runs. Under `--once`
+    /// it returns after the first claim outcome, the claim's own failure included.
+    fn claim_loop(&self, worker: usize) -> Result<()> {
+        let slot = Slot::new(&self.runner_id, worker);
         self.wait(self.stagger * worker as u32);
         while !self.stopping() {
-            if self.out_of_memory_headroom(&runner_id) {
+            if self.out_of_memory_headroom(&slot.claim_id) {
                 self.wait(self.idle);
                 continue;
             }
-            match self.client.claim(&runner_id) {
+            match self.client.claim(&slot.claim_id) {
                 Ok(Some(claimed)) => {
-                    println!("{runner_id}: claimed run {}", claimed.id);
-                    self.execute(&runner_id, &claimed);
+                    self.log(&slot, "claim", &[("run", claimed.id.to_string())]);
+                    self.execute(&slot, &claimed);
+                    if self.once {
+                        return Ok(());
+                    }
                 }
-                Ok(None) => self.wait(self.idle),
+                Ok(None) => {
+                    self.log(&slot, "idle", &[("reason", "empty_queue".to_string())]);
+                    if self.once {
+                        return Ok(());
+                    }
+                    self.wait(self.idle);
+                }
                 Err(error) => {
-                    eprintln!("{runner_id}: claiming failed: {error:#}");
+                    self.report(&slot, &[("message", quoted(&format!("{error:#}")))]);
+                    if self.once {
+                        return Err(error);
+                    }
                     self.wait(self.idle);
                 }
             }
         }
-        println!("{runner_id}: stopped");
+        self.log(&slot, "exit", &[]);
+        Ok(())
     }
 
     /// A claim can double the memory the process holds — a resumed world arrives as a
@@ -120,49 +150,66 @@ impl Lab {
     /// Executes one claimed run. Anything that ends it other than completion or a signal
     /// — a bad snapshot, an HTTP failure that outlived its retries, a panic in the
     /// engine — is reported to the app as the run's error.
-    fn execute(&self, runner_id: &str, claimed: &ClaimedRun) {
-        let failure =
-            match panic::catch_unwind(AssertUnwindSafe(|| self.stream(runner_id, claimed))) {
-                Ok(Ok(Completion::Finished(result))) => {
-                    println!(
-                        "{runner_id}: finished run {} in {:.1}s",
-                        claimed.id, result.wall_seconds
-                    );
-                    return;
-                }
-                Ok(Ok(Completion::Stopped { epochs_done })) => {
-                    println!(
-                        "{runner_id}: left run {} at epoch {epochs_done} for a later claim",
-                        claimed.id
-                    );
-                    return;
-                }
-                Ok(Err(error)) => format!("{error:#}"),
-                Err(panic) => panic_message(&panic),
-            };
-        eprintln!("{runner_id}: run {} failed: {failure}", claimed.id);
-        if let Err(error) = self
-            .client
-            .finish(claimed.id, runner_id, None, None, Some(&failure))
+    fn execute(&self, slot: &Slot, claimed: &ClaimedRun) {
+        let run = claimed.id.to_string();
+        let failure = match panic::catch_unwind(AssertUnwindSafe(|| self.stream(slot, claimed))) {
+            Ok(Ok(Completion::Finished(result))) => {
+                self.log(
+                    slot,
+                    "finish",
+                    &[
+                        ("run", run),
+                        ("epochs", result.epochs.to_string()),
+                        ("wall_s", format!("{:.1}", result.wall_seconds)),
+                        ("epochs_per_s", format!("{:.1}", result.epochs_per_second)),
+                    ],
+                );
+                return;
+            }
+            Ok(Ok(Completion::Stopped { epochs_done })) => {
+                self.log(
+                    slot,
+                    "stopped",
+                    &[("run", run), ("epoch", epochs_done.to_string())],
+                );
+                return;
+            }
+            Ok(Err(error)) => format!("{error:#}"),
+            Err(panic) => panic_message(&panic),
+        };
+        self.report(slot, &[("run", run.clone()), ("message", quoted(&failure))]);
+        if let Err(error) =
+            self.client
+                .finish(claimed.id, &slot.claim_id, None, None, Some(&failure))
         {
-            eprintln!("{runner_id}: reporting the failure failed too: {error:#}");
+            self.report(
+                slot,
+                &[
+                    ("run", run),
+                    (
+                        "message",
+                        quoted(&format!("reporting the failure failed too: {error:#}")),
+                    ),
+                ],
+            );
         }
     }
 
-    fn stream(&self, runner_id: &str, claimed: &ClaimedRun) -> Result<Completion> {
-        let world = self.restore(runner_id, claimed)?;
+    fn stream(&self, slot: &Slot, claimed: &ClaimedRun) -> Result<Completion> {
+        let world = self.restore(slot, claimed)?;
         let progress = Progress::new(world.epoch(), Arc::clone(&self.stop));
         let done = AtomicBool::new(false);
 
         thread::scope(|scope| {
-            scope.spawn(|| self.beat(claimed.id, runner_id, &progress, &done));
+            scope.spawn(|| self.beat(claimed.id, slot, &progress, &done));
             let _beating = StopOnDrop(&done);
 
-            let mut sink = HttpSink::new(&self.client, claimed.id, runner_id);
+            let mut sink = HttpSink::new(&self.client, claimed.id, &slot.claim_id);
             let completion = run::execute_world(world, claimed.epochs, &mut sink, &progress)?;
             if let Completion::Stopped { epochs_done } = completion {
                 sink.flush()?;
-                self.client.heartbeat(claimed.id, runner_id, epochs_done)?;
+                self.client
+                    .heartbeat(claimed.id, &slot.claim_id, epochs_done)?;
             }
             Ok(completion)
         })
@@ -170,13 +217,20 @@ impl Lab {
 
     /// A run with epochs behind it continues from its latest snapshot; everything else
     /// starts from `(params, seed)`.
-    fn restore(&self, runner_id: &str, claimed: &ClaimedRun) -> Result<World> {
+    fn restore(&self, slot: &Slot, claimed: &ClaimedRun) -> Result<World> {
         if claimed.epochs_done > 0 {
-            let latest = self
-                .client
-                .latest_snapshot(claimed.id, runner_id, &claimed.params)?;
+            let latest =
+                self.client
+                    .latest_snapshot(claimed.id, &slot.claim_id, &claimed.params)?;
             if let Some((epoch, blob)) = latest {
-                println!("{runner_id}: resuming run {} at epoch {epoch}", claimed.id);
+                self.log(
+                    slot,
+                    "resume",
+                    &[
+                        ("run", claimed.id.to_string()),
+                        ("epoch", epoch.to_string()),
+                    ],
+                );
                 return World::from_snapshot(&claimed.params, claimed.seed, &blob)
                     .map_err(anyhow::Error::msg);
             }
@@ -184,21 +238,46 @@ impl Lab {
         World::new(&claimed.params, claimed.seed).map_err(anyhow::Error::msg)
     }
 
-    fn beat(&self, run: i64, runner_id: &str, progress: &Progress, done: &AtomicBool) {
+    /// Beats while the run works, and reports the rate the run is going at: the epochs
+    /// between two beats over the time between them, not an average since the claim.
+    fn beat(&self, run: i64, slot: &Slot, progress: &Progress, done: &AtomicBool) {
         let mut next = Instant::now() + self.heartbeat;
+        let mut last = (Instant::now(), progress.epochs_done());
         while !done.load(Ordering::Relaxed) {
             if Instant::now() < next {
                 thread::sleep(TICK.min(self.heartbeat));
                 continue;
             }
             next = Instant::now() + self.heartbeat;
-            if let Err(error) = self
-                .client
-                .heartbeat(run, runner_id, progress.epochs_done())
-            {
-                eprintln!("{runner_id}: heartbeat for run {run} failed: {error:#}");
+            let epoch = progress.epochs_done();
+            if let Err(error) = self.client.heartbeat(run, &slot.claim_id, epoch) {
+                self.report(
+                    slot,
+                    &[
+                        ("run", run.to_string()),
+                        ("message", quoted(&format!("heartbeat failed: {error:#}"))),
+                    ],
+                );
             }
+            self.log(
+                slot,
+                "progress",
+                &[
+                    ("run", run.to_string()),
+                    ("epoch", epoch.to_string()),
+                    ("epochs_per_s", format!("{:.1}", rate(last, epoch))),
+                ],
+            );
+            last = (Instant::now(), epoch);
         }
+    }
+
+    fn log(&self, slot: &Slot, event: &str, fields: &[(&str, String)]) {
+        println!("{}", log_line(event, &self.runner_id, slot.index, fields));
+    }
+
+    fn report(&self, slot: &Slot, fields: &[(&str, String)]) {
+        eprintln!("{}", log_line("error", &self.runner_id, slot.index, fields));
     }
 
     fn stopping(&self) -> bool {
@@ -212,6 +291,48 @@ impl Lab {
             thread::sleep(TICK.min(total));
         }
     }
+}
+
+/// One worker of the runner: which slot it is in the log, and the id it claims with.
+struct Slot {
+    index: usize,
+    claim_id: String,
+}
+
+impl Slot {
+    fn new(runner_id: &str, index: usize) -> Self {
+        Self {
+            index,
+            claim_id: format!("{runner_id}-{index}"),
+        }
+    }
+}
+
+/// One line of the runner's log: `event=` first, then who wrote it, then the fields the
+/// caller passed, in the order it passed them. Every line is greppable by `event=<name>`
+/// and by `slot=<n>`, which is what reading a shift of twelve interleaved slots needs.
+fn log_line(event: &str, runner: &str, slot: usize, fields: &[(&str, String)]) -> String {
+    let mut line = format!("event={event} runner={runner} slot={slot}");
+    for (key, value) in fields {
+        line.push(' ');
+        line.push_str(key);
+        line.push('=');
+        line.push_str(value);
+    }
+    line
+}
+
+/// A field that may hold spaces or newlines, quoted so the line stays one line.
+fn quoted(value: &str) -> String {
+    format!("{value:?}")
+}
+
+fn rate((since, before): (Instant, u64), epoch: u64) -> f64 {
+    let seconds = since.elapsed().as_secs_f64();
+    if seconds <= 0.0 {
+        return 0.0;
+    }
+    epoch.saturating_sub(before) as f64 / seconds
 }
 
 /// Stops the heartbeat thread however the run ends — including a panic, which would
@@ -403,6 +524,7 @@ mod tests {
             heartbeat: Duration::from_millis(10),
             stagger: Duration::ZERO,
             memory: None,
+            once: false,
             stop: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -415,7 +537,7 @@ mod tests {
     /// Runs `worker` until `stop`, long enough for a claim or two.
     fn claim_briefly(lab: &Lab, worker: usize) {
         thread::scope(|scope| {
-            scope.spawn(|| lab.claim_loop(worker));
+            scope.spawn(|| lab.claim_loop(worker).expect("the worker loop"));
             thread::sleep(Duration::from_millis(100));
             lab.stop.store(true, Ordering::Relaxed);
         });
@@ -436,7 +558,7 @@ mod tests {
         let mock = MockLab::start();
         let lab = lab(&mock);
 
-        lab.execute("runner-1", &claimed(MockLab::params(), 6, 0));
+        lab.execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 0));
 
         assert_eq!(mock.count("POST /api/runs/1/finish"), 1);
         assert!(mock.request("POST /api/runs/1/finish")["error"].is_null());
@@ -449,7 +571,7 @@ mod tests {
         let lab = lab(&mock);
 
         thread::scope(|scope| {
-            scope.spawn(|| lab.claim_loop(0));
+            scope.spawn(|| lab.claim_loop(0).expect("the worker loop"));
             thread::sleep(Duration::from_millis(60));
             lab.stop.store(true, Ordering::Relaxed);
         });
@@ -467,7 +589,7 @@ mod tests {
             ..MockLab::params()
         };
 
-        lab.execute("runner-1", &claimed(params, 6, 0));
+        lab.execute(&Slot::new("runner-1", 0), &claimed(params, 6, 0));
 
         let finished = mock.request("POST /api/runs/1/finish");
         assert!(finished["error"].as_str().unwrap().contains("width"));
@@ -482,7 +604,7 @@ mod tests {
         }
         mock.set_latest_snapshot(4, world.snapshot());
 
-        lab(&mock).execute("runner-1", &claimed(MockLab::params(), 6, 4));
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 4));
 
         let samples = mock.request("POST /api/runs/1/samples");
         assert_eq!(samples["samples"][0]["epoch"], json!(4));
@@ -497,7 +619,7 @@ mod tests {
         mock.set_latest_snapshot(4, World::new(&MockLab::params(), 7).unwrap().snapshot());
         mock.fail_next(crate::api::MAX_ATTEMPTS);
 
-        lab(&mock).execute("runner-1", &claimed(MockLab::params(), 6, 4));
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 4));
 
         let failure = mock.request("POST /api/runs/1/finish");
         let error = failure["error"].as_str().unwrap_or_default();
@@ -511,7 +633,7 @@ mod tests {
         let lab = lab(&mock);
         lab.stop.store(true, Ordering::Relaxed);
 
-        lab.execute("runner-1", &claimed(MockLab::params(), 6, 0));
+        lab.execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 0));
 
         let beat = mock.request("POST /api/runs/1/heartbeat");
         assert_eq!(beat["epochs_done"], json!(1));
@@ -530,8 +652,8 @@ mod tests {
         lab.stagger = Duration::from_secs(1);
 
         thread::scope(|scope| {
-            scope.spawn(|| lab.claim_loop(0));
-            scope.spawn(|| lab.claim_loop(2));
+            scope.spawn(|| lab.claim_loop(0).expect("the worker loop"));
+            scope.spawn(|| lab.claim_loop(2).expect("the worker loop"));
             thread::sleep(Duration::from_millis(60));
             lab.stop.store(true, Ordering::Relaxed);
         });
@@ -589,6 +711,72 @@ mod tests {
         assert!(guard.describe().contains("5120 MiB"));
         assert!(guard.describe().contains(guard.source));
         assert_eq!((guard.usage)().is_some(), guard.source.starts_with('/'));
+    }
+
+    #[test]
+    fn once_executes_a_single_run_and_returns() {
+        let mock = MockLab::start();
+        let lab = lab(&mock).once();
+
+        lab.claim_loop(0).expect("the single claim");
+
+        assert_eq!(mock.count("POST /api/runs/claim"), 1);
+        assert_eq!(mock.count("POST /api/runs/1/finish"), 1);
+    }
+
+    #[test]
+    fn once_returns_immediately_on_an_empty_queue() {
+        let mock = MockLab::start();
+        mock.set_queue_empty();
+        let mut lab = lab(&mock).once();
+        lab.idle = IDLE;
+
+        let started = Instant::now();
+        lab.claim_loop(0).expect("the empty claim");
+
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "it waited out its idle"
+        );
+        assert_eq!(mock.count("POST /api/runs/claim"), 1);
+    }
+
+    #[test]
+    fn a_log_line_names_its_event_its_slot_and_its_fields() {
+        let line = log_line(
+            "finish",
+            "runner-1",
+            3,
+            &[
+                ("run", "185".to_string()),
+                ("epochs", "20000".to_string()),
+                ("wall_s", "412.0".to_string()),
+                ("epochs_per_s", "48.5".to_string()),
+            ],
+        );
+
+        assert_eq!(
+            line,
+            "event=finish runner=runner-1 slot=3 run=185 epochs=20000 wall_s=412.0 epochs_per_s=48.5"
+        );
+        assert_eq!(
+            log_line(
+                "idle",
+                "runner-1",
+                0,
+                &[("reason", "empty_queue".to_string())]
+            ),
+            "event=idle runner=runner-1 slot=0 reason=empty_queue"
+        );
+        assert_eq!(
+            log_line(
+                "error",
+                "runner-1",
+                0,
+                &[("message", quoted("it broke\nhere"))]
+            ),
+            "event=error runner=runner-1 slot=0 message=\"it broke\\nhere\""
+        );
     }
 
     #[test]
