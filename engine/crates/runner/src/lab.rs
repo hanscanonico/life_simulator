@@ -992,6 +992,37 @@ mod tests {
         assert_eq!(mock.count("POST /api/runs/claim"), 0);
     }
 
+    /// The seconds a beat charges the app cover that beat alone: the intervals partition
+    /// the time the run worked instead of each restating the span since the claim, which
+    /// is the whole reason their sum is a cost the app can keep across resumes.
+    #[test]
+    fn the_beats_of_a_run_charge_its_wall_time_once_between_them() {
+        let mock = MockLab::start();
+        let lab = lab(&mock);
+        let progress = Progress::new(0, Arc::new(AtomicBool::new(false)));
+        let done = AtomicBool::new(false);
+
+        let beating = Instant::now();
+        thread::scope(|scope| {
+            scope.spawn(|| lab.beat(1, &Slot::new("runner-1", 0), &progress, &done));
+            thread::sleep(Duration::from_millis(120));
+            done.store(true, Ordering::Relaxed);
+        });
+        let elapsed = beating.elapsed().as_secs_f64();
+
+        let intervals: Vec<f64> = mock
+            .requests("POST /api/runs/1/heartbeat")
+            .iter()
+            .map(|beat| beat["interval_seconds"].as_f64().expect("an interval"))
+            .collect();
+
+        assert!(intervals.len() >= 3, "{intervals:?}");
+        assert!(
+            intervals.iter().sum::<f64>() <= elapsed,
+            "{intervals:?} charge more than the {elapsed}s they cover"
+        );
+    }
+
     #[test]
     fn the_progress_rate_counts_only_the_epochs_since_the_last_beat() {
         let a_beat = Duration::from_secs(2);
