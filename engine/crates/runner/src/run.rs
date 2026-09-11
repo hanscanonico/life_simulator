@@ -59,7 +59,9 @@ pub fn execute(
 }
 
 /// Runs `world` — fresh or restored from a snapshot — up to `epochs`, reporting through
-/// `progress` and giving up as soon as it is asked to stop.
+/// `progress` and giving up as soon as it is asked to stop. The sample that settles the
+/// transition takes a snapshot of its own, so the run's primary dependent variable has a
+/// world behind it to rescore.
 pub fn execute_world(
     mut world: World,
     epochs: u64,
@@ -72,6 +74,7 @@ pub fn execute_world(
     let snapshot_every = params.snapshot_every as u64;
     let started = Instant::now();
     let mut buffers = SnapshotBuffers::default();
+    let mut transition_seen = world.transition_epoch();
 
     loop {
         let epoch = world.epoch();
@@ -87,6 +90,16 @@ pub fn execute_world(
         } else if snapshotting {
             let raw = world.snapshot();
             sink.snapshot(epoch, &raw, buffers.render_png(&world)?)?;
+        }
+        // The one forced snapshot is stored under the sample epoch that confirmed the
+        // drop, which trails the settled transition epoch by hold_samples x sample_every.
+        let settled = world.transition_epoch();
+        if sampling && transition_seen.is_none() && settled.is_some() {
+            if !snapshotting {
+                let raw = world.snapshot();
+                sink.snapshot(epoch, &raw, buffers.render_png(&world)?)?;
+            }
+            transition_seen = settled;
         }
         if epoch == epochs {
             break;
@@ -224,6 +237,61 @@ mod tests {
 
         let again = buffers.render_png(&world).unwrap();
         assert_eq!(again, png, "a reused buffer renders the same bytes");
+    }
+
+    /// An ordered world's compress ratio is under the threshold from the start, so the
+    /// drop settles on the fourth sample — epoch 6, which no snapshot cadence of 4 hits.
+    fn settling_params() -> Params {
+        Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            snapshot_every: 4,
+            ..params()
+        }
+    }
+
+    #[test]
+    fn a_settled_transition_forces_a_snapshot_off_the_cadence() {
+        let mut cadence_only = RecordingSink::default();
+        let unsettled = Params {
+            snapshot_every: 4,
+            ..params()
+        };
+        execute(&unsettled, 1, 6, &mut cadence_only).unwrap();
+        assert_eq!(cadence_only.snapshots, vec![0, 4]);
+
+        let mut sink = RecordingSink::default();
+        let result = execute(&settling_params(), 3, 6, &mut sink).unwrap();
+
+        assert_eq!(result.transition_epoch, Some(0));
+        assert_eq!(sink.samples, vec![0, 2, 4, 6]);
+        assert_eq!(sink.snapshots, vec![0, 4, 6]);
+        assert!(sink.snapshots.len() > cadence_only.snapshots.len());
+    }
+
+    #[test]
+    fn only_the_first_settling_sample_forces_a_snapshot() {
+        let mut sink = RecordingSink::default();
+        execute(&settling_params(), 3, 12, &mut sink).unwrap();
+
+        assert_eq!(sink.snapshots, vec![0, 4, 6, 8, 12]);
+    }
+
+    #[test]
+    fn a_resumed_world_does_not_force_a_second_transition_snapshot() {
+        let params = settling_params();
+        let mut world = World::new(&params, 3).unwrap();
+        for _ in 0..7 {
+            world.metrics();
+            world.step();
+        }
+        assert_eq!(world.transition_epoch(), Some(0));
+
+        let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        let mut sink = RecordingSink::default();
+        execute_world(restored, 8, &mut sink, &Progress::default()).unwrap();
+
+        assert_eq!(sink.snapshots, vec![8]);
     }
 
     #[test]
