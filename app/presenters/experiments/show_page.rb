@@ -23,6 +23,10 @@ module Experiments
     # One summary per grid value, per axis: the numbers the phase diagram draws.
     def arms = @arms ||= axes.index_with { |axis| arms_for(axis) }
 
+    # One Kaplan–Meier curve set per axis: every run that has been watched at all, live
+    # runs included, so the page answers "how long does emergence take" while a sweep runs.
+    def survivals = @survivals ||= axes.index_with { |axis| survival_for(axis) }
+
     def varying_keys = @varying_keys ||= axes.flat_map(&:param_keys).uniq
 
     def runs = page.last
@@ -47,6 +51,42 @@ module Experiments
     end
 
     private
+
+    def survival_for(axis)
+      arms = axis.values.map do |value|
+        observations = observed_runs.select { |run| axis.matches?(run.params, value) }.map { |run| observation(run) }
+        Charts::Survival::Arm.new(label: axis.label_of(value), observations: observations.compact)
+      end
+      Charts::Survival.new(arms: arms, epochs: experiment.epochs,
+                           title: "Time to emergence vs #{axis.name.to_s.humanize.downcase}")
+    end
+
+    # A run that emerged was watched up to its transition; one that did not is censored at
+    # the last epoch it is known to have reached — the whole budget for a terminal run, the
+    # latest sample for a run still under way. A run nothing is known about yet is no
+    # observation at all.
+    def observation(run)
+      epochs = run.transition_epoch || observed_epochs(run)
+      return nil unless epochs.to_i.positive?
+
+      Charts::Survival::Observation.new(epochs: epochs.to_i, event: run.transition_epoch.present?)
+    end
+
+    def observed_epochs(run)
+      return run.epochs_done if run.terminal?
+
+      [run.epochs_done, latest_sample_epochs[run.id].to_i].max
+    end
+
+    def observed_runs
+      @observed_runs ||= experiment.runs.where.not(status: "pending")
+                                   .select(:id, :params, :status, :epochs_done, :transition_epoch).to_a
+    end
+
+    def latest_sample_epochs
+      @latest_sample_epochs ||= Sample.where(run_id: observed_runs.reject(&:terminal?).map(&:id))
+                                      .group(:run_id).maximum(:epoch)
+    end
 
     def diagrams_by_axis
       @diagrams_by_axis ||= axes.index_with do |axis|

@@ -1,0 +1,34 @@
+<figure class="chart">
+  <figcaption class="chart-title"><%= survival.title %></figcaption>
+  <% if survival.empty? %>
+    <p class="chart-empty text-muted">No run has been observed yet.</p>
+  <% else %>
+    <svg class="chart-svg" viewBox="0 0 <%= survival.width %> <%= survival.height %>"
+         role="img" aria-label="<%= survival.title %>" preserveAspectRatio="xMidYMid meet">
+      <%= render "charts/axes", chart: survival %>
+      <g class="chart-steps">
+        <% survival.lines.each do |line| %>
+          <path class="chart-line" d="<%= line.path %>" stroke-dasharray="<%= line.dash %>">
+            <title><%= line.label %></title>
+          </path>
+        <% end %>
+      </g>
+    </svg>
+    <%# A figure carries at most one figcaption, and it is the title above the plot. %>
+    <ul class="chart-legend text-sm text-muted">
+      <% survival.lines.each do |line| %>
+        <li>
+          <svg class="chart-swatch" viewBox="0 0 28 8" aria-hidden="true">
+            <path class="chart-line" d="M0,4 L28,4" stroke-dasharray="<%= line.dash %>"></path>
+          </svg>
+          <%= line.label %>
+        </li>
+      <% end %>
+    </ul>
+    <p class="chart-legend text-sm text-muted">
+      Each line is the share of runs in an arm with no self-replicator yet at that epoch.
+      A run that never emerged is censored where it was last watched, so it holds the line
+      up only for as long as it was actually observed.
+    </p>
+  <% end %>
+</figure>

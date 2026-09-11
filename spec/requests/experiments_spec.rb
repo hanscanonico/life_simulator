@@ -90,6 +90,33 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to include("Arms of radius", "Median epoch", "IQR", "1/2")
     end
 
+    context "with censored runs alongside runs that emerged" do
+      before do
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 900,
+                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000,
+                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+        live = create(:run, :claimed, experiment: experiment, epochs_done: 0,
+                                      params: Lab::Schema.run_defaults.merge("radius" => 4))
+        create(:sample, run: live, epoch: 5_000)
+      end
+
+      it "draws the survival curves under the phase diagram" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Time to emergence vs radius", "P(no emergence)",
+                                         "stroke-dasharray", "2 — 1 of 2 emerged", "4 — 0 of 1 emerged")
+      end
+
+      it "tabulates the hazard per arm and pooled over the sweep" do
+        get experiment_path(experiment)
+
+        # 1 event over 900 + 20 000 + 5 000 run-epochs at risk: 0.386 per 10^4 epochs.
+        expect(response.body).to include("Emergence hazard per arm of radius", "Run-epochs at risk",
+                                         "All arms", "25,900", "0.386")
+      end
+    end
+
     context "with a sweep no run of which has finished" do
       it "shows no arm table" do
         create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 1))
