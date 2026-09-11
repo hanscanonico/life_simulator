@@ -6,8 +6,9 @@ RSpec.describe Pages::HowItWorksPage do
   subject(:page) { described_class.build }
 
   describe "#sweeps" do
-    it "keeps the declaration order of the programme and holds the control out of it" do
-      expect(page.sweeps.map(&:name)).to eq(Lab::SWEEPS.except("bff_control").values.pluck(:name))
+    it "keeps the declaration order of the programme and holds the control and the re-runs out of it" do
+      expect(page.sweeps.map(&:name))
+        .to eq(Lab::SWEEPS.except("bff_control", "mutation_rate_long").values.pluck(:name))
     end
 
     it "carries the question each sweep asks" do
@@ -38,6 +39,16 @@ RSpec.describe Pages::HowItWorksPage do
 
         expect(page.sweeps.find { |sweep| sweep.name == "Neighbourhood radius" }.experiment).to eq(experiment)
       end
+    end
+  end
+
+  describe "#follow_ups" do
+    it "is the longer re-run of a sweep the programme already asked once" do
+      expect(page.follow_ups.map(&:name)).to eq(["Mutation rate, long runs"])
+    end
+
+    it "carries the write-up that reads it" do
+      expect(page.follow_ups.first.finding.slug).to eq("mutation-rate-long-horizon")
     end
   end
 

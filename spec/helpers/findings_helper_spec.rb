@@ -63,4 +63,27 @@ RSpec.describe FindingsHelper, type: :helper do
       end
     end
   end
+
+  describe "#findings_finished_count" do
+    subject(:count) { helper.findings_finished_count(experiment_slug: "mutation-rate-long") }
+
+    context "with the sweep absent from this database" do
+      it "counts nothing" do
+        expect(count).to eq(0)
+      end
+    end
+
+    context "with runs of the sweep" do
+      let(:experiment) { create(:experiment, name: "Mutation rate, long runs", slug: "mutation-rate-long") }
+
+      it "counts the terminal runs and leaves the running ones out" do
+        create(:run, experiment: experiment, seed: 1, status: "finished")
+        create(:run, experiment: experiment, seed: 2, status: "finished")
+        create(:run, experiment: experiment, seed: 3, status: "running")
+        create(:run, seed: 4, status: "finished")
+
+        expect(count).to eq(2)
+      end
+    end
+  end
 end

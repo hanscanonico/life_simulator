@@ -22,7 +22,7 @@ RSpec.describe Findings::Registry do
   it "leads a shared date with the strongest current result" do
     slugs = described_class.all.map(&:slug)
 
-    expect(slugs.first(3)).to eq(%w[mutation-rate-window bff-control world-size-scaling])
+    expect(slugs.first(3)).to eq(%w[mutation-rate-long-horizon mutation-rate-window bff-control])
   end
 
   it "keeps the order of findings sharing a date fixed across calls" do
@@ -80,6 +80,15 @@ RSpec.describe Findings::Registry do
     expect(finding.status).to eq(:partial)
     expect(finding.summary).to include("largest replicator census in the lab",
                                        "not yet resolved")
+  end
+
+  it "reads the long-horizon re-run as partial while three of its runs are still on the clock" do
+    finding = described_class.find("mutation-rate-long-horizon")
+
+    expect(finding).to have_attributes(experiment_slug: "mutation-rate-long", status: :partial)
+    expect(finding.summary).to include("re-run for 60 000 epochs",
+                                       "half of those transitions land after epoch 20 000",
+                                       "2^-14 arm stays silent")
   end
 
   it "finds a finding by slug" do

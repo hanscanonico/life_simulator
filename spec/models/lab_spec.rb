@@ -42,6 +42,25 @@ RSpec.describe Lab do
       expect(Lab::SWEEPS.fetch("ops")[:param_grid]["mutation_rate"]).to eq([2.0**-13])
     end
 
+    describe "the mutation_rate_long re-run" do
+      let(:definition) { Lab::SWEEPS.fetch("mutation_rate_long") }
+
+      it "re-runs the four rates around sweep 1's transitions, at three times its budget" do
+        expect(definition[:param_grid].fetch("mutation_rate")).to eq([2.0**-14, 2.0**-13, 2.0**-12, 2.0**-11])
+        expect(definition.fetch(:epochs)).to eq(3 * Lab::SWEEPS.fetch("mutation_rate").fetch(:epochs))
+      end
+
+      it "keeps the world of the sweep it re-runs so a run repeats it byte for byte" do
+        expect(definition[:param_grid].values_at("width", "height")).to eq([[128], [128]])
+        expect(definition.fetch(:seeds)).to eq(Lab::SWEEPS.fetch("mutation_rate").fetch(:seeds))
+      end
+
+      it "snapshots the long runs sparsely, not at the engine's cadence" do
+        expect(definition[:param_grid].fetch("snapshot_every")).to eq([500])
+        expect(Lab::Schema.defaults.fetch("snapshot_every")).to eq(100)
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 
