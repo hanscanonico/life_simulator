@@ -20,6 +20,15 @@ RSpec.describe Programme::Status do
     status.peak_replicator_count
   end
 
+  def sql_during(&reading)
+    statements = []
+    recorder = lambda do |_name, _start, _finish, _id, payload|
+      statements << payload[:sql] unless payload[:name] == "SCHEMA"
+    end
+    ActiveSupport::Notifications.subscribed(recorder, "sql.active_record", &reading)
+    statements.last
+  end
+
   it "reads the whole strip in one query per value" do
     expect(queries_during { read_every_value }).to eq(5)
   end
@@ -71,6 +80,23 @@ RSpec.describe Programme::Status do
 
     it "takes the largest census any sample recorded" do
       expect(status.peak_replicator_count).to eq(867)
+    end
+
+    it "reads the census off the partial index, not off every sample" do
+      sql = sql_during { status.peak_replicator_count }
+      Sample.connection.execute("SET LOCAL enable_seqscan = off")
+
+      plan = Sample.connection.select_values("EXPLAIN #{sql}").join("\n")
+
+      expect(plan).to include("index_samples_on_run_id_replicated")
+    end
+  end
+
+  context "with every census at zero" do
+    it "reads no census at all" do
+      create(:sample, values: { "replicator_count" => 0 })
+
+      expect(status.peak_replicator_count).to be_nil
     end
   end
 end

@@ -149,8 +149,8 @@ Rails/SkipsModelValidations:
     - 'spec/support/**/*'
 
 Rails/RedundantActiveRecordAllMethod:
-  # `Findings::Registry.all` is the findings log held in Ruby, not a relation: without
-  # `all` the call would land on `Module#first`.
+  # `Findings::Registry` is a module holding the findings log in Ruby, not a relation:
+  # `all` is its reader, and a module has nothing to enumerate without it.
   AllowedReceivers:
     - Findings::Registry
     - Registry
