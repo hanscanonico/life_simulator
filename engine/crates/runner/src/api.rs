@@ -1,8 +1,9 @@
 //! The lab API client: the runner's half of the endpoints in `app/controllers/api`.
 //!
-//! Every call carries the bearer token and the runner id holding the run, and retries a
-//! transport failure or a 5xx `MAX_ATTEMPTS` times with a doubling backoff before giving
-//! up. A 4xx is the app's verdict and is never retried.
+//! Every call carries the bearer token and the runner id holding the run. A failure is
+//! either transient — DNS, connect, timeout, a reset socket, a 5xx — and retried with a
+//! doubling, capped backoff until the grace window runs out, or fatal — a 4xx other than
+//! 408/429, a malformed or oversized answer — and returned to the caller at once.
 
 use crate::sink::SnapshotReason;
 use anyhow::{anyhow, bail, Context, Result};
@@ -10,12 +11,34 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use life_engine::{Metrics, Params};
 use serde_json::{json, Value};
+use std::fmt;
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-pub(crate) const MAX_ATTEMPTS: u32 = 5;
+/// How long a call rides a transient failure out unless the caller says otherwise. Long
+/// enough for a restarting service, short enough that a one-off CLI pass is not stuck.
+pub const GRACE: Duration = Duration::from_secs(30);
+/// What lab mode uses instead: `deploy/deploy` recreates the app container, and for the
+/// minute or two that takes every call fails to resolve or connect. A run holds its world
+/// in memory, so waiting the deploy out costs nothing where failing the run costs the
+/// hours of compute since its last snapshot.
+pub const OUTAGE_GRACE: Duration = Duration::from_secs(900);
+/// A beat is not worth waiting an outage out for: the run keeps going without it and the
+/// next tick beats again, so this stays well under `lab::HEARTBEAT`.
+const HEARTBEAT_GRACE: Duration = Duration::from_secs(5);
 const BACKOFF: Duration = Duration::from_secs(2);
+/// The backoff stops doubling here, so a fifteen-minute wait is still made of attempts
+/// that notice the app coming back within half a minute.
+const MAX_BACKOFF: Duration = Duration::from_secs(30);
+/// How often an outage is written to the log: one line a minute for the endpoint, not
+/// one per attempt, whatever the backoff is up to.
+const OUTAGE_REPORT: Duration = Duration::from_secs(60);
+/// How long a backoff sleeps between two looks at the stop flag, so SIGTERM ends a wait
+/// in a tick rather than at the end of a half-minute sleep.
+const TICK: Duration = Duration::from_millis(50);
 const TIMEOUT: Duration = Duration::from_secs(60);
 /// How much of a JSON answer the runner is willing to read. Every endpoint but the two
 /// that serve worlds answers a handful of fields, so a megabyte is already generous.
@@ -101,11 +124,38 @@ impl Answer for BinaryAnswer {
     }
 }
 
+/// A call the stop flag cut short while it was waiting an outage out. The run it belongs
+/// to was interrupted, not broken: lab mode leaves it claimed rather than failing it, and
+/// the next claim resumes it from its latest snapshot.
+#[derive(Debug)]
+pub struct Interrupted {
+    endpoint: String,
+}
+
+impl fmt::Display for Interrupted {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{} was still waiting for the app when the runner was asked to stop",
+            self.endpoint
+        )
+    }
+}
+
+impl std::error::Error for Interrupted {}
+
+/// Whether a stop, rather than a failure, is what ended the call.
+pub fn interrupted(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| cause.is::<Interrupted>())
+}
+
 pub struct LabClient {
     agent: ureq::Agent,
     base: String,
     token: String,
     backoff: Duration,
+    grace: Duration,
+    stop: Option<Arc<AtomicBool>>,
 }
 
 impl LabClient {
@@ -119,7 +169,22 @@ impl LabClient {
             base: base.trim_end_matches('/').to_string(),
             token: token.to_string(),
             backoff: BACKOFF,
+            grace: GRACE,
+            stop: None,
         }
+    }
+
+    /// How long a transient failure is retried before the call gives up.
+    pub fn with_grace(mut self, grace: Duration) -> Self {
+        self.grace = grace;
+        self
+    }
+
+    /// The flag SIGTERM raises, so a backoff ends with the signal rather than a tick of
+    /// the run loop later.
+    pub fn stopping_on(mut self, stop: Arc<AtomicBool>) -> Self {
+        self.stop = Some(stop);
+        self
     }
 
     /// Shortens the retry backoff; the tests would otherwise sleep for seconds.
@@ -146,8 +211,12 @@ impl LabClient {
         }))
     }
 
+    /// Beats, giving up quickly: a beat the app misses is one the next tick sends again,
+    /// and holding the beat thread through a whole outage would hide the run's progress
+    /// from the site long after the app came back.
     pub fn heartbeat(&self, run: i64, runner_id: &str, epochs_done: u64) -> Result<()> {
-        self.member(
+        self.member_within(
+            HEARTBEAT_GRACE.min(self.grace),
             run,
             runner_id,
             "heartbeat",
@@ -279,17 +348,32 @@ impl LabClient {
         Ok(())
     }
 
-    fn member(&self, run: i64, runner_id: &str, action: &str, mut body: Value) -> Result<()> {
+    fn member(&self, run: i64, runner_id: &str, action: &str, body: Value) -> Result<()> {
+        self.member_within(self.grace, run, runner_id, action, body)
+    }
+
+    fn member_within(
+        &self,
+        grace: Duration,
+        run: i64,
+        runner_id: &str,
+        action: &str,
+        mut body: Value,
+    ) -> Result<()> {
         let path = format!("/api/runs/{run}/{action}");
         body["runner_id"] = json!(runner_id);
-        let (status, response) = self.post(&path, &body)?;
+        let (status, response) = self.post_within(grace, &path, &body)?;
         accepted(status, response, &format!("POST {path}"))?;
         Ok(())
     }
 
     fn post(&self, path: &str, body: &Value) -> Result<(u16, String)> {
+        self.post_within(self.grace, path, body)
+    }
+
+    fn post_within(&self, grace: Duration, path: &str, body: &Value) -> Result<(u16, String)> {
         let url = format!("{}{path}", self.base);
-        self.with_retries(&url, || {
+        self.within(grace, &url, || {
             let mut response = self
                 .agent
                 .post(&url)
@@ -368,24 +452,117 @@ impl LabClient {
         F: Fn() -> Result<(u16, T)>,
         T: Answer,
     {
-        let mut wait = self.backoff;
-        for attempted in 1..=MAX_ATTEMPTS {
-            let last = attempted == MAX_ATTEMPTS;
-            match attempt() {
-                Ok((status, body)) if status < 500 => return Ok((status, body)),
-                Ok((status, body)) if last => {
-                    bail!("{url} still answered {status}: {}", body.describe())
-                }
-                Err(error) if last => {
-                    return Err(error.context(format!("{url} failed {MAX_ATTEMPTS} times")))
-                }
-                _ => {}
-            }
-            thread::sleep(wait);
-            wait *= 2;
-        }
-        unreachable!("the last attempt always returns")
+        self.within(self.grace, url, attempt)
     }
+
+    /// Calls until the app answers something it means, `grace` runs out, or the runner is
+    /// asked to stop. A transient failure is slept on and tried again; a fatal one is the
+    /// caller's straight away. Nothing here touches the run's state, so an outage leaves
+    /// the world where it was, in memory, and the run continues from that epoch.
+    fn within<T, F>(&self, grace: Duration, url: &str, attempt: F) -> Result<(u16, T)>
+    where
+        F: Fn() -> Result<(u16, T)>,
+        T: Answer,
+    {
+        let started = Instant::now();
+        let mut wait = self.backoff;
+        let mut attempts: u32 = 0;
+        let mut reported: Option<Instant> = None;
+        loop {
+            attempts += 1;
+            let failure = match attempt() {
+                Ok((status, body)) if !transient_status(status) => {
+                    if reported.is_some() {
+                        report("recovered", url, started, attempts, "");
+                    }
+                    return Ok((status, body));
+                }
+                Ok((status, body)) => format!("answered {status}: {}", body.describe()),
+                Err(error) if !transient_error(&error) => {
+                    return Err(error.context(format!("{url} failed")))
+                }
+                Err(error) => format!("{error:#}"),
+            };
+            if started.elapsed() >= grace {
+                bail!(
+                    "{url} was unreachable for {grace:?}, the whole outage grace, \
+                     over {attempts} attempt(s); last failure: {failure}"
+                );
+            }
+            // The first failure is worth a line at once; after it the endpoint says so
+            // once a minute, however many attempts the backoff fits into that minute.
+            if reported.is_none_or(|at| at.elapsed() >= OUTAGE_REPORT) {
+                report("outage", url, started, attempts, &failure);
+                reported = Some(Instant::now());
+            }
+            if !self.rest(wait.min(grace.saturating_sub(started.elapsed()))) {
+                return Err(anyhow!(Interrupted {
+                    endpoint: url.to_string(),
+                }));
+            }
+            wait = (wait * 2).min(MAX_BACKOFF);
+        }
+    }
+
+    /// Sleeps `total` out in ticks, answering whether the wait ran its course — `false`
+    /// once the stop flag is up.
+    fn rest(&self, total: Duration) -> bool {
+        let until = Instant::now() + total;
+        while Instant::now() < until {
+            if self.stopping() {
+                return false;
+            }
+            thread::sleep(TICK.min(total));
+        }
+        !self.stopping()
+    }
+
+    fn stopping(&self) -> bool {
+        self.stop
+            .as_ref()
+            .is_some_and(|stop| stop.load(Ordering::Relaxed))
+    }
+}
+
+/// Whether a status is worth trying again. 5xx is the app gone or unable to serve the
+/// request — during a deploy the proxy answers 502/503/504 for a container that is not
+/// there yet — and 408 and 429 ask for the call again in as many words. Every other 4xx
+/// is the app's verdict on the request itself and does not change by being repeated.
+fn transient_status(status: u16) -> bool {
+    status >= 500 || status == 408 || status == 429
+}
+
+/// Whether a failed call is the network rather than the answer. Anything that is not
+/// `ureq` failing to reach or read the socket — a body over its limit, a URL the client
+/// built wrong, JSON it could not write — would fail identically on every attempt.
+fn transient_error(error: &anyhow::Error) -> bool {
+    matches!(
+        error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<ureq::Error>()),
+        Some(
+            ureq::Error::Io(_)
+                | ureq::Error::Timeout(_)
+                | ureq::Error::HostNotFound
+                | ureq::Error::ConnectionFailed
+                | ureq::Error::ConnectProxyFailed(_)
+                | ureq::Error::Protocol(_)
+                | ureq::Error::BodyStalled
+        )
+    )
+}
+
+/// One line about an endpoint the app is not answering on. The client is shared by every
+/// slot, so the line names the endpoint rather than a slot — no one worker owns it.
+fn report(event: &str, url: &str, since: Instant, attempts: u32, failure: &str) {
+    let mut line = format!(
+        "event={event} endpoint={url} waited_s={:.0} attempts={attempts}",
+        since.elapsed().as_secs_f64()
+    );
+    if !failure.is_empty() {
+        line.push_str(&format!(" message={failure:?}"));
+    }
+    eprintln!("{line}");
 }
 
 /// What a snapshot answer of a world described by `params` is allowed to weigh: the
@@ -456,8 +633,9 @@ fn read_bytes(
         .with_context(|| format!("reading the answer of {url} (limit {limit} bytes)"))
 }
 
-/// The app answers every runner call with 2xx; anything else is a hard failure the
-/// caller turns into a failed run rather than a retry.
+/// The app answers every runner call with 2xx. A transient status never reaches here —
+/// the retry loop either waits it out or gives up — so anything else is the app's verdict
+/// on the call, a hard failure the caller turns into a failed run.
 fn accepted<T: Answer>(status: u16, body: T, what: &str) -> Result<T> {
     if (200..300).contains(&status) {
         Ok(body)
@@ -493,8 +671,14 @@ mod tests {
     use super::*;
     use crate::mock_lab::MockLab;
 
+    /// A grace short enough that a test which does mean to run one out is over in a
+    /// blink, and long enough that a retry or two always fits inside it.
+    const TEST_GRACE: Duration = Duration::from_millis(500);
+
     fn client(lab: &MockLab) -> LabClient {
-        LabClient::new(&lab.base_url(), "token").with_backoff(Duration::from_millis(1))
+        LabClient::new(&lab.base_url(), "token")
+            .with_backoff(Duration::from_millis(1))
+            .with_grace(TEST_GRACE)
     }
 
     fn snapshot(epoch: u64, reason: SnapshotReason) -> Snapshot<'static> {
@@ -529,14 +713,19 @@ mod tests {
         assert_eq!(client(&lab).claim("runner-1").unwrap(), None);
     }
 
+    /// A rejected call is the app's verdict, not an outage: it is neither retried nor
+    /// waited out, however long the grace is.
     #[test]
     fn a_missing_token_is_a_hard_failure() {
         let lab = MockLab::start();
-        let client = LabClient::new(&lab.base_url(), "").with_backoff(Duration::from_millis(1));
+        let client = LabClient::new(&lab.base_url(), "")
+            .with_backoff(Duration::from_millis(1))
+            .with_grace(Duration::from_secs(600));
 
         let error = client.claim("runner-1").unwrap_err().to_string();
 
         assert!(error.contains("401"), "{error}");
+        assert_eq!(lab.count("POST /api/runs/claim"), 1);
     }
 
     #[test]
@@ -548,13 +737,126 @@ mod tests {
         assert_eq!(lab.count("POST /api/runs/claim"), 3);
     }
 
+    /// The message an operator reads off a run that never got its endpoint back: which
+    /// endpoint, how long it was given, and what it answered last.
     #[test]
-    fn a_server_error_that_never_clears_gives_up() {
+    fn a_server_error_that_never_clears_gives_up_naming_the_endpoint_and_the_window() {
         let lab = MockLab::start();
         lab.fail_next(u32::MAX);
 
-        assert!(client(&lab).claim("runner-1").is_err());
-        assert_eq!(lab.count("POST /api/runs/claim"), MAX_ATTEMPTS);
+        let error = format!("{:#}", client(&lab).claim("runner-1").unwrap_err());
+
+        assert!(error.contains("/api/runs/claim"), "{error}");
+        assert!(error.contains(&format!("{TEST_GRACE:?}")), "{error}");
+        assert!(error.contains("answered 500"), "{error}");
+        assert!(lab.count("POST /api/runs/claim") > 1);
+    }
+
+    /// The deploy of PR #71: the app container goes away for a while and comes back on
+    /// the same address. Every call in between fails to connect, and the caller is none
+    /// the wiser once it does.
+    #[test]
+    fn a_call_rides_out_an_app_that_disappears_and_comes_back() {
+        let lab = MockLab::start();
+        let client = client(&lab).with_grace(Duration::from_secs(30));
+        lab.vanish();
+
+        let claimed = thread::scope(|scope| {
+            scope.spawn(|| {
+                thread::sleep(Duration::from_millis(200));
+                lab.revive();
+            });
+            client.claim("runner-1").expect("the claim")
+        });
+
+        assert_eq!(claimed.expect("a run").id, 1);
+    }
+
+    /// A transport failure that outlives the window fails the call, naming what it was.
+    #[test]
+    fn an_app_that_never_comes_back_fails_the_call_with_the_transport_failure() {
+        let lab = MockLab::start();
+        let client = client(&lab);
+        lab.vanish();
+
+        let error = format!("{:#}", client.claim("runner-1").unwrap_err());
+
+        assert!(error.contains("/api/runs/claim"), "{error}");
+        assert!(error.contains(&format!("{TEST_GRACE:?}")), "{error}");
+    }
+
+    /// A beat never waits an outage out: whatever the client's grace is, the call gives
+    /// up inside `HEARTBEAT_GRACE` and the next tick beats again. A beat held for the
+    /// whole window would also hold the run at its end, where the scope that spawned the
+    /// beat thread joins it.
+    #[test]
+    fn a_beat_gives_up_well_inside_the_outage_grace() {
+        let lab = MockLab::start();
+        let grace = Duration::from_secs(30);
+        let client = client(&lab).with_grace(grace);
+        lab.fail_next_at("/api/runs/1/heartbeat", u32::MAX);
+
+        let started = Instant::now();
+        let error = format!("{:#}", client.heartbeat(1, "runner-1", 12).unwrap_err());
+        let waited = started.elapsed();
+
+        assert!(waited >= HEARTBEAT_GRACE, "{waited:?}");
+        assert!(waited < grace / 2, "{waited:?}");
+        assert!(error.contains("/api/runs/1/heartbeat"), "{error}");
+    }
+
+    /// SIGTERM during a backoff: the wait ends with the signal rather than at the end of
+    /// the sleep, and the run it belongs to is interrupted, not failed.
+    #[test]
+    fn a_stop_ends_a_backoff_at_once() {
+        let lab = MockLab::start();
+        let stop = Arc::new(AtomicBool::new(false));
+        let client = client(&lab)
+            .with_grace(Duration::from_secs(600))
+            .with_backoff(Duration::from_secs(30))
+            .stopping_on(Arc::clone(&stop));
+        lab.vanish();
+
+        let (error, waited) = thread::scope(|scope| {
+            scope.spawn(|| {
+                thread::sleep(Duration::from_millis(100));
+                stop.store(true, Ordering::Relaxed);
+            });
+            let started = Instant::now();
+            let error = client.claim("runner-1").unwrap_err();
+            (error, started.elapsed())
+        });
+
+        assert!(interrupted(&error), "{error:#}");
+        assert!(waited < Duration::from_secs(1), "{waited:?}");
+    }
+
+    #[test]
+    fn a_status_is_transient_only_while_it_could_answer_differently() {
+        for status in [500, 502, 503, 504, 408, 429] {
+            assert!(transient_status(status), "{status}");
+        }
+        for status in [200, 204, 400, 401, 403, 404, 409, 422] {
+            assert!(!transient_status(status), "{status}");
+        }
+    }
+
+    /// A body over its bound is the answer being wrong, not the network: retrying it
+    /// would spend the whole grace re-reading the same oversized answer.
+    #[test]
+    fn an_oversized_answer_is_not_waited_out() {
+        let lab = MockLab::start();
+        let limit = snapshot_body_limit(&MockLab::params());
+        lab.set_latest_snapshot(60, vec![0u8; limit as usize + 1]);
+        let client = client(&lab).with_grace(Duration::from_secs(5));
+
+        let started = Instant::now();
+        let error = client
+            .latest_snapshot(1, "runner-1", &MockLab::params())
+            .unwrap_err();
+
+        assert!(!transient_error(&error), "{error:#}");
+        assert!(started.elapsed() < Duration::from_secs(1), "it was retried");
     }
 
     #[test]

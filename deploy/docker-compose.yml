@@ -146,6 +146,10 @@ services:
       # snapshots, so a container restart never costs a slot more than this much
       # compute. Set explicitly to the runner's own default, so it is visible here.
       RUNNER_SNAPSHOT_MAX_AGE: ${RUNNER_SNAPSHOT_MAX_AGE:-30m}
+      # This container survives an app-only deploy, so its calls fail for the minute or
+      # two the app container takes to be recreated. The runner waits that out with its
+      # world in memory rather than failing the run; RUNNER_OUTAGE_GRACE (default 15m,
+      # the runner's own) is the window. Set it here only to change it.
     depends_on:
       app:
         condition: service_healthy

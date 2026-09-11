@@ -17,8 +17,9 @@ use std::time::{Duration, Instant};
 /// that rate), against ~450 MiB here for a restart cost still a third of the cadence's.
 pub const SNAPSHOT_MAX_AGE: Duration = Duration::from_secs(1800);
 
-/// Reads `10m`, `90s`, `2h` or a bare count of seconds into a snapshot age ceiling.
-pub fn parse_snapshot_max_age(text: &str) -> Result<Duration, String> {
+/// Reads `10m`, `90s`, `2h` or a bare count of seconds into a duration — what the
+/// runner's wall-clock flags are written as.
+pub fn parse_duration(text: &str) -> Result<Duration, String> {
     let text = text.trim();
     let (digits, scale) = match text
         .char_indices()
@@ -481,18 +482,15 @@ mod tests {
     }
 
     #[test]
-    fn an_age_ceiling_is_read_with_or_without_a_unit() {
-        assert_eq!(parse_snapshot_max_age("30m"), Ok(SNAPSHOT_MAX_AGE));
-        assert_eq!(parse_snapshot_max_age("600"), Ok(Duration::from_secs(600)));
-        assert_eq!(parse_snapshot_max_age("90s"), Ok(Duration::from_secs(90)));
-        assert_eq!(
-            parse_snapshot_max_age(" 2H "),
-            Ok(Duration::from_secs(7200))
-        );
-        assert!(parse_snapshot_max_age("often").is_err());
-        assert!(parse_snapshot_max_age("10d").is_err());
-        assert!(parse_snapshot_max_age("").is_err());
-        assert!(parse_snapshot_max_age("18446744073709551615h").is_err());
+    fn a_wall_clock_flag_is_read_with_or_without_a_unit() {
+        assert_eq!(parse_duration("30m"), Ok(SNAPSHOT_MAX_AGE));
+        assert_eq!(parse_duration("600"), Ok(Duration::from_secs(600)));
+        assert_eq!(parse_duration("90s"), Ok(Duration::from_secs(90)));
+        assert_eq!(parse_duration(" 2H "), Ok(Duration::from_secs(7200)));
+        assert!(parse_duration("often").is_err());
+        assert!(parse_duration("10d").is_err());
+        assert!(parse_duration("").is_err());
+        assert!(parse_duration("18446744073709551615h").is_err());
     }
 
     #[test]
