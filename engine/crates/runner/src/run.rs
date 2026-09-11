@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 /// a container restart would have to redo. This is the wall-clock floor under that
 /// cadence. 30 minutes rather than 10: the extra snapshots are live until the run goes
 /// terminal and `PruneSnapshotsService` thins it, and a control world's 8.4 MiB every
-/// 10 minutes is ~800 MiB of backlog per slot over its 16-hour run, against ~270 MiB
-/// here for a restart cost still a third of the cadence's.
+/// 10 minutes is ~1.8 GiB of backlog per slot over its 50 000-epoch run (~40 hours at
+/// that rate), against ~450 MiB here for a restart cost still a third of the cadence's.
 pub const SNAPSHOT_MAX_AGE: Duration = Duration::from_secs(1800);
 
 /// Reads `10m`, `90s`, `2h` or a bare count of seconds into a snapshot age ceiling.
