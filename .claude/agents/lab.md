@@ -31,7 +31,12 @@ runs only — a claimed, running or terminal run is left where it is — and pri
 removed; quote the whole task name in zsh, brackets and commas included.
 `lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes
 `transition_epoch` from the stored samples of terminal runs, for runs measured before the
-tracker survived a snapshot resume. `lab:db_size` and `lab:prune_snapshots` are the
+tracker survived a snapshot resume. `"lab:transition_report[<slug>]"` reads the detector and the replicator census side by side
+over the stored samples — per run the flagged epoch, the bare threshold crossing, the
+entropy minimum, the replicator and copy-rate peaks and the final observables, then a
+per-arm count of the runs the two observables disagree on (`FORMAT=csv` for CSV); it is how
+a claim about emergence gets written on both observables before it is published.
+`lab:db_size` and `lab:prune_snapshots` are the
 maintenance tasks.
 `runner rescore` re-reads a run's stored world at other `top_k` settings, for the question
 "did the replicator test miss the lineage, or is there none?" — it measures only and

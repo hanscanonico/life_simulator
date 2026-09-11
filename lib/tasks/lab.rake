@@ -79,6 +79,16 @@ namespace :lab do
     puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
   end
 
+  desc "Read the transition detector and the replicator census side by side, per run and per arm (FORMAT=csv)"
+  task :transition_report, [:slug] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+    report = Experiments::TransitionReportService.call(experiment: experiment)
+
+    puts ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"
   task prune_snapshots: :environment do
     deleted = Run.terminal.find_each.sum { |run| Runs::PruneSnapshotsService.call(run: run) }

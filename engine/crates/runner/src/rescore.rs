@@ -147,8 +147,7 @@ fn top_tapes(
     cells: &[u8],
     measured: &BTreeMap<u32, Metrics>,
 ) -> Vec<TapeReading> {
-    let counts = metrics::tape_counts(cells, stored.params.stride());
-    let ranked = metrics::by_population(&counts);
+    let ranked = metrics::ranked_tapes(cells, stored.params.stride());
     let cell_count = stored.params.cell_count() as f64;
 
     let mut readings = Vec::new();
