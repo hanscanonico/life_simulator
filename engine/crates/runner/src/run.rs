@@ -91,7 +91,7 @@ pub fn execute(
     sink: &mut dyn RunSink,
 ) -> Result<RunResult> {
     let world = World::new(params, seed).map_err(anyhow::Error::msg)?;
-    match execute_world(world, epochs, None, sink, &Progress::default())? {
+    match execute_world(world, epochs, None, None, sink, &Progress::default())? {
         Completion::Finished(result) => Ok(*result),
         Completion::Stopped { epochs_done } => bail!("the run stopped at epoch {epochs_done}"),
     }
@@ -103,9 +103,12 @@ pub fn execute(
 /// world behind it to rescore. `snapshot_max_age` adds a wall-clock floor under the epoch
 /// cadence: past it the next sampled epoch snapshots, so a restart costs at most that
 /// much compute. Left `None` — local and file mode — only the cadence snapshots.
+/// `resumed_at` is the epoch a restored world came back from, whose observables were
+/// already measured and posted before the interruption.
 pub fn execute_world(
     mut world: World,
     epochs: u64,
+    resumed_at: Option<u64>,
     snapshot_max_age: Option<Duration>,
     sink: &mut dyn RunSink,
     progress: &Progress,
@@ -118,13 +121,20 @@ pub fn execute_world(
     let mut last_snapshot_at = Instant::now();
     let mut buffers = SnapshotBuffers::default();
     let mut transition_seen = world.transition_epoch();
+    let mut resumed_at = resumed_at;
 
     loop {
         let epoch = world.epoch();
-        let sampling = epoch.is_multiple_of(sample_every);
+        // A restored world has not stepped yet, so its copy_rate reads 0 (World::from_snapshot),
+        // and the app upserts samples on [run_id, epoch]: measuring the epoch the snapshot
+        // came from would replace the rate measured before the interruption with that zero.
+        let resuming = resumed_at.take() == Some(epoch);
+        let sampling = !resuming && epoch.is_multiple_of(sample_every);
         let overdue = sampling
             && snapshot_max_age.is_some_and(|max_age| last_snapshot_at.elapsed() >= max_age);
-        let reason = if epoch.is_multiple_of(snapshot_every) {
+        let reason = if resuming {
+            None
+        } else if epoch.is_multiple_of(snapshot_every) {
             Some(SnapshotReason::Cadence)
         } else if overdue {
             Some(SnapshotReason::Age)
@@ -244,6 +254,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingSink {
         samples: Vec<u64>,
+        copy_rates: Vec<f64>,
         snapshots: Vec<u64>,
         reasons: Vec<SnapshotReason>,
         finished: bool,
@@ -253,10 +264,11 @@ mod tests {
         fn sample(
             &mut self,
             epoch: u64,
-            _metrics: &Metrics,
+            metrics: &Metrics,
             _transition_epoch: Option<u64>,
         ) -> Result<()> {
             self.samples.push(epoch);
+            self.copy_rates.push(metrics.copy_rate);
             Ok(())
         }
 
@@ -361,7 +373,7 @@ mod tests {
 
         let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
         let mut sink = RecordingSink::default();
-        execute_world(restored, 8, None, &mut sink, &Progress::default()).unwrap();
+        execute_world(restored, 8, None, None, &mut sink, &Progress::default()).unwrap();
 
         assert_eq!(
             sink.snapshots,
@@ -379,10 +391,47 @@ mod tests {
         let restored = World::from_snapshot(&params(), 1, &world.snapshot()).unwrap();
         let mut sink = RecordingSink::default();
 
-        execute_world(restored, 6, None, &mut sink, &Progress::default()).unwrap();
+        execute_world(restored, 6, None, None, &mut sink, &Progress::default()).unwrap();
 
         assert_eq!(sink.samples, vec![4, 6]);
         assert!(sink.finished);
+    }
+
+    /// The epoch a resumed world comes back from was measured and posted before the
+    /// interruption, and the app upserts a sample on [run_id, epoch].
+    #[test]
+    fn a_resumed_epoch_is_not_measured_again_over_the_rate_already_posted() {
+        let params = Params {
+            width: 8,
+            height: 8,
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            snapshot_every: 2,
+            ..Params::default()
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let tape = life_engine::replicator::handwritten_replicator();
+        for x in 0..params.width {
+            world.set_cell(x, 0, &tape);
+        }
+        for _ in 0..4 {
+            world.step();
+        }
+        assert!(world.metrics().copy_rate > 0.0);
+
+        let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        let mut sink = RecordingSink::default();
+        execute_world(restored, 6, Some(4), None, &mut sink, &Progress::default()).unwrap();
+
+        assert_eq!(sink.samples, vec![5, 6]);
+        assert_eq!(sink.snapshots, vec![6]);
+        assert!(
+            sink.copy_rates.iter().all(|rate| *rate > 0.0),
+            "{:?}",
+            sink.copy_rates
+        );
     }
 
     #[test]
@@ -394,6 +443,7 @@ mod tests {
         let completion = execute_world(
             World::new(&params(), 1).unwrap(),
             6,
+            None,
             None,
             &mut sink,
             &progress,
@@ -419,6 +469,7 @@ mod tests {
         execute_world(
             World::new(&sparse_params(), 1).unwrap(),
             epochs,
+            None,
             max_age,
             &mut sink,
             &Progress::default(),
@@ -462,6 +513,7 @@ mod tests {
         execute_world(
             World::new(&params(), 1).unwrap(),
             6,
+            None,
             Some(Duration::ZERO),
             &mut sink,
             &Progress::default(),

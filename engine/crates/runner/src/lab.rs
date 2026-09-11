@@ -226,7 +226,8 @@ impl Lab {
     }
 
     fn stream(&self, slot: &Slot, claimed: &ClaimedRun) -> Result<Completion> {
-        let world = self.restore(slot, claimed)?;
+        let (world, resumed) = self.restore(slot, claimed)?;
+        let resumed_at = resumed.then(|| world.epoch());
         let progress = Progress::new(world.epoch(), Arc::clone(&self.stop));
         let done = AtomicBool::new(false);
 
@@ -238,6 +239,7 @@ impl Lab {
             let completion = run::execute_world(
                 world,
                 claimed.epochs,
+                resumed_at,
                 self.snapshot_max_age,
                 &mut sink,
                 &progress,
@@ -252,8 +254,9 @@ impl Lab {
     }
 
     /// A run with epochs behind it continues from its latest snapshot; everything else
-    /// starts from `(params, seed)`.
-    fn restore(&self, slot: &Slot, claimed: &ClaimedRun) -> Result<World> {
+    /// starts from `(params, seed)`. The flag says which of the two happened, so the run
+    /// loop knows whether its first epoch has already been measured and posted.
+    fn restore(&self, slot: &Slot, claimed: &ClaimedRun) -> Result<(World, bool)> {
         if claimed.epochs_done > 0 {
             let latest =
                 self.client
@@ -268,10 +271,13 @@ impl Lab {
                     ],
                 );
                 return World::from_snapshot(&claimed.params, claimed.seed, &blob)
+                    .map(|world| (world, true))
                     .map_err(anyhow::Error::msg);
             }
         }
-        World::new(&claimed.params, claimed.seed).map_err(anyhow::Error::msg)
+        World::new(&claimed.params, claimed.seed)
+            .map(|world| (world, false))
+            .map_err(anyhow::Error::msg)
     }
 
     /// Beats while the run works, and reports the rate the run is going at: the epochs
@@ -691,19 +697,29 @@ mod tests {
         assert!(finished["error"].as_str().unwrap().contains("width"));
     }
 
+    /// Epoch 6 is both a sample and a snapshot epoch, and the app upserts on
+    /// [run_id, epoch]: a resume that measured it again would overwrite the copy_rate
+    /// counted before the interruption with the restored world's 0.
     #[test]
-    fn a_run_with_epochs_behind_it_resumes_from_its_latest_snapshot() {
+    fn a_run_with_epochs_behind_it_resumes_past_the_epoch_it_restored() {
         let mock = MockLab::start();
         let mut world = World::new(&MockLab::params(), 7).unwrap();
-        for _ in 0..4 {
+        for _ in 0..6 {
+            world.metrics();
             world.step();
         }
-        mock.set_latest_snapshot(4, world.snapshot());
+        mock.set_latest_snapshot(6, world.snapshot());
 
-        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 4));
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 8, 6));
 
-        let samples = mock.request("POST /api/runs/1/samples");
-        assert_eq!(samples["samples"][0]["epoch"], json!(4));
+        let posted: Vec<u64> = mock
+            .requests("POST /api/runs/1/samples")
+            .iter()
+            .flat_map(|body| body["samples"].as_array().cloned().unwrap_or_default())
+            .map(|sample| sample["epoch"].as_u64().unwrap_or_default())
+            .collect();
+        assert_eq!(posted, vec![8]);
+        assert_eq!(mock.count("POST /api/runs/1/snapshots"), 0);
         assert_eq!(mock.count("POST /api/runs/1/finish"), 1);
     }
 
