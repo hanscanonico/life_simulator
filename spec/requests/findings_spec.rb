@@ -605,6 +605,108 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the interaction budget" do
+      let(:budget) { Findings::Registry.find("interaction-budget") }
+
+      it "states the non-monotone shape against the floor the sweep expected" do
+        get finding_path(budget)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.squish)
+          .to include("More compute per interaction is not more life.",
+                      "what the sweep shows is 0, 0, 2 and 0",
+                      "an optimum rather than a threshold")
+      end
+
+      it "counts the same flagged runs in its prose as in its per-arm table" do
+        get finding_path(budget)
+
+        flagged = response.parsed_body.css("table.data-table").first.css("tbody tr")
+                          .sum { |row| row.css("td")[1].text.squish.to_i }
+
+        expect(flagged).to eq(2)
+        expect(response.body.squish).to include("in 2 of 10 seeds")
+      end
+
+      it "reports that the detector and the census name the same two runs" do
+        get finding_path(budget)
+
+        disagreements = response.parsed_body.css("table.data-table").first.css("tbody tr")
+                                .sum { |row| row.css("td").last.text.squish.to_i }
+
+        expect(disagreements).to eq(0)
+        expect(response.body.squish).to include("The detector and the census agree everywhere.")
+        expect(response.body).to include(finding_path("mutation-rate-long-horizon"))
+      end
+
+      it "bounds the silent arms instead of reading them as zeros" do
+        get finding_path(budget)
+
+        expect(response.body.squish)
+          .to include("bounds a per-arm rate to roughly 0 to 26%",
+                      "Clopper–Pearson upper bound is 0.259",
+                      "p = 0.24",
+                      "a peak located to within a factor of 64")
+      end
+
+      it "states the determinism cross-check and the arm it repeats" do
+        get finding_path(budget)
+
+        expect(response.body.squish)
+          .to include("A determinism cross-check, and a caveat with it.",
+                      "30 runs of new evidence and 10 of a repeat")
+        expect(response.body).to include(finding_path("mutation-rate-window"))
+      end
+
+      it "states the one arm's cost and refuses to invent the others" do
+        get finding_path(budget)
+
+        expect(response.body.squish)
+          .to include("17.6 to 20.7 epochs per second", "1 001 to 1 134 seconds per run",
+                      "no honest per-epoch rate can be read for them here")
+      end
+
+      it "names the finer grid as a proposal rather than a promise" do
+        get finding_path(budget)
+
+        expect(response.body.squish)
+          .to include("<h2>What next</h2>", "2 048, 4 096, 8 192, 16 384 and 32 768 at 20 seeds each",
+                      "a proposal and not a commitment")
+      end
+
+      it "names each transitioned run by its arm and seed, without a database id" do
+        get finding_path(budget)
+
+        expect(response.body.squish).to include("5 030 (seed 1, 867)", "7 000 (seed 5, 108)")
+        expect(response.body).not_to match(/\brun #?\d+/i)
+      end
+
+      it "reads its arms, its seeds and its budget from the sweep the lab would build" do
+        sweep = Lab::SWEEPS.fetch("max_steps")
+        redefined = sweep.merge(param_grid: sweep.fetch(:param_grid).merge("max_steps" => [2**13]), epochs: 512)
+        stub_const("Lab::SWEEPS", Lab::SWEEPS.merge("max_steps" => redefined))
+
+        get finding_path(budget)
+
+        expect(response.body.squish).to include("512 epochs per run", "0 of the 10 runs have reached 512 epochs")
+      end
+
+      context "with runs of the sweep in this database" do
+        it "counts the terminal ones at render time and draws the cited census" do
+          experiment = create(:experiment, name: "Max steps per interaction", slug: "max-steps", epochs: 20_000)
+          run = create(:run, experiment: experiment, seed: 1, status: "finished", transition_epoch: 5_030,
+                             params: Lab::Schema.run_defaults.merge("max_steps" => 8_192))
+          create(:run, experiment: experiment, seed: 5, status: "running")
+          create(:sample, run: run, epoch: 5_080, values: { "replicator_count" => 867 })
+
+          get finding_path(budget)
+
+          expect(response.body.squish).to include("1 of the 40 runs have reached 20 000 epochs")
+          expect(response.body).to include(%(class="chart-cited"), run_path(run))
+        end
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

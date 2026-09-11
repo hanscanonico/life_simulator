@@ -1,0 +1,235 @@
+<% sweep = Lab::SWEEPS.fetch("max_steps") %>
+<% budgets = sweep.fetch(:param_grid).fetch("max_steps") %>
+<% seeds = sweep.fetch(:seeds).size %>
+<% planned = budgets.size * seeds %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% default_budget = Lab::Schema.run_defaults.fetch("max_steps") %>
+<% rate_exponent = -Math.log2(Lab::EMERGENT_MUTATION_RATE).round %>
+<% terminal = findings_finished_count(experiment_slug: "max-steps") %>
+
+<%# The recorded result, read on 2026-09-11. Runs are named by arm and seed, never by a
+    database id, and the live tables further down re-read the same runs. %>
+<% arms = [
+     { steps: 256, exponent: 8, flagged: 0, confirmed: 0, transitions: [] },
+     { steps: 1_024, exponent: 10, flagged: 0, confirmed: 0, transitions: [] },
+     { steps: 8_192, exponent: 13, flagged: 2, confirmed: 2, transitions: [[1, 5_030, 867], [5, 7_000, 108]] },
+     { steps: 65_536, exponent: 16, flagged: 0, confirmed: 0, transitions: [] }
+   ] %>
+
+<h2>Hypothesis</h2>
+<p>
+  DESIGN §1.3 sweep 4 varies the only parameter that is purely about computation.
+  <span class="mono">max_steps</span> is how many instructions one interaction may execute
+  before the pair of tapes is put back in the world, and the reading it was queued for is a
+  floor: a copy loop needs a certain number of instructions to run to the end, so a budget
+  below that length cannot finish a copy however lucky the tape is, and emergence should be
+  impossible under it. Above the floor the budget is supposed to stop mattering — a
+  replicator that fits in 8 000 steps also fits in 60 000, and the extra head-room is spent
+  on tapes that were going to halt anyway. The prediction is therefore monotone and then
+  flat: nothing, nothing, something, the same something.
+</p>
+
+<h2>Method</h2>
+<p>
+  One parameter moving over four budgets two octaves apart —
+  <%= safe_join(arms.map { |arm| tag.span(safe_join(["2", tag.sup(arm.fetch(:exponent))]), class: "mono") },
+                ", ") %>
+  instructions, that is
+  <span class="mono"><%= budgets.map { |steps| number_with_delimiter(steps, delimiter: " ") }.to_sentence(last_word_connector: " and ") %></span>
+  — on a 128×128 torus of 64-byte tapes, <%= seeds %> seeds per arm and <%= epochs %>
+  epochs per run. The mutation rate is held at
+  <span class="mono">2<sup>-<%= rate_exponent %></sup></span>, the rate of the first run of
+  the programme to show emergence, so an arm that shows nothing cannot be explained by
+  sitting outside the region where anything ever happened; every other parameter is at its
+  default. The dependent variable is the transition epoch of DESIGN §1.2 — the first
+  sampled epoch at which <span class="mono">compress_ratio</span> falls below 0.6 and stays
+  below for three further samples — and beside it the
+  <span class="mono">replicator_count</span> census. A run that never crosses is censored at
+  <%= epochs %> epochs, not counted as a zero.
+</p>
+
+<h2>Result</h2>
+<p>
+  <%= terminal %> of the <%= planned %> runs have reached <%= epochs %> epochs. The one run
+  still on the clock has already transitioned and already been census-confirmed, so no count
+  in the table below is waiting on it. The table is the recorded per-arm result; the phase
+  diagram and the per-run rows further down read the same runs live.
+</p>
+
+<div class="table-scroll">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th><span class="mono">max_steps</span></th>
+        <th class="numeric">Flagged</th>
+        <th class="numeric">Census-confirmed</th>
+        <th>Transition epochs (peak census)</th>
+        <th class="numeric">Disagreements</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% arms.each do |arm| %>
+        <tr>
+          <td class="mono"><%= number_with_delimiter arm.fetch(:steps), delimiter: " " %></td>
+          <td class="numeric mono"><%= arm.fetch(:flagged) %> of <%= seeds %></td>
+          <td class="numeric mono"><%= arm.fetch(:confirmed) %> of <%= seeds %></td>
+          <td class="mono">
+            <% if arm.fetch(:transitions).empty? %>
+              —
+            <% else %>
+              <%= safe_join(arm.fetch(:transitions).sort_by { |transition| transition[1] }
+                               .map { |seed, epoch, peak|
+                    safe_join([number_with_delimiter(epoch, delimiter: " "), " (",
+                               findings_run_link(experiment_slug: "max-steps", seed: seed,
+                                                 params: { "max_steps" => arm.fetch(:steps) }),
+                               ", #{peak})"])
+                  }, ", ") %>
+            <% end %>
+          </td>
+          <td class="numeric mono"><%= arm.fetch(:flagged) - arm.fetch(:confirmed) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p class="text-sm text-muted">
+  "Peak census" is the largest <span class="mono">replicator_count</span> the run reached at
+  any sample. The last column is the runs the two observables disagree about — flagged by
+  the detector with a census that never leaves zero, or counted by the census without the
+  detector firing.
+</p>
+
+<p>
+  <strong>More compute per interaction is not more life.</strong> Emergence appears at one
+  budget only, <span class="mono"><%= number_with_delimiter default_budget, delimiter: " " %></span>
+  steps, in 2 of <%= seeds %> seeds, and the arm eight times larger than it produces
+  nothing. That is not the shape the hypothesis predicts. A floor would leave every arm
+  above it emerging at about the same rate; what the sweep shows is 0, 0, 2 and 0 — a single
+  positive point with silence on both sides of it. Read at face value the interaction budget
+  has an optimum rather than a threshold, and spending more computation on each interaction
+  is at best wasted and at worst harmful.
+</p>
+
+<p>
+  <strong>The detector and the census agree everywhere.</strong> Every arm's disagreement
+  column is zero: the two runs the detector flags are exactly the two runs that count a
+  replicating cell, and no run in the sweep does one without the other. That is worth
+  saying because it is not what the rest of the programme looks like — the
+  <%= link_to "mutation-rate sweep", finding_path("mutation-rate-window") %> and its
+  <%= link_to "long re-run", finding_path("mutation-rate-long-horizon") %> both report runs
+  where <span class="mono">compress_ratio</span> collapses with an empty census. Here the
+  cheap observable and the expensive one name the same two events, so nothing in this
+  finding turns on which of them is believed.
+</p>
+
+<p>
+  <strong>The two transitions.</strong> The <%= number_with_delimiter default_budget, delimiter: " " %>
+  arm's first seed crosses at epoch 5 030 and its census peaks at 867 replicating cells at
+  5 080 — the largest count of any 128×128 run in the lab — having counted its first cell at
+  4 890. Its entropy bottoms out at 4.85 bits at 5 120, its
+  <span class="mono">copy_rate</span> peaks at 0.0474 at 5 090, and it ends the run
+  collapsed: <span class="mono">compress_ratio</span> 0.26, 13 349 distinct tapes,
+  <span class="mono">top_share</span> 0.00427. The same arm's fifth seed crosses at 7 000,
+  counts its first cell at 7 030 and climbs much more slowly — a census peak of 108 at
+  9 580, a <span class="mono">copy_rate</span> peak of 0.00433 at 9 610, entropy down to
+  4.32 bits at 7 100 — and is the run still on the clock, three quarters of the way through
+  its budget, so its latest <span class="mono">compress_ratio</span> of 0.05, its 2 108
+  distinct tapes and its <span class="mono">top_share</span> of 0.0083 are a reading and not
+  a final one. Both transitions are backed by stored worlds: the second has a snapshot at
+  exactly its transition epoch, and the first has one 30 epochs before it, which is close
+  enough to rescore the crossing against a rebuilt world rather than only against its
+  samples.
+</p>
+
+<% cited_chart = findings_run_chart(experiment_slug: "max-steps", seed: 1, metric: "replicator_count",
+                                    params: { "max_steps" => default_budget }) %>
+<% if cited_chart %>
+  <p>
+    The first seed's census, with its transition epoch marked: 4 890 epochs of flat zero,
+    then the whole event inside 200 epochs.
+  </p>
+
+  <%= cited_chart %>
+<% end %>
+
+<p>
+  <strong>The silent arms are silent in every observable.</strong> Among the 38 runs that
+  never transitioned, <span class="mono">entropy_bits</span> never falls below 7.77 against
+  a random-soup baseline near 7.94, the final <span class="mono">compress_ratio</span> spans
+  0.921 to 0.984, and <span class="mono">distinct_tapes</span> ends between 16 379 and
+  16 384 of the world's 16 384 cells. That is an untouched soup, not a world that started
+  down the path and stopped: the 256 and 1 024 arms do not sit part-way between the silent
+  and the collapsed, they sit where the first epoch left them. Ten of those runs do show a
+  single-cell <span class="mono">copy_rate</span> blip of 6.1 × 10<sup>-5</sup> — one
+  interaction in a sampling window that happened to copy a byte — and none of them produces
+  a replicator. A blip at that magnitude is the floor of the measurement, spread evenly over
+  the arms, and it is not an early sign of anything.
+</p>
+
+<p>
+  <strong>What four points and two events can and cannot support.</strong> Each silent arm
+  rests on <%= seeds %> seeds, and 0 of <%= seeds %> bounds a per-arm rate to roughly 0 to
+  26% — the one-sided 95% Clopper–Pearson upper bound is 0.259 — so no arm here is a
+  demonstrated zero, and in particular the 65 536 arm is not shown to be worse than the
+  8 192 one: 2 of <%= seeds %> against 0 of <%= seeds %> is a one-sided Fisher exact
+  <span class="mono">p = 0.24</span>. The non-monotonicity is the claim the data actually
+  makes and it is the claim with the least support: it rests on four points two octaves
+  apart with two events at the only positive one, and a peak located by a single arm is a
+  peak located to within a factor of 64. What the sweep does establish is negative and
+  useful — a budget of 256 or 1 024 steps is not obviously fatal in the way the floor
+  reading expects, and a budget of 65 536 does not buy the emergence that the extra
+  computation was supposed to make easier.
+</p>
+
+<p>
+  <strong>A determinism cross-check, and a caveat with it.</strong> The
+  <%= number_with_delimiter default_budget, delimiter: " " %> arm is the engine's default
+  budget, so its ten runs repeat the parameters of the
+  <%= link_to "mutation-rate", finding_path("mutation-rate-window") %> sweep's
+  <span class="mono">2<sup>-<%= rate_exponent %></sup></span> arm and of the
+  <%= link_to "long re-run", finding_path("mutation-rate-long-horizon") %>'s. Its two
+  transitions are those sweeps' two earliest, at the same epochs and the same census peaks,
+  5 030 with 867 cells and 7 000 with 108, from the same
+  <span class="mono">(params, seed)</span> — the guarantee DESIGN §1.1 makes, checked rather
+  than asserted, for the third time in the programme. The caveat is the other side of the
+  same coin: that arm is not an independent sample, so this sweep holds 30 runs of new
+  evidence and 10 of a repeat, and the one arm where emergence happens is the one arm whose
+  events were already counted elsewhere.
+</p>
+
+<p>
+  <strong>What it cost.</strong> The 65 536 arm is the expensive one and the only arm whose
+  rate the log can state cleanly: 20 000 epochs at 17.6 to 20.7 epochs per second, a mean
+  near 19.2, for a wall time of 1 001 to 1 134 seconds per run. The other three arms were
+  resumed from snapshots at least once and a resume resets the wall clock, so no honest
+  per-epoch rate can be read for them here; the eight-fold difference in budget between the
+  widest and narrowest arm is not visible in any number this sweep recorded. The
+  computation, in other words, was bought and not spent — which is consistent with the
+  substrate: most interactions halt long before <span class="mono">max_steps</span>, so
+  raising the ceiling changes the cost of few of them.
+</p>
+
+<p>
+  This stays partial for two reasons. One run has not reached <%= epochs %> epochs, so the
+  denominator above is read live and that run's final observables may still move — though
+  it has transitioned and been census-confirmed already, so the arm counts cannot change.
+  And every arm is censored at <%= epochs %> epochs, where the
+  <%= link_to "long re-run", finding_path("mutation-rate-long-horizon") %> found that half
+  the emergence in its region of the parameter space happens later. A silent arm here is a
+  silent arm at this budget of epochs, not at any budget.
+</p>
+
+<h2>What next</h2>
+<p>
+  The obvious follow-up is a finer grid around the one positive point — 2 048, 4 096, 8 192,
+  16 384 and 32 768 at 20 seeds each — which would say whether the peak is real and roughly
+  where it sits, and 20 seeds would make a 2-of-10 against 0-of-10 difference resolvable
+  rather than merely visible. That is a proposal and not a commitment: it is around 400 000
+  run-epochs per arm, and the <%= link_to "world-size sweep", finding_path("world-size-scaling") %>
+  reads emergence as a hazard per cell-epoch, which makes a wider world the cheaper place to
+  buy events than a finer grid on a parameter that may turn out to be flat. Until the
+  <%= link_to "BFF positive control", finding_path("bff-control") %> resolves, the silent
+  arms here remain evidence about the instrument as well as about the world, and the
+  non-monotonicity is the reason to keep the whole grid rather than fixing
+  <span class="mono">max_steps</span> at its default and never looking again.
+</p>

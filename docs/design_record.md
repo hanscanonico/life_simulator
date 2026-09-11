@@ -116,3 +116,26 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   the `op_density` half available on samples recorded before the observable existed.
   Stored `transition_epoch` values are left alone: `rake lab:transition_audit` lists the
   runs whose transition the guard would no longer accept, for a human to decide on.
+- 2026-09-11 — **`max-steps`, §1.3 item 4, read as non-monotone in the interaction budget.**
+  Four budgets two octaves apart (2^8, 2^10, 2^13, 2^16) on a 128×128 world at mutation
+  rate 2^-13, 10 seeds each, 20 000 epochs; 39 of 40 terminal at the time of writing, the
+  fortieth already transitioned and census-confirmed. Emergence appears in one arm only:
+  8 192 steps, 2 of 10 seeds — seed 1 at epoch 5 030 (first cell 4 890, census peak 867 at
+  5 080, copy_rate peak 0.0474, entropy floor 4.85 bits, final compress_ratio 0.26) and
+  seed 5 at 7 000 (first cell 7 030, census peak 108 at 9 580, still running). **The floor
+  reading of item 4 is not supported**: 65 536 steps, eight times the compute of the only
+  arm that works, produces nothing, and 256 and 1 024 are not part-way to a collapse but
+  untouched soup (entropy never below 7.77 against a 7.94 baseline, final compress_ratio
+  0.921–0.984, 16 379–16 384 of 16 384 tapes distinct; single-cell copy_rate blips of
+  6.1e-05 in 10 runs never yield a replicator). Detector and census **agree in every arm** —
+  zero disagreements, unlike sweeps 1 and 2. The 8 192 arm is the engine's default budget,
+  so it repeats the `mutation-rate` and `mutation-rate-long` 2^-13 arms epoch for epoch and
+  peak for peak — a third determinism check, and a caveat: 30 runs of new evidence and 10
+  of a repeat, with the only events in the repeated arm. Statistics are thin: each 0/10 arm
+  bounds its rate only to ≈0–26% (one-sided 95% Clopper–Pearson 0.259) and 2/10 against
+  0/10 is Fisher one-sided p = 0.24, so the peak is located to within a factor of 64. Cost,
+  where the log can state it cleanly: the 65 536 arm ran 20 000 epochs at 17.6–20.7
+  epochs/s (wall 1 001–1 134 s); the other arms resumed from snapshots, which resets wall
+  time, so no clean rate exists for them. Proposed, not committed: a finer grid
+  2 048–32 768 at 20 seeds. Held at **partial** while a run remains on the clock; the
+  write-up reads its denominator from the database at render time.
