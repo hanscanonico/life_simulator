@@ -104,6 +104,33 @@ RSpec.describe Lab::StatusPage do
     end
   end
 
+  describe "#live_runners" do
+    # What a deploy leaves for a few minutes: the replaced container's slots still sit
+    # inside the heartbeat window with a frozen heartbeat, beside the new container's.
+    context "with a superseded container's slots beside the new container's" do
+      it "keeps the beating slots apart from the frozen ones and takes headroom from live only" do
+        allow(ENV).to receive(:[]).and_call_original
+        allow(ENV).to receive(:[]).with("RUNNER_PARALLELISM").and_return("2")
+        create(:run, :claimed, runner_id: "b6d2c4a1e9f0-1")
+        create(:run, :claimed, runner_id: "07a141fb5c0e-1", heartbeat_at: 4.minutes.ago)
+
+        expect(page.runners.map(&:id)).to eq(%w[07a141fb5c0e-1 b6d2c4a1e9f0-1])
+        expect(page.live_runners.map(&:id)).to eq(["b6d2c4a1e9f0-1"])
+        expect(page.superseded_runners.map(&:id)).to eq(["07a141fb5c0e-1"])
+        expect(page.idle_slots).to eq(1)
+      end
+    end
+
+    context "with a slot that beat a moment ago" do
+      it "calls it live" do
+        create(:run, :claimed, runner_id: "b6d2c4a1e9f0-1", heartbeat_at: 40.seconds.ago)
+
+        expect(page.live_runners.map(&:id)).to eq(["b6d2c4a1e9f0-1"])
+        expect(page.superseded_runners).to be_empty
+      end
+    end
+  end
+
   describe "#expected_slots" do
     it "reads the parallelism the runner was given" do
       allow(ENV).to receive(:[]).and_call_original

@@ -9,6 +9,11 @@ module Lab
     # runner heartbeats every 30 s with the epoch it is on, so this is thirty missed
     # advances and not a slow cadence.
     STALL_AFTER = 15.minutes
+    # A working slot heartbeats every 30 s, so four missed beats mean the process behind it
+    # is gone. Deliberately shorter than `Run::STALE_AFTER`, which is when the run itself is
+    # released: between the two, a replaced container's slots would otherwise be counted
+    # beside the new container's and double every figure in the header.
+    SLOT_SILENT_AFTER = 2.minutes
     STALLED_LIMIT = 20
     # A run that failed longer ago than this is history, not something to act on.
     FAILURE_WINDOW = 6.hours
@@ -35,9 +40,17 @@ module Lab
                             .map { |runner_id, runs| slot(runner_id, runs) }.sort_by(&:id)
     end
 
+    # The slots still beating: the only ones that can be working, and the only ones the
+    # headroom arithmetic may count.
+    def live_runners = @live_runners ||= runners.reject { |runner| silent?(runner) }
+
+    # Slots holding a run whose heartbeat froze: after a deploy, the replaced container's,
+    # until `Runs::ClaimService` releases their runs.
+    def superseded_runners = @superseded_runners ||= runners.select { |runner| silent?(runner) }
+
     def expected_slots = @expected_slots ||= ENV["RUNNER_PARALLELISM"].presence&.to_i
 
-    def idle_slots = expected_slots && [expected_slots - runners.size, 0].max
+    def idle_slots = expected_slots && [expected_slots - live_runners.size, 0].max
 
     # Slots that heartbeated inside the window but hold no claimed or running run: what a
     # destroyed runner container leaves behind for up to `Run::STALE_AFTER`. Counted apart
@@ -101,6 +114,8 @@ module Lab
                  epochs_done: runs.sum(&:epochs_done),
                  epochs_per_hour: run_ids.sum { |id| hourly_epochs_by_run[id].to_i })
     end
+
+    def silent?(runner) = runner.last_seen < SLOT_SILENT_AFTER.ago
 
     def flagged(run, reason, since) = Flagged.new(run: run, reason: reason, since: since)
 

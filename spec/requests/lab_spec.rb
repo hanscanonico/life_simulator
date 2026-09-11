@@ -67,7 +67,7 @@ RSpec.describe "Lab", type: :request do
 
         get lab_status_path
 
-        expect(response.body.squish).to include("12 slots expected, 1 seen, 11 idle")
+        expect(response.body.squish).to include("12 slots expected, 1 live, 11 idle")
       end
     end
 
@@ -107,11 +107,28 @@ RSpec.describe "Lab", type: :request do
         get lab_status_path
 
         body = response.body.squish
-        expect(body).to include("12 slots expected, 1 seen, 11 idle",
+        expect(body).to include("12 slots expected, 1 live, 11 idle",
                                 "1 slot from a previous runner still inside " \
                                 "the heartbeat window")
         expect(body).to include("bench-0")
         expect(body).not_to include("gone-0")
+      end
+    end
+
+    context "with a superseded container's slots still inside the heartbeat window" do
+      it "counts the live slots in the header and notes the frozen ones apart" do
+        allow(ENV).to receive(:[]).and_call_original
+        allow(ENV).to receive(:[]).with("RUNNER_PARALLELISM").and_return("2")
+        create(:run, :claimed, runner_id: "bench-0")
+        create(:run, :claimed, runner_id: "gone-0", heartbeat_at: 4.minutes.ago)
+
+        get lab_status_path
+
+        body = response.body.squish
+        expect(body).to include("2 slots expected, 1 live, 1 idle, 1 stale (superseded runner)",
+                                "1 slot of a superseded runner: the heartbeat stopped, so " \
+                                "these are out of the counts above")
+        expect(body).to include("bench-0", "gone-0")
       end
     end
 

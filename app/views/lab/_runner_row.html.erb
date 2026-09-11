@@ -1,0 +1,11 @@
+<tr>
+  <td class="mono"><%= runner_row.id %></td>
+  <td>
+    <% runner_row.run_ids.each do |run_id| %>
+      <%= link_to "##{run_id}", run_path(run_id) %>
+    <% end %>
+  </td>
+  <td class="numeric"><%= number_with_delimiter runner_row.epochs_done %></td>
+  <td class="numeric"><%= number_with_delimiter runner_row.epochs_per_hour %></td>
+  <td><%= time_ago_in_words(runner_row.last_seen) %> ago</td>
+</tr>
