@@ -110,6 +110,62 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to match(%r{<td class="numeric">20,000</td>\s*<td class="numeric">—</td>})
     end
 
+    context "with a run the detector flagged and a run only the census counted" do
+      def sampled_run(count, transition_epoch: nil)
+        run = create(:run, experiment: experiment, status: "finished", transition_epoch: transition_epoch,
+                           params: Lab::Schema.run_defaults.merge("radius" => 1),
+                           summary: { "replicator_count" => count })
+        create(:sample, run: run, epoch: 100, values: { "replicator_count" => count })
+        run
+      end
+
+      it "badges each run the two observables disagree on" do
+        sampled_run(0, transition_epoch: 900)
+        sampled_run(12)
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Census", %(<span class="badge badge-warning">detector only</span>),
+                                         %(<span class="badge badge-info">census only</span>))
+        expect(response.body).to match(/<td class="numeric">\s*12\s*<span class="badge badge-info">/)
+      end
+
+      it "badges neither run the two observables agree on" do
+        sampled_run(12, transition_epoch: 900)
+        sampled_run(0)
+
+        get experiment_path(experiment)
+
+        expect(response.body).not_to include("detector only", "census only")
+      end
+
+      it "reads the peaks of a full page of runs in one query" do
+        25.times { sampled_run(3, transition_epoch: 900) }
+        census_queries = []
+        collect = lambda do |*, payload|
+          census_queries << payload[:sql] if payload[:sql].include?("replicator_count") &&
+                                             payload[:sql].include?("MAX")
+        end
+
+        ActiveSupport::Notifications.subscribed(collect, "sql.active_record") do
+          get experiment_path(experiment)
+        end
+
+        expect(census_queries.size).to eq(1)
+      end
+    end
+
+    context "with a run nothing has been sampled from yet" do
+      it "leaves its census cell blank" do
+        create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Census")
+        expect(response.body).to match(%r{<td class="numeric">—</td>\s*<td class="numeric">\s*</td>})
+      end
+    end
+
     it "summarises every arm of the sweep" do
       create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
                    params: Lab::Schema.run_defaults.merge("radius" => 2))
