@@ -236,6 +236,15 @@ RSpec.describe Lab::StatusPage do
 
       expect(page.stalled_count).to be_zero
     end
+
+    context "with a run whose runner stopped heartbeating" do
+      it "leaves it out, so the header never counts it twice" do
+        create(:run, :stale, status: "running", started_at: 3.hours.ago)
+
+        expect(page.stalled_count).to be_zero
+        expect(page.stale_heartbeat_count).to eq(1)
+      end
+    end
   end
 
   describe "#stale_heartbeat_runs" do
