@@ -65,13 +65,13 @@ pub struct Snapshot<'a> {
     pub reason: SnapshotReason,
 }
 
-/// One run of an experiment's corpus: which stored worlds it holds, and the params that
-/// describe their bytes. `epochs` is ascending, as the lab orders it.
-#[derive(Debug, Clone, PartialEq)]
+/// One run of an experiment's corpus: which stored worlds it holds. `epochs` is ascending,
+/// as the lab orders it. The corpus answer also carries each run's params and seed, but a
+/// rescore reads them off the world it then fetches — parsing them here would let one run
+/// the current `Params` cannot describe cost the whole pass.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorpusRun {
     pub id: i64,
-    pub params: Params,
-    pub seed: u64,
     pub epochs: Vec<u64>,
 }
 
@@ -469,8 +469,6 @@ fn accepted<T: Answer>(status: u16, body: T, what: &str) -> Result<T> {
 fn corpus_run(run: &Value) -> Result<CorpusRun> {
     Ok(CorpusRun {
         id: number(run, "id")? as i64,
-        params: serde_json::from_value(run["params"].clone()).context("parsing the run params")?,
-        seed: number(run, "seed")?,
         epochs: run["epochs"]
             .as_array()
             .ok_or_else(|| anyhow!("run {} has no epochs", run["id"]))?
@@ -752,11 +750,32 @@ mod tests {
             corpus,
             vec![CorpusRun {
                 id: 45,
-                params: MockLab::params(),
-                seed: 7,
                 epochs: vec![100, 300],
             }]
         );
+    }
+
+    /// A run stored under a param the engine has since dropped still belongs to the
+    /// corpus: the pass skips its world when the world fails to decode, rather than
+    /// failing before it has read anything.
+    #[test]
+    fn a_run_the_current_params_cannot_describe_still_belongs_to_the_corpus() {
+        let lab = MockLab::start();
+        lab.set_corpus(json!({
+            "slug": "radius",
+            "runs": [{
+                "id": 45,
+                "seed": 7,
+                "params": { "retired_knob": 3 },
+                "status": "finished",
+                "transition_epoch": Value::Null,
+                "epochs": [100],
+            }],
+        }));
+
+        let corpus = client(&lab).corpus("radius").unwrap();
+
+        assert_eq!(corpus[0].epochs, vec![100]);
     }
 
     #[test]
