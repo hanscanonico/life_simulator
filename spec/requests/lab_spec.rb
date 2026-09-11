@@ -82,6 +82,18 @@ RSpec.describe "Lab", type: :request do
 
         expect(response.body.squish).to include("Worth a look", "no progress for", "Run ##{run.id}")
       end
+
+      it "counts it in the slots header beside the live and idle ones" do
+        allow(ENV).to receive(:[]).and_call_original
+        allow(ENV).to receive(:[]).with("RUNNER_PARALLELISM").and_return("12")
+        create(:run, :claimed, status: "running", runner_id: "bench-4",
+                               started_at: 40.minutes.ago)
+
+        get lab_status_path
+
+        expect(response.body.squish)
+          .to include("12 slots expected, 1 live, 11 idle, 1 making no progress.")
+      end
     end
 
     context "with a running run whose heartbeat has gone stale" do

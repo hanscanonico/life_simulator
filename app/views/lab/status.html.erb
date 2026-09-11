@@ -27,7 +27,8 @@
       <p class="text-muted">
         <%= @status.expected_slots %> slots expected,
         <%= @status.live_runners.size %> live,
-        <%= @status.idle_slots %> idle<% if @status.superseded_runners.any? %>,
+        <%= @status.idle_slots %> idle<% if @status.stalled_count.positive? %>,
+          <%= @status.stalled_count %> making no progress<% end %><% if @status.superseded_runners.any? %>,
           <%= @status.superseded_runners.size %> stale (superseded runner)<% end %>.
       </p>
     <% end %>
