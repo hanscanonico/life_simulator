@@ -185,7 +185,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
      `lineage-diversity`, which is the diversity half of §1.3 item 3 left open on
      2026-09-11, re-run at the emergent rate with enough seeds to have transitions in
      every arm. Hypothesis: **after a transition a world stays polyphyletic, and the
-     number of surviving lineage ids grows with a cell's reach shrinking** — locality
+     number of surviving lineage ids grows as a cell's reach shrinks** — locality
      keeps lineages apart. Refuted if every transitioned world collapses to one lineage id
      whatever the radius.
   3. **Adaptation** — later replicators outcompeting earlier ones. Observables: the
@@ -226,15 +226,15 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   `runner schema`.
   Vocabulary, locked, with what is built today marked: **lineage** (tapes descended by
   copying from one ancestor — not built); **lineage id** (FNV-1a hash of a tape's
-  instruction skeleton; computed in `render.rs`, not recorded); **modal tape** (the most
-  common tape; only its share, `top_share`, is recorded); **persistence** (epochs a run
-  held a non-zero census and a qualifying sample by §1.2 — not built);
-  **relapse** (a transitioned world returning to a random soup — observed, unnamed until
-  now); **census peak** (the maximum of `replicator_count` and the first epoch reaching
-  it — derived in Rails, not an engine observable); **copy cost** (interpreter steps per
-  byte-exact copy — not built); **complexity of the dominant replicator** (instruction
-  skeleton length of the modal tape — not built); **instruction cost** (optional
-  per-instruction price, default 0 — not built); **environmental structure** (optional
-  non-uniform world, default uniform — not built); **room to grow** (optional growable
-  tapes, default fixed `tape_len` — not built). Findings and issues use these words and
-  not synonyms.
+  instruction skeleton; computed in `render.rs`, not recorded); **modal tape** (the
+  most common tape; only its share, `top_share`, is recorded); **persistence** (epochs
+  a run held a non-zero census and a qualifying sample by §1.2 — not built);
+  **relapse** (a transitioned world returning to a random soup — observed, unnamed
+  until now); **census peak** (the maximum of `replicator_count` and the first epoch
+  reaching it — derived in Rails, not an engine observable); **copy cost** (interpreter
+  steps per byte-exact copy — not built); **complexity of the dominant replicator**
+  (instruction skeleton length of the modal tape — not built); **instruction cost**
+  (optional per-instruction price in interpreter steps, default 0 — not built);
+  **environmental structure** (optional non-uniform world, default uniform — not
+  built); **room to grow** (optional growable tapes, default fixed `tape_len` — not
+  built). Findings and issues use these words and not synonyms.
