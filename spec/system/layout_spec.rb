@@ -58,6 +58,43 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     JS
   end
 
+  def tab_to_overflowing_table
+    20.times do
+      page.send_keys(:tab)
+      break if page.evaluate_script("document.activeElement.classList.contains('table-scroll')")
+    end
+  end
+
+  def focused_table_scroll_left
+    page.evaluate_script("document.activeElement.scrollLeft")
+  end
+
+  # A ring is painted outside the border box, where the fade mask clips everything away, so
+  # the focused box only shows its ring while that mask is off.
+  def focused_table_ring_and_mask
+    page.evaluate_script(<<~JS)
+      (() => {
+        const style = getComputedStyle(document.activeElement);
+        return [style.outlineWidth, style.outlineStyle, style.maskImage];
+      })()
+    JS
+  end
+
+  def table_mask
+    page.evaluate_script("getComputedStyle(document.querySelector('.table-scroll')).maskImage")
+  end
+
+  # The fade the scroll-driven animation drives: 0 at an edge with nothing beyond it.
+  def table_fades
+    page.evaluate_script(<<~JS)
+      (() => {
+        const style = getComputedStyle(document.querySelector('.table-scroll'));
+        return ['--table-scroll-fade-start', '--table-scroll-fade-end']
+          .map((name) => parseFloat(style.getPropertyValue(name)));
+      })()
+    JS
+  end
+
   def skip_link_covers_wordmark?
     page.evaluate_script(<<~JS)
       (() => {
@@ -150,6 +187,31 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     expect(caption_boxes).to eq(boxes)
     expect(boxes.map(&:third)).to all(eq(0))
     expect(boxes.map(&:second)).to all(be <= phone_width - 16)
+  end
+
+  it "lets a keyboard reach and scroll a wide table without the page moving sideways" do
+    visit experiment_path(experiment)
+
+    expect(page).to have_css(".table-scroll[role='region'][tabindex='0'] table.data-table")
+    tab_to_overflowing_table
+    10.times { page.send_keys(:arrow_right) }
+
+    expect(focused_table_scroll_left).to be > 0
+    expect(focused_table_ring_and_mask).to eq(%w[2px solid none])
+    expect(viewport_and_content_width).to eq([phone_width, phone_width])
+  end
+
+  it "fades the edge of a wide table only while there is table beyond it" do
+    visit experiment_path(experiment)
+
+    expect(page).to have_css("table.data-table")
+    expect(table_fades).to eq([0, 32])
+    expect(table_mask).to include("rgb(0, 0, 0) 0px", "rgb(0, 0, 0) calc(100% - 32px)")
+
+    scroll_tables_right
+
+    expect(table_fades).to eq([32, 0])
+    expect(table_mask).to include("rgb(0, 0, 0) 32px", "rgb(0, 0, 0) 100%")
   end
 
   it "keeps a finding inside the viewport, diagram and runs table included" do

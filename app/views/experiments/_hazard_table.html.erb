@@ -7,7 +7,7 @@
   <figcaption class="table-caption text-sm text-muted" id="hazard-of-<%= axis.name %>">
     Emergence hazard per arm of <%= axis.name.to_s.humanize.downcase %>
   </figcaption>
-  <div class="table-scroll">
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="hazard-of-<%= axis.name %>">
     <table class="data-table" aria-labelledby="hazard-of-<%= axis.name %>">
       <thead>
         <tr>
