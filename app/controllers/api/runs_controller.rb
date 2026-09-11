@@ -26,6 +26,7 @@ module Api
       @run.update!(status: "running", heartbeat_at: Time.current,
                    epochs_done: [@run.epochs_done, reported].max,
                    epochs_done_at: progress_at(reported),
+                   compute_seconds: @run.compute_seconds + interval_seconds,
                    started_at: @run.started_at || Time.current)
       head :no_content
     end
@@ -97,6 +98,12 @@ module Api
 
       @run.epochs_done_at || Time.current
     end
+
+    # The compute a beat covers: the seconds the runner spent since its previous beat, not
+    # since the claim and not since epoch 0, so the total a run accumulates survives both a
+    # resume and the runner's log rotation. A runner that predates the field omits it, and
+    # a delayed beat that reports a negative span adds nothing.
+    def interval_seconds = [params[:interval_seconds].to_f, 0.0].max
 
     def stored_snapshot
       snapshots = @run.snapshots.restorable.select(:id, :epoch, :blob)

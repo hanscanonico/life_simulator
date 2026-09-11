@@ -127,7 +127,9 @@ docs/              this file, design_record.md, findings
 - **The runner is a stateless worker.** In lab mode it polls `POST /api/runs/claim` with
   a bearer token, executes the run, streams sample batches to
   `POST /api/runs/:id/samples`, snapshots to `POST /api/runs/:id/snapshots`, and finishes
-  with `POST /api/runs/:id/finish`. Heartbeats every 30 s. A run claimed but not
+  with `POST /api/runs/:id/finish`. Heartbeats every 30 s, each beat carrying the wall
+  seconds it covers (`interval_seconds`, optional) which the app sums into the run's
+  `compute_seconds`, so a run's cost survives resumes. A run claimed but not
   heartbeated for 5 min is released. Several runs execute in parallel (one thread each,
   `RUNNER_PARALLELISM`, default = cores − 2).
 - **The viewer** is a `<canvas>` driven by the wasm build through one Stimulus controller.

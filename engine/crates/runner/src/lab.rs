@@ -247,7 +247,7 @@ impl Lab {
             if let Completion::Stopped { epochs_done } = completion {
                 sink.flush()?;
                 self.client
-                    .heartbeat(claimed.id, &slot.claim_id, epochs_done)?;
+                    .heartbeat(claimed.id, &slot.claim_id, epochs_done, None)?;
             }
             Ok(completion)
         })
@@ -281,7 +281,9 @@ impl Lab {
     }
 
     /// Beats while the run works, and reports the rate the run is going at: the epochs
-    /// between two beats over the time between them, not an average since the claim.
+    /// between two beats over the time between them, not an average since the claim. The
+    /// same interval goes to the app, which adds it to the run's compute total — a sum
+    /// over intervals rather than a span, so a resume never resets it.
     fn beat(&self, run: i64, slot: &Slot, progress: &Progress, done: &AtomicBool) {
         let mut next = Instant::now() + self.heartbeat;
         let mut last = (Instant::now(), progress.epochs_done());
@@ -292,7 +294,11 @@ impl Lab {
             }
             next = Instant::now() + self.heartbeat;
             let epoch = progress.epochs_done();
-            if let Err(error) = self.client.heartbeat(run, &slot.claim_id, epoch) {
+            let interval = last.0.elapsed();
+            if let Err(error) =
+                self.client
+                    .heartbeat(run, &slot.claim_id, epoch, Some(interval.as_secs_f64()))
+            {
                 self.report(
                     slot,
                     &[
@@ -307,7 +313,10 @@ impl Lab {
                 &[
                     ("run", run.to_string()),
                     ("epoch", epoch.to_string()),
-                    ("epochs_per_s", format!("{:.1}", rate(last, epoch))),
+                    (
+                        "epochs_per_s",
+                        format!("{:.1}", rate(interval, last.1, epoch)),
+                    ),
                 ],
             );
             last = (Instant::now(), epoch);
@@ -381,8 +390,8 @@ fn quoted(value: &str) -> String {
     format!("{value:?}")
 }
 
-fn rate((since, before): (Instant, u64), epoch: u64) -> f64 {
-    let seconds = since.elapsed().as_secs_f64();
+fn rate(interval: Duration, before: u64, epoch: u64) -> f64 {
+    let seconds = interval.as_secs_f64();
     if seconds <= 0.0 {
         return 0.0;
     }
@@ -983,12 +992,43 @@ mod tests {
         assert_eq!(mock.count("POST /api/runs/claim"), 0);
     }
 
+    /// The seconds a beat charges the app cover that beat alone: the intervals partition
+    /// the time the run worked instead of each restating the span since the claim, which
+    /// is the whole reason their sum is a cost the app can keep across resumes.
+    #[test]
+    fn the_beats_of_a_run_charge_its_wall_time_once_between_them() {
+        let mock = MockLab::start();
+        let lab = lab(&mock);
+        let progress = Progress::new(0, Arc::new(AtomicBool::new(false)));
+        let done = AtomicBool::new(false);
+
+        let beating = Instant::now();
+        thread::scope(|scope| {
+            scope.spawn(|| lab.beat(1, &Slot::new("runner-1", 0), &progress, &done));
+            thread::sleep(Duration::from_millis(120));
+            done.store(true, Ordering::Relaxed);
+        });
+        let elapsed = beating.elapsed().as_secs_f64();
+
+        let intervals: Vec<f64> = mock
+            .requests("POST /api/runs/1/heartbeat")
+            .iter()
+            .map(|beat| beat["interval_seconds"].as_f64().expect("an interval"))
+            .collect();
+
+        assert!(intervals.len() >= 3, "{intervals:?}");
+        assert!(
+            intervals.iter().sum::<f64>() <= elapsed,
+            "{intervals:?} charge more than the {elapsed}s they cover"
+        );
+    }
+
     #[test]
     fn the_progress_rate_counts_only_the_epochs_since_the_last_beat() {
-        let a_beat_ago = Instant::now() - Duration::from_secs(2);
+        let a_beat = Duration::from_secs(2);
 
-        assert!((rate((a_beat_ago, 1_000), 1_100) - 50.0).abs() < 1.0);
-        assert_eq!(rate((a_beat_ago, 1_100), 1_100), 0.0);
+        assert!((rate(a_beat, 1_000, 1_100) - 50.0).abs() < 1.0);
+        assert_eq!(rate(a_beat, 1_100, 1_100), 0.0);
     }
 
     #[test]

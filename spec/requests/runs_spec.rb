@@ -167,6 +167,24 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
+    context "with a run that accumulated compute" do
+      let(:run) { create(:run, :claimed, epochs: 20_000, epochs_done: 10_000, compute_seconds: 3_600.0) }
+
+      it "reads the cost off the compute the runner charged to it" do
+        get run_path(run)
+
+        expect(response.body.squish).to include("Cost", "2.78 epochs/compute-second", "1.0 compute hours")
+      end
+    end
+
+    context "with a run no runner has charged compute to" do
+      it "leaves the cost row out rather than dividing by nothing" do
+        get run_path(run)
+
+        expect(response.body).not_to include("compute-second")
+      end
+    end
+
     context "with a run whose samples all arrived in one batch" do
       let(:run) { create(:run, :claimed, epochs: 20_000, epochs_done: 1_000) }
 

@@ -18,6 +18,12 @@
         <span class="text-sm text-muted">(measured from recorded samples)</span>
       <% else %>—<% end %>
     </dd>
+    <% if show.epochs_per_compute_second %>
+      <dt>Cost</dt>
+      <dd><%= number_with_delimiter show.epochs_per_compute_second %> epochs/compute-second
+        <span class="text-sm text-muted">(<%= number_with_delimiter show.compute_hours %> compute hours)</span>
+      </dd>
+    <% end %>
     <dt>Time remaining</dt>
     <dd><%= show.eta ? distance_of_time_in_words(show.eta) : "—" %></dd>
     <dt>Transition epoch</dt>
