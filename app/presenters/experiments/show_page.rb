@@ -48,10 +48,9 @@ module Experiments
                                           .where.not(transition_epoch: nil).count
     end
 
-    # The detector read against the replicator census, arm by arm: `transition_epoch` fires
-    # on `compress_ratio` alone, so the page that makes the claim shows how often the two
-    # observables disagree (DESIGN.md §1.2). Per-run rows stay in the CSV.
-    def transition_arms = transition_report.arms
+    # The page that makes the claim shows how often the two observables disagree; the
+    # per-run rows behind the counts stay in the transition report CSV.
+    def transition_arms = @transition_arms ||= TransitionArmsService.call(experiment: experiment)
 
     def transition_report? = finished_count.positive? && transition_arms.any?
 
@@ -60,8 +59,6 @@ module Experiments
     def transition_rate = TransitionRate.new(transitioned: transitioned_finished, finished: finished_count)
 
     private
-
-    def transition_report = @transition_report ||= TransitionReportService.call(experiment: experiment)
 
     def survival_for(axis)
       arms = axis.values.map do |value|
