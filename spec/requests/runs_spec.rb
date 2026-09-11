@@ -40,6 +40,14 @@ RSpec.describe "Runs", type: :request do
       expect(response.body).to include("Compression ratio", "Copy rate", "<svg", "4242", "mutation_rate")
     end
 
+    it "colours the status badge" do
+      run.update!(status: "failed", error: "runner died")
+
+      get run_path(run)
+
+      expect(response.body).to include(%(<span class="badge badge-error">failed</span>))
+    end
+
     it "names the substrate beside the sweep instead of a dangling dash" do
       get run_path(run)
 

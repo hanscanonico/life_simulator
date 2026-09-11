@@ -19,6 +19,14 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to include("Neighbourhood radius", "50%")
     end
 
+    it "colours each sweep's status badge" do
+      experiment.update!(status: "running")
+
+      get experiments_path
+
+      expect(response.body).to include(%(<span class="badge badge-info">running</span>))
+    end
+
     it "reads the rate as the detector's flag rather than as emergence" do
       get experiments_path
 
@@ -88,6 +96,18 @@ RSpec.describe "Experiments", type: :request do
       get experiment_path(experiment)
 
       expect(response.body).to include(%(<td class="numeric mono">well-mixed</td>))
+    end
+
+    it "colours each run's status badge" do
+      create(:run, experiment: experiment, status: "failed", params: Lab::Schema.run_defaults.merge("radius" => 1))
+      create(:run, experiment: experiment, status: "finished", params: Lab::Schema.run_defaults.merge("radius" => 2))
+      create(:run, experiment: experiment, status: "running", params: Lab::Schema.run_defaults.merge("radius" => 4))
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include(%(<span class="badge badge-error">failed</span>),
+                                       %(<span class="badge badge-success">finished</span>),
+                                       %(<span class="badge badge-info">running</span>))
     end
 
     it "shows each run's queue priority" do
