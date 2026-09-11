@@ -58,6 +58,8 @@ module Experiments
       Census.new(peak: census_peaks[run.id], transitioned: run.transition_epoch.present?)
     end
 
+    def findings = @findings ||= Findings::Registry.for_experiment(experiment.slug)
+
     def finished_count = finished_runs.size
 
     def transitioned_finished = finished_runs.count { |run| run.transition_epoch.present? }

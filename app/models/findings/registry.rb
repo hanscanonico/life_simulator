@@ -92,5 +92,11 @@ module Findings
     def self.all = ALL.sort_by.with_index { |finding, index| [-finding.date.jd, index] }.freeze
 
     def self.find(slug) = ALL.find { |finding| finding.slug == slug }
+
+    # The write-ups resting on one sweep, newest first: a finding is content in the repo,
+    # not a row, so every page that links up to one reads it from here rather than querying.
+    def self.for_experiment(experiment_slug)
+      all.select { |finding| finding.experiment_slug == experiment_slug }
+    end
   end
 end

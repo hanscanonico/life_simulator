@@ -3,7 +3,7 @@
 module Experiments
   # The sweep list: how far each experiment has got and how often it saw a transition.
   class IndexPage
-    Row = Data.define(:experiment, :runs_done, :transitioned) do
+    Row = Data.define(:experiment, :runs_done, :transitioned, :findings) do
       def runs_total = experiment.runs_count
 
       def transition_rate = TransitionRate.new(transitioned: transitioned, finished: runs_done)
@@ -16,7 +16,8 @@ module Experiments
     def rows
       @rows ||= experiments.map do |experiment|
         Row.new(experiment: experiment, runs_done: finished_counts[experiment.id].to_i,
-                transitioned: transitioned_counts[experiment.id].to_i)
+                transitioned: transitioned_counts[experiment.id].to_i,
+                findings: Findings::Registry.for_experiment(experiment.slug))
       end
     end
 
