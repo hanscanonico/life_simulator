@@ -48,7 +48,7 @@ RSpec.describe Runs::FinishService do
     described_class.call(run: run)
 
     expect(Rails.logger).to have_received(:info)
-      .with(/event=run_finished run_id=#{run.id} experiment=#{experiment.slug} status=finished epochs_done=/)
+      .with(/event=run_finished run_id=#{run.id} experiment=#{experiment.slug} status=finished epochs_done=#{run.epochs}$/)
   end
 
   context "with an error reported" do
