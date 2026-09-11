@@ -149,3 +149,88 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   grid 2 048–32 768 at 20 seeds. Held at **partial** — not for outstanding runs but
   because every arm is censored at 20 000 epochs and the `bff-control` census is
   unresolved; the write-up reads its denominator from the database at render time.
+- 2026-09-11 — **The evolution programme: §1 extended past emergence into four rungs.**
+  §1's question stops at "does a self-replicator appear". Every sweep so far answers it,
+  and the answer is yes but rare. What the instrument is for from here is the ladder above
+  that event, and this entry locks the rungs, the observable that makes each one
+  measurable, and the sweep that can refute each one. **Intelligence is the direction of
+  travel, not a deliverable**: nothing below is a claim that the soup will compute
+  anything, only that each rung is the next thing that can be measured.
+  1. **Persistence** — a colony that does not collapse. Already refutable with what the
+     engine records: `replicator_count` over the samples after a transition, its **census
+     peak** (the first epoch at which the census reaches its maximum), and whether
+     `compress_ratio` stays under the 0.6 of §1.2. A **relapse** — a transitioned world
+     climbing back to a random soup — is not hypothetical: the radius sweep's radius-2 run
+     and `mutation-rate-long`'s 2^-12 seed 10 (census peak 123 at 28 100, all 16 384 tapes
+     distinct again by 60 000) both did it. The gap is that today the peak and the hold are
+     computed in Rails by re-reading stored samples (`Findings::ShowPage`); **persistence**
+     as a per-run observable — how many epochs a run held a non-zero census and a
+     qualifying `compress_ratio` — is not yet in the engine, and by §2 the engine has to be
+     the one that measures it. Sweep: `persistence`, the transitioned parameter points
+     (128², 2^-13) at 20 seeds and a budget several times 60 000. Hypothesis: **the hazard
+     of relapse is constant per epoch** — a colony is never established, it is only
+     lucky so far. Refuted if the relapse hazard falls with colony age.
+  2. **Heredity with variation** — lineages that share ancestry and drift apart. A
+     **lineage** is a set of tapes descended by copying from one ancestor; its **lineage
+     id** is the FNV-1a hash of the tape's instruction skeleton, which the engine already
+     computes in `render.rs` to colour a cell and which no observable records. The **modal
+     tape** is the single most common tape in the world — `top_share` reports its share
+     and nothing reports its identity outside a snapshot. Both are cheap to promote from a
+     rendering detail to recorded observables; neither exists as one today, and a
+     skeleton hash is an approximation of descent, not descent itself. Sweep:
+     `lineage-diversity`, which is the diversity half of §1.3 item 3 left open on
+     2026-09-11, re-run at the emergent rate with enough seeds to have transitions in
+     every arm. Hypothesis: **after a transition a world stays polyphyletic, and the
+     number of surviving lineage ids grows with a cell's reach shrinking** — locality
+     keeps lineages apart. Refuted if every transitioned world collapses to one lineage id
+     whatever the radius.
+  3. **Adaptation** — later replicators outcompeting earlier ones. Observables: the
+     turnover of the modal tape and of the dominant lineage id, `copy_rate` (already
+     recorded, §1.2), and **copy cost**, the mean interpreter steps an interaction spends
+     before a byte-exact copy lands. Copy cost is new. The `max-steps` entry of 2026-09-11
+     showed the budget is spent rather than merely bought (~12× the wall time from 2^8 to
+     2^16 steps), so steps are the substrate's only currency and a cheaper copier is what
+     "fitter" can mean here without smuggling in a fitness function. Sweeps:
+     `adaptation`, reading copy cost along the epochs after a transition — hypothesis:
+     **copy cost of the dominant lineage falls over a run**, refuted if it is flat or
+     rises; and `instruction-cost`, the first substrate bet — an optional per-instruction
+     price parameter, **default 0, which is today's substrate exactly** — hypothesis: **a
+     positive instruction cost steepens that fall**, refuted if costed arms trace the same
+     copy-cost curve as the free arm.
+  4. **Open-ended evolution** — complexity that keeps rising instead of plateauing. The
+     observable is the **complexity of the dominant replicator**: the length of the
+     instruction skeleton of the modal tape, which is bounded above by `tape_len` and so
+     cannot rise forever in today's substrate. That bound is the point. Two more substrate
+     bets, both optional parameters that are **off by default**: **environmental
+     structure** (the torus stops being uniform — a region's step budget or mutation rate
+     differs from its neighbour's) and **room to grow** (`tape_len` read as a ceiling a
+     tape may grow towards rather than a fixed length). Sweeps `environmental-structure`
+     and `room-to-grow`. Hypothesis: **at a fixed tape length in a uniform world the
+     complexity of the dominant replicator plateaus within a few thousand epochs of the
+     transition**, and each bet raises the plateau. Refuted if complexity keeps rising
+     with both bets off, or if it plateaus at the same level with them on — which would
+     say the ceiling was never the binding constraint.
+  The invariant every ticket on this ladder depends on: **a new observable or an optional
+  substrate parameter must leave every existing run byte-identical.** §1.1 says a run is
+  determined by `(params, seed)`, and three sweeps have now checked it rather than
+  asserted it — the default arms of `radius`, `world-size` and `max-steps` reproduce the
+  `mutation-rate` arms digit for digit. So a new observable reads the world and never
+  writes to it or to the RNG stream, a new parameter defaults to the value that makes it
+  invisible and draws nothing from the stream while it is off, and the determinism tests
+  of §3 keep pinning the same `(params, seed) → hash` for every substrate. A parameter is
+  data (§3): name, default and validated range in `Params`, exposed to Rails through
+  `runner schema`.
+  Vocabulary, locked, with what is built today marked: **lineage** (tapes descended by
+  copying from one ancestor — not built); **lineage id** (FNV-1a hash of a tape's
+  instruction skeleton; computed in `render.rs`, not recorded); **modal tape** (the most
+  common tape; only its share, `top_share`, is recorded); **persistence** (epochs a run
+  held a non-zero census and a qualifying `compress_ratio` — not built);
+  **relapse** (a transitioned world returning to a random soup — observed, unnamed until
+  now); **census peak** (the maximum of `replicator_count` and the first epoch reaching
+  it — derived in Rails, not an engine observable); **copy cost** (interpreter steps per
+  byte-exact copy — not built); **complexity of the dominant replicator** (instruction
+  skeleton length of the modal tape — not built); **instruction cost** (optional
+  per-instruction price, default 0 — not built); **environmental structure** (optional
+  non-uniform world, default uniform — not built); **room to grow** (optional growable
+  tapes, default fixed `tape_len` — not built). Findings and issues use these words and
+  not synonyms.
