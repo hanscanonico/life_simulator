@@ -212,6 +212,34 @@
   font-size: 11px;
 }
 
+/* The survival chart tells its arms apart by dash pattern, so the legend has to show the
+   pattern itself rather than a colour swatch. */
+ul.chart-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  padding: 0;
+  margin: var(--space-2) 0 0;
+}
+
+ul.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chart-swatch {
+  width: 28px;
+  height: 8px;
+  flex: none;
+}
+
+.data-table .row-total td {
+  border-top: 1px solid var(--line-strong);
+  font-weight: 600;
+}
+
 .chart-grid-2 {
   display: grid;
   /* min() keeps the column from forcing a track wider than a narrow viewport. */

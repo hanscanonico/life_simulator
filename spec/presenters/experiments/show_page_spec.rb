@@ -128,6 +128,54 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  describe "#survivals" do
+    it "is keyed by the axis the curves belong to" do
+      expect(page.survivals.keys.map(&:name)).to eq(["radius"])
+    end
+
+    it "observes a finished run that emerged up to its transition epoch" do
+      finished_run(radius: 1, transition_epoch: 900)
+
+      arm = page.survivals.values.sole.arms.first
+
+      expect(arm.observations.map { |observation| [observation.epochs, observation.event] }).to eq([[900, true]])
+    end
+
+    it "censors a finished run that never emerged at the epochs it ran" do
+      run = finished_run(radius: 2)
+      run.update!(epochs_done: 20_000)
+
+      arm = page.survivals.values.sole.arms[1]
+
+      expect(arm.observations.map { |observation| [observation.epochs, observation.event] }).to eq([[20_000, false]])
+    end
+
+    it "censors a run still under way at the epoch of its latest sample" do
+      run = create(:run, experiment: experiment, status: "running", epochs_done: 0,
+                         params: Lab::Schema.run_defaults.merge("radius" => 4))
+      create(:sample, run: run, epoch: 300)
+      create(:sample, run: run, epoch: 1_200)
+
+      arm = page.survivals.values.sole.arms.last
+
+      expect(arm.observations.map { |observation| [observation.epochs, observation.event] }).to eq([[1_200, false]])
+    end
+
+    it "ignores a run nothing is known about yet" do
+      create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 1))
+      create(:run, experiment: experiment, status: "running", params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+      expect(page.survivals.values.sole.arms.first.runs).to eq(0)
+    end
+
+    it "pools the observations of every arm" do
+      finished_run(radius: 1, transition_epoch: 900)
+      finished_run(radius: 2).update!(epochs_done: 20_000)
+
+      expect(page.survivals.values.sole.pooled).to have_attributes(runs: 2, events: 1, exposure: 20_900)
+    end
+  end
+
   describe "#runs" do
     it "paginates the runs of the experiment" do
       run = finished_run(radius: 1, transition_epoch: 100)

@@ -1,0 +1,11 @@
+<% rate = arm.hazard_per_unit %>
+<tr class="<%= "row-total" if pooled %>">
+  <td class="mono"><%= arm.label %></td>
+  <td class="numeric"><%= arm.runs %></td>
+  <td class="numeric"><%= arm.events %></td>
+  <td class="numeric mono"><%= number_with_delimiter arm.exposure %></td>
+  <td class="numeric mono">
+    <%= hazard_value(rate.value) %>
+    <span class="text-muted"><%= hazard_interval(rate) %></span>
+  </td>
+</tr>

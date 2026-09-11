@@ -31,6 +31,11 @@
     <% if @show.finished_count.positive? %>
       <%= render "experiments/arms_table", axis: axis, arms: arms %>
     <% end %>
+    <% survival = @show.survivals.fetch(axis) %>
+    <%= render survival %>
+    <% unless survival.empty? %>
+      <%= render "experiments/hazard_table", axis: axis, survival: survival %>
+    <% end %>
   <% end %>
 <% else %>
   <p class="text-muted">This experiment sweeps no parameter, so it has no phase diagram.</p>
