@@ -91,6 +91,17 @@ RSpec.describe "Api::Runs", type: :request do
       expect(stale.reload.runner_id).to eq("runner-2")
     end
 
+    # A deploy replacing a runner mid-run releases its runs, and DESIGN §2 has the next
+    # runner resume from the newest snapshot rather than start over — which needs the
+    # epochs already behind the run to travel with the claim.
+    it "hands a released run back with the epochs already behind it" do
+      stale = create(:run, :stale, experiment: experiment, epochs_done: 9_600)
+
+      post claim_api_runs_path, params: { runner_id: "runner-2" }, headers: headers, as: :json
+
+      expect(response.parsed_body).to include("id" => stale.id, "epochs_done" => 9_600)
+    end
+
     context "with an empty queue" do
       it "answers no content" do
         post claim_api_runs_path, params: { runner_id: "runner-1" }, headers: headers, as: :json
@@ -352,6 +363,17 @@ RSpec.describe "Api::Runs", type: :request do
       get latest_snapshot_api_run_path(run), params: { runner_id: "runner-9" }, headers: headers, as: :json
 
       expect(response).to have_http_status(:conflict)
+    end
+
+    it "hands the stored world to the runner that re-claimed a released run" do
+      released = create(:run, :stale, experiment: experiment, epochs_done: 9_600)
+      create(:snapshot, run: released, epoch: 9_600, blob: "the released world")
+      post claim_api_runs_path, params: { runner_id: "runner-2" }, headers: headers, as: :json
+
+      get latest_snapshot_api_run_path(released), params: { runner_id: "runner-2" }, headers: headers, as: :json
+
+      expect(response.parsed_body).to eq("epoch" => 9_600,
+                                         "blob" => Base64.strict_encode64("the released world"))
     end
 
     # A resumed run restarts at whatever epoch the answer names, so the two content types

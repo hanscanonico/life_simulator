@@ -723,6 +723,37 @@ mod tests {
         assert_eq!(mock.count("POST /api/runs/1/finish"), 1);
     }
 
+    /// The deploy of 2026-09-11, end to end: a runner container is replaced mid-run, the
+    /// app releases the run to pending with its epochs behind it, and the runner that
+    /// claims it next is not the one that stored its snapshots. It continues from the
+    /// newest stored world — starting the run over at epoch 0 would throw those epochs
+    /// away and re-post samples the lab already holds.
+    #[test]
+    fn a_run_released_by_another_runner_resumes_from_its_newest_snapshot_when_reclaimed() {
+        let mock = MockLab::start();
+        let mut world = World::new(&MockLab::params(), 7).unwrap();
+        for _ in 0..4 {
+            world.metrics();
+            world.step();
+        }
+        mock.set_latest_snapshot(4, world.snapshot());
+        mock.set_released_run(4);
+        let lab = lab(&mock).once();
+
+        claim_once(&lab, Duration::from_secs(10)).expect("the single claim");
+
+        assert_eq!(mock.count("GET /api/runs/1/snapshots/latest"), 1);
+        let posted: Vec<u64> = mock
+            .requests("POST /api/runs/1/samples")
+            .iter()
+            .flat_map(|body| body["samples"].as_array().cloned().unwrap_or_default())
+            .map(|sample| sample["epoch"].as_u64().unwrap_or_default())
+            .collect();
+        assert_eq!(posted, vec![6]);
+        assert_eq!(mock.count("POST /api/runs/1/finish"), 1);
+        assert!(mock.request("POST /api/runs/1/finish")["error"].is_null());
+    }
+
     /// Restarting the world from `(params, seed)` when its snapshot cannot be fetched
     /// would silently throw away the epochs already computed, so the run fails instead.
     #[test]
