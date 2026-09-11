@@ -25,10 +25,11 @@ module Experiments
     # own metrics are locked to (DESIGN.md §1.2). Nothing here moves that lock.
     WIDE_TOP_K = 64
 
-    # A run replicated if any reading of its census is a number greater than zero — the
-    # same verdict as `peak_replicator_count.to_f.positive?` in TransitionReportService.
-    # Numbers sort above strings and above json null in jsonb, so a count stored as a
-    # string, or missing, fails this comparison as it fails the numeric one.
+    # A run replicated if any reading of its census is a number greater than zero, which is
+    # the verdict `peak_replicator_count.to_f.positive?` reaches in TransitionReportService
+    # over every numeric reading. Numbers sort above strings and above json null in jsonb,
+    # so a missing count is no replicator here — and so is a count stored as a string,
+    # whatever its digits say, which is the one reading where the two part.
     # `index_samples_on_run_id_replicated` carries exactly the rows this predicate passes,
     # and has to keep matching it.
     REPLICATED = "values -> 'replicator_count' > '0'::jsonb"

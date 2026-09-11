@@ -174,6 +174,18 @@ RSpec.describe "Experiments", type: :request do
 
         expect(census_queries.size).to eq(1)
       end
+
+      it "reads the wider window of a full page of runs in one query" do
+        25.times { create(:rescore, run: sampled_run(0, transition_epoch: 900), top_k: 64, replicator_count: 1) }
+        wide_queries = []
+        collect = ->(*, payload) { wide_queries << payload[:sql] if payload[:sql].include?(%("rescores"."top_k" = )) }
+
+        ActiveSupport::Notifications.subscribed(collect, "sql.active_record") do
+          get experiment_path(experiment)
+        end
+
+        expect(wide_queries.size).to eq(1)
+      end
     end
 
     context "with a run nothing has been sampled from yet" do
