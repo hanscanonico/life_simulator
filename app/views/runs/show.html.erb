@@ -7,6 +7,16 @@
   The seed and the parameters below reproduce this run byte for byte.
 </p>
 
+<% if @show.findings.any? %>
+  <p class="text-sm">
+    Cited by:
+    <% @show.findings.each do |finding| %>
+      <%= link_to finding.title, finding_path(finding) %>
+      <span class="badge <%= finding.badge_class %>"><%= finding.status_label %></span>
+    <% end %>
+  </p>
+<% end %>
+
 <dl class="facts">
   <dt>Status</dt><dd><span class="badge"><%= @show.run.status %></span></dd>
   <dt>Progress</dt>

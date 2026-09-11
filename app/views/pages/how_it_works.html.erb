@@ -130,10 +130,19 @@
     responds. They run in this order in <%= link_to "the experiments", experiments_path %>.
   </p>
   <ol>
-    <li><strong>Mutation rate</strong> — is there a window, with zero mutation delaying emergence and too much destroying it?</li>
-    <li><strong>World size</strong> — does the time to emergence scale with the cell count, or is it a per-cell rate?</li>
-    <li><strong>Neighbourhood radius</strong> — does spatial locality speed emergence and stabilise the diversity that follows it?</li>
-    <li><strong>Max steps per interaction</strong> — how much execution does a replicator need to assemble itself?</li>
-    <li><strong>Instruction set ablations</strong> — which of the ten ops are necessary for abiogenesis?</li>
+    <% @show.sweeps.each do |sweep| %>
+      <li>
+        <%= sweep_link(sweep) %> — <%= sweep.description %>
+      </li>
+    <% end %>
   </ol>
+  <p>
+    None of them reads as a negative result on its own, which is what the control sweep
+    ahead of all five is for —
+    <%= sweep_link(@show.control) %>: <%= @show.control.description %>
+  </p>
+  <p>
+    What each of them has found so far, and what is still open, is written up in
+    <%= link_to "the findings", findings_path %>.
+  </p>
 </div>

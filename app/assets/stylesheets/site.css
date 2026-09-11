@@ -173,6 +173,15 @@
   margin: var(--space-6) 0;
 }
 
+/* A chart quoted inside a finding's narrative: the caption under it names the run. */
+.chart-cited {
+  margin: var(--space-6) 0;
+}
+
+.chart-cited .chart {
+  margin: 0 0 var(--space-2);
+}
+
 .chart-title {
   font-weight: 600;
   margin-bottom: var(--space-2);

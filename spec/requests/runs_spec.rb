@@ -96,6 +96,28 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
+    context "with a sweep a finding rests on" do
+      let(:experiment) { create(:experiment, name: "Mutation rate", slug: "mutation-rate") }
+      let(:run) { create(:run, experiment: experiment, seed: 1) }
+
+      it "cites the write-up with its status" do
+        finding = Findings::Registry.find("mutation-rate-window")
+
+        get run_path(run)
+
+        expect(response.body.squish).to include("Cited by:", finding.title, finding.status_label)
+        expect(response.body).to include(finding_path(finding))
+      end
+    end
+
+    context "with a sweep no finding cites" do
+      it "says nothing about citations" do
+        get run_path(create(:run, experiment: create(:experiment, slug: "nobody-cites-this")))
+
+        expect(response.body).not_to include("Cited by")
+      end
+    end
+
     it "links the CSV of its samples" do
       get run_path(run)
 
