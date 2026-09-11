@@ -37,9 +37,14 @@ cd ~/Documents/life_simulator && deploy/deploy
 
 It fast-forwards to `origin/main` (`DEPLOY_REF=<sha> deploy/deploy` pins another
 commit), tags the image currently serving `:previous`, rebuilds, brings the stack up
-and waits for `http://127.0.0.1:8070/up`. `bin/docker-entrypoint` runs `db:prepare`
-on boot, so migrations apply themselves. A healthy deploy ends by pruning untagged
-images older than a week; `:previous` is tagged, so it always survives.
+and waits for both `http://127.0.0.1:8070/up` and every service of the stack being
+in state `running` — a container whose start failed is left `Created`, which
+`restart: unless-stopped` never acts on, so `up -d` alone is not proof that the site
+is served. When the wait times out the script prints `docker compose ps -a`, the
+services that are not running and the app's last 50 log lines, retries the start
+once, and only then rolls back. `bin/docker-entrypoint` runs `db:prepare` on boot,
+so migrations apply themselves. A healthy deploy ends by pruning untagged images
+older than a week; `:previous` is tagged, so it always survives.
 
 ## Runner
 
@@ -96,8 +101,10 @@ deploy job.
 
 A failed deploy leaves the site up: `deploy/deploy` rolls back to the `:previous` image
 when the new build never turns healthy, and exits non-zero, so the job goes red while
-the previous build keeps serving. The job's log is the deploy log; `docker compose -f
-deploy/docker-compose.yml logs app` on the host has the rest.
+the previous build keeps serving. A stack left half up — the app created but never
+started, say — counts as not healthy and goes down the same path, so the site can no
+longer sit on a 502 behind a green deploy. The job's log is the deploy log; `docker
+compose -f deploy/docker-compose.yml logs app` on the host has the rest.
 
 ## Rollback
 

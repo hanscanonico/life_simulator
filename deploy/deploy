@@ -15,15 +15,64 @@ compose="docker compose -f deploy/docker-compose.yml"
 image="life-simulator-app:latest"
 previous="life-simulator-app:previous"
 
+# Read once: it also fails the deploy early on an unusable compose file.
+services=$($compose config --services)
+
+# A container whose start failed — a dependency that never turned healthy, an
+# allocation refused while the build's memory was still resident — is left in
+# `Created`, a state `restart: unless-stopped` never acts on because the
+# container was never started. `up -d` is not a reliable witness of that, so
+# every service is read back from the daemon by name.
+not_running() {
+  local service container state
+  while read -r service; do
+    [ -n "$service" ] || continue
+    container=$($compose ps -aq "$service" 2>/dev/null | head -1)
+    state=""
+    if [ -n "$container" ]; then
+      state=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || true)
+    fi
+    [ "$state" = running ] || echo "$service: ${state:-absent}"
+  done <<<"$services"
+}
+
+# 200 from /up is the app's own answer; the state sweep catches the services
+# that answer for nothing — a `Created` app, or a cloudflared the swap left
+# behind while the app itself is fine.
 wait_healthy() {
-  echo "Waiting for the app to become healthy..."
+  local down
+  echo "Waiting for the whole stack to come up..."
   for _ in $(seq 1 45); do
     if curl -fsS http://127.0.0.1:8070/up >/dev/null 2>&1; then
-      return 0
+      down=$(not_running)
+      if [ -z "$down" ]; then
+        return 0
+      fi
     fi
     sleep 2
   done
   return 1
+}
+
+report_stack() {
+  {
+    $compose ps -a || true
+    not_running | sed 's/^/Not running: /'
+    echo "--- app, last 50 log lines ---"
+    $compose logs --tail 50 --no-color app 2>&1 || true
+  } >&2
+}
+
+start_stack() {
+  $compose up -d && wait_healthy
+}
+
+prune_superseded_images() {
+  # Never -a: that would collect $previous, which the rollback branch needs.
+  # Housekeeping must not turn a healthy deploy into a failed one, so a prune
+  # that cannot run is only reported.
+  docker image prune -f --filter "until=168h" >/dev/null ||
+    echo "Image prune failed; superseded images were not reclaimed." >&2
 }
 
 # Tagged before the build, and taken from the container rather than from the
@@ -44,26 +93,37 @@ fi
 
 $compose build app
 
-if $compose up -d && wait_healthy; then
+if start_stack; then
   echo "Deployed and healthy."
-  # Never -a: that would collect $previous, which the rollback branch needs.
-  # Housekeeping must not turn a healthy deploy into a failed one, so a prune
-  # that cannot run is only reported.
-  docker image prune -f --filter "until=168h" >/dev/null ||
-    echo "Image prune failed; superseded images were not reclaimed." >&2
+  prune_superseded_images
   exit 0
 fi
 
-echo "The new build is not serving — check: $compose logs app" >&2
+echo "The stack did not come up on the new build." >&2
+report_stack
+
+# The one retry that is worth trying before rolling back: `up -d` starts a
+# container the first attempt only created, and the build's memory peak is over
+# by now.
+echo "Retrying the start once..." >&2
+if start_stack; then
+  echo "Deployed and healthy on the second attempt." >&2
+  prune_superseded_images
+  exit 0
+fi
+
+echo "Still not serving after the retry." >&2
+report_stack
 if [ -z "$serving" ]; then
   echo "No previous image to roll back to; the site is down." >&2
   exit 1
 fi
 
 echo "Rolling back to the previous image..." >&2
-if docker image tag "$previous" "$image" && $compose up -d && wait_healthy; then
+if docker image tag "$previous" "$image" && start_stack; then
   echo "Rolled back: the previous build is serving again." >&2
 else
   echo "Rollback failed too — the site is down. Check: $compose logs app" >&2
+  report_stack
 fi
 exit 1
