@@ -112,12 +112,23 @@ jobs:
         with:
           workspaces: engine
 
+      # The module is a pure function of the engine sources and the Makefile's
+      # bindgen recipe, so a hit is the same build the engine job would produce.
+      - name: Restore the wasm module
+        id: wasm
+        uses: actions/cache@v4
+        with:
+          path: app/assets/wasm
+          key: wasm-${{ runner.os }}-${{ hashFiles('engine/**/*.rs', 'engine/**/Cargo.toml', 'engine/Cargo.lock', 'Makefile') }}
+
       - name: Install wasm-bindgen
+        if: steps.wasm.outputs.cache-hit != 'true'
         uses: taiki-e/cache-cargo-install-action@v2
         with:
           tool: wasm-bindgen-cli@0.2.128
 
       - name: Build the wasm module
+        if: steps.wasm.outputs.cache-hit != 'true'
         run: make wasm
 
       - name: Run tests
@@ -175,15 +186,24 @@ jobs:
         working-directory: engine
         run: cargo test --workspace
 
-      # The browser's copy of the rules: it has to build for wasm too.
-      - name: Install wasm-bindgen
+      # The browser's copy of the rules: it has to build for wasm too. Cached on
+      # the same key as the test job, so whichever job runs first builds it once.
+      - name: Restore the wasm module
+        id: wasm
         if: steps.engine.outputs.present == 'true'
+        uses: actions/cache@v4
+        with:
+          path: app/assets/wasm
+          key: wasm-${{ runner.os }}-${{ hashFiles('engine/**/*.rs', 'engine/**/Cargo.toml', 'engine/Cargo.lock', 'Makefile') }}
+
+      - name: Install wasm-bindgen
+        if: steps.engine.outputs.present == 'true' && steps.wasm.outputs.cache-hit != 'true'
         uses: taiki-e/cache-cargo-install-action@v2
         with:
           tool: wasm-bindgen-cli@0.2.128
 
       - name: Build the wasm crate
-        if: steps.engine.outputs.present == 'true'
+        if: steps.engine.outputs.present == 'true' && steps.wasm.outputs.cache-hit != 'true'
         run: make wasm
 
   # The site follows green main by itself. It runs on the mini-pc's own runner
