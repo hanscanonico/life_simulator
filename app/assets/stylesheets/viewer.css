@@ -23,12 +23,16 @@
   image-rendering: pixelated;
 }
 
-.viewer-status:empty {
-  display: none;
-}
-
+/* The line stays reserved while the message comes and goes, so the engine finishing its
+   build cannot shift the controls under the canvas. */
 .viewer-status {
   margin: 0;
+  min-height: calc(var(--font-size-sm) * var(--line-height-normal));
+  color: var(--ink-muted);
+}
+
+.viewer-status--error {
+  color: var(--negative);
 }
 
 .viewer-controls {
