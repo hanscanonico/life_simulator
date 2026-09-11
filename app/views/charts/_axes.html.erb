@@ -12,7 +12,7 @@
 </g>
 <g class="chart-tick-label">
   <% chart.x_ticks.each do |tick| %>
-    <text x="<%= tick.position.round(2) %>" y="<%= chart.plot_bottom + 20 %>"
+    <text x="<%= chart.x_tick_label_x(tick.position).round(2) %>" y="<%= chart.plot_bottom + 20 %>"
           text-anchor="<%= chart.x_tick_anchor(tick.position) %>"><%= tick.label %></text>
   <% end %>
   <% chart.y_ticks.each do |tick| %>

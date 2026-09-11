@@ -40,6 +40,18 @@ RSpec.describe Charts::PhaseDiagram do
     end
   end
 
+  describe "#x_tick_label_x" do
+    subject(:diagram) { build([group(1, transition_epochs: [100])]) }
+
+    it "insets the outermost labels and leaves the rest on their tick" do
+      middle = (diagram.plot_left + diagram.plot_right) / 2
+      positions = [diagram.plot_left, middle, diagram.plot_right].map { |x| diagram.x_tick_label_x(x) }
+
+      expect(positions).to eq([diagram.plot_left + Charts::Plot::EDGE_INSET, middle,
+                               diagram.plot_right - Charts::Plot::EDGE_INSET])
+    end
+  end
+
   describe "#dots" do
     it "plots one dot per transitioned run" do
       diagram = build([group(1, transition_epochs: [100, 200]), group(2, transition_epochs: [300])])

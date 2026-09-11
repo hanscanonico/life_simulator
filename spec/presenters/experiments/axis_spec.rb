@@ -29,6 +29,44 @@ RSpec.describe Experiments::Axis do
     end
   end
 
+  describe "#named_label_of_run" do
+    it "prefixes a value with the axis it belongs to" do
+      axis = described_class.new(name: "radius", values: [1, 2, 4, 0])
+
+      expect(axis.named_label_of_run("radius" => 1)).to eq("radius 1")
+    end
+
+    it "names a paired value with the axis of the pair" do
+      axis = described_class.new(name: "world_size",
+                                 values: [{ "width" => 32, "height" => 32 }, { "width" => 64, "height" => 64 }])
+
+      expect(axis.named_label_of_run("width" => 64, "height" => 64)).to eq("world size 64")
+    end
+
+    it "leaves a label that is already a word alone" do
+      axis = described_class.new(name: "radius", values: [1, 2, 4, 0])
+
+      expect(axis.named_label_of_run("radius" => 0)).to eq("well-mixed")
+    end
+
+    context "with a run off the grid" do
+      it "prefixes the run's own value" do
+        axis = described_class.new(name: "radius", values: [1, 2, 4, 0])
+
+        expect(axis.named_label_of_run("radius" => 7)).to eq("radius 7")
+      end
+    end
+
+    context "with a run that names no value of the axis" do
+      it "has no label" do
+        axis = described_class.new(name: "world_size",
+                                   values: [{ "width" => 32, "height" => 32 }, { "width" => 64, "height" => 64 }])
+
+        expect(axis.named_label_of_run("radius" => 1)).to be_nil
+      end
+    end
+  end
+
   describe "#position_of" do
     subject(:axis) { described_class.new(name: "radius", values: [1, 2, 4, 0]) }
 

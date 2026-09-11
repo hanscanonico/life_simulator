@@ -69,6 +69,25 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     JS
   end
 
+  # A planned sweep's description is a sentence or three, so on a phone it takes the whole
+  # width of the list rather than the ribbon a term column beside it would leave.
+  def prose_definition_widths
+    page.evaluate_script(<<~JS)
+      Array.from(document.querySelectorAll('dl.facts-prose'), (list) => {
+        const width = list.getBoundingClientRect().width;
+        return Array.from(list.querySelectorAll('dd'),
+                          (dd) => Math.round((dd.getBoundingClientRect().width / width) * 100));
+      }).flat()
+    JS
+  end
+
+  it "stacks the planned sweeps' descriptions under their names" do
+    visit experiments_path
+
+    expect(page).to have_css("dl.facts-prose dd")
+    expect(prose_definition_widths).to all(be >= 99)
+  end
+
   it "keeps an experiment inside the viewport, gutter included" do
     visit experiment_path(experiment)
 
