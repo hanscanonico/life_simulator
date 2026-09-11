@@ -149,4 +149,48 @@ RSpec.describe "Pages", type: :request do
       expect(response.body).to include(*cells)
     end
   end
+
+  describe "the document head" do
+    it "declares its encoding first" do
+      get root_path
+
+      expect(response.parsed_body.at_css("head").elements.first.to_s).to eq(%(<meta charset="utf-8">))
+    end
+
+    it "names the site and shows its icon once to a sharer" do
+      get root_path
+
+      head = response.parsed_body.css("head")
+
+      expect(head.css(%(meta[property="og:site_name"])).pluck("content"))
+        .to eq(["Life Simulator"])
+      expect(head.css(%(meta[property="og:image"])).pluck("content"))
+        .to eq(["http://www.example.com/icon.png"])
+      expect(head.css(%(meta[name="twitter:card"])).pluck("content")).to eq(["summary"])
+    end
+
+    it "points a page at itself" do
+      get how_it_works_path
+
+      expect(canonical_of(response)).to eq(["http://www.example.com/how-it-works"])
+      expect(og_url_of(response)).to eq(["http://www.example.com/how-it-works"])
+    end
+
+    context "on a paginated list" do
+      it "points back at the query-free address" do
+        get experiments_path, params: { page: 2 }
+
+        expect(canonical_of(response)).to eq(["http://www.example.com/experiments"])
+        expect(og_url_of(response)).to eq(["http://www.example.com/experiments"])
+      end
+    end
+
+    def canonical_of(response)
+      response.parsed_body.css(%(head link[rel="canonical"])).pluck("href")
+    end
+
+    def og_url_of(response)
+      response.parsed_body.css(%(head meta[property="og:url"])).pluck("content")
+    end
+  end
 end
