@@ -40,5 +40,10 @@ module LifeSimulator
 
     # Don't generate system test files.
     config.generators.system_tests = nil
+
+    # The app attaches nothing, so `image_processing` is not in the Gemfile;
+    # Active Storage (loaded by the Action Text engine) warns at boot unless
+    # variants are explicitly off.
+    config.active_storage.variant_processor = :disabled
   end
 end

@@ -94,7 +94,7 @@ jobs:
 
       # Headless Chrome for the `js: true` system specs (spec/support/capybara.rb).
       - name: Install packages
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y google-chrome-stable curl libjemalloc2 libvips postgresql-client
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y google-chrome-stable curl libjemalloc2 postgresql-client
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
