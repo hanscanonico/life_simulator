@@ -96,6 +96,28 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
+    context "with a run that reported samples over time" do
+      let(:run) { create(:run, :claimed, epochs: 20_000, epochs_done: 1_000) }
+
+      it "reads the rate and the time remaining off the samples' own clock" do
+        create(:sample, run: run, epoch: 100, created_at: 10.seconds.ago)
+        create(:sample, run: run, epoch: 200, created_at: Time.current)
+
+        get run_path(run)
+
+        expect(response.body.squish).to include("measured from recorded samples", "10.0 epochs/s",
+                                                "Time remaining", "32 minutes")
+      end
+    end
+
+    context "with a run that has no measurable rate" do
+      it "dashes both rows instead of guessing" do
+        get run_path(run)
+
+        expect(response.body.squish).to match(/Rate.*—.*Time remaining.*—/)
+      end
+    end
+
     context "with a sweep a finding rests on" do
       let(:experiment) { create(:experiment, name: "Mutation rate", slug: "mutation-rate") }
       let(:run) { create(:run, experiment: experiment, seed: 1) }

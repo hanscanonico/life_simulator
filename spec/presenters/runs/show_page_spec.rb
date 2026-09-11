@@ -111,6 +111,65 @@ RSpec.describe Runs::ShowPage do
     end
   end
 
+  describe "#epochs_per_second" do
+    it "is the epoch span over the wall-clock span of the samples" do
+      create(:sample, run: run, epoch: 100, created_at: 10.seconds.ago)
+      create(:sample, run: run, epoch: 200, created_at: Time.current)
+
+      expect(page.epochs_per_second).to eq(10.0)
+    end
+
+    context "with a single sample" do
+      it "has no span to measure" do
+        create(:sample, run: run, epoch: 100)
+
+        expect(page.epochs_per_second).to be_nil
+      end
+    end
+
+    context "with no sample" do
+      it "has nothing to measure" do
+        expect(page.epochs_per_second).to be_nil
+      end
+    end
+
+    context "with two samples of the same batch" do
+      it "refuses a zero wall-clock span" do
+        recorded_at = Time.current
+        create(:sample, run: run, epoch: 100, created_at: recorded_at)
+        create(:sample, run: run, epoch: 200, created_at: recorded_at)
+
+        expect(page.epochs_per_second).to be_nil
+      end
+    end
+  end
+
+  describe "#eta" do
+    it "is the remaining epochs at the measured rate" do
+      create(:sample, run: run, epoch: 100, created_at: 10.seconds.ago)
+      create(:sample, run: run, epoch: 200, created_at: Time.current)
+
+      expect(page.eta).to eq(75.seconds)
+    end
+
+    context "with no measured rate" do
+      it "says nothing" do
+        expect(page.eta).to be_nil
+      end
+    end
+
+    context "with a finished run" do
+      let(:run) { create(:run, status: "finished", epochs: 1_000, epochs_done: 1_000) }
+
+      it "has no time left to report" do
+        create(:sample, run: run, epoch: 100, created_at: 10.seconds.ago)
+        create(:sample, run: run, epoch: 200, created_at: Time.current)
+
+        expect(page.eta).to be_nil
+      end
+    end
+  end
+
   describe "#progress" do
     it "is the share of epochs done" do
       expect(page.progress).to eq(25.0)

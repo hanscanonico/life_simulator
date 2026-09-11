@@ -14,6 +14,8 @@ module Runs
       "copy_rate" => "Copy rate"
     }.freeze
 
+    SAMPLE_CLOCK = "COUNT(*), MIN(epoch), MAX(epoch), MIN(created_at), MAX(created_at)"
+
     def self.build(run:) = new(run: run)
 
     def initialize(run:)
@@ -47,6 +49,24 @@ module Runs
     # Experiments::Axis is the only place that knows radius 0 reads "well-mixed".
     def arm_label = @arm_label ||= arm_labels.join(", ").presence
 
+    # How fast this run is actually burning epochs, measured between its first and last
+    # recorded sample. The finish `wall_seconds` covers one segment only — a resumed run
+    # has several — and the samples are the one record of progress a release cannot rewrite.
+    def epochs_per_second
+      return nil if sample_count < 2 || epoch_span.zero? || seconds_span <= 0
+
+      (epoch_span / seconds_span).round(2)
+    end
+
+    def eta
+      return nil if run.terminal?
+
+      rate = epochs_per_second
+      return nil if rate.nil?
+
+      (remaining_epochs / rate).round.seconds
+    end
+
     def snapshots = @snapshots ||= run.snapshots.where.not(png: nil).order(:epoch).select(:id, :epoch, :updated_at)
 
     def params = run.params.sort.to_h
@@ -58,6 +78,16 @@ module Runs
     end
 
     private
+
+    def sample_clock = @sample_clock ||= run.samples.pick(Arel.sql(SAMPLE_CLOCK))
+
+    def sample_count = sample_clock[0]
+
+    def epoch_span = sample_clock[2] - sample_clock[1]
+
+    def seconds_span = sample_clock[4] - sample_clock[3]
+
+    def remaining_epochs = [run.epochs - run.epochs_done, 0].max
 
     def arm_labels
       Experiments::Axis.sweep(run.experiment.param_grid).filter_map { |axis| axis.label_of_run(run.params) }
