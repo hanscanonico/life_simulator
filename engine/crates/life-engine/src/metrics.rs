@@ -275,14 +275,42 @@ mod tests {
         assert_eq!(ranked, ranked_through_a_map(&cells, 64));
     }
 
+    /// The entropy `entropy_bits` summed from a histogram of its own, which every
+    /// recorded `entropy_bits` was read from — bin order included, so the floating-point
+    /// sum is the same one.
+    fn entropy_through_its_own_pass(bytes: &[u8]) -> f64 {
+        if bytes.is_empty() {
+            return 0.0;
+        }
+        let mut histogram = [0u64; 256];
+        for byte in bytes {
+            histogram[*byte as usize] += 1;
+        }
+        let total = bytes.len() as f64;
+        histogram
+            .iter()
+            .filter(|count| **count > 0)
+            .map(|count| {
+                let p = *count as f64 / total;
+                -p * p.log2()
+            })
+            .sum()
+    }
+
     #[test]
-    fn the_histogram_reads_the_same_op_density_as_a_byte_by_byte_count() {
+    fn the_histogram_reads_the_same_op_density_and_entropy_as_a_pass_each() {
         let mut rng = crate::rng::seeded(9, 0, 0);
         let bytes: Vec<u8> = (0..4096).map(|_| crate::rng::byte(&mut rng)).collect();
         let histogram = ByteHistogram::of(&bytes);
         assert_eq!(histogram.op_density(), op_density(&bytes));
-        assert_eq!(histogram.entropy_bits(), entropy_bits(&bytes));
-        assert_eq!(ByteHistogram::of(&[]).op_density(), 0.0);
+        assert_eq!(
+            histogram.entropy_bits(),
+            entropy_through_its_own_pass(&bytes)
+        );
+
+        let empty = ByteHistogram::of(&[]);
+        assert_eq!(empty.op_density(), 0.0);
+        assert_eq!(empty.entropy_bits(), 0.0);
     }
 
     #[test]
