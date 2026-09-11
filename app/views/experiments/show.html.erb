@@ -42,8 +42,11 @@
 <% end %>
 
 <% if @show.transition_report? %>
-  <%= render "experiments/transition_report", arms: @show.transition_arms,
-                                              threshold: @show.transition_threshold %>
+  <div class="chart-grid-2">
+    <%= render @show.agreement_chart %>
+    <%= render "experiments/transition_report", arms: @show.transition_arms,
+                                                threshold: @show.transition_threshold %>
+  </div>
 <% end %>
 
 <% if @show.rescores? %>

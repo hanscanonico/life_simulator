@@ -73,6 +73,12 @@ module Experiments
     # per-run rows behind the counts stay in the transition report CSV.
     def transition_arms = @transition_arms ||= TransitionArmsService.call(experiment: experiment)
 
+    # The same counts as a picture: which arms disagree, and which way.
+    def agreement_chart
+      @agreement_chart ||= Charts::AgreementChart.new(arms: transition_arms,
+                                                      title: "Detector against replicator census, per arm")
+    end
+
     def transition_report? = finished_count.positive? && transition_arms.any?
 
     def transition_threshold = TransitionReportService::THRESHOLD
