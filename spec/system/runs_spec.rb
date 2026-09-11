@@ -48,6 +48,10 @@ RSpec.describe "The run progress frame", :js, type: :system do
       expect(page).to have_text("500 / 1,000 epochs (50.0%)", normalize_ws: true)
       expect(page).to have_text("Transition epoch")
       expect(page).to have_text("420")
+
+      run.update!(epochs_done: 900)
+
+      expect(page).to have_text("900 / 1,000 epochs (90.0%)", normalize_ws: true)
       expect(page_never_reloaded?).to be(true)
     end
 
