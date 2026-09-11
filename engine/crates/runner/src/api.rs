@@ -9,6 +9,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use life_engine::{Metrics, Params};
 use serde_json::{json, Value};
+use std::io::Write;
 use std::thread;
 use std::time::Duration;
 
@@ -27,6 +28,7 @@ const SNAPSHOT_SLACK: u64 = 64 * 1024;
 /// Where a binary snapshot answer carries the epoch its bytes are at.
 const SNAPSHOT_EPOCH_HEADER: &str = "X-Snapshot-Epoch";
 const BINARY: &str = "application/octet-stream";
+const JSON: &str = "application/json";
 /// How much of a binary answer a failure message quotes.
 const DESCRIBED_BYTES: usize = 512;
 
@@ -144,6 +146,10 @@ impl LabClient {
         self.member(run, runner_id, "samples", body)
     }
 
+    /// Posts a snapshot, base64-encoding the blob and the PNG straight into `body`,
+    /// which the caller owns and reuses. Building a `Value` of two base64 strings and
+    /// letting `send_json` serialise it again held the blob three times over at once, and
+    /// twelve slots snapshotting is what exhausted the mini-pc's memory.
     pub fn snapshot(
         &self,
         run: i64,
@@ -151,13 +157,13 @@ impl LabClient {
         epoch: u64,
         raw: &[u8],
         png: &[u8],
+        body: &mut Vec<u8>,
     ) -> Result<()> {
-        self.member(
-            run,
-            runner_id,
-            "snapshots",
-            json!({ "epoch": epoch, "blob": BASE64.encode(raw), "png": BASE64.encode(png) }),
-        )
+        write_snapshot_body(body, runner_id, epoch, raw, png)?;
+        let path = format!("/api/runs/{run}/snapshots");
+        let (status, response) = self.post_bytes(&path, body)?;
+        accepted(status, response, &format!("POST {path}"))?;
+        Ok(())
     }
 
     pub fn finish(
@@ -250,6 +256,20 @@ impl LabClient {
         })
     }
 
+    fn post_bytes(&self, path: &str, body: &[u8]) -> Result<(u16, String)> {
+        let url = format!("{}{path}", self.base);
+        self.with_retries(&url, || {
+            let mut response = self
+                .agent
+                .post(&url)
+                .header("Authorization", self.bearer())
+                .content_type(JSON)
+                .send(body)?;
+            let status = response.status().as_u16();
+            Ok((status, read_body(&mut response, &url, MAX_JSON_BODY)?))
+        })
+    }
+
     fn get(&self, path: &str, query: &[(&str, String)], limit: u64) -> Result<(u16, String)> {
         let url = format!("{}{path}", self.base);
         self.with_retries(&url, || {
@@ -330,6 +350,34 @@ impl LabClient {
 /// hundreds of megabytes per slot is what exhausted the mini-pc's swap.
 fn snapshot_body_limit(params: &Params) -> u64 {
     (params.cell_count() as u64) * (params.stride() as u64) * 2 + SNAPSHOT_SLACK
+}
+
+/// The snapshot request body, written field by field so the two big base64 strings are
+/// streamed into `body` rather than each built whole and then serialised again. Keep the
+/// shape in step with what `Api::RunsController#snapshots` reads.
+fn write_snapshot_body(
+    body: &mut Vec<u8>,
+    runner_id: &str,
+    epoch: u64,
+    raw: &[u8],
+    png: &[u8],
+) -> Result<()> {
+    body.clear();
+    body.extend_from_slice(br#"{"runner_id":"#);
+    serde_json::to_writer(&mut *body, runner_id).context("writing the runner id")?;
+    write!(body, r#","epoch":{epoch},"blob":""#)?;
+    write_base64(body, raw)?;
+    body.extend_from_slice(br#"","png":""#);
+    write_base64(body, png)?;
+    body.extend_from_slice(br#""}"#);
+    Ok(())
+}
+
+fn write_base64(body: &mut Vec<u8>, bytes: &[u8]) -> Result<()> {
+    let mut encoder = base64::write::EncoderWriter::new(&mut *body, &BASE64);
+    encoder.write_all(bytes)?;
+    encoder.finish()?;
+    Ok(())
 }
 
 /// Reads an answer whole, up to `limit`. Naming the endpoint and the limit keeps a body
@@ -441,12 +489,34 @@ mod tests {
         let lab = MockLab::start();
 
         client(&lab)
-            .snapshot(1, "runner-1", 30, b"raw", b"png")
+            .snapshot(1, "runner-1", 30, b"raw", b"png", &mut Vec::new())
             .unwrap();
 
         let posted = lab.request("POST /api/runs/1/snapshots");
         assert_eq!(posted["blob"], json!(BASE64.encode(b"raw")));
+        assert_eq!(posted["png"], json!(BASE64.encode(b"png")));
         assert_eq!(posted["epoch"], json!(30));
+        assert_eq!(posted["runner_id"], json!("runner-1"));
+    }
+
+    /// The body is hand-written, so the buffer it is written into has to be reused
+    /// without the previous snapshot leaking into the next one.
+    #[test]
+    fn a_reused_body_buffer_carries_only_the_latest_snapshot() {
+        let lab = MockLab::start();
+        let client = client(&lab);
+        let mut body = Vec::new();
+
+        client
+            .snapshot(1, "runner-1", 30, &vec![0xab; 4096], b"png", &mut body)
+            .unwrap();
+        client
+            .snapshot(1, "runner-1", 60, b"raw", b"png", &mut body)
+            .unwrap();
+
+        let posted = lab.requests("POST /api/runs/1/snapshots");
+        assert_eq!(posted[1]["epoch"], json!(60));
+        assert_eq!(posted[1]["blob"], json!(BASE64.encode(b"raw")));
     }
 
     /// The control world of DESIGN.md §5, the largest the sweeps run.

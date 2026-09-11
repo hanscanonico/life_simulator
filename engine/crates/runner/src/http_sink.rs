@@ -23,6 +23,9 @@ pub struct HttpSink<'a> {
     batch_age: Duration,
     last_metrics: Option<Metrics>,
     transition_epoch: Option<u64>,
+    /// The snapshot request body, reused: a slot posting a 512x256 world every few
+    /// epochs would otherwise allocate megabytes of base64 for each one.
+    body: Vec<u8>,
 }
 
 impl<'a> HttpSink<'a> {
@@ -36,6 +39,7 @@ impl<'a> HttpSink<'a> {
             batch_age: BATCH_AGE,
             last_metrics: None,
             transition_epoch: None,
+            body: Vec::new(),
         }
     }
 
@@ -86,7 +90,7 @@ impl RunSink for HttpSink<'_> {
 
     fn snapshot(&mut self, epoch: u64, raw: &[u8], png: &[u8]) -> Result<()> {
         self.client
-            .snapshot(self.run, &self.runner_id, epoch, raw, png)
+            .snapshot(self.run, &self.runner_id, epoch, raw, png, &mut self.body)
     }
 
     fn finish(&mut self, result: &RunResult) -> Result<()> {

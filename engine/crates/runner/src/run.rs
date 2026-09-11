@@ -71,6 +71,7 @@ pub fn execute_world(
     let sample_every = params.sample_every as u64;
     let snapshot_every = params.snapshot_every as u64;
     let started = Instant::now();
+    let mut buffers = SnapshotBuffers::default();
 
     loop {
         let epoch = world.epoch();
@@ -79,13 +80,13 @@ pub fn execute_world(
         if sampling && snapshotting {
             let (metrics, raw) = world.metrics_with_snapshot();
             sink.sample(epoch, &metrics, world.transition_epoch())?;
-            sink.snapshot(epoch, &raw, &render_png(&world)?)?;
+            sink.snapshot(epoch, &raw, buffers.render_png(&world)?)?;
         } else if sampling {
             let metrics = world.metrics();
             sink.sample(epoch, &metrics, world.transition_epoch())?;
         } else if snapshotting {
             let raw = world.snapshot();
-            sink.snapshot(epoch, &raw, &render_png(&world)?)?;
+            sink.snapshot(epoch, &raw, buffers.render_png(&world)?)?;
         }
         if epoch == epochs {
             break;
@@ -116,20 +117,33 @@ pub fn execute_world(
     Ok(Completion::Finished(Box::new(result)))
 }
 
-/// A PNG of the world at its native size, coloured by the engine.
-pub fn render_png(world: &World) -> Result<Vec<u8>> {
-    let mut pixels = vec![0u8; world.params().cell_count() * 4];
-    world.render_rgba(&mut pixels);
+/// The scratch the run loop lends to every snapshot: the RGBA pixels the engine renders
+/// into and the PNG bytes the encoder writes. Both are cleared and reused, so a slot
+/// snapshotting a 512x256 world every few epochs allocates them once rather than once
+/// per snapshot in each of the mini-pc's twelve slots.
+#[derive(Debug, Default)]
+pub struct SnapshotBuffers {
+    pixels: Vec<u8>,
+    png: Vec<u8>,
+}
 
-    let mut out = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut out, world.width(), world.height());
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header()?;
-        writer.write_image_data(&pixels)?;
+impl SnapshotBuffers {
+    /// A PNG of the world at its native size, coloured by the engine.
+    pub fn render_png(&mut self, world: &World) -> Result<&[u8]> {
+        self.pixels.clear();
+        self.pixels.resize(world.params().cell_count() * 4, 0);
+        world.render_rgba(&mut self.pixels);
+
+        self.png.clear();
+        {
+            let mut encoder = png::Encoder::new(&mut self.png, world.width(), world.height());
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header()?;
+            writer.write_image_data(&self.pixels)?;
+        }
+        Ok(&self.png)
     }
-    Ok(out)
 }
 
 #[cfg(test)]
@@ -204,8 +218,12 @@ mod tests {
             1,
         )
         .unwrap();
-        let png = render_png(&world).unwrap();
+        let mut buffers = SnapshotBuffers::default();
+        let png = buffers.render_png(&world).unwrap().to_vec();
         assert_eq!(&png[1..4], b"PNG");
+
+        let again = buffers.render_png(&world).unwrap();
+        assert_eq!(again, png, "a reused buffer renders the same bytes");
     }
 
     #[test]
