@@ -67,7 +67,9 @@ module Runs
       (remaining_epochs / rate).round.seconds
     end
 
-    def snapshots = @snapshots ||= run.snapshots.where.not(png: nil).order(:epoch).select(:id, :epoch, :updated_at)
+    def snapshots
+      @snapshots ||= run.snapshots.where.not(png: nil).order(:epoch).select(:id, :epoch, :reason, :updated_at)
+    end
 
     def params = run.params.sort.to_h
 

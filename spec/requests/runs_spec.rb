@@ -165,6 +165,14 @@ RSpec.describe "Runs", type: :request do
 
         expect(response.body).to include(png_snapshot_path(snapshot))
       end
+
+      it "names why each one was taken" do
+        create(:snapshot, run: run, epoch: 500, reason: "transition")
+
+        get run_path(run)
+
+        expect(response.body).to include("(transition)")
+      end
     end
   end
 end

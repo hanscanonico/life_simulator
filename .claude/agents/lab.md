@@ -36,8 +36,11 @@ and the replicator census side by side over the stored samples — per run the f
 epoch, the bare threshold crossing, the entropy minimum, the replicator and copy-rate
 peaks and the final observables, then a per-arm count of the runs the two observables
 disagree on (`FORMAT=csv` for CSV); it is how a claim about emergence gets written on both
-observables before it is published. `lab:db_size` and `lab:prune_snapshots` are the
-maintenance tasks.
+observables before it is published. `"lab:snapshot_audit[<slug>]"` checks that each
+measured transition has a world behind it — per run the snapshot nearest its
+`transition_epoch`, why the loop took it (cadence, age or transition) and how far off it
+fell — and counts the experiment's snapshots by reason. `lab:db_size` and
+`lab:prune_snapshots` are the maintenance tasks.
 `runner rescore` re-reads a run's stored world at other `top_k` settings, for the question
 "did the replicator test miss the lineage, or is there none?" — it measures only and
 changes no run, no param and no default (DESIGN §1.2 locks `top_k` at 16; moving it needs a

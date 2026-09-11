@@ -4,6 +4,7 @@
 //! transport failure or a 5xx `MAX_ATTEMPTS` times with a doubling backoff before giving
 //! up. A 4xx is the app's verdict and is never retried.
 
+use crate::sink::SnapshotReason;
 use anyhow::{anyhow, bail, Context, Result};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
@@ -50,6 +51,15 @@ pub struct StoredWorld {
     pub params: Params,
     pub seed: u64,
     pub blob: Vec<u8>,
+}
+
+/// One snapshot on its way to the lab: the epoch it holds, its two payloads and why the
+/// run loop took it.
+pub struct Snapshot<'a> {
+    pub epoch: u64,
+    pub raw: &'a [u8],
+    pub png: &'a [u8],
+    pub reason: SnapshotReason,
 }
 
 /// A binary answer: the bytes and the epoch its header named.
@@ -155,12 +165,10 @@ impl LabClient {
         &self,
         run: i64,
         runner_id: &str,
-        epoch: u64,
-        raw: &[u8],
-        png: &[u8],
+        snapshot: Snapshot<'_>,
         body: &mut Vec<u8>,
     ) -> Result<()> {
-        write_snapshot_body(body, runner_id, epoch, raw, png)?;
+        write_snapshot_body(body, runner_id, &snapshot)?;
         let path = format!("/api/runs/{run}/snapshots");
         let (status, response) = self.post_bytes(&path, body)?;
         accepted(status, response, &format!("POST {path}"))?;
@@ -356,17 +364,21 @@ fn snapshot_body_limit(params: &Params) -> u64 {
 /// The snapshot request body, written field by field so the two big base64 strings are
 /// streamed into `body` rather than each built whole and then serialised again. Keep the
 /// shape in step with what `Api::RunsController#snapshots` reads.
-fn write_snapshot_body(
-    body: &mut Vec<u8>,
-    runner_id: &str,
-    epoch: u64,
-    raw: &[u8],
-    png: &[u8],
-) -> Result<()> {
+fn write_snapshot_body(body: &mut Vec<u8>, runner_id: &str, snapshot: &Snapshot<'_>) -> Result<()> {
+    let Snapshot {
+        epoch,
+        raw,
+        png,
+        reason,
+    } = snapshot;
     body.clear();
     body.extend_from_slice(br#"{"runner_id":"#);
     serde_json::to_writer(&mut *body, runner_id).context("writing the runner id")?;
-    write!(body, r#","epoch":{epoch},"blob":""#)?;
+    write!(
+        body,
+        r#","epoch":{epoch},"reason":"{}","blob":""#,
+        reason.as_str()
+    )?;
     write_base64(body, raw)?;
     body.extend_from_slice(br#"","png":""#);
     write_base64(body, png)?;
@@ -434,6 +446,15 @@ mod tests {
         LabClient::new(&lab.base_url(), "token").with_backoff(Duration::from_millis(1))
     }
 
+    fn snapshot(epoch: u64, reason: SnapshotReason) -> Snapshot<'static> {
+        Snapshot {
+            epoch,
+            raw: b"raw",
+            png: b"png",
+            reason,
+        }
+    }
+
     #[test]
     fn a_claim_carries_the_run_to_execute() {
         let lab = MockLab::start();
@@ -490,7 +511,12 @@ mod tests {
         let lab = MockLab::start();
 
         client(&lab)
-            .snapshot(1, "runner-1", 30, b"raw", b"png", &mut Vec::new())
+            .snapshot(
+                1,
+                "runner-1",
+                snapshot(30, SnapshotReason::Cadence),
+                &mut Vec::new(),
+            )
             .unwrap();
 
         let posted = lab.request("POST /api/runs/1/snapshots");
@@ -498,6 +524,31 @@ mod tests {
         assert_eq!(posted["png"], json!(BASE64.encode(b"png")));
         assert_eq!(posted["epoch"], json!(30));
         assert_eq!(posted["runner_id"], json!("runner-1"));
+        assert_eq!(posted["reason"], json!("cadence"));
+    }
+
+    /// The app stores the reason the run loop gave, so a forced snapshot is told apart
+    /// from a cadence one once the runner log is gone.
+    #[test]
+    fn a_snapshot_carries_why_it_was_taken() {
+        let lab = MockLab::start();
+
+        for reason in [
+            SnapshotReason::Cadence,
+            SnapshotReason::Age,
+            SnapshotReason::Transition,
+        ] {
+            client(&lab)
+                .snapshot(1, "runner-1", snapshot(30, reason), &mut Vec::new())
+                .unwrap();
+        }
+
+        let posted = lab.requests("POST /api/runs/1/snapshots");
+        let reasons: Vec<_> = posted.iter().map(|body| body["reason"].clone()).collect();
+        assert_eq!(
+            reasons,
+            vec![json!("cadence"), json!("age"), json!("transition")]
+        );
     }
 
     /// The body is hand-written, so the buffer it is written into has to be reused
@@ -508,11 +559,25 @@ mod tests {
         let client = client(&lab);
         let mut body = Vec::new();
 
+        let big = vec![0xab; 4096];
         client
-            .snapshot(1, "runner-1", 30, &vec![0xab; 4096], b"png", &mut body)
+            .snapshot(
+                1,
+                "runner-1",
+                Snapshot {
+                    raw: &big,
+                    ..snapshot(30, SnapshotReason::Cadence)
+                },
+                &mut body,
+            )
             .unwrap();
         client
-            .snapshot(1, "runner-1", 60, b"raw", b"png", &mut body)
+            .snapshot(
+                1,
+                "runner-1",
+                snapshot(60, SnapshotReason::Transition),
+                &mut body,
+            )
             .unwrap();
 
         let posted = lab.requests("POST /api/runs/1/snapshots");

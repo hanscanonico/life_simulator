@@ -62,7 +62,9 @@
     <% @show.snapshots.each do |snapshot| %>
       <figure class="snapshot">
         <%= image_tag png_snapshot_path(snapshot), alt: "World at epoch #{snapshot.epoch}", loading: "lazy" %>
-        <figcaption class="text-sm text-muted">epoch <%= number_with_delimiter snapshot.epoch %></figcaption>
+        <figcaption class="text-sm text-muted">
+          epoch <%= number_with_delimiter snapshot.epoch %> <span class="text-xs">(<%= snapshot.reason %>)</span>
+        </figcaption>
       </figure>
     <% end %>
   </div>
