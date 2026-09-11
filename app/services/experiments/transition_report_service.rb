@@ -18,28 +18,45 @@ module Experiments
     # the sampling interval or the detector's hold changes.
     CONFIRM_WINDOW = 10
 
-    RUN_COLUMNS = %w[run_id seed].freeze
+    RUN_COLUMNS = %w[run_id seed status].freeze
+    ARM_COLUMNS = %w[arm n n_terminal flagged replicators both either_but_not_both].freeze
     SAMPLE_COLUMNS = %w[
       transition_epoch collapse_epoch confirmed_epoch confirmed_by min_entropy_bits
       min_entropy_epoch peak_replicator_count peak_replicator_epoch first_replicator_epoch
       peak_copy_rate peak_copy_rate_epoch final_compress_ratio final_distinct_tapes final_top_share
     ].freeze
 
-    Row = Data.define(:run_id, :seed, :params, :transition_epoch, :collapse_epoch,
+    Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :collapse_epoch,
                       :confirmed_epoch, :confirmed_by, :min_entropy_bits, :min_entropy_epoch, :peak_replicator_count,
                       :peak_replicator_epoch, :first_replicator_epoch, :peak_copy_rate,
                       :peak_copy_rate_epoch, :final_compress_ratio, :final_distinct_tapes,
                       :final_top_share) do
       def cells
-        [run_id, seed, *params.values, *SAMPLE_COLUMNS.map { |column| public_send(column) }]
+        [run_id, seed, status, *params.values, *SAMPLE_COLUMNS.map { |column| public_send(column) }]
       end
+
+      def terminal? = Run::TERMINAL_STATUSES.include?(status)
+
+      def flagged? = transition_epoch.present?
+
+      def replicated? = peak_replicator_count.to_f.positive?
+    end
+
+    Arm = Data.define(:label, :runs, :terminal, :flagged, :replicated, :both) do
+      def flagged_only = flagged - both
+
+      def replicated_only = replicated - both
+
+      def either_but_not_both = flagged_only + replicated_only
+
+      def cells = [label, runs, terminal, flagged, replicated, both, either_but_not_both]
     end
 
     Report = Data.define(:rows, :arms, :param_keys) do
       def headers = [*RUN_COLUMNS, *param_keys, *SAMPLE_COLUMNS]
 
       def to_text
-        [table(headers, rows.map(&:cells)), table(TransitionArmsService::COLUMNS, arms.map(&:cells))].join("\n")
+        [table(headers, rows.map(&:cells)), table(ARM_COLUMNS, arms.map(&:cells))].join("\n")
       end
 
       def to_csv
@@ -47,7 +64,7 @@ module Experiments
           csv << headers
           rows.each { |row| csv << row.cells }
           csv << []
-          csv << TransitionArmsService::COLUMNS
+          csv << ARM_COLUMNS
           arms.each { |arm| csv << arm.cells }
         end
       end
@@ -70,8 +87,9 @@ module Experiments
       end
     end
 
-    def initialize(experiment:)
+    def initialize(experiment:, include_running: false)
       @experiment = experiment
+      @include_running = include_running
     end
 
     def call = Report.new(rows: rows, arms: arms, param_keys: param_keys)
@@ -82,9 +100,28 @@ module Experiments
       @rows ||= sampled_runs.map { |run, samples| row(run, samples) }
     end
 
-    # The arm block is the arms service's, counted off indexed columns rather than off
-    # these rows, so the block the page publishes and the one under the rows cannot drift.
-    def arms = TransitionArmsService.call(experiment: @experiment)
+    # Counted off the rows already read rather than off the page's block
+    # (TransitionArmsService), because a report written to settle a claim counts terminal
+    # runs only: a run still going carries a partial sample and its flag can still change.
+    # `n` stays every sampled run of the arm, `n_terminal` the ones counted, and
+    # INCLUDE_RUNNING opts back into counting the in-flight ones.
+    def arms
+      @arms ||= rows.group_by { |row| arm_label(row.params) }.map { |label, arm_rows| arm(label, arm_rows) }
+    end
+
+    def arm(label, arm_rows)
+      counted = @include_running ? arm_rows : arm_rows.select(&:terminal?)
+
+      Arm.new(label: label, runs: arm_rows.size, terminal: arm_rows.count(&:terminal?),
+              flagged: counted.count(&:flagged?), replicated: counted.count(&:replicated?),
+              both: counted.count { |row| row.flagged? && row.replicated? })
+    end
+
+    def arm_label(params)
+      labels = axes.filter_map { |axis| axis.label_of_run(params) }
+
+      labels.empty? ? @experiment.slug : labels.join(" ")
+    end
 
     # A run nothing has been sampled from yet is no row: the report is a reading of stored
     # samples, not of the queue.
@@ -104,7 +141,7 @@ module Experiments
     end
 
     def identity_of(run)
-      { run_id: run.id, seed: run.seed, params: param_keys.index_with { |key| run.params[key] } }
+      { run_id: run.id, seed: run.seed, status: run.status, params: param_keys.index_with { |key| run.params[key] } }
     end
 
     # `collapse_epoch` is the bare first crossing of the threshold, where

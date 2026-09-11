@@ -35,7 +35,9 @@ tracker survived a snapshot resume. `"lab:transition_report[<slug>]"` reads the 
 and the replicator census side by side over the stored samples — per run the flagged
 epoch, the bare threshold crossing, the entropy minimum, the replicator and copy-rate
 peaks and the final observables, then a per-arm count of the runs the two observables
-disagree on (`FORMAT=csv` for CSV); it is how a claim about emergence gets written on both
+disagree on (`FORMAT=csv` for CSV); the per-arm counts read terminal runs only — `n` is
+every sampled run of the arm and `n_terminal` the ones counted, `INCLUDE_RUNNING=1` counts
+the in-flight ones too — and it is how a claim about emergence gets written on both
 observables before it is published. `"lab:snapshot_audit[<slug>]"` checks that each
 measured transition has a world behind it — per run the snapshot nearest its
 `transition_epoch`, why the loop took it (cadence, age or transition) and how far off it

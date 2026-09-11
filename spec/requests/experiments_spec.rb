@@ -233,7 +233,7 @@ RSpec.describe "Experiments", type: :request do
         lines = response.body.lines.map(&:chomp)
         expect(response.media_type).to eq("text/csv")
         expect(response.headers["Content-Disposition"]).to include("attachment", "radius-transitions.csv")
-        expect(lines).to include("arm,n,flagged,replicators,both,either_but_not_both", "2,2,1,1,1,0")
+        expect(lines).to include("arm,n,n_terminal,flagged,replicators,both,either_but_not_both", "2,2,2,1,1,1,0")
       end
     end
 
