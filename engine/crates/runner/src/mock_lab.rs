@@ -12,6 +12,7 @@ use tiny_http::{Header, Method, Request, Response, Server};
 pub const TOKEN: &str = "token";
 /// The length of the run the mock hands out; short enough to execute in a test.
 pub const EPOCHS: u64 = 6;
+const BINARY: &str = "application/octet-stream";
 
 #[derive(Default)]
 struct State {
@@ -150,6 +151,10 @@ fn answer(mut request: Request, state: &Arc<Mutex<State>>) {
     let authorized = request.headers().iter().any(|header| {
         header.field.equiv("Authorization") && header.value == format!("Bearer {TOKEN}").as_str()
     });
+    let wants_binary = request
+        .headers()
+        .iter()
+        .any(|header| header.field.equiv("Accept") && header.value == "application/octet-stream");
     let mut body = String::new();
     let _ = std::io::Read::read_to_string(request.as_reader(), &mut body);
     let parsed = serde_json::from_str(&body).unwrap_or(Value::Null);
@@ -164,6 +169,23 @@ fn answer(mut request: Request, state: &Arc<Mutex<State>>) {
     if state.fail_next > 0 {
         state.fail_next -= 1;
         let _ = request.respond(Response::empty(500));
+        return;
+    }
+
+    if wants_binary && method == Method::Get && path == "/api/runs/1/snapshots/latest" {
+        let _ = match state.latest_snapshot.clone() {
+            Some((epoch, blob)) => request.respond(
+                Response::from_data(blob)
+                    .with_header(
+                        Header::from_bytes(&b"Content-Type"[..], BINARY.as_bytes()).unwrap(),
+                    )
+                    .with_header(
+                        Header::from_bytes(&b"X-Snapshot-Epoch"[..], epoch.to_string().as_bytes())
+                            .unwrap(),
+                    ),
+            ),
+            None => request.respond(Response::empty(204)),
+        };
         return;
     }
 

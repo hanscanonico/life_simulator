@@ -2,6 +2,10 @@
 
 module Api
   class RunsController < BaseController
+    BINARY_TYPE = "application/octet-stream"
+    # The epoch a binary answer resumes from; the JSON answer carries it in the body.
+    SNAPSHOT_EPOCH_HEADER = "X-Snapshot-Epoch"
+
     before_action :set_run, except: :claim
     before_action :authorize_runner!, except: %i[claim world]
 
@@ -38,12 +42,19 @@ module Api
 
     # Where a resumed run picks up: the newest world the runner posted for this run.
     # Only the blob and its epoch travel — the runner restores world bytes and never the
-    # PNG, which would double a large world's already multi-megabyte answer.
+    # PNG, which would double a large world's already multi-megabyte answer. A runner
+    # that accepts octet-stream gets the bytes themselves, which spares it the base64
+    # expansion and the copies of it that resuming twelve slots at once cannot afford.
     def latest_snapshot
       snapshot = @run.snapshots.restorable.order(epoch: :desc).select(:id, :epoch, :blob).first
       return head :no_content if snapshot.nil?
 
-      render json: { epoch: snapshot.epoch, blob: Base64.strict_encode64(snapshot.blob) }
+      if binary_wanted?
+        response.set_header(SNAPSHOT_EPOCH_HEADER, snapshot.epoch.to_s)
+        send_data snapshot.blob, type: BINARY_TYPE
+      else
+        render json: { epoch: snapshot.epoch, blob: Base64.strict_encode64(snapshot.blob) }
+      end
     end
 
     # What `runner rescore` re-reads: a stored world of the run, with the params that
@@ -83,6 +94,8 @@ module Api
     end
 
     def runner_id = params.require(:runner_id)
+
+    def binary_wanted? = request.accepts.any? { |type| type == BINARY_TYPE }
 
     def binary(value)
       return nil if value.blank?

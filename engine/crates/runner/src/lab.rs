@@ -21,6 +21,10 @@ pub const IDLE: Duration = Duration::from_secs(15);
 /// DESIGN.md §2: a run silent for 5 minutes is released, so beat well inside that.
 pub const HEARTBEAT: Duration = Duration::from_secs(30);
 const TICK: Duration = Duration::from_millis(100);
+/// How far apart slots start. A restart has every slot claim and resume at once, and a
+/// dozen multi-megabyte snapshot answers in the same instant is what exhausted the
+/// mini-pc's swap; spreading the start-up spreads those reads.
+const STAGGER: Duration = Duration::from_millis(500);
 
 pub struct Lab {
     client: LabClient,
@@ -28,6 +32,7 @@ pub struct Lab {
     parallelism: usize,
     idle: Duration,
     heartbeat: Duration,
+    stagger: Duration,
     stop: Arc<AtomicBool>,
 }
 
@@ -39,6 +44,7 @@ impl Lab {
             parallelism: parallelism.max(1),
             idle: IDLE,
             heartbeat: HEARTBEAT,
+            stagger: STAGGER,
             stop: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -63,6 +69,7 @@ impl Lab {
     /// One worker: its own runner id, so the app hands it its own runs.
     fn claim_loop(&self, worker: usize) {
         let runner_id = format!("{}-{worker}", self.runner_id);
+        self.wait(self.stagger * worker as u32);
         while !self.stopping() {
             match self.client.claim(&runner_id) {
                 Ok(Some(claimed)) => {
@@ -134,7 +141,10 @@ impl Lab {
     /// starts from `(params, seed)`.
     fn restore(&self, runner_id: &str, claimed: &ClaimedRun) -> Result<World> {
         if claimed.epochs_done > 0 {
-            if let Some((epoch, blob)) = self.client.latest_snapshot(claimed.id, runner_id)? {
+            let latest = self
+                .client
+                .latest_snapshot(claimed.id, runner_id, &claimed.params)?;
+            if let Some((epoch, blob)) = latest {
                 println!("{runner_id}: resuming run {} at epoch {epoch}", claimed.id);
                 return World::from_snapshot(&claimed.params, claimed.seed, &blob)
                     .map_err(anyhow::Error::msg);
@@ -217,6 +227,7 @@ mod tests {
             parallelism: 1,
             idle: Duration::from_millis(10),
             heartbeat: Duration::from_millis(10),
+            stagger: Duration::ZERO,
             stop: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -316,6 +327,39 @@ mod tests {
         let beat = mock.request("POST /api/runs/1/heartbeat");
         assert_eq!(beat["epochs_done"], json!(1));
         assert_eq!(mock.count("POST /api/runs/1/finish"), 0);
+    }
+
+    /// A slot waits its own offset out before its first claim, so twelve resumes do not
+    /// fetch their snapshots in the same instant.
+    #[test]
+    fn a_later_slot_starts_after_the_earlier_ones() {
+        assert!(STAGGER > Duration::ZERO, "slots would all start at once");
+
+        let mock = MockLab::start();
+        mock.set_queue_empty();
+        let mut lab = lab(&mock);
+        lab.stagger = Duration::from_secs(1);
+
+        thread::scope(|scope| {
+            scope.spawn(|| lab.claim_loop(0));
+            scope.spawn(|| lab.claim_loop(2));
+            thread::sleep(Duration::from_millis(60));
+            lab.stop.store(true, Ordering::Relaxed);
+        });
+
+        let claimants: Vec<String> = mock
+            .requests("POST /api/runs/claim")
+            .iter()
+            .map(|body| body["runner_id"].as_str().unwrap_or_default().to_string())
+            .collect();
+        assert!(
+            claimants.contains(&"runner-test-0".to_string()),
+            "{claimants:?}"
+        );
+        assert!(
+            !claimants.contains(&"runner-test-2".to_string()),
+            "{claimants:?}"
+        );
     }
 
     #[test]
