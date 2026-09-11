@@ -1,0 +1,237 @@
+#!/bin/bash
+# One memory table for the lab operator, measured the same way at every visit so
+# two readings are comparable: host memory, run counts by status, and the memory
+# and CPU of every container on the box.
+#
+# Read-only by construction: no command here writes to the database or the stack.
+# Every external command runs under `timeout`, and a command that fails or hangs
+# leaves a row of `?` behind instead of aborting the report — a report missing its
+# containers is still evidence about memory.
+set -uo pipefail
+cd "$(dirname "$0")" || exit 1
+
+compose=(docker compose -f docker-compose.yml)
+TIMEOUT=10
+COUNT_SQL="select status, count(*) from runs group by status order by status"
+
+repeat=1
+interval=60
+tsv=0
+out=""
+
+usage() {
+  cat <<'EOF'
+usage: deploy/memory_report [--tsv] [--repeat N] [--interval S] [--out FILE] [--self-test]
+
+  --tsv          machine-readable TSV instead of the table
+  --repeat N     take N samples, one every --interval seconds (implies --tsv)
+  --interval S   seconds between samples (default 60)
+  --out FILE     append every TSV row to FILE as well as printing the report
+  --self-test    check the parsers and the table against canned input, then exit
+
+TSV columns: stamp, section (mem|runs|container), name, and four values —
+memory is total/used/available/swap-used in MiB, runs is a count, a container is
+its memory usage, memory percentage and CPU percentage. `-` pads unused columns
+and `?` marks a measurement that could not be taken.
+EOF
+}
+
+run() { timeout "$TIMEOUT" "$@"; }
+
+parse_free() {
+  awk '
+    $1 == "Mem:"  { total = $2; used = $3; available = $NF }
+    $1 == "Swap:" { swap_used = $3 }
+    END {
+      if (total == "") exit 1
+      printf "%s\t%s\t%s\t%s\n", total, used, available, swap_used + 0
+    }'
+}
+
+parse_counts() {
+  awk -F'\t' '$1 != "" && NF >= 2 { printf "%s\t%s\n", $1, $2; found = 1 }
+              END { if (!found) exit 1 }'
+}
+
+parse_stats() {
+  awk -F'\t' '$1 != "" && NF >= 4 { printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $4; found = 1 }
+              END { if (!found) exit 1 }'
+}
+
+# The password only exists for the host psql on 5433; the in-container psql reaches
+# Postgres over its unix socket, which needs none.
+load_pgpassword() {
+  if [ -z "${PGPASSWORD:-}" ] && [ -r .env ]; then
+    PGPASSWORD=$(sed -n 's/^POSTGRES_PASSWORD=//p' .env | tail -n1 | tr -d "\"'")
+    export PGPASSWORD
+  fi
+}
+
+read_counts() {
+  if command -v psql >/dev/null && [ -n "${PGPASSWORD:-}" ]; then
+    run psql -h 127.0.0.1 -p 5433 -U life_simulator -d life_simulator_production \
+      -At -F $'\t' -c "$COUNT_SQL"
+  else
+    run "${compose[@]}" exec -T db \
+      psql -U life_simulator -d life_simulator_production -At -F $'\t' -c "$COUNT_SQL"
+  fi
+}
+
+sample_rows() {
+  local stamp mem counts stats
+  stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  if mem=$(run free -m 2>/dev/null | parse_free); then
+    printf '%s\tmem\thost\t%s\n' "$stamp" "$mem"
+  else
+    printf '%s\tmem\thost\t?\t?\t?\t?\n' "$stamp"
+  fi
+
+  if counts=$(read_counts 2>/dev/null | parse_counts); then
+    while IFS=$'\t' read -r status count; do
+      printf '%s\truns\t%s\t%s\t-\t-\t-\n' "$stamp" "$status" "$count"
+    done <<<"$counts"
+  else
+    printf '%s\truns\t?\t?\t-\t-\t-\n' "$stamp"
+  fi
+
+  if stats=$(run docker stats --no-stream \
+    --format '{{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.CPUPerc}}' 2>/dev/null |
+    parse_stats); then
+    while IFS=$'\t' read -r name usage pct cpu; do
+      printf '%s\tcontainer\t%s\t%s\t%s\t%s\t-\n' "$stamp" "$name" "$usage" "$pct" "$cpu"
+    done <<<"$stats"
+  else
+    printf '%s\tcontainer\t?\t?\t?\t?\t-\n' "$stamp"
+  fi
+}
+
+render_table() {
+  awk -F'\t' '
+    NR == 1 { stamp = $1 }
+    $2 == "mem"  { total = $4; used = $5; available = $6; swap = $7 }
+    $2 == "runs" { runs[++nr] = sprintf("  %-10s %s", $3, $4) }
+    $2 == "container" {
+      containers[++nc] = sprintf("  %-26s %-24s %-8s %s", $3, $4, $5, $6)
+    }
+    END {
+      printf "memory report %s\n\n", stamp
+      print "host memory (MiB)"
+      printf "  %-10s %-10s %-12s %s\n", "total", "used", "available", "swap used"
+      printf "  %-10s %-10s %-12s %s\n\n", total, used, available, swap
+      print "runs by status"
+      for (i = 1; i <= nr; i++) print runs[i]
+      print ""
+      print "containers"
+      printf "  %-26s %-24s %-8s %s\n", "name", "memory", "mem%", "cpu%"
+      for (i = 1; i <= nc; i++) print containers[i]
+    }'
+}
+
+expect() {
+  local label=$1 want=$2 got=$3
+  if [ "$want" = "$got" ]; then
+    echo "ok   $label"
+  else
+    echo "FAIL $label"
+    printf 'want: %s\ngot:  %s\n' "$want" "$got" >&2
+    return 1
+  fi
+}
+
+self_test() {
+  local failed=0 got
+
+  got=$(parse_free <<'EOF'
+               total        used        free      shared  buff/cache   available
+Mem:           31724       14012         412         118        9877        5410
+Swap:           2047        2047           0
+EOF
+)
+  expect "parse_free reads total, used, available and swap used" \
+    "$(printf '31724\t14012\t5410\t2047')" "$got" || failed=1
+
+  got=$(parse_free </dev/null; echo "exit=$?")
+  expect "parse_free fails on output without a Mem: line" "exit=1" "$got" || failed=1
+
+  got=$(parse_counts <<'EOF'
+pending	24
+running	12
+
+psql: warning: one column, no count
+finished	318
+EOF
+)
+  expect "parse_counts keeps the status rows and drops the blank and the one-column noise" \
+    "$(printf 'pending\t24\nrunning\t12\nfinished\t318')" "$got" || failed=1
+
+  got=$(parse_stats <<'EOF'
+life-simulator-runner-1	5.42GiB / 6GiB	90.33%	1187.41%
+short-row
+EOF
+)
+  expect "parse_stats keeps the four-column rows only" \
+    "$(printf 'life-simulator-runner-1\t5.42GiB / 6GiB\t90.33%%\t1187.41%%')" "$got" || failed=1
+
+  got=$(parse_stats <<<"short-row"; echo "exit=$?")
+  expect "parse_stats fails when docker printed nothing usable" "exit=1" "$got" || failed=1
+
+  got=$(render_table <<'EOF'
+2026-09-11T23:50:00Z	mem	host	31724	14012	5410	2047
+2026-09-11T23:50:00Z	runs	pending	24	-	-	-
+2026-09-11T23:50:00Z	container	life-simulator-db-1	612MiB / 31GiB	1.93%	0.40%	-
+EOF
+)
+  expect "render_table lays every measured number out under its heading" \
+    "$(cat <<'EOF'
+memory report 2026-09-11T23:50:00Z
+
+host memory (MiB)
+  total      used       available    swap used
+  31724      14012      5410         2047
+
+runs by status
+  pending    24
+
+containers
+  name                       memory                   mem%     cpu%
+  life-simulator-db-1        612MiB / 31GiB           1.93%    0.40%
+EOF
+)" "$got" || failed=1
+
+  [ "$failed" = 0 ] || { echo "self-test failed" >&2; return 1; }
+  echo "self-test passed"
+}
+
+while [ $# -gt 0 ]; do
+  case $1 in
+    --tsv) tsv=1 ;;
+    --repeat) repeat="${2:?--repeat needs a count}"; tsv=1; shift ;;
+    --interval) interval="${2:?--interval needs seconds}"; shift ;;
+    --out) out="${2:?--out needs a path}"; shift ;;
+    --self-test) self_test; exit $? ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+case $repeat in
+  ''|*[!0-9]*|0) echo "--repeat takes a positive integer" >&2; exit 2 ;;
+esac
+case $interval in
+  ''|*[!0-9]*) echo "--interval takes a whole number of seconds" >&2; exit 2 ;;
+esac
+
+load_pgpassword
+
+for ((i = 1; i <= repeat; i++)); do
+  rows=$(sample_rows)
+  if [ "$tsv" = 1 ]; then
+    printf '%s\n' "$rows"
+  else
+    render_table <<<"$rows"
+  fi
+  [ -z "$out" ] || printf '%s\n' "$rows" >>"$out"
+  [ "$i" = "$repeat" ] || sleep "$interval"
+done

@@ -52,9 +52,11 @@ make.
 You receive the deadline of the current unattended run and, optionally, the reports of
 earlier checks. Each visit:
 
-1. **Health.** `free -h`, `df -h`, `docker compose ps`, the app's `/up`. A service down
-   is brought back with `up -d`; a disk past 85% gets `lab:prune_snapshots` and a
-   `docker image prune -f`. Both are reported.
+1. **Health.** `deploy/memory_report` (host memory, runs by status, per-container memory
+   and CPU — run it at every visit and paste its table into the report verbatim, so
+   tonight's numbers are comparable with the last visit's), `df -h`, `docker compose ps`,
+   the app's `/up`. A service down is brought back with `up -d`; a disk past 85% gets
+   `lab:prune_snapshots` and a `docker image prune -f`. Both are reported.
 2. **Queue.** Read the status page. Stale runs release themselves on the next claim, so
    leave them. When the pending count is below what the runners finish before the
    deadline (epochs per hour against the pending runs' epochs), seed the next sweep of

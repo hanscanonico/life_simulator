@@ -68,6 +68,26 @@ returns it to the queue; the next claim fetches its latest snapshot and continue
 that epoch, so nothing but the epochs since the last snapshot is recomputed. A run that
 crashes is reported as `failed` with its error and is not retried.
 
+## Memory
+
+`deploy/memory_report` prints the one table every memory question on this box needs,
+always measured the same way so two visits are comparable: host memory from `free -m`
+(total, used, available, swap used), run counts by status, and one row per container
+with its memory usage, memory percentage and CPU.
+
+```sh
+deploy/memory_report                                   # the table
+deploy/memory_report --tsv                             # the same numbers, machine-readable
+deploy/memory_report --repeat 20 --interval 30 \
+  --out ~/memory_deploy.tsv                            # sample a deploy window
+deploy/memory_report --self-test                       # check the parsers, touch nothing
+```
+
+It is read-only and never fails the visit: every command runs under `timeout 10`, and one
+that hangs or is missing leaves a row of `?` rather than aborting the report. Run counts
+come from the host `psql` on 5433 when `deploy/.env` has the password, otherwise from
+`psql` inside the `db` container.
+
 ## Automatic deployment
 
 Green main deploys itself: the `deploy` job of `.github/workflows/ci.yml` runs on the
