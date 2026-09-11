@@ -19,6 +19,7 @@ const BINARY: &str = "application/octet-stream";
 struct State {
     requests: Vec<(String, Value)>,
     queue_empty: bool,
+    claim_epochs_done: u64,
     fail_next: u32,
     fail_next_at: BTreeMap<String, u32>,
     latest_snapshot: Option<(u64, Vec<u8>)>,
@@ -97,6 +98,12 @@ impl MockLab {
 
     pub fn set_queue_empty(&self) {
         self.state.lock().unwrap().queue_empty = true;
+    }
+
+    /// The claim answers a run another runner left part-done, as the app does for a run
+    /// it released to pending when its runner went silent.
+    pub fn set_released_run(&self, epochs_done: u64) {
+        self.state.lock().unwrap().claim_epochs_done = epochs_done;
     }
 
     pub fn set_latest_snapshot(&self, epoch: u64, blob: Vec<u8>) {
@@ -255,7 +262,7 @@ fn answer(mut request: Request, state: &Arc<Mutex<State>>) {
             "params": MockLab::params(),
             "seed": 7,
             "epochs": EPOCHS,
-            "epochs_done": 0,
+            "epochs_done": state.claim_epochs_done,
         })),
         (Method::Get, _) if path.ends_with("/world") => run_of(&path).and_then(|run| {
             let worlds = state.worlds.get(&run).cloned().unwrap_or_default();
