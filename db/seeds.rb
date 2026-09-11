@@ -32,7 +32,11 @@ if Rails.env.development?
           "copy_rate" => (0.6 * progress).round(4)
         } }
     end
+    # Runs::RecordSamplesService writes the newest sample onto the run as it ingests a
+    # batch; inserting the rows behind its back has to hold that invariant, or every
+    # summary-fed reading (the runs table's census, the CSV) reads blank in development.
     Sample.insert_all!(rows)
+    run.update!(summary: rows.last[:values])
   end
 
   sweep = lambda do |slug, attributes|
