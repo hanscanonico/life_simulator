@@ -112,7 +112,7 @@ if start_stack; then
   exit 0
 fi
 
-echo "Still not serving after the retry." >&2
+echo "The stack is still not fully up after the retry." >&2
 report_stack
 if [ -z "$serving" ]; then
   echo "No previous image to roll back to; the site is down." >&2
@@ -123,7 +123,7 @@ echo "Rolling back to the previous image..." >&2
 if docker image tag "$previous" "$image" && start_stack; then
   echo "Rolled back: the previous build is serving again." >&2
 else
-  echo "Rollback failed too — the site is down. Check: $compose logs app" >&2
+  echo "The rollback did not bring the whole stack up either. Check: $compose logs app" >&2
   report_stack
 fi
 exit 1
