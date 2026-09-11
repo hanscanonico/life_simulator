@@ -12,7 +12,8 @@ RSpec.describe Lab::Schema do
   end
 
   it "reads the transition rule the engine measures by" do
-    expect(described_class.transition).to eq("threshold" => 0.6, "hold_samples" => 3)
+    expect(described_class.transition)
+      .to eq("threshold" => 0.6, "hold_samples" => 3, "max_op_density" => 0.9, "min_alphabet_size" => 16)
   end
 
   it "exposes an enum's values" do

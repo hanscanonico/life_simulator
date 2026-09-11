@@ -151,6 +151,7 @@ mod tests {
             op_density: 0.04,
             replicator_count: 0,
             entropy_bits: 7.9,
+            alphabet_size: 256,
             copy_rate: 0.0,
         }
     }
@@ -226,7 +227,15 @@ mod tests {
             ..MockLab::params()
         };
 
-        run::execute(&ordered, 7, 6, &mut sink).unwrap();
+        run::execute_world(
+            run::settling_world(&ordered, 7),
+            6,
+            None,
+            None,
+            &mut sink,
+            &run::Progress::default(),
+        )
+        .unwrap();
 
         let posted = lab.request("POST /api/runs/1/samples");
         assert_eq!(posted["samples"].as_array().unwrap().len(), 4);
@@ -246,7 +255,15 @@ mod tests {
             ..MockLab::params()
         };
 
-        run::execute(&ordered, 7, 6, &mut sink).unwrap();
+        run::execute_world(
+            run::settling_world(&ordered, 7),
+            6,
+            None,
+            None,
+            &mut sink,
+            &run::Progress::default(),
+        )
+        .unwrap();
 
         let posted = lab.requests("POST /api/runs/1/snapshots");
         assert_eq!(

@@ -99,6 +99,14 @@
     <dt class="mono">entropy_bits</dt>
     <dd>The Shannon entropy of the byte distribution.</dd>
 
+    <dt class="mono">alphabet_size</dt>
+    <dd>
+      How many of the 256 byte values the world still holds. With no mutation only
+      <span class="mono">+</span> and <span class="mono">-</span> can mint a byte value,
+      so an alphabet can only shrink — and a world down to a couple of letters reads
+      compressible without replicating anything.
+    </dd>
+
     <dt class="mono">copy_rate</dt>
     <dd>
       The share of the sampled epoch's interactions that ended with one tape copied
@@ -111,7 +119,9 @@
     <dd>
       Recorded once per run: the first sampled epoch at which
       <span class="mono">compress_ratio</span> drops below 0.6 and stays below it for the
-      next 3 samples. Null until it happens. It is the primary dependent variable of every
+      next 3 samples, counting only samples whose alphabet is alive —
+      <span class="mono">op_density</span> at most 0.9 and
+      <span class="mono">alphabet_size</span> at least 16. Null until it happens. It is the primary dependent variable of every
       sweep. A flagged run is the signal we sweep on, not a proof of self-replication: the
       replicator census can still read zero, and
       <%= link_to "the findings", findings_path %> say where the two disagree.

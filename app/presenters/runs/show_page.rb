@@ -11,6 +11,7 @@ module Runs
       "replicator_count" => "Replicator count",
       "op_density" => "Instruction density",
       "entropy_bits" => "Entropy (bits)",
+      "alphabet_size" => "Alphabet size",
       "copy_rate" => "Copy rate"
     }.freeze
 

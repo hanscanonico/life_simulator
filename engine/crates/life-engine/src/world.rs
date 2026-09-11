@@ -322,7 +322,7 @@ impl World {
 
     fn sample(&mut self, compress_ratio: f64) -> Metrics {
         let measured = self.measure(compress_ratio);
-        self.transition.observe(self.epoch, measured.compress_ratio);
+        self.transition.observe(self.epoch, &measured);
         measured
     }
 
@@ -340,6 +340,7 @@ impl World {
             op_density: histogram.op_density(),
             replicator_count: self.count_replicators(&ranked),
             entropy_bits: histogram.entropy_bits(),
+            alphabet_size: histogram.alphabet_size(),
             copy_rate: self.copy_rate,
         }
     }
@@ -405,6 +406,21 @@ mod tests {
             init: Init::Zero,
             ..Params::default()
         }
+    }
+
+    /// A soup the tracker can settle a transition on: every cell holds the same tape of
+    /// 32 distinct bytes, none of them an instruction, so nothing executes and nothing
+    /// writes. It reads compressible and still, with an alphabet well clear of the
+    /// collapse guard — the zero-filled soup this once used reads an alphabet of one.
+    fn quiet_diverse_soup(params: &Params) -> World {
+        let mut world = World::new(params, 3).unwrap();
+        let tape: Vec<u8> = (0..params.stride()).map(|at| 1 + (at % 32) as u8).collect();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world
     }
 
     fn stepped(params: &Params, seed: u64, epochs: u64) -> World {
@@ -675,6 +691,10 @@ mod tests {
             "{measured:?}"
         );
         assert_eq!(measured.distinct_tapes, 256);
+        assert_eq!(
+            measured.alphabet_size, 256,
+            "a random soup holds every byte value"
+        );
         assert_eq!(measured.replicator_count, 0);
         assert_eq!(measured.copy_rate, 0.0, "nothing has interacted yet");
         assert!((measured.top_share - 1.0 / 256.0).abs() < 1e-9);
@@ -811,6 +831,7 @@ mod tests {
         assert_eq!(measured.distinct_tapes, 1);
         assert_eq!(measured.top_share, 1.0);
         assert_eq!(measured.entropy_bits, 0.0);
+        assert_eq!(measured.alphabet_size, 1);
     }
 
     #[test]
@@ -862,6 +883,7 @@ mod tests {
         assert_eq!(rescored.compress_ratio, live.compress_ratio);
         assert_eq!(rescored.entropy_bits, live.entropy_bits);
         assert_eq!(rescored.op_density, live.op_density);
+        assert_eq!(rescored.alphabet_size, live.alphabet_size);
         assert!(live.copy_rate > 0.0, "the epoch just run must have copied");
         assert_eq!(rescored.copy_rate, 0.0);
     }
@@ -873,7 +895,7 @@ mod tests {
             mutation_rate: 0.0,
             ..soup(16, 16)
         };
-        let mut world = World::new(&params, 3).unwrap();
+        let mut world = quiet_diverse_soup(&params);
         assert_eq!(world.transition_epoch(), None);
         for _ in 0..4 {
             world.metrics();
@@ -889,7 +911,7 @@ mod tests {
             mutation_rate: 0.0,
             ..soup(16, 16)
         };
-        let mut world = World::new(&params, 3).unwrap();
+        let mut world = quiet_diverse_soup(&params);
         for _ in 0..3 {
             world.metrics();
             world.step();
@@ -910,7 +932,7 @@ mod tests {
             mutation_rate: 0.0,
             ..soup(16, 16)
         };
-        let mut world = World::new(&params, 3).unwrap();
+        let mut world = quiet_diverse_soup(&params);
         for _ in 0..2 {
             world.metrics();
             world.step();
@@ -928,6 +950,81 @@ mod tests {
         restored.step();
         restored.metrics();
         assert_eq!(restored.transition_epoch(), Some(0));
+    }
+
+    /// Production run 183's shape: with no mutation only `+`/`-` can mint a byte value,
+    /// so a well-mixed soup can drift down to two instruction bytes — compressible, all
+    /// ops, replicating nothing. The guard keeps that out of the transition count.
+    #[test]
+    fn a_two_symbol_soup_reads_a_tiny_alphabet_and_never_transitions() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let mut rng = rng::seeded(11, 0, 0);
+        let tape: Vec<u8> = (0..params.stride())
+            .map(|_| {
+                if rng::chance(&mut rng, 0.67) {
+                    b'{'
+                } else {
+                    b'.'
+                }
+            })
+            .collect();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+
+        for _ in 0..8 {
+            let measured = world.metrics();
+            assert_eq!(measured.alphabet_size, 2, "{measured:?}");
+            assert_eq!(measured.op_density, 1.0, "both letters are instructions");
+            assert!(measured.compress_ratio < 0.6, "{measured:?}");
+            world.step();
+        }
+        assert_eq!(world.transition_epoch(), None);
+    }
+
+    #[test]
+    fn a_soup_seeded_with_replicators_still_transitions() {
+        let params = Params {
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 7).unwrap();
+        let tape = replicator::handwritten_replicator();
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+
+        for _ in 0..8 {
+            world.metrics();
+            world.step();
+        }
+        let measured = world.metrics();
+        assert!(measured.alphabet_size >= 16, "{measured:?}");
+        assert!(measured.op_density <= 0.9, "{measured:?}");
+        assert!(world.transition_epoch().is_some(), "{measured:?}");
+    }
+
+    #[test]
+    fn a_life_world_reads_an_alphabet_of_two() {
+        let params = Params {
+            init: Init::Random,
+            ..life(16, 16)
+        };
+        let mut world = World::new(&params, 4).unwrap();
+
+        assert_eq!(world.metrics().alphabet_size, 2, "life cells are 0 or 1");
     }
 
     #[test]

@@ -101,3 +101,18 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   60 000. The window of item 1 stays **not supported**: 0, 2, 3 and 1 of 10 has a floor
   and no resolvable peak. Held at **partial** while runs remain on the clock; the write-up
   reads its denominator from the database at render time.
+- 2026-09-11 — **`alphabet_size` added to §1.2, and the transition criterion guarded
+  against alphabet collapse.** Production run 183 (`bff-control`, 2^17 cells, radius 0,
+  `mutation_rate` 0, seed 3) was flagged at epoch 7 400 on `compress_ratio` 0.143 while
+  nothing replicated: only `+` and `-` can mint a byte value, so with no mutation the byte
+  alphabet is a one-way coalescent, and a well-mixed world has no refuges — 256 distinct
+  values fell to 31 by epoch 8 000 and to 2 (`{` and `.`) by 12 000, which is why
+  `op_density` reads exactly 1.0 and `copy_rate` 0. Low byte entropy compresses like a
+  colony does. So the world reports `alphabet_size` (distinct byte values, 1–256, read off
+  the histogram `op_density` and `entropy_bits` already share), and a sample counts towards
+  a transition only if `compress_ratio < 0.6` **and** `op_density <= 0.9` **and**
+  `alphabet_size >= 16`; the hold of 3 further samples is unchanged. The engine's tracker
+  stays the single authority — Rails re-reads stored samples by the same rule, with only
+  the `op_density` half available on samples recorded before the observable existed.
+  Stored `transition_epoch` values are left alone: `rake lab:transition_audit` lists the
+  runs whose transition the guard would no longer accept, for a human to decide on.

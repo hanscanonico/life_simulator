@@ -10,6 +10,12 @@ use std::io::Write;
 /// what counts as the transition to life.
 pub const TRANSITION_THRESHOLD: f64 = 0.6;
 pub const TRANSITION_HOLD_SAMPLES: u32 = 3;
+/// Above this `op_density`, and below this `alphabet_size`, a compressible world is a
+/// collapsed alphabet rather than a colony: with no mutation only `+`/`-` can mint a byte
+/// value, so the alphabet is a one-way coalescent that can drift down to a couple of
+/// instruction bytes — compressible, all ops, replicating nothing (`docs/DESIGN.md` §1.2).
+pub const TRANSITION_MAX_OP_DENSITY: f64 = 0.9;
+pub const TRANSITION_MIN_ALPHABET_SIZE: u32 = 16;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Metrics {
@@ -19,10 +25,22 @@ pub struct Metrics {
     pub op_density: f64,
     pub replicator_count: u64,
     pub entropy_bits: f64,
+    /// How many of the 256 byte values the world still holds, 1 to 256.
+    pub alphabet_size: u32,
     /// Share of the sampled epoch's interactions that ended with one tape byte-exactly
     /// copied over the other half, counting only the pairs that started out different —
     /// replication caught in situ, whoever the partner was.
     pub copy_rate: f64,
+}
+
+impl Metrics {
+    /// Whether this sample counts towards a transition: a compressible world that is not
+    /// simply an alphabet that collapsed onto a handful of instruction bytes.
+    pub fn transition_candidate(&self) -> bool {
+        self.compress_ratio < TRANSITION_THRESHOLD
+            && self.op_density <= TRANSITION_MAX_OP_DENSITY
+            && self.alphabet_size >= TRANSITION_MIN_ALPHABET_SIZE
+    }
 }
 
 /// `zlib(all tapes).len / raw.len` — the BFF paper's headline signal.
@@ -64,9 +82,14 @@ pub fn entropy_bits(bytes: &[u8]) -> f64 {
     ByteHistogram::of(bytes).entropy_bits()
 }
 
-/// The 256 byte counts of a buffer. `op_density` and `entropy_bits` are two readings of
-/// the same counts, so a sample of the whole cell buffer builds them once and reads
-/// twice instead of walking a quarter of a megabyte again.
+/// How many of the 256 byte values appear at least once (1–256; 0 on an empty buffer).
+pub fn alphabet_size(bytes: &[u8]) -> u32 {
+    ByteHistogram::of(bytes).alphabet_size()
+}
+
+/// The 256 byte counts of a buffer. `op_density`, `entropy_bits` and `alphabet_size` are
+/// three readings of the same counts, so a sample of the whole cell buffer builds them
+/// once and reads thrice instead of walking a quarter of a megabyte again.
 pub struct ByteHistogram {
     bins: [u64; 256],
     total: usize,
@@ -92,6 +115,12 @@ impl ByteHistogram {
         }
         let ops: u64 = bff::OPS.iter().map(|op| self.bins[*op as usize]).sum();
         ops as f64 / self.total as f64
+    }
+
+    /// The byte values the buffer still holds — the reading that tells a colony from an
+    /// alphabet that drifted down to a couple of letters.
+    pub fn alphabet_size(&self) -> u32 {
+        self.bins.iter().filter(|count| **count > 0).count() as u32
     }
 
     pub fn entropy_bits(&self) -> f64 {
@@ -131,8 +160,9 @@ pub fn ranked_tapes(cells: &[u8], stride: usize) -> Vec<(&[u8], u64)> {
     ranked
 }
 
-/// The first sampled epoch at which `compress_ratio` drops below the threshold and stays
-/// there — the primary dependent variable of every sweep.
+/// The first sampled epoch at which a qualifying sample appears and holds — the primary
+/// dependent variable of every sweep. A sample qualifies on `Metrics::transition_candidate`:
+/// `compress_ratio` below the threshold, and neither of the two collapse guards tripped.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TransitionTracker {
     candidate: Option<u64>,
@@ -170,12 +200,12 @@ impl TransitionTracker {
         }
     }
 
-    pub fn observe(&mut self, epoch: u64, compress_ratio: f64) {
+    pub fn observe(&mut self, epoch: u64, measured: &Metrics) {
         if self.settled.is_some() || self.last_epoch == Some(epoch) {
             return;
         }
         self.last_epoch = Some(epoch);
-        if compress_ratio < TRANSITION_THRESHOLD {
+        if measured.transition_candidate() {
             match self.candidate {
                 None => {
                     self.candidate = Some(epoch);
@@ -337,22 +367,37 @@ mod tests {
         assert_eq!(compress_ratio(&[]), 0.0);
     }
 
+    /// A sample of a compressible world with a live alphabet, the reading the tracker
+    /// counts: only `compress_ratio` moves from test to test.
+    fn reading(compress_ratio: f64) -> Metrics {
+        Metrics {
+            compress_ratio,
+            distinct_tapes: 128,
+            top_share: 0.1,
+            op_density: 0.2,
+            replicator_count: 0,
+            entropy_bits: 5.0,
+            alphabet_size: 256,
+            copy_rate: 0.0,
+        }
+    }
+
     #[test]
     fn transition_settles_on_the_first_epoch_of_a_sustained_drop() {
         let mut tracker = TransitionTracker::default();
-        tracker.observe(10, 0.9);
-        tracker.observe(20, 0.5);
-        tracker.observe(30, 0.9);
+        tracker.observe(10, &reading(0.9));
+        tracker.observe(20, &reading(0.5));
+        tracker.observe(30, &reading(0.9));
         assert_eq!(tracker.epoch(), None, "the drop did not hold");
 
-        tracker.observe(40, 0.5);
-        tracker.observe(50, 0.4);
-        tracker.observe(60, 0.4);
+        tracker.observe(40, &reading(0.5));
+        tracker.observe(50, &reading(0.4));
+        tracker.observe(60, &reading(0.4));
         assert_eq!(tracker.epoch(), None, "only two further samples so far");
-        tracker.observe(70, 0.3);
+        tracker.observe(70, &reading(0.3));
         assert_eq!(tracker.epoch(), Some(40));
 
-        tracker.observe(80, 0.99);
+        tracker.observe(80, &reading(0.99));
         assert_eq!(tracker.epoch(), Some(40), "settled epochs never move");
     }
 
@@ -362,25 +407,74 @@ mod tests {
     fn the_detector_reports_the_first_sample_below_the_threshold_across_a_resume() {
         let mut tracker = TransitionTracker::default();
         for sample in 0..500u64 {
-            tracker.observe(sample * 10, 0.94);
+            tracker.observe(sample * 10, &reading(0.94));
         }
-        tracker.observe(5000, 0.725);
-        tracker.observe(5010, 0.526);
-        tracker.observe(5020, 0.052);
+        tracker.observe(5000, &reading(0.725));
+        tracker.observe(5010, &reading(0.526));
+        tracker.observe(5020, &reading(0.052));
         assert_eq!(tracker.epoch(), None, "the drop has not held yet");
 
         let mut resumed = TransitionTracker::from_state(tracker.state());
         for sample in 1..=1500u64 {
-            resumed.observe(5020 + sample * 10, 0.05);
+            resumed.observe(5020 + sample * 10, &reading(0.05));
         }
         assert_eq!(resumed.epoch(), Some(5010));
+    }
+
+    #[test]
+    fn a_collapsed_alphabet_never_settles_however_compressible_it_reads() {
+        let collapsed = Metrics {
+            op_density: 1.0,
+            alphabet_size: 2,
+            ..reading(0.143)
+        };
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..100u64 {
+            tracker.observe(sample * 10, &collapsed);
+        }
+        assert_eq!(tracker.epoch(), None, "run 183's shape is not a transition");
+    }
+
+    #[test]
+    fn each_guard_disqualifies_a_sample_on_its_own() {
+        assert!(reading(0.5).transition_candidate());
+        assert!(!reading(0.6).transition_candidate());
+        assert!(!Metrics {
+            op_density: 0.91,
+            ..reading(0.5)
+        }
+        .transition_candidate());
+        assert!(Metrics {
+            op_density: 0.9,
+            ..reading(0.5)
+        }
+        .transition_candidate());
+        assert!(!Metrics {
+            alphabet_size: 15,
+            ..reading(0.5)
+        }
+        .transition_candidate());
+        assert!(Metrics {
+            alphabet_size: 16,
+            ..reading(0.5)
+        }
+        .transition_candidate());
+    }
+
+    #[test]
+    fn the_alphabet_counts_the_byte_values_present() {
+        assert_eq!(alphabet_size(&[7; 32]), 1);
+        assert_eq!(alphabet_size(b"{.{.{."), 2);
+        let all: Vec<u8> = (0..=255).collect();
+        assert_eq!(alphabet_size(&all), 256);
+        assert_eq!(alphabet_size(&[]), 0);
     }
 
     #[test]
     fn repeated_samples_of_one_epoch_count_once() {
         let mut tracker = TransitionTracker::default();
         for _ in 0..10 {
-            tracker.observe(5, 0.1);
+            tracker.observe(5, &reading(0.1));
         }
         assert_eq!(tracker.epoch(), None);
     }
