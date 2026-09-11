@@ -5,12 +5,12 @@ module Lab
   # epochs are actually being burned.
   class StatusPage
     THROUGHPUT_WINDOW = 1.hour
-    # A live run that has recorded nothing for this long is worth a look. The slowest
-    # cadence on the grid — `bff_control`'s 512x256 world at `sample_every` 50 — can
-    # approach it, so anything shorter would cry wolf.
+    # A live run whose epoch counter has not moved for this long is worth a look. The
+    # runner heartbeats every 30 s with the epoch it is on, so this is thirty missed
+    # advances and not a slow cadence.
     STALL_AFTER = 15.minutes
     STALLED_LIMIT = 20
-    LAST_PROGRESS = "COALESCE(MAX(samples.created_at), runs.started_at, runs.claimed_at)"
+    LAST_PROGRESS = "COALESCE(runs.epochs_done_at, runs.started_at, runs.claimed_at)"
 
     Runner = Data.define(:id, :run_ids, :last_seen, :epochs_done, :epochs_per_hour)
 
@@ -33,18 +33,26 @@ module Lab
 
     def idle_slots = expected_slots && [expected_slots - runners.size, 0].max
 
+    # Slots that heartbeated inside the window but hold no claimed or running run: what a
+    # destroyed runner container leaves behind for up to `Run::STALE_AFTER`. Counted apart
+    # from `runners` so the header and the table always describe the same set.
+    def departed_slots = (recent_runner_ids - runners.map(&:id)).size
+
     # Epochs actually simulated in the last hour: per run, the span between the first and
     # the last sample of the window. Samples are the only record of progress that a
     # crashed or released run cannot rewrite.
     def epochs_per_hour = hourly_epochs_by_run.values.sum
 
-    # Runs that still heartbeat — so the runner process is alive — yet have not recorded a
-    # sample in `STALL_AFTER`: the shape a wedged simulation takes.
+    # Runs that still heartbeat — so the runner process is alive — yet whose `epochs_done`
+    # has not advanced in `STALL_AFTER`: the shape a wedged simulation takes. The rule keys
+    # on progress and not on samples, because samples say nothing about a slow run: the
+    # runner flushes them in batches of 50 (`http_sink::BATCH_SIZE`), so a healthy 512x256
+    # control run at `sample_every` 50 posts a batch roughly every 25 minutes. `epochs_done`
+    # rides every heartbeat instead, and `epochs_done_at` records when it last moved.
     def stalled_runs
       @stalled_runs ||= Run.where(status: %w[claimed running], heartbeat_at: Run::STALE_AFTER.ago..)
-                           .left_joins(:samples).group("runs.id")
+                           .where("#{LAST_PROGRESS} < ?", STALL_AFTER.ago)
                            .select("runs.*", "#{LAST_PROGRESS} AS last_progress_at")
-                           .having("#{LAST_PROGRESS} < ?", STALL_AFTER.ago)
                            .order(Arel.sql("#{LAST_PROGRESS} ASC"))
                            .limit(STALLED_LIMIT).to_a
     end
@@ -63,8 +71,14 @@ module Lab
     def status_counts = @status_counts ||= Run.group(:status).count
 
     def live_runs
-      @live_runs ||= Run.where(heartbeat_at: Run::STALE_AFTER.ago..).where.not(runner_id: nil)
+      @live_runs ||= Run.where(status: %w[claimed running], heartbeat_at: Run::STALE_AFTER.ago..)
+                        .where.not(runner_id: nil)
                         .select(:id, :runner_id, :heartbeat_at, :epochs_done).to_a
+    end
+
+    def recent_runner_ids
+      @recent_runner_ids ||= Run.where(heartbeat_at: Run::STALE_AFTER.ago..)
+                                .where.not(runner_id: nil).distinct.pluck(:runner_id)
     end
 
     def hourly_epochs_by_run

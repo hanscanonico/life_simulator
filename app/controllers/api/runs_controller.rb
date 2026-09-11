@@ -22,8 +22,10 @@ module Api
     def heartbeat
       return head :no_content if @run.terminal?
 
+      reported = params.fetch(:epochs_done).to_i
       @run.update!(status: "running", heartbeat_at: Time.current,
-                   epochs_done: [@run.epochs_done, params.fetch(:epochs_done).to_i].max,
+                   epochs_done: [@run.epochs_done, reported].max,
+                   epochs_done_at: progress_at(reported),
                    started_at: @run.started_at || Time.current)
       head :no_content
     end
@@ -78,6 +80,14 @@ module Api
 
     def set_run
       @run = Run.find(params.fetch(:id))
+    end
+
+    # When the simulation last advanced, which `heartbeat_at` cannot say: the lab status
+    # page reads it to tell a wedged run from a slow one.
+    def progress_at(reported)
+      return Time.current if reported > @run.epochs_done
+
+      @run.epochs_done_at || Time.current
     end
 
     def stored_snapshot

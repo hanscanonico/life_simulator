@@ -15,12 +15,18 @@
       <dt>total</dt><dd><%= number_with_delimiter @status.total_runs %></dd>
     </dl>
 
-    <h2>Runners seen in the last 5 minutes</h2>
+    <h2>Runners holding a run right now</h2>
     <% if @status.expected_slots %>
       <p class="text-muted">
         <%= @status.expected_slots %> slots expected,
         <%= @status.runners.size %> seen,
         <%= @status.idle_slots %> idle.
+      </p>
+    <% end %>
+    <% if @status.departed_slots.positive? %>
+      <p class="text-muted">
+        <%= pluralize @status.departed_slots, "slot" %> from a previous runner still inside
+        the heartbeat window.
       </p>
     <% end %>
     <% if @status.runners.any? %>
@@ -53,7 +59,7 @@
         </table>
       </div>
     <% else %>
-      <p class="text-muted">No runner has heartbeated in the last 5 minutes.</p>
+      <p class="text-muted">No runner is holding a run right now.</p>
     <% end %>
 
     <h2>Throughput</h2>
@@ -79,7 +85,7 @@
               <th>Run</th>
               <th>Runner</th>
               <th class="numeric">Epochs done</th>
-              <th>Silent for</th>
+              <th>No progress for</th>
             </tr>
           </thead>
           <tbody>

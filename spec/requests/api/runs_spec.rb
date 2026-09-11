@@ -134,6 +134,25 @@ RSpec.describe "Api::Runs", type: :request do
       expect(run.reload.epochs_done).to eq(800)
     end
 
+    it "stamps the moment the progress moved" do
+      run.update!(epochs_done: 400, epochs_done_at: 20.minutes.ago)
+
+      post heartbeat_api_run_path(run), params: { runner_id: "runner-1", epochs_done: 500 }, headers: headers, as: :json
+
+      expect(run.reload.epochs_done_at).to be_within(1.minute).of(Time.current)
+    end
+
+    context "with a heartbeat reporting the progress already stored" do
+      it "leaves the stamp where it was, so a wedged run stays visible" do
+        run.update!(epochs_done: 500, epochs_done_at: 20.minutes.ago)
+
+        post heartbeat_api_run_path(run), params: { runner_id: "runner-1", epochs_done: 500 }, headers: headers,
+                                          as: :json
+
+        expect(run.reload.epochs_done_at).to be_within(1.minute).of(20.minutes.ago)
+      end
+    end
+
     context "with a heartbeat that lands after the run finished" do
       let(:run) do
         create(:run, :claimed, experiment: experiment, status: "finished", epochs_done: 1_000,
