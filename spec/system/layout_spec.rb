@@ -56,6 +56,17 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     page.execute_script(<<~JS)
       document.querySelectorAll('.table-scroll').forEach((box) => { box.scrollLeft = box.scrollWidth; });
     JS
+    wait_for_frame
+  end
+
+  # A scroll timeline is sampled while the renderer produces a frame, not when the scroll
+  # happens, so a style read taken before the next frame still reports what the frame before
+  # it drove. Anything reading the fades waits a frame out first.
+  def wait_for_frame
+    page.driver.browser.execute_async_script(<<~JS)
+      const done = arguments[0];
+      requestAnimationFrame(() => requestAnimationFrame(done));
+    JS
   end
 
   def tab_to_overflowing_table
@@ -205,6 +216,8 @@ RSpec.describe "The page frame on a phone", :js, type: :system do
     visit experiment_path(experiment)
 
     expect(page).to have_css("table.data-table")
+    wait_for_frame
+
     expect(table_fades).to eq([0, 32])
     expect(table_mask).to include("rgb(0, 0, 0) 0px", "rgb(0, 0, 0) calc(100% - 32px)")
 
