@@ -30,12 +30,63 @@
 
 <h2>Result</h2>
 <p>
-  Open, and so far the control has only tested the harness. All six runs failed between
-  epoch 546 and epoch 633 against a read limit in the runner's lab-mode client — its
-  10 MiB cap on an API response, too small for a world this size — fixed by PR #17, which
-  raised the limit to 256 MiB. The six runs are being requeued from their last snapshot.
+  Partial, and not the reading the hypothesis asked for. This is a partial and not a claim
+  for three reasons: one mutated seed of three has moved, the epoch horizon is nowhere near
+  reached, and the census that would make the move mean something is unresolved. What
+  follows states shapes; the per-run numbers behind them drift with every sample and are in
+  the evidence table below, which reads the runs live.
+</p>
+
+<p>
+  <strong>The instrument produces the signature.</strong> The mutated arm has transitioned
+  in one of three seeds, and it transitioned the way the mutation-rate sweep's flagged runs
+  do: <span class="mono">compress_ratio</span> collapses inside a few sampling intervals,
+  <span class="mono">distinct_tapes</span> falls from one-per-cell and keeps falling,
+  <span class="mono">copy_rate</span> lifts off exactly zero,
+  <span class="mono">op_density</span> rises and <span class="mono">entropy_bits</span>
+  drops — one joint move, not five independent ones. The three
+  <span class="mono">mutation_rate = 0</span> controls sit at the random-soup baseline and
+  the remaining two mutated seeds have not moved. So the interpreter and the pairing rule
+  do produce the published signature in the published shape; the harness is not what the
+  sweeps were measuring.
+</p>
+
+<p>
+  <strong>But the census reads zero.</strong> <span class="mono">replicator_count</span> is
+  zero at every snapshot inspected, and a rescore with the ranking cut widened to the top
+  16, 64 and 256 tapes returns metrics identical at all three widths, with no ranked tape
+  passing the 3-of-4 replicator trial — on this control and on the mutation-rate runs that
+  collapsed hardest alike. Truncation of the ranking is ruled out. A collapse in tape
+  statistics is not a count of copiers, so this control is not yet evidence of
+  self-replicators, and the falsifier above is neither triggered nor retired.
+</p>
+
+<h2>What the census shows</h2>
+<p>
+  The census is less flat than flickering: inside the plateau that follows a collapse a
+  single sample read a non-zero count with zero on both sides of it, while compression,
+  diversity and copy rate moved together across that whole stretch. The mutation-rate
+  sweep shows the same pattern, its detector and its census disagreeing in both
+  directions. Two readings are open. Either a replicating lineage is there and the 3-of-4
+  trial rule misses it — a strict test, applied to a handful of ranked tapes — or the
+  collapse is degenerate: tape content converging on something compressible that copies
+  nothing. Nothing measured so far separates them, and the second reading would make the
+  transition detector of DESIGN §1.2 a weaker observable than the sweeps have been treating
+  it as.
 </p>
 <p>
-  Until this control transitions, no sweep on this site is readable as a negative result.
+  The next measurement is a rescore at the first snapshot taken after a collapse rather
+  than at the pre-collapse snapshots rescored so far, plus a persistence requirement on the
+  census: a count that survives consecutive samples, not one that appears in a single one.
+</p>
+<p>
+  The gap in these runs is harness history, not signal. All six failed between epoch 546
+  and epoch 633 against a read limit in the runner's lab-mode client — its 10 MiB cap on an
+  API response, too small for a world this size — fixed by PR #17, which raised the limit
+  to 256 MiB, and they were requeued from their last snapshot. A container recreate
+  released them a second time, and they resumed from their snapshots again.
+</p>
+<p>
+  Until the census resolves, no sweep on this site is readable as a clean negative result.
   The mutation-rate finding is held on that basis.
 </p>
