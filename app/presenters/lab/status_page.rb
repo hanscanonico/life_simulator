@@ -10,6 +10,9 @@ module Lab
     # advances and not a slow cadence.
     STALL_AFTER = 15.minutes
     STALLED_LIMIT = 20
+    # A run that failed longer ago than this is history, not something to act on.
+    FAILURE_WINDOW = 6.hours
+    FAILURE_LIMIT = 20
     LAST_PROGRESS = "COALESCE(runs.epochs_done_at, runs.started_at, runs.claimed_at)"
 
     Runner = Data.define(:id, :run_ids, :last_seen, :epochs_done, :epochs_per_hour)
@@ -77,6 +80,15 @@ module Lab
 
     def stale_heartbeat_count = @stale_heartbeat_count ||= Run.stale.count
 
+    # The failures the lab collected in the last few hours, newest first: a status count
+    # says how many runs failed ever, this says what just broke and what it said.
+    def recent_failures
+      @recent_failures ||= recently_failed.order(finished_at: :desc).limit(FAILURE_LIMIT)
+                                          .select(:id, :runner_id, :finished_at, :error).to_a
+    end
+
+    def recent_failure_count = @recent_failure_count ||= recently_failed.count
+
     def live_run_count = counts_by_status.values_at("claimed", "running").sum
 
     def oldest_pending = @oldest_pending ||= Run.pending.order(:created_at, :id).first
@@ -91,6 +103,8 @@ module Lab
     end
 
     def flagged(run, reason, since) = Flagged.new(run: run, reason: reason, since: since)
+
+    def recently_failed = Run.failed.where(finished_at: FAILURE_WINDOW.ago..)
 
     def status_counts = @status_counts ||= Run.group(:status).count
 

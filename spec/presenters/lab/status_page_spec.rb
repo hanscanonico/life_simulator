@@ -242,6 +242,59 @@ RSpec.describe Lab::StatusPage do
     end
   end
 
+  describe "#recent_failures" do
+    it "lists a run that failed inside the window, newest first" do
+      older = create(:run, status: "failed", finished_at: 5.hours.ago, error: "disk full")
+      newest = create(:run, status: "failed", finished_at: 1.hour.ago, runner_id: "bench-2",
+                            error: "runner panicked")
+
+      expect(page.recent_failures.map(&:id)).to eq([newest.id, older.id])
+      expect(page.recent_failures.first).to have_attributes(runner_id: "bench-2",
+                                                            error: "runner panicked")
+      expect(page.recent_failure_count).to eq(2)
+    end
+
+    context "with a failure older than the window" do
+      it "leaves it out" do
+        create(:run, status: "failed", finished_at: 12.hours.ago, error: "ancient")
+
+        expect(page.recent_failures).to be_empty
+        expect(page.recent_failure_count).to be_zero
+      end
+    end
+
+    context "with a run that finished cleanly" do
+      it "leaves it out" do
+        create(:run, status: "finished", finished_at: 1.hour.ago)
+
+        expect(page.recent_failures).to be_empty
+      end
+    end
+
+    context "with failures either side of the six-hour edge" do
+      it "keeps the one just inside and drops the one just outside" do
+        inside = create(:run, :just_failed, finished_at: 6.hours.ago + 1.minute)
+        create(:run, :just_failed, finished_at: 6.hours.ago - 1.minute)
+
+        expect(page.recent_failures.map(&:id)).to eq([inside.id])
+        expect(page.recent_failure_count).to eq(1)
+      end
+    end
+
+    it "lists no more than a screenful and still counts them all" do
+      create_list(:run, Lab::StatusPage::FAILURE_LIMIT + 3, :just_failed)
+
+      expect(page.recent_failures.size).to eq(Lab::StatusPage::FAILURE_LIMIT)
+      expect(page.recent_failure_count).to eq(Lab::StatusPage::FAILURE_LIMIT + 3)
+    end
+
+    it "reads the failures in one query" do
+      create(:run, :just_failed)
+
+      expect(queries_during { page.recent_failures }).to eq(1)
+    end
+  end
+
   describe "#epochs_per_hour" do
     it "sums the epochs each run covered inside the window" do
       run = create(:run, :claimed)

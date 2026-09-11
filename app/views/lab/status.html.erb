@@ -117,5 +117,37 @@
     <% else %>
       <p class="text-muted">None.</p>
     <% end %>
+
+    <% if @status.recent_failure_count.positive? %>
+      <h2>Recent failures</h2>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Failed</th>
+              <th>Runner</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @status.recent_failures.each do |failure| %>
+              <tr>
+                <td><%= link_to "Run ##{failure.id}", run_path(failure.id) %></td>
+                <td><%= time_ago_in_words(failure.finished_at) %> ago</td>
+                <td class="mono"><%= failure.runner_id %></td>
+                <td><%= truncate(failure.error, length: 120) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <% if @status.recent_failure_count > @status.recent_failures.size %>
+        <p class="text-muted">
+          The <%= @status.recent_failures.size %> most recent of
+          <%= @status.recent_failure_count %>.
+        </p>
+      <% end %>
+    <% end %>
   </section>
 </turbo-frame>

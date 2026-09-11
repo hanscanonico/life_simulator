@@ -125,6 +125,41 @@ RSpec.describe "Lab", type: :request do
       end
     end
 
+    context "with a run that failed recently" do
+      it "shows it under its own heading, error and all" do
+        run = create(:run, status: "failed", runner_id: "bench-9", finished_at: 1.hour.ago,
+                           error: "runner panicked: <unwrap on None>")
+
+        get lab_status_path
+
+        body = response.body.squish
+        expect(body).to include("Recent failures", "Run ##{run.id}", "bench-9",
+                                "runner panicked: &lt;unwrap on None&gt;")
+        expect(body).not_to include("runner panicked: <unwrap on None>")
+      end
+    end
+
+    context "with an error longer than the column" do
+      it "shows only the head of it" do
+        create(:run, :just_failed, error: "#{'panic ' * 19}pandemonium")
+
+        get lab_status_path
+
+        expect(response.body.squish).to include("#{'panic ' * 19}pan...")
+        expect(response.body).not_to include("pandemonium")
+      end
+    end
+
+    context "with a failure older than the window" do
+      it "leaves the heading out" do
+        create(:run, status: "failed", finished_at: 12.hours.ago, error: "ancient")
+
+        get lab_status_path
+
+        expect(response.body).not_to include("Recent failures")
+      end
+    end
+
     context "with an idle lab" do
       it "says so" do
         get lab_status_path
