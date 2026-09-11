@@ -272,4 +272,19 @@ RSpec.describe Experiments::ShowPage do
       end
     end
   end
+
+  describe "#agreement_chart" do
+    it "draws the arm rows the transition report prints" do
+      create(:sample, run: finished_run(radius: 1, transition_epoch: 700), epoch: 700,
+                      values: { "replicator_count" => 0 })
+      create(:sample, run: finished_run(radius: 1, transition_epoch: 700), epoch: 700,
+                      values: { "replicator_count" => 2 })
+      create(:sample, run: finished_run(radius: 1), epoch: 700, values: { "replicator_count" => 1 })
+
+      arm = page.agreement_chart.arms.sole
+
+      expect(page.agreement_chart.arms).to eq(page.transition_arms)
+      expect([arm.flagged_only, arm.replicated_only, arm.both]).to eq([1, 1, 1])
+    end
+  end
 end

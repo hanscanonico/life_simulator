@@ -11,7 +11,9 @@ RSpec.describe Charts::AgreementChart do
   def build(arms) = described_class.new(arms: arms, title: "Detector against replicator census, per arm")
 
   describe "#bars" do
-    subject(:chart) { build([arm("1", flagged: 5, replicated: 3, both: 2), arm("2", flagged: 1, both: 1)]) }
+    subject(:chart) do
+      build([arm("1", flagged: 5, replicated: 3, both: 2), arm("2", flagged: 1, replicated: 1, both: 1)])
+    end
 
     # Two arms split the 668-unit axis into bands of 334; the bars take 78% of a band,
     # centred in it, so a band's three bars are 86.84 wide and start 36.74 units in.
@@ -37,7 +39,7 @@ RSpec.describe Charts::AgreementChart do
       expect(chart.bars.first.label).to eq("1 — flagged only: 3 of 5 sampled runs")
     end
 
-    it "counts an arm's agreements out of its flagged and replicating runs" do
+    it "splits an arm's runs into the two disagreements and the agreement" do
       counts = chart.bars.first(3).map { |bar| bar.label[/: (\d+)/, 1].to_i }
 
       expect(counts).to eq([3, 1, 2])
@@ -70,7 +72,7 @@ RSpec.describe Charts::AgreementChart do
 
   describe "#y_ticks" do
     it "counts runs in whole numbers" do
-      chart = build([arm("1", flagged: 1, both: 1)])
+      chart = build([arm("1", flagged: 1, replicated: 1, both: 1)])
 
       expect(chart.y_ticks.map(&:label)).to eq(%w[0 1])
     end

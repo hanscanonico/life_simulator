@@ -318,8 +318,9 @@
   }
 }
 
-/* The survival chart tells its arms apart by dash pattern, so the legend has to show the
-   pattern itself rather than a colour swatch. */
+/* A legend row carries whatever tells its series apart — the survival chart's dash
+   pattern, the agreement chart's bar fill — so the swatch is a miniature SVG of the mark
+   rather than a plain colour chip. */
 ul.chart-legend {
   list-style: none;
   display: flex;
