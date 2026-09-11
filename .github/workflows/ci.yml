@@ -194,7 +194,11 @@ jobs:
     runs-on: [self-hosted, life-prod]
     needs: [scan_ruby, scan_js, lint, test, engine]
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-    concurrency: deploy-life
+    # Never cancelled: a deploy killed mid-swap leaves the stack in `Created`,
+    # so a second push to main waits for this one instead of superseding it.
+    concurrency:
+      group: deploy-life
+      cancel-in-progress: false
     timeout-minutes: 30
     permissions:
       contents: read
@@ -205,3 +209,10 @@ jobs:
           git fetch origin
           git merge --ff-only "$GITHUB_SHA"
           deploy/deploy --no-pull
+
+      # The grace period after a cancellation still runs this, and a failed or
+      # rolled-back deploy leaves it something to answer for as well.
+      - name: Make sure the stack is running
+        if: always()
+        working-directory: /home/mini-pc/Documents/life_simulator
+        run: deploy/ensure_up

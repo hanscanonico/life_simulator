@@ -1,0 +1,26 @@
+#!/bin/bash -e
+# Start whatever the last deploy left down, without building and without
+# recreating anything: a recovery, not a deploy. A deploy job killed mid `up -d`
+# leaves app and runner in `Created` and the site stays down until someone runs
+# `up -d --no-recreate` by hand; CI runs this as a final `if: always()` step so
+# nobody has to. Idempotent and fast on a healthy stack, because an `always()`
+# step can itself be cancelled once the grace period is over.
+cd "$(dirname "$0")/.."
+. deploy/lib.sh
+
+down=$(not_running)
+if [ -n "$down" ]; then
+  sed 's/^/Not running: /' <<<"$down"
+  while read -r line; do
+    $compose up -d --no-recreate "${line%%:*}"
+  done <<<"$down"
+fi
+
+if wait_healthy; then
+  echo "The stack is running."
+  exit 0
+fi
+
+echo "The stack is still not fully up." >&2
+report_stack
+exit 1
