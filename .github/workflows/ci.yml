@@ -63,7 +63,7 @@ jobs:
           bundler-cache: true
 
       - name: Prepare RuboCop cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         env:
           DEPENDENCIES_HASH: ${{ hashFiles('.ruby-version', '**/.rubocop.yml', '**/.rubocop_todo.yml', 'Gemfile.lock') }}
         with:
@@ -116,7 +116,7 @@ jobs:
       # bindgen recipe, so a hit is the same build the engine job would produce.
       - name: Restore the wasm module
         id: wasm
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: app/assets/wasm
           key: wasm-${{ runner.os }}-${{ hashFiles('engine/**/*.rs', 'engine/**/Cargo.toml', 'engine/Cargo.lock', 'Makefile') }}
@@ -191,7 +191,7 @@ jobs:
       - name: Restore the wasm module
         id: wasm
         if: steps.engine.outputs.present == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: app/assets/wasm
           key: wasm-${{ runner.os }}-${{ hashFiles('engine/**/*.rs', 'engine/**/Cargo.toml', 'engine/Cargo.lock', 'Makefile') }}
