@@ -63,6 +63,18 @@ module Runs
       (epoch_span / seconds_span).round(2)
     end
 
+    # What the run cost, as opposed to how fast it is going now: every epoch it has done
+    # over every second of compute it has been given, summed beat by beat across resumes
+    # (`runs.compute_seconds`). A run claimed before the runner sent its intervals has
+    # none, and says nothing rather than something wrong.
+    def epochs_per_compute_second
+      return nil unless run.compute_seconds.positive?
+
+      (run.epochs_done / run.compute_seconds).round(2)
+    end
+
+    def compute_hours = (run.compute_seconds / 3600).round(2)
+
     def eta
       return nil if run.terminal?
 

@@ -153,6 +153,26 @@ RSpec.describe "Api::Runs", type: :request do
       expect(run.reload.epochs_done_at).to be_within(1.minute).of(Time.current)
     end
 
+    it "sums the compute the runner reports across heartbeats" do
+      2.times do
+        post heartbeat_api_run_path(run), params: { runner_id: "runner-1", epochs_done: 500, interval_seconds: 30.5 },
+                                          headers: headers, as: :json
+      end
+
+      expect(run.reload.compute_seconds).to eq(61.0)
+    end
+
+    context "with a runner that sends no interval" do
+      it "leaves the compute where it was rather than failing the beat" do
+        run.update!(compute_seconds: 12.0)
+
+        post heartbeat_api_run_path(run), params: { runner_id: "runner-1", epochs_done: 500 }, headers: headers,
+                                          as: :json
+
+        expect(run.reload.compute_seconds).to eq(12.0)
+      end
+    end
+
     context "with a heartbeat reporting the progress already stored" do
       it "leaves the stamp where it was, so a wedged run stays visible" do
         run.update!(epochs_done: 500, epochs_done_at: 20.minutes.ago)

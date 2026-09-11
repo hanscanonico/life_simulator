@@ -111,6 +111,20 @@ RSpec.describe Runs::ShowPage do
     end
   end
 
+  describe "#epochs_per_compute_second" do
+    it "is the epochs done over the compute charged to the run" do
+      run.update!(epochs_done: 10_000, compute_seconds: 400.0)
+
+      expect(page.epochs_per_compute_second).to eq(25.0)
+    end
+
+    context "with no compute recorded" do
+      it "has no cost to report" do
+        expect(page.epochs_per_compute_second).to be_nil
+      end
+    end
+  end
+
   describe "#epochs_per_second" do
     it "is the epoch span over the wall-clock span of the samples" do
       recorded_at = Time.current

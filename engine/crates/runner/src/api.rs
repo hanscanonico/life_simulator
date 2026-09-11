@@ -214,13 +214,26 @@ impl LabClient {
     /// Beats, giving up quickly: a beat the app misses is one the next tick sends again,
     /// and holding the beat thread through a whole outage would hide the run's progress
     /// from the site long after the app came back.
-    pub fn heartbeat(&self, run: i64, runner_id: &str, epochs_done: u64) -> Result<()> {
+    /// `interval_seconds` is the wall time this beat covers — the seconds since the
+    /// previous beat of the same run — which the app adds to the run's compute total. A
+    /// beat with no interval behind it (the last one of an interrupted run) leaves it out.
+    pub fn heartbeat(
+        &self,
+        run: i64,
+        runner_id: &str,
+        epochs_done: u64,
+        interval_seconds: Option<f64>,
+    ) -> Result<()> {
+        let mut body = json!({ "epochs_done": epochs_done });
+        if let Some(seconds) = interval_seconds {
+            body["interval_seconds"] = json!(seconds);
+        }
         self.member_within(
             HEARTBEAT_GRACE.min(self.grace),
             run,
             runner_id,
             "heartbeat",
-            json!({ "epochs_done": epochs_done }),
+            body,
         )
     }
 
@@ -785,6 +798,21 @@ mod tests {
         assert!(error.contains(&format!("{TEST_GRACE:?}")), "{error}");
     }
 
+    /// The cost of a run is summed beat by beat: each beat carries the seconds it covers,
+    /// and a beat with no interval behind it adds nothing rather than zero.
+    #[test]
+    fn a_beat_carries_the_seconds_it_covers() {
+        let lab = MockLab::start();
+        let client = client(&lab);
+
+        client.heartbeat(1, "runner-1", 12, Some(2.5)).unwrap();
+        client.heartbeat(1, "runner-1", 24, None).unwrap();
+
+        let beats = lab.requests("POST /api/runs/1/heartbeat");
+        assert_eq!(beats[0]["interval_seconds"], json!(2.5));
+        assert_eq!(beats[1]["interval_seconds"], Value::Null);
+    }
+
     /// A beat never waits an outage out: whatever the client's grace is, the call gives
     /// up inside `HEARTBEAT_GRACE` and the next tick beats again. A beat held for the
     /// whole window would also hold the run at its end, where the scope that spawned the
@@ -797,7 +825,10 @@ mod tests {
         lab.fail_next_at("/api/runs/1/heartbeat", u32::MAX);
 
         let started = Instant::now();
-        let error = format!("{:#}", client.heartbeat(1, "runner-1", 12).unwrap_err());
+        let error = format!(
+            "{:#}",
+            client.heartbeat(1, "runner-1", 12, Some(2.5)).unwrap_err()
+        );
         let waited = started.elapsed();
 
         assert!(waited >= HEARTBEAT_GRACE, "{waited:?}");

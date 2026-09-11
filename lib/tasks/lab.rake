@@ -99,6 +99,14 @@ namespace :lab do
     print Experiments::SnapshotAuditService.call(experiment: experiment).to_text
   end
 
+  desc "Read what an experiment costs: epochs per compute second per arm, and compute hours"
+  task :cost_report, [:slug] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+    print Experiments::CostReportService.call(experiment: experiment).to_text
+  end
+
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"
   task prune_snapshots: :environment do
     deleted = Run.terminal.find_each.sum { |run| Runs::PruneSnapshotsService.call(run: run) }

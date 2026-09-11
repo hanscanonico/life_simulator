@@ -41,7 +41,11 @@ the in-flight ones too — and it is how a claim about emergence gets written on
 observables before it is published. `"lab:snapshot_audit[<slug>]"` checks that each
 measured transition has a world behind it — per run the snapshot nearest its
 `transition_epoch`, why the loop took it (cadence, age or transition) and how far off it
-fell — and counts the experiment's snapshots by reason. `lab:db_size` and
+fell — and counts the experiment's snapshots by reason. `"lab:cost_report[<slug>]"` reads what an
+arm costs — per arm the mean, minimum and maximum epochs per compute second over its runs
+and the compute hours it has burned, then the experiment's total — off `compute_seconds`,
+which every heartbeat adds to and which a resume therefore never resets; runs claimed
+before the runner sent its intervals carry none and are left out. `lab:db_size` and
 `lab:prune_snapshots` are the maintenance tasks.
 `runner rescore` re-reads a run's stored world at other `top_k` settings, for the question
 "did the replicator test miss the lineage, or is there none?" — it measures only and
