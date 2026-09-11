@@ -30,6 +30,44 @@ RSpec.describe "Runs", type: :request do
   end
 
   describe "GET /runs/:id" do
+    context "with a poll of the progress frame" do
+      let(:run) { create(:run, :claimed, epochs: 20_000, epochs_done: 1_000) }
+
+      it "answers with the facts alone, not the charts Turbo would discard" do
+        create(:sample, run: run, epoch: 100, values: Runs::ShowPage::METRICS.keys.index_with(0.5))
+
+        get run_path(run), headers: { "Turbo-Frame" => "run_progress" }
+
+        expect(response.body.squish).to include("1,000 / 20,000 epochs")
+        expect(response.body).not_to include("chart-line", "Download CSV")
+      end
+
+      # Turbo throws away a response frame whose src points back at the request that
+      # fetched it, and the element on the page keeps its own src across a reload.
+      it "leaves the src off the answer" do
+        get run_path(run), headers: { "Turbo-Frame" => "run_progress" }
+
+        expect(response.body).to include(%(<turbo-frame id="run_progress">))
+      end
+    end
+
+    context "with a frame request that is not the progress frame" do
+      it "still renders the whole page" do
+        get run_path(run), headers: { "Turbo-Frame" => "lab_status" }
+
+        expect(response.body).to include("Download CSV")
+      end
+    end
+
+    context "with a terminal run" do
+      it "polls nothing" do
+        get run_path(create(:run, status: "finished"))
+
+        expect(response.body).to include(%(<turbo-frame id="run_progress">))
+        expect(response.body).not_to include("frame-poll")
+      end
+    end
+
     it "shows the metric series, the seed and the parameters" do
       create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9, "copy_rate" => 0.0 })
       create(:sample, run: run, epoch: 900, values: { "compress_ratio" => 0.4, "copy_rate" => 0.31 })

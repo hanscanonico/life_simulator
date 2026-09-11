@@ -17,29 +17,7 @@
   </p>
 <% end %>
 
-<dl class="facts">
-  <dt>Status</dt>
-  <dd><span class="badge <%= status_badge_class(@show.run.status) %>"><%= @show.run.status %></span></dd>
-  <dt>Progress</dt>
-  <dd><%= number_with_delimiter @show.run.epochs_done %> / <%= number_with_delimiter @show.run.epochs %> epochs
-    (<%= @show.progress %>%)</dd>
-  <dt>Rate</dt>
-  <dd>
-    <% if @show.epochs_per_second %>
-      <%= number_with_delimiter @show.epochs_per_second %> epochs/s
-      <span class="text-sm text-muted">(measured from recorded samples)</span>
-    <% else %>—<% end %>
-  </dd>
-  <dt>Time remaining</dt>
-  <dd><%= @show.eta ? distance_of_time_in_words(@show.eta) : "—" %></dd>
-  <dt>Transition epoch</dt>
-  <dd><%= @show.transition_label %></dd>
-  <dt>Runner</dt>
-  <dd>
-    <%= @show.run.runner_id || "—" %><% if !@show.run.terminal? && @show.run.heartbeat_at.present? %>,
-      last heartbeat <%= time_ago_in_words @show.run.heartbeat_at %> ago<% end %>
-  </dd>
-</dl>
+<%= render "progress", show: @show, polling: !@show.run.terminal? %>
 
 <% if @show.run.error.present? %>
   <p class="alert alert-error"><%= @show.run.error %></p>
