@@ -49,11 +49,45 @@ RSpec.describe "Lab", type: :request do
       end
     end
 
+    it "names the run each slot is on and its hourly rate" do
+      run = create(:run, :claimed, runner_id: "bench-3", epochs_done: 400)
+      create(:sample, run: run, epoch: 100)
+      create(:sample, run: run, epoch: 400)
+
+      get lab_status_path
+
+      expect(response.body).to include("Current run", "Epochs/h", %(href="#{run_path(run)}"))
+    end
+
+    context "with the runner parallelism in the environment" do
+      it "says how many slots are idle" do
+        allow(ENV).to receive(:[]).and_call_original
+        allow(ENV).to receive(:[]).with("RUNNER_PARALLELISM").and_return("12")
+        create(:run, :claimed, runner_id: "bench-0")
+
+        get lab_status_path
+
+        expect(response.body.squish).to include("12 slots expected, 1 seen, 11 idle")
+      end
+    end
+
+    context "with a live run that has stopped sampling" do
+      it "puts it in the section worth a look" do
+        run = create(:run, :claimed, status: "running", runner_id: "bench-4",
+                                     started_at: 40.minutes.ago)
+
+        get lab_status_path
+
+        expect(response.body).to include("Worth a look", "Silent for", "Run ##{run.id}")
+      end
+    end
+
     context "with an idle lab" do
       it "says so" do
         get lab_status_path
 
-        expect(response.body).to include("No runner has heartbeated", "The queue is empty")
+        expect(response.body).to include("No runner has heartbeated", "The queue is empty",
+                                         "None.")
       end
     end
   end
