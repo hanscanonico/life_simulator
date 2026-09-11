@@ -108,7 +108,7 @@ pub fn execute(
 pub fn execute_world(
     mut world: World,
     epochs: u64,
-    resumed_at: Option<u64>,
+    mut resumed_at: Option<u64>,
     snapshot_max_age: Option<Duration>,
     sink: &mut dyn RunSink,
     progress: &Progress,
@@ -121,7 +121,6 @@ pub fn execute_world(
     let mut last_snapshot_at = Instant::now();
     let mut buffers = SnapshotBuffers::default();
     let mut transition_seen = world.transition_epoch();
-    let mut resumed_at = resumed_at;
 
     loop {
         let epoch = world.epoch();
