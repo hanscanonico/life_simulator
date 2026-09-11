@@ -59,6 +59,10 @@ enum Command {
         /// Identifies this runner to the app; defaults to the host and pid.
         #[arg(long, env = "RUNNER_ID")]
         runner_id: Option<String>,
+        /// Hold claims back while the process holds more than this — `5g`, `512m` or a
+        /// byte count. Left out, nothing is held back.
+        #[arg(long, env = "RUNNER_MAX_MEMORY", value_parser = lab::parse_memory_size)]
+        max_memory: Option<u64>,
     },
     /// Re-read a stored world at several `top_k` settings, without running anything.
     Rescore {
@@ -131,10 +135,11 @@ fn main() -> Result<()> {
             token,
             parallelism,
             runner_id,
+            max_memory,
         } => {
             let parallelism = parallelism.unwrap_or_else(lab::default_parallelism);
             let runner_id = runner_id.unwrap_or_else(default_runner_id);
-            Lab::new(&api, &token, &runner_id, parallelism).work()?;
+            Lab::new(&api, &token, &runner_id, parallelism, max_memory).work()?;
         }
         Command::Rescore {
             api,

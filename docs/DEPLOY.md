@@ -66,6 +66,12 @@ whatever that number says, so the site keeps two cores. After changing it:
 docker compose -f deploy/docker-compose.yml up -d runner
 ```
 
+Memory: `RUNNER_MAX_MEMORY` (default `5g`, a gigabyte under the compose limit) is how
+much the runner claims under. A worker that finds the process already over it skips the
+claim, says so once a minute and waits an idle interval; runs already in flight are
+never dropped. Usage is read from the container's cgroup, and the startup line names
+which file it came from.
+
 Restarts and deploys: a stop sends SIGTERM, and the runner flushes its current sample
 batch, sends one last heartbeat with `epochs_done` and exits (`stop_grace_period` is
 60 s). The run stays claimed until it has been silent for five minutes, then the app
