@@ -36,11 +36,11 @@ cd ~/Documents/life_simulator && deploy/deploy
 ```
 
 It fast-forwards to `origin/main` (`DEPLOY_REF=<sha> deploy/deploy` pins another
-commit), tags the app and runner images currently serving `:previous`, rebuilds both, brings the stack up
-and waits for both `http://127.0.0.1:8070/up` and every service of the stack being
-in state `running` — a container whose start failed is left `Created`, which
-`restart: unless-stopped` never acts on, so `up -d` alone is not proof that the site
-is served. When the wait times out the script prints `docker compose ps -a`, the
+commit), tags the app and runner images currently serving `:previous`, rebuilds both,
+brings the stack up and waits for both `http://127.0.0.1:8070/up` and every service of
+the stack being in state `running` — a container whose start failed is left `Created`,
+which `restart: unless-stopped` never acts on, so `up -d` alone is not proof that the
+site is served. When the wait times out the script prints `docker compose ps -a`, the
 services that are not running and the app's last 50 log lines, retries the start
 once, and only then rolls back. `bin/docker-entrypoint` runs `db:prepare` on boot,
 so migrations apply themselves. A healthy deploy ends by pruning untagged images
@@ -61,8 +61,11 @@ the runs in flight, which only come back after the five-minute stale release and
 from their last snapshot. The `runner` stage copies no app file — its only input is the
 Rust build stage — so an app-only build produces byte-identical layers, BuildKit reuses
 them from cache, the runner image keeps the same image ID, and `docker compose up -d`
-leaves the runner container running instead of recreating it. Only an engine change
-restarts the runs now, which is the restart you actually asked for.
+leaves the runner container running instead of recreating it. What restarts the runs
+now is a change that really moves those layers: the engine, a newer `rust` base image,
+or a build cache the daemon has evicted. An engine edit that leaves the binary
+byte-identical — a comment, a doc — moves nothing, because the layers are addressed by
+their content.
 
 `deploy/deploy` builds both (`docker compose build app runner`), tags both `:previous`
 before building, and rolls both back together. To check the behaviour by hand after an

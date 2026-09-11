@@ -100,8 +100,11 @@ fi
 runner_serving=$(serving_image runner "$runner_image")
 # The deploy that splits the two images finds the runner container still on the
 # app image; rolling the runner back to that would run Rails' entrypoint, so the
-# runner's own tag is the only candidate then.
-if [ -n "$runner_serving" ] && [ "$runner_serving" = "$serving" ]; then
+# runner's own tag is the only candidate then. The app's id is read as well as
+# $serving, which is a tag rather than an id whenever no app container is up.
+app_id=$(docker image inspect --format '{{.Id}}' "$app_image" 2>/dev/null || true)
+if [ -n "$runner_serving" ] &&
+   { [ "$runner_serving" = "$serving" ] || [ "$runner_serving" = "$app_id" ]; }; then
   runner_serving=""
   if docker image inspect "$runner_image" >/dev/null 2>&1; then
     runner_serving=$runner_image
