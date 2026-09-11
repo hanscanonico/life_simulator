@@ -153,6 +153,19 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish).to include("32×32, 64×64, 128×128 and 256×256")
       end
 
+      context "with the programme's world-size sweep redefined" do
+        it "follows the sweep instead of restating its arms and budget" do
+          sweep = Lab::SWEEPS.fetch("world_size")
+          redefined = sweep.merge(param_grid: { "world_size" => [{ "width" => 8, "height" => 8 }] }, epochs: 512)
+          stub_const("Lab::SWEEPS", Lab::SWEEPS.merge("world_size" => redefined))
+
+          get finding_path(Findings::Registry.find("world-size-scaling"))
+
+          expect(response.body.squish).to include("8×8", "512-epoch budget is short")
+          expect(response.body.squish).not_to include("32×32")
+        end
+      end
+
       it "names the control and the budget as the reasons a flat sweep is unreadable" do
         get finding_path(Findings::Registry.find("world-size-scaling"))
 
