@@ -172,6 +172,9 @@ EOF
   expect "parse_free reads a French free, whose rows are not labelled Mem: and Swap:" \
     "$(printf '7959\t3000\t4183\t3087')" "$got" || failed=1
 
+  got=$(run sh -c 'printf "%s,%s" "$LC_ALL" "$LANG"')
+  expect "run forces the C locale on the command it measures" "C,C" "$got" || failed=1
+
   got=$(parse_free </dev/null; echo "exit=$?")
   expect "parse_free fails on output without a memory row" "exit=1" "$got" || failed=1
 

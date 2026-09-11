@@ -4,9 +4,9 @@ class AddEpochsDoneAtToRuns < ActiveRecord::Migration[8.1]
   # When progress last moved, as opposed to when the runner last spoke: the heartbeat
   # touches `heartbeat_at` and `updated_at` every 30 s whether or not the simulation
   # advanced, so nothing already stored can tell a wedged run from a slow one. A nullable
-  # column with no default takes no table rewrite and no write lock, so the live runs keep
-  # heartbeating through it; the backfill covers the runs in flight at deploy time, which
-  # would otherwise read as stalled until their next heartbeat.
+  # column with no default takes no table rewrite, so its exclusive lock is held for an
+  # instant and the live runs keep heartbeating through it; the backfill covers the runs in
+  # flight at deploy time, which would otherwise read as stalled until their next heartbeat.
   def up
     add_column :runs, :epochs_done_at, :datetime
     execute <<~SQL.squish
