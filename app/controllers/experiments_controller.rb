@@ -22,4 +22,10 @@ class ExperimentsController < ApplicationController
     report = Experiments::TransitionReportService.call(experiment: experiment)
     stream_csv(report.to_csv.each_line, filename: "#{experiment.slug}-transitions.csv")
   end
+
+  def rescores
+    experiment = Experiment.find_by!(slug: params.expect(:id))
+    stream_csv(Experiments::RescoresCsvService.call(experiment: experiment),
+               filename: "#{experiment.slug}-rescores.csv")
+  end
 end

@@ -1,0 +1,41 @@
+<%# The replicator census of the sweep's stored worlds read at each top_k a corpus pass
+    measured: `summary` is an Experiments::RescoreSummary. The per-world readings behind
+    these rows stay in the rescores CSV. %>
+<figure class="table-figure mt-4">
+  <%# The caption sits outside .table-scroll: inside it, it is laid out at the table's width
+      and clipped mid-word on a phone. %>
+  <figcaption class="table-caption text-sm text-muted" id="replicator-census">
+    Replicator census vs <span class="mono">top_k</span> —
+    stored worlds re-read at each window, the last column counting the runs whose census is
+    empty at the locked <span class="mono">top_k</span> of <%= summary.baseline_top_k %>
+    and non-empty here
+  </figcaption>
+  <div class="table-scroll">
+    <table class="data-table" aria-labelledby="replicator-census">
+      <thead>
+        <tr>
+          <th class="numeric">top_k</th>
+          <th class="numeric">Worlds measured</th>
+          <th class="numeric">Runs with replicators</th>
+          <th class="numeric">Median count</th>
+          <th class="numeric">Max count</th>
+          <th class="numeric">Newly positive runs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% summary.rows.each do |row| %>
+          <tr>
+            <td class="numeric mono"><%= row.top_k %></td>
+            <td class="numeric"><%= number_with_delimiter row.worlds %></td>
+            <td class="numeric">
+              <span class="mono"><%= row.runs_with_replicators %>/<%= row.runs_measured %></span>
+            </td>
+            <td class="numeric mono"><%= metric_value row.median_replicator_count %></td>
+            <td class="numeric mono"><%= count_value row.max_replicator_count %></td>
+            <td class="numeric"><%= row.baseline? ? "—" : row.newly_positive_runs %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</figure>

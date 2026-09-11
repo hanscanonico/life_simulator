@@ -79,6 +79,12 @@ module Experiments
 
     def transition_rate = TransitionRate.new(transitioned: transitioned_finished, finished: finished_count)
 
+    # Only a sweep a corpus pass has read carries this section: without rescores there is
+    # nothing to say about `top_k`.
+    def rescore_summary = @rescore_summary ||= RescoreSummary.build(experiment: experiment)
+
+    def rescores? = rescore_summary.any?
+
     private
 
     def survival_for(axis)

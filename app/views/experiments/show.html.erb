@@ -46,11 +46,19 @@
                                               threshold: @show.transition_threshold %>
 <% end %>
 
+<% if @show.rescores? %>
+  <%= render "experiments/rescores_table", summary: @show.rescore_summary %>
+<% end %>
+
 <h2>Runs</h2>
 <p class="flex flex-wrap gap-2">
   <%= link_to "Download CSV", experiment_path(@show.experiment, format: :csv), class: "btn btn-sm btn-outline" %>
   <% if @show.transition_report? %>
     <%= link_to "Download transition report (CSV)", transitions_experiment_path(@show.experiment),
+                class: "btn btn-sm btn-outline" %>
+  <% end %>
+  <% if @show.rescores? %>
+    <%= link_to "Download rescores (CSV)", rescores_experiment_path(@show.experiment),
                 class: "btn btn-sm btn-outline" %>
   <% end %>
 </p>
