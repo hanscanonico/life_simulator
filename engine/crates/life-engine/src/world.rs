@@ -851,6 +851,10 @@ mod tests {
         let rescored = restored.metrics();
 
         assert!(live.replicator_count > 0, "the soup must hold replicators");
+        assert!(
+            live.distinct_tapes > 1 && live.top_share < 1.0,
+            "a uniform soup would make the shape readings agree trivially: {live:?}"
+        );
         assert_eq!(restored.epoch(), world.epoch());
         assert_eq!(rescored.replicator_count, live.replicator_count);
         assert_eq!(rescored.distinct_tapes, live.distinct_tapes);
@@ -858,7 +862,7 @@ mod tests {
         assert_eq!(rescored.compress_ratio, live.compress_ratio);
         assert_eq!(rescored.entropy_bits, live.entropy_bits);
         assert_eq!(rescored.op_density, live.op_density);
-        assert!(live.copy_rate > 0.0);
+        assert!(live.copy_rate > 0.0, "the epoch just run must have copied");
         assert_eq!(rescored.copy_rate, 0.0);
     }
 
