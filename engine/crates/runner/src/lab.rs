@@ -329,21 +329,16 @@ mod tests {
         assert_eq!(mock.count("POST /api/runs/1/finish"), 0);
     }
 
-    /// Start-up offsets grow with the slot, so twelve resumes do not fetch their
-    /// snapshots in the same instant.
+    /// A slot waits its own offset out before its first claim, so twelve resumes do not
+    /// fetch their snapshots in the same instant.
     #[test]
     fn a_later_slot_starts_after_the_earlier_ones() {
-        let offsets: Vec<Duration> = (0..12).map(|worker| STAGGER * worker as u32).collect();
-        assert_eq!(offsets[0], Duration::ZERO);
-        assert!(
-            offsets.windows(2).all(|pair| pair[0] < pair[1]),
-            "{offsets:?}"
-        );
+        assert!(STAGGER > Duration::ZERO, "slots would all start at once");
 
         let mock = MockLab::start();
         mock.set_queue_empty();
         let mut lab = lab(&mock);
-        lab.stagger = Duration::from_millis(200);
+        lab.stagger = Duration::from_secs(1);
 
         thread::scope(|scope| {
             scope.spawn(|| lab.claim_loop(0));

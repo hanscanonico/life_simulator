@@ -510,18 +510,21 @@ mod tests {
     }
 
     /// The derivation has to admit the largest world the sweeps run, however badly its
-    /// cells compress.
+    /// cells compress, and stay within a small multiple of it — a bound that tracks the
+    /// params is the whole point, where a flat one of hundreds of megabytes per slot is
+    /// what exhausted the mini-pc's swap.
     #[test]
-    fn the_bound_admits_the_control_world() {
+    fn the_bound_admits_the_control_world_and_stays_near_its_size() {
         let params = control_params();
         let snapshot = life_engine::World::new(&params, 7).unwrap().snapshot();
-
-        assert!(
-            snapshot.len() as u64 <= snapshot_body_limit(&params),
-            "a {}-byte snapshot against a {}-byte bound",
-            snapshot.len(),
-            snapshot_body_limit(&params)
+        let bound = snapshot_body_limit(&params);
+        let described = format!(
+            "a {}-byte snapshot against a {bound}-byte bound",
+            snapshot.len()
         );
+
+        assert!(snapshot.len() as u64 <= bound, "{described}");
+        assert!(bound <= 3 * snapshot.len() as u64, "{described}");
     }
 
     #[test]
