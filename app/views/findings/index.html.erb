@@ -27,6 +27,11 @@
           <p class="text-sm">
             <% if row.experiment? %>
               Sweep: <%= link_to row.experiment.name, experiment_path(row.experiment) %>
+              <br>
+              <span class="text-muted">
+                <%= row.runs_done %> / <%= row.runs_total %> runs finished ·
+                <%= row.transitioned %> transitioned (<%= percent_value row.transition_rate.fraction %>)
+              </span>
             <% else %>
               <span class="text-muted">Sweep <span class="mono"><%= row.finding.experiment_slug %></span> is not in the lab yet.</span>
             <% end %>

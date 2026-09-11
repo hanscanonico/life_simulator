@@ -19,6 +19,25 @@ RSpec.describe Findings::Registry do
     expect(dates).to eq(dates.sort.reverse)
   end
 
+  it "leads a shared date with the strongest current result" do
+    slugs = described_class.all.map(&:slug)
+
+    expect(slugs.first).to eq("mutation-rate-window")
+    expect(slugs.index("bff-control")).to be < slugs.index("world-size-scaling")
+  end
+
+  it "keeps the order of findings sharing a date fixed across calls" do
+    same_date = %w[first second third].map do |slug|
+      Findings::Finding.new(slug: slug, title: slug, date: Date.new(2026, 9, 11),
+                            experiment_slug: "mutation-rate", status: :open, summary: slug,
+                            body_partial: "findings/bodies/mutation_rate_window")
+    end
+    stub_const("Findings::Registry::ALL", same_date)
+
+    expect(Array.new(3) { described_class.all.map(&:slug) })
+      .to all(eq(%w[first second third]))
+  end
+
   it "names a sweep the lab knows how to build" do
     known = Lab::SWEEPS.keys.map { |sweep| Lab.slug_for(sweep) }
 

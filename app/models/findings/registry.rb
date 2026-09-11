@@ -2,7 +2,8 @@
 
 module Findings
   # The published findings, as data. Adding one means adding an entry here and the ERB
-  # body it names; nothing else in the app knows a finding by name.
+  # body it names; nothing else in the app knows a finding by name. Within a single date
+  # ALL reads strongest-result-first, which is the order the index shows.
   module Registry
     ALL = [
       Finding.new(
@@ -49,8 +50,10 @@ module Findings
       )
     ].freeze
 
-    # Newest first: a finding list is read as a log.
-    def self.all = ALL.sort_by(&:date).reverse
+    # Newest first: a finding list is read as a log. Findings sharing a date keep the
+    # order of ALL, which leads with the strongest current result, so the index does not
+    # reshuffle itself between boots.
+    def self.all = ALL.sort_by.with_index { |finding, index| [-finding.date.jd, index] }.freeze
 
     def self.find(slug) = ALL.find { |finding| finding.slug == slug }
   end

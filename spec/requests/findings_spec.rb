@@ -27,6 +27,17 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.body).to include(experiment_path("mutation-rate"))
       end
+
+      it "states how far the sweep has got on the row" do
+        experiment = create(:experiment, name: "Mutation rate", slug: "mutation-rate")
+        create(:run, experiment: experiment, status: "finished", transition_epoch: 5_030)
+        create(:run, experiment: experiment, status: "finished", transition_epoch: nil)
+        create(:run, experiment: experiment, status: "pending")
+
+        get findings_path
+
+        expect(response.body.squish).to include("2 / 3 runs finished · 1 transitioned (50%)")
+      end
     end
   end
 
