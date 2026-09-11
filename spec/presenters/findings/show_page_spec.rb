@@ -125,6 +125,35 @@ RSpec.describe Findings::ShowPage do
       end
     end
 
+    context "with the rows read from the database" do
+      def add_sampled_runs(count)
+        count.times do
+          run = create(:run, experiment: experiment, status: "finished", transition_epoch: 1_000,
+                             params: Lab::Schema.run_defaults.merge("mutation_rate" => 2.0**-8))
+          create(:sample, run: run, epoch: 10, values: { "replicator_count" => 3 })
+        end
+      end
+
+      def row_query_count
+        queries = []
+        collect = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
+
+        ActiveSupport::Notifications.subscribed(collect, "sql.active_record") do
+          described_class.build(finding: finding, paginate: paginate).transitions
+        end
+
+        queries.size
+      end
+
+      it "costs the same number of queries at twelve rows as at four" do
+        add_sampled_runs(4)
+        four = row_query_count
+        add_sampled_runs(8)
+
+        expect(row_query_count).to eq(four)
+      end
+    end
+
     context "with more flagged runs than the cap" do
       it "rows the cap and says it is capped" do
         (Findings::ShowPage::MAX_TRANSITIONS + 1).times do |index|
