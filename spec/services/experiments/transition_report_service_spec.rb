@@ -79,6 +79,23 @@ RSpec.describe Experiments::TransitionReportService do
     expect(report.arms.sole.label).to eq("0.000244")
   end
 
+  context "with a crossing the detector never settled on" do
+    let!(:flicker) do
+      sampled(transition_epoch: nil,
+              samples: [sample(0.8, entropy: 5.0, replicators: 0, copy_rate: 0.0, tapes: 800, top_share: 0.05),
+                        sample(0.5, entropy: 4.0, replicators: 0, copy_rate: 0.0, tapes: 500, top_share: 0.12),
+                        sample(0.85, entropy: 5.2, replicators: 0, copy_rate: 0.0, tapes: 850, top_share: 0.04)])
+    end
+
+    it "reports the bare crossing of a run the detector left unflagged" do
+      expect(row_for(flicker)).to have_attributes(transition_epoch: nil, collapse_epoch: 200)
+    end
+
+    it "leaves the unsettled run out of both counts of its arm" do
+      expect(report.arms.sole).to have_attributes(runs: 4, flagged: 2, replicated: 2, either_but_not_both: 2)
+    end
+  end
+
   context "with a run nothing has been sampled from" do
     before { create(:run, experiment: experiment) }
 
