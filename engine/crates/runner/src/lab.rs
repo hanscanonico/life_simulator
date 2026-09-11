@@ -100,12 +100,21 @@ impl Lab {
     }
 
     /// One worker: its own runner id, so the app hands it its own runs. Under `--once`
-    /// it returns after the first claim outcome, the claim's own failure included.
+    /// it returns after the first claim outcome, the claim's own failure included, and
+    /// a memory hold ends the dry run rather than waiting the headroom out.
     fn claim_loop(&self, worker: usize) -> Result<()> {
         let slot = Slot::new(&self.runner_id, worker);
         self.wait(self.stagger * worker as u32);
         while !self.stopping() {
             if self.out_of_memory_headroom(&slot.claim_id) {
+                if self.once {
+                    self.log(
+                        &slot,
+                        "idle",
+                        &[("reason", "no_memory_headroom".to_string())],
+                    );
+                    return Ok(());
+                }
                 self.wait(self.idle);
                 continue;
             }
@@ -543,6 +552,24 @@ mod tests {
         });
     }
 
+    /// Runs a `--once` worker on its own thread and stops it at `within`, so a worker
+    /// that stopped returning after its one claim fails the test instead of hanging it.
+    fn claim_once(lab: &Lab, within: Duration) -> Result<()> {
+        thread::scope(|scope| {
+            let worker = scope.spawn(|| lab.claim_loop(0));
+            let deadline = Instant::now() + within;
+            while !worker.is_finished() {
+                if Instant::now() >= deadline {
+                    lab.stop.store(true, Ordering::Relaxed);
+                    let _ = worker.join();
+                    panic!("the worker was still claiming after {within:?}");
+                }
+                thread::sleep(TICK.min(within));
+            }
+            worker.join().expect("the worker thread")
+        })
+    }
+
     fn claimed(params: Params, epochs: u64, epochs_done: u64) -> ClaimedRun {
         ClaimedRun {
             id: 1,
@@ -718,7 +745,7 @@ mod tests {
         let mock = MockLab::start();
         let lab = lab(&mock).once();
 
-        lab.claim_loop(0).expect("the single claim");
+        claim_once(&lab, Duration::from_secs(10)).expect("the single claim");
 
         assert_eq!(mock.count("POST /api/runs/claim"), 1);
         assert_eq!(mock.count("POST /api/runs/1/finish"), 1);
@@ -732,13 +759,33 @@ mod tests {
         lab.idle = IDLE;
 
         let started = Instant::now();
-        lab.claim_loop(0).expect("the empty claim");
+        claim_once(&lab, IDLE / 3).expect("the empty claim");
 
         assert!(
             started.elapsed() < Duration::from_secs(1),
             "it waited out its idle"
         );
         assert_eq!(mock.count("POST /api/runs/claim"), 1);
+    }
+
+    #[test]
+    fn once_returns_rather_than_waiting_out_a_memory_hold() {
+        let mock = MockLab::start();
+        let mut lab = lab(&mock).once();
+        lab.memory = Some(guard(1, 2));
+        lab.idle = IDLE;
+
+        claim_once(&lab, IDLE / 3).expect("the held claim");
+
+        assert_eq!(mock.count("POST /api/runs/claim"), 0);
+    }
+
+    #[test]
+    fn the_progress_rate_counts_only_the_epochs_since_the_last_beat() {
+        let a_beat_ago = Instant::now() - Duration::from_secs(2);
+
+        assert!((rate((a_beat_ago, 1_000), 1_100) - 50.0).abs() < 1.0);
+        assert_eq!(rate((a_beat_ago, 1_100), 1_100), 0.0);
     }
 
     #[test]
