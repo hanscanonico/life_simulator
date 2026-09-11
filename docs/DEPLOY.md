@@ -77,8 +77,11 @@ Restarts and deploys: a stop sends SIGTERM, and the runner flushes its current s
 batch, sends one last heartbeat with `epochs_done` and exits (`stop_grace_period` is
 60 s). The run stays claimed until it has been silent for five minutes, then the app
 returns it to the queue; the next claim fetches its latest snapshot and continues from
-that epoch, so nothing but the epochs since the last snapshot is recomputed. A run that
-crashes is reported as `failed` with its error and is not retried.
+that epoch, so nothing but the epochs since the last snapshot is recomputed.
+`RUNNER_SNAPSHOT_MAX_AGE` (default `30m`) bounds that loss: once the last snapshot is
+older than it, the next sampled epoch snapshots whatever `snapshot_every` says, so no
+slot redoes more than half an hour of compute. A run that crashes is reported as `failed`
+with its error and is not retried.
 
 ## Memory
 

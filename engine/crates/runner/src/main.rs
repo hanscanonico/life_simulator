@@ -19,6 +19,7 @@ use life_engine::Params;
 use sink::NullSink;
 use std::io::Read;
 use std::path::PathBuf;
+use std::time::Duration;
 
 const BENCH_EPOCHS: u64 = 20;
 
@@ -63,6 +64,10 @@ enum Command {
         /// byte count. Left out, nothing is held back.
         #[arg(long, env = "RUNNER_MAX_MEMORY", value_parser = lab::parse_memory_size)]
         max_memory: Option<u64>,
+        /// A snapshot this old makes the next sampled epoch snapshot, whatever
+        /// `snapshot_every` says — `10m`, `90s` or a second count.
+        #[arg(long, env = "RUNNER_SNAPSHOT_MAX_AGE", value_parser = run::parse_snapshot_max_age)]
+        snapshot_max_age: Option<Duration>,
         /// Dry run: one worker, one claim, then exit — nothing is left claiming.
         #[arg(long)]
         once: bool,
@@ -139,11 +144,19 @@ fn main() -> Result<()> {
             parallelism,
             runner_id,
             max_memory,
+            snapshot_max_age,
             once,
         } => {
             let parallelism = parallelism.unwrap_or_else(lab::default_parallelism);
             let runner_id = runner_id.unwrap_or_else(default_runner_id);
-            let lab = Lab::new(&api, &token, &runner_id, parallelism, max_memory);
+            let lab = Lab::new(
+                &api,
+                &token,
+                &runner_id,
+                parallelism,
+                max_memory,
+                snapshot_max_age.unwrap_or(run::SNAPSHOT_MAX_AGE),
+            );
             if once { lab.once() } else { lab }.work()?;
         }
         Command::Rescore {

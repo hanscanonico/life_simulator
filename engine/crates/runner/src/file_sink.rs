@@ -1,6 +1,6 @@
 //! The local-mode sink: `samples.ndjson`, `snapshots/<epoch>.{bin,png}`, `result.json`.
 
-use crate::sink::{RunResult, RunSink};
+use crate::sink::{RunResult, RunSink, SnapshotReason};
 use anyhow::{Context, Result};
 use life_engine::Metrics;
 use std::fs::{self, File};
@@ -38,7 +38,13 @@ impl RunSink for FileSink {
         Ok(())
     }
 
-    fn snapshot(&mut self, epoch: u64, raw: &[u8], png: &[u8]) -> Result<()> {
+    fn snapshot(
+        &mut self,
+        epoch: u64,
+        raw: &[u8],
+        png: &[u8],
+        _reason: SnapshotReason,
+    ) -> Result<()> {
         let at = self.dir.join("snapshots");
         fs::write(at.join(format!("{epoch}.bin")), raw)?;
         fs::write(at.join(format!("{epoch}.png")), png)?;
