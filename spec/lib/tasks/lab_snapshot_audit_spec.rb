@@ -20,6 +20,16 @@ RSpec.describe "lab:snapshot_audit" do
       .to match(/^\s*#{run.id}\s+400\s+405\s+transition\s+5\s+1$/)
   end
 
+  context "with two snapshots the same distance from the transition" do
+    it "names the earlier one, the world the pruner keeps" do
+      create(:snapshot, run: run, epoch: 410, reason: "cadence")
+      create(:snapshot, run: run, epoch: 390, reason: "transition")
+
+      expect(invoke("lab:snapshot_audit", "mutation-rate"))
+        .to match(/^\s*#{run.id}\s+400\s+390\s+transition\s+10\s+1$/)
+    end
+  end
+
   it "counts the snapshots of the experiment by reason" do
     create(:snapshot, run: run, epoch: 300, reason: "cadence")
     create(:snapshot, run: run, epoch: 350, reason: "age")

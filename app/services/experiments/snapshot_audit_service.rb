@@ -64,8 +64,11 @@ module Experiments
       @rows ||= transitioned.map { |run| row(run) }
     end
 
+    # A tie goes to the earlier epoch, the tie-break Runs::PruneSnapshotsService picks its
+    # kept world by, so the audit names the snapshot that survives thinning rather than
+    # whichever row the database handed back first.
     def row(run)
-      nearest = snapshots[run.id].to_a.min_by { |epoch, _| (epoch - run.transition_epoch).abs }
+      nearest = snapshots[run.id].to_a.min_by { |epoch, _| [(epoch - run.transition_epoch).abs, epoch] }
 
       Row.new(run_id: run.id, transition_epoch: run.transition_epoch, snapshot_epoch: nearest&.first,
               reason: nearest&.last, sample_every: run.params.fetch("sample_every", SAMPLE_EVERY))
