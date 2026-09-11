@@ -79,12 +79,14 @@ namespace :lab do
     puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
   end
 
-  desc "Read the transition detector and the replicator census side by side, per run and per arm (FORMAT=csv)"
+  desc "Read the transition detector and the replicator census side by side, per run and per arm " \
+       "(FORMAT=csv, INCLUDE_RUNNING=1)"
   task :transition_report, [:slug] => :environment do |_task, args|
     experiment = Experiment.find_by(slug: args[:slug])
     raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
 
-    report = Experiments::TransitionReportService.call(experiment: experiment)
+    report = Experiments::TransitionReportService.call(experiment: experiment,
+                                                       include_running: ENV.fetch("INCLUDE_RUNNING", nil) == "1")
 
     puts ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end

@@ -17,18 +17,43 @@ RSpec.describe "lab:transition_report" do
 
   it "prints the run header" do
     expect(invoke("lab:transition_report", "mutation-rate"))
-      .to match(/run_id\s+seed\s+mutation_rate\s+transition_epoch/)
+      .to match(/run_id\s+seed\s+status\s+mutation_rate\s+transition_epoch/)
   end
 
   it "prints one line per sampled run" do
     expect(invoke("lab:transition_report", "mutation-rate"))
       .to match(
-        /^\s*#{run.id}\s+#{run.seed}\s+0\.001\s+100\s+100\s+100\s+census\s+2\s+100\s+3\s+100\s+100\s+0\.004\s+100\s/
+        /^\s*#{run.id}\s+#{run.seed}\s+finished\s+0\.001\s+100\s+100\s+100\s+census\s+2\s+100\s+3\s+100\s+100\s+0\.004\s+100\s/
       )
   end
 
   it "prints the arm summary" do
-    expect(invoke("lab:transition_report", "mutation-rate")).to match(/arm\s+n\s+flagged\s+replicators\s+both/)
+    expect(invoke("lab:transition_report", "mutation-rate"))
+      .to match(/arm\s+n\s+n_terminal\s+flagged\s+replicators\s+both/)
+  end
+
+  context "with a run still going" do
+    before do
+      running = create(:run, experiment: experiment, status: "running", transition_epoch: 100,
+                             params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.001))
+      create(:sample, run: running, epoch: 100,
+                      values: { "compress_ratio" => 0.5, "distinct_tapes" => 200, "top_share" => 0.3,
+                                "replicator_count" => 3, "entropy_bits" => 2.0, "copy_rate" => 0.004 })
+    end
+
+    it "leaves the in-flight flag out of the arm summary" do
+      expect(arm_line(invoke("lab:transition_report", "mutation-rate"))).to match(/0\.001\s+2\s+1\s+1\s+1\s+1\s+0/)
+    end
+
+    context "with INCLUDE_RUNNING=1" do
+      it "counts the in-flight flag" do
+        report = with_env("INCLUDE_RUNNING", "1") { invoke("lab:transition_report", "mutation-rate") }
+
+        expect(arm_line(report)).to match(/0\.001\s+2\s+1\s+2\s+2\s+2\s+0/)
+      end
+    end
+
+    def arm_line(report) = report.lines.last
   end
 
   context "with FORMAT=csv" do

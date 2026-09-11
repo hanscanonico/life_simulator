@@ -80,7 +80,7 @@ RSpec.describe Experiments::TransitionReportService do
   end
 
   it "counts the runs of an arm, its flags, its replicators and the runs holding both" do
-    expect(report.arms.sole).to have_attributes(runs: 3, flagged: 2, replicated: 2, both: 1)
+    expect(report.arms.sole).to have_attributes(runs: 3, terminal: 3, flagged: 2, replicated: 2, both: 1)
   end
 
   it "counts the runs the two observables disagree on" do
@@ -161,6 +161,38 @@ RSpec.describe Experiments::TransitionReportService do
     end
   end
 
+  context "with runs still going" do
+    subject(:report) { described_class.call(experiment: experiment, include_running: include_running) }
+
+    let(:include_running) { false }
+
+    before do
+      5.times { sampled(transition_epoch: 200, samples: [replicating_sample]) }
+      sampled(status: "running", transition_epoch: 400, samples: [replicating_sample])
+      sampled(status: "running", transition_epoch: nil, samples: [replicating_sample])
+    end
+
+    it "counts the flags of the terminal runs only, beside the arm's sampled total" do
+      expect(report.arms.sole).to have_attributes(runs: 10, terminal: 8, flagged: 7, replicated: 7, both: 6)
+    end
+
+    it "keeps a row for every sampled run, with its status" do
+      expect(report.rows.map(&:status).tally).to eq("finished" => 8, "running" => 2)
+    end
+
+    context "with the in-flight runs counted in" do
+      let(:include_running) { true }
+
+      it "counts the flag of a run still going" do
+        expect(report.arms.sole).to have_attributes(runs: 10, terminal: 8, flagged: 8, replicated: 9, both: 7)
+      end
+    end
+
+    def replicating_sample
+      sample(0.4, entropy: 2.0, replicators: 5, copy_rate: 0.004, tapes: 200, top_share: 0.4)
+    end
+  end
+
   context "with a run nothing has been sampled from" do
     before { create(:run, experiment: experiment) }
 
@@ -174,7 +206,7 @@ RSpec.describe Experiments::TransitionReportService do
       lines = report.to_text.lines.map(&:strip)
 
       expect(lines.first).to match(
-        /\Arun_id\s+seed\s+mutation_rate\s+transition_epoch\s+collapse_epoch\s+confirmed_epoch\s+confirmed_by/
+        /\Arun_id\s+seed\s+status\s+mutation_rate\s+transition_epoch\s+collapse_epoch\s+confirmed_epoch\s+confirmed_by/
       )
     end
 
@@ -205,14 +237,14 @@ RSpec.describe Experiments::TransitionReportService do
     it "writes the arm summary as a second section" do
       table = CSV.parse(report.to_csv)
 
-      expect(table.last).to eq(["0.000244", "3", "2", "2", "1", "2"])
+      expect(table.last).to eq(["0.000244", "3", "3", "2", "2", "1", "2"])
     end
   end
 
   def row_for(run) = report.rows.find { |row| row.run_id == run.id }
 
-  def sampled(transition_epoch:, samples:)
-    run = create(:run, experiment: experiment, status: "finished", transition_epoch: transition_epoch,
+  def sampled(transition_epoch:, samples:, status: "finished")
+    run = create(:run, experiment: experiment, status: status, transition_epoch: transition_epoch,
                        params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
     samples.each_with_index { |values, index| create(:sample, run: run, epoch: (index + 1) * 100, values: values) }
     run
