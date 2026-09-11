@@ -36,6 +36,14 @@ module ApplicationHelper
     number_with_delimiter(count.round)
   end
 
+  # A share of runs, read as a whole percent: fractions of a percent say more about the
+  # arm's size than about the substrate.
+  def percent_value(fraction)
+    return "—" if fraction.nil?
+
+    number_to_percentage(fraction * 100, precision: 0)
+  end
+
   def hazard_interval(interval)
     return "" if interval.value.nil?
 

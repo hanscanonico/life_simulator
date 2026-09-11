@@ -26,7 +26,7 @@
             <td class="numeric">
               <span class="mono"><%= arm.transitioned %>/<%= arm.runs_finished %></span>
               <span class="text-muted">
-                <%= arm.transition_fraction ? number_to_percentage(arm.transition_fraction * 100, precision: 0) : "—" %>
+                <%= percent_value arm.transition_rate.fraction %>
               </span>
             </td>
             <td class="numeric mono"><%= epoch_value(arm.median_epoch) %></td>

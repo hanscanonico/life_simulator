@@ -114,16 +114,16 @@ RSpec.describe Experiments::ShowPage do
         arm = page.arms.values.sole.first
 
         expect(arm).to have_attributes(label: "1", runs_finished: 3, transitioned: 3, censored: 0,
-                                       transition_fraction: 1.0, median_epoch: 300.0,
-                                       q1_epoch: 200.0, q3_epoch: 550.0)
+                                       transition_rate: have_attributes(fraction: 1.0),
+                                       median_epoch: 300.0, q1_epoch: 200.0, q3_epoch: 550.0)
       end
 
       it "has no epoch for the arm in which nothing emerged" do
         arm = page.arms.values.sole.last
 
         expect(arm).to have_attributes(label: "2", runs_finished: 2, transitioned: 0, censored: 2,
-                                       transition_fraction: 0.0, median_epoch: nil,
-                                       q1_epoch: nil, q3_epoch: nil)
+                                       transition_rate: have_attributes(fraction: 0.0),
+                                       median_epoch: nil, q1_epoch: nil, q3_epoch: nil)
       end
     end
   end
@@ -189,7 +189,7 @@ RSpec.describe Experiments::ShowPage do
       finished_run(radius: 1, transition_epoch: 100)
       finished_run(radius: 2)
 
-      expect(page.transition_rate).to eq(0.5)
+      expect(page.transition_rate.fraction).to eq(0.5)
     end
 
     it "counts the transitions of the runs still under way apart from the rate" do
@@ -199,7 +199,8 @@ RSpec.describe Experiments::ShowPage do
                    params: Lab::Schema.run_defaults.merge("radius" => 4))
 
       expect(page).to have_attributes(transitioned_finished: 1, finished_count: 2,
-                                      transitioned_running: 1, transition_rate: 0.5)
+                                      transitioned_running: 1)
+      expect(page.transition_rate.fraction).to eq(0.5)
     end
 
     context "with no run under way that transitioned" do
@@ -212,7 +213,7 @@ RSpec.describe Experiments::ShowPage do
 
     context "with no finished run" do
       it "has no rate" do
-        expect(page.transition_rate).to be_nil
+        expect(page.transition_rate.fraction).to be_nil
       end
     end
   end

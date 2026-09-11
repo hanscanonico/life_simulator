@@ -6,13 +6,7 @@ module Experiments
     Row = Data.define(:experiment, :runs_done, :transitioned) do
       def runs_total = experiment.runs_count
 
-      # Share of *finished* runs that reached a transition epoch: pending runs are not
-      # evidence of anything either way.
-      def transition_rate
-        return nil if runs_done.zero?
-
-        transitioned.fdiv(runs_done)
-      end
+      def transition_rate = TransitionRate.new(transitioned: transitioned, finished: runs_done)
     end
 
     Planned = Data.define(:slug, :name, :description)

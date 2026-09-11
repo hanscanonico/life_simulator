@@ -11,11 +11,7 @@ module Experiments
 
     def transitioned = transition_epochs.size
 
-    def transition_fraction
-      return nil if runs_finished.zero?
-
-      transitioned.fdiv(runs_finished)
-    end
+    def transition_rate = TransitionRate.new(transitioned: transitioned, finished: runs_finished)
 
     def median_epoch = percentile(0.5)
 
