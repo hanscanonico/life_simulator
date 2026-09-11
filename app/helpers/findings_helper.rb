@@ -14,6 +14,15 @@ module FindingsHelper
     findings_run_figure(run, findings_run_line_chart(run, metric, points))
   end
 
+  # A run named in a finding's own table: a link when that run is in this database, its
+  # label in plain text when it is not, so the narrative reads the same either way.
+  def findings_run_link(experiment_slug:, seed:, params: {}, label: "seed #{seed}")
+    run = findings_cited_run(experiment_slug, seed, params)
+    return label if run.nil?
+
+    link_to(label, run_path(run))
+  end
+
   private
 
   # `(params, seed)` identifies a run inside its sweep — a seed alone does not, since every

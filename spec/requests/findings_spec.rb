@@ -384,15 +384,78 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
-    context "with the radius stub" do
-      it "states the shape so far and holds off on a claim" do
-        get finding_path(Findings::Registry.find("radius-locality"))
+    context "with the radius write-up" do
+      let(:radius) { Findings::Registry.find("radius-locality") }
+
+      it "states the negative on the speed half of the hypothesis" do
+        get finding_path(radius)
 
         expect(response).to have_http_status(:ok)
         expect(response.body.squish)
-          .to include("no claim is made here yet",
-                      "connectivity buys emergence",
-                      "the two tightest arms produce none")
+          .to include("Locality did not speed emergence.",
+                      "transitioned as often as the best local arm",
+                      "is not in the data")
+      end
+
+      it "states what ten seeds per arm can resolve" do
+        get finding_path(radius)
+
+        expect(response.body.squish)
+          .to include("2 of 10 against 1 of 10", "p = 0.5",
+                      "until it shows 4 transitions where the other shows none",
+                      "a factor of two hiding in here would be invisible")
+      end
+
+      it "keeps the compress_ratio trend as an observation about the soup" do
+        get finding_path(radius)
+
+        expect(response.body.squish)
+          .to include("0.951, 0.901, 0.860", "the well-mixed arm sits at 0.859",
+                      "about the soup, not about emergence")
+      end
+
+      it "reports the transition that did not hold" do
+        get finding_path(radius)
+
+        expect(response.body.squish)
+          .to include("One transition did not hold.", "climbs back through the 0.6 line",
+                      "a state a world can leave again")
+      end
+
+      it "states the determinism cross-check and the repeated arm" do
+        get finding_path(radius)
+
+        expect(response.body.squish)
+          .to include("All ten seeds reproduce", "digit for digit",
+                      "that arm is not an independent sample")
+        expect(response.body).to include(finding_path("mutation-rate-window"), finding_path("world-size-scaling"))
+      end
+
+      it "leaves the diversity half of the hypothesis open and names the lens for the rest" do
+        get finding_path(radius)
+
+        expect(response.body.squish)
+          .to include("<h2>What next</h2>", "stays open",
+                      "The hazard section on the")
+        expect(response.body).to include(experiment_path("radius"))
+      end
+
+      it "names each transitioned run by its arm and seed, without a database id" do
+        get finding_path(radius)
+
+        expect(response.body.squish).to include("15 560 (seed 9)", "5 910 (seed 10)")
+      end
+
+      context "with the cited run in the lab" do
+        it "links the row to it" do
+          experiment = create(:experiment, name: "Neighbourhood radius", slug: "radius", epochs: 20_000)
+          run = create(:run, experiment: experiment, seed: 9, status: "finished", transition_epoch: 15_560,
+                             params: Lab::Schema.run_defaults.merge("radius" => 1))
+
+          get finding_path(radius)
+
+          expect(response.body).to include(%(<a href="#{run_path(run)}">seed 9</a>))
+        end
       end
 
       it "reads its arms from the sweep the lab would build" do
@@ -400,7 +463,7 @@ RSpec.describe "Findings", type: :request do
         redefined = sweep.merge(param_grid: sweep.fetch(:param_grid).merge("radius" => [3, 0]), epochs: 512)
         stub_const("Lab::SWEEPS", Lab::SWEEPS.merge("radius" => redefined))
 
-        get finding_path(Findings::Registry.find("radius-locality"))
+        get finding_path(radius)
 
         expect(response.body.squish).to include("3 and 0", "512 epochs per run")
       end

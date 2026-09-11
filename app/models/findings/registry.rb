@@ -56,12 +56,15 @@ module Findings
         title: "Does spatial locality buy emergence?",
         date: Date.new(2026, 9, 11),
         experiment_slug: "radius",
-        status: :open,
-        summary: "DESIGN §1.3 sweep 3 moves the neighbourhood radius and nothing else, " \
-                 "from the tightest local world to the well-mixed one. The shape so far: " \
-                 "connectivity buys emergence — the widest neighbourhood and the " \
-                 "well-mixed arm transition on both observables, the tightest arms on " \
-                 "neither. No claim yet — the sweep is still running."
+        status: :negative,
+        summary: "All 40 runs finished and 6 transitioned, but locality is not what " \
+                 "decided it: the well-mixed arm transitioned as often as the best local " \
+                 "arm, 2 of 10, and the tightest arm did worst. The speed half of DESIGN " \
+                 "§1.3 sweep 3 is not supported — though 1 or 2 events per arm can only " \
+                 "rule out an enormous effect. What the sweep does show is about the soup " \
+                 "rather than emergence: among runs that never transitioned the final " \
+                 "compress_ratio falls monotonically as a cell's reach widens, 0.951 to " \
+                 "0.859. The diversity half of the hypothesis is untested and stays open."
       )
     ].freeze
 
