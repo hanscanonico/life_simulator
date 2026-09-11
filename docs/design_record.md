@@ -157,19 +157,23 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   travel, not a deliverable**: nothing below is a claim that the soup will compute
   anything, only that each rung is the next thing that can be measured.
   1. **Persistence** — a colony that does not collapse. Already refutable with what the
-     engine records: `replicator_count` over the samples after a transition, its **census
-     peak** (the first epoch at which the census reaches its maximum), and whether
-     `compress_ratio` stays under the 0.6 of §1.2. A **relapse** — a transitioned world
-     climbing back to a random soup — is not hypothetical: the radius sweep's radius-2 run
-     and `mutation-rate-long`'s 2^-12 seed 10 (census peak 123 at 28 100, all 16 384 tapes
-     distinct again by 60 000) both did it. The gap is that today the peak and the hold are
-     computed in Rails by re-reading stored samples (`Findings::ShowPage`); **persistence**
-     as a per-run observable — how many epochs a run held a non-zero census and a
-     qualifying `compress_ratio` — is not yet in the engine, and by §2 the engine has to be
-     the one that measures it. Sweep: `persistence`, the transitioned parameter points
-     (128², 2^-13) at 20 seeds and a budget several times 60 000. Hypothesis: **the hazard
-     of relapse is constant per epoch** — a colony is never established, it is only
-     lucky so far. Refuted if the relapse hazard falls with colony age.
+     engine records: `replicator_count` over the samples after a transition, its
+     **census peak** (that maximum, and the first epoch reaching it), and whether its
+     samples keep qualifying by §1.2 — `compress_ratio` under 0.6 with both collapse
+     guards clear, so that an alphabet that coalesced never reads as a colony that
+     held. A **relapse** — a transitioned world climbing back to a random soup — is not
+     hypothetical: the radius sweep's radius-2 run and `mutation-rate-long`'s 2^-12
+     seed 10 (census peak 123 at 28 100, all 16 384 tapes distinct again by 60 000)
+     both did it. The gap is that nothing measures how long a colony held: Rails
+     derives the census peak from stored samples (`Findings::ShowPage`) and re-reads
+     the engine's transition rule by it (`Runs::TransitionEpochService`), and that is
+     all. **Persistence** as a per-run observable — how many epochs a run held a
+     non-zero census and a qualifying sample — is not yet in the engine, and by §2 the
+     engine has to be the one that measures it. Sweep: `persistence`, the transitioned
+     parameter points (128², 2^-13) at 20 seeds and a budget several times 60 000.
+     Hypothesis: **the hazard of relapse is constant per epoch** — a colony is never
+     established, it is only lucky so far. Refuted if the relapse hazard falls with
+     colony age.
   2. **Heredity with variation** — lineages that share ancestry and drift apart. A
      **lineage** is a set of tapes descended by copying from one ancestor; its **lineage
      id** is the FNV-1a hash of the tape's instruction skeleton, which the engine already
@@ -224,7 +228,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   copying from one ancestor — not built); **lineage id** (FNV-1a hash of a tape's
   instruction skeleton; computed in `render.rs`, not recorded); **modal tape** (the most
   common tape; only its share, `top_share`, is recorded); **persistence** (epochs a run
-  held a non-zero census and a qualifying `compress_ratio` — not built);
+  held a non-zero census and a qualifying sample by §1.2 — not built);
   **relapse** (a transitioned world returning to a random soup — observed, unnamed until
   now); **census peak** (the maximum of `replicator_count` and the first epoch reaching
   it — derived in Rails, not an engine observable); **copy cost** (interpreter steps per
