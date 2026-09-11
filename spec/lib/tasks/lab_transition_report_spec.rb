@@ -22,7 +22,9 @@ RSpec.describe "lab:transition_report" do
 
   it "prints one line per sampled run" do
     expect(invoke("lab:transition_report", "mutation-rate"))
-      .to match(/^\s*#{run.id}\s+#{run.seed}\s+0\.001\s+100\s+100\s+2\s+100\s+3\s+100\s+100\s+0\.004\s+100\s/)
+      .to match(
+        /^\s*#{run.id}\s+#{run.seed}\s+0\.001\s+100\s+100\s+100\s+census\s+2\s+100\s+3\s+100\s+100\s+0\.004\s+100\s/
+      )
   end
 
   it "prints the arm summary" do

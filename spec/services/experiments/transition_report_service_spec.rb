@@ -36,6 +36,18 @@ RSpec.describe Experiments::TransitionReportService do
     expect(row_for(true_positive)).to have_attributes(transition_epoch: 200, collapse_epoch: 200)
   end
 
+  it "confirms the crossing of a true positive against the census" do
+    expect(row_for(true_positive)).to have_attributes(confirmed_epoch: 200, confirmed_by: "census")
+  end
+
+  it "confirms a crossing the copy rate alone backs" do
+    expect(row_for(entropy_only)).to have_attributes(confirmed_epoch: 100, confirmed_by: "copy_rate")
+  end
+
+  it "leaves an unflagged run unconfirmed however many replicators it counted" do
+    expect(row_for(replicator_only)).to have_attributes(confirmed_epoch: nil, confirmed_by: nil)
+  end
+
   it "reports the entropy minimum of a true positive and the epoch it fell on" do
     expect(row_for(true_positive)).to have_attributes(min_entropy_bits: 2.0, min_entropy_epoch: 300)
   end
@@ -96,6 +108,59 @@ RSpec.describe Experiments::TransitionReportService do
     end
   end
 
+  context "with a flagged run neither observable backs" do
+    let!(:bare_crossing) do
+      sampled(transition_epoch: 200,
+              samples: [sample(0.9, entropy: 5.0, replicators: 0, copy_rate: 0.0, tapes: 900, top_share: 0.02),
+                        sample(0.5, entropy: 2.0, replicators: 0, copy_rate: 0.0, tapes: 300, top_share: 0.3),
+                        sample(0.45, entropy: 1.8, replicators: 0, copy_rate: 0.0, tapes: 200, top_share: 0.4)])
+    end
+
+    it "leaves the crossing unconfirmed" do
+      expect(row_for(bare_crossing)).to have_attributes(transition_epoch: 200, confirmed_epoch: nil,
+                                                        confirmed_by: nil)
+    end
+  end
+
+  context "with a census that moved just before the crossing" do
+    let!(:early_census) do
+      sampled(transition_epoch: 300,
+              samples: [sample(0.9, entropy: 5.0, replicators: 3, copy_rate: 0.002, tapes: 900, top_share: 0.02),
+                        sample(0.8, entropy: 4.0, replicators: 0, copy_rate: 0.0, tapes: 800, top_share: 0.05),
+                        sample(0.45, entropy: 1.8, replicators: 0, copy_rate: 0.0, tapes: 200, top_share: 0.4)])
+    end
+
+    it "confirms the crossing off the samples that came before it" do
+      expect(row_for(early_census)).to have_attributes(confirmed_epoch: 300, confirmed_by: "census")
+    end
+  end
+
+  context "with a census that moved beyond the confirmation window" do
+    let!(:late_census) do
+      sampled(transition_epoch: 100,
+              samples: Array.new(described_class::CONFIRM_WINDOW + 1) do
+                sample(0.5, entropy: 2.0, replicators: 0, copy_rate: 0.0, tapes: 300, top_share: 0.3)
+              end + [sample(0.5, entropy: 2.0, replicators: 5, copy_rate: 0.01, tapes: 300, top_share: 0.3)])
+    end
+
+    it "leaves the crossing unconfirmed" do
+      expect(row_for(late_census)).to have_attributes(confirmed_epoch: nil, confirmed_by: nil)
+    end
+  end
+
+  context "with a crossing recorded past the last stored sample" do
+    let!(:unsampled_crossing) do
+      sampled(transition_epoch: 900,
+              samples: [sample(0.9, entropy: 5.0, replicators: 3, copy_rate: 0.002, tapes: 900, top_share: 0.02),
+                        sample(0.45, entropy: 1.8, replicators: 4, copy_rate: 0.003, tapes: 200, top_share: 0.4)])
+    end
+
+    it "leaves the crossing unconfirmed rather than reaching for the nearest sample" do
+      expect(row_for(unsampled_crossing)).to have_attributes(transition_epoch: 900, confirmed_epoch: nil,
+                                                             confirmed_by: nil)
+    end
+  end
+
   context "with a run nothing has been sampled from" do
     before { create(:run, experiment: experiment) }
 
@@ -108,7 +173,9 @@ RSpec.describe Experiments::TransitionReportService do
     it "aligns a header and one line per run over the fixed columns" do
       lines = report.to_text.lines.map(&:strip)
 
-      expect(lines.first).to match(/\Arun_id\s+seed\s+mutation_rate\s+transition_epoch\s+collapse_epoch/)
+      expect(lines.first).to match(
+        /\Arun_id\s+seed\s+mutation_rate\s+transition_epoch\s+collapse_epoch\s+confirmed_epoch\s+confirmed_by/
+      )
     end
 
     it "prints an em dash where an observable never moved" do
@@ -121,6 +188,14 @@ RSpec.describe Experiments::TransitionReportService do
   end
 
   describe "#to_csv" do
+    it "writes the confirmation columns under their headers" do
+      table = CSV.parse(report.to_csv)
+      row = table[1..].find { |cells| cells.first == true_positive.id.to_s }
+
+      expect(row.values_at(table.first.index("confirmed_epoch"),
+                           table.first.index("confirmed_by"))).to eq(%w[200 census])
+    end
+
     it "writes the run rows under the run header" do
       table = CSV.parse(report.to_csv)
 
