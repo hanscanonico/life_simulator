@@ -4,6 +4,8 @@ import { Controller } from "@hotwired/stimulus"
 // lags the epoch counter by up to this many epochs.
 const METRICS_EVERY_EPOCHS = 10
 
+const ERROR_CLASS = "viewer-status--error"
+
 // The copy around the viewer is English, so its numbers are grouped the English way
 // whatever locale the browser reports.
 const LOCALE = "en-US"
@@ -35,7 +37,7 @@ export default class extends Controller {
     if (!this.engine || !this.element.isConnected) return
 
     this.build()
-    this.play()
+    if (!this.prefersReducedMotion()) this.play()
   }
 
   disconnect() {
@@ -46,16 +48,23 @@ export default class extends Controller {
   play() {
     if (this.running || !this.world) return
 
-    this.running = true
-    this.playLabelTarget.textContent = "Pause"
+    this.setRunning(true)
     this.frame = requestAnimationFrame(() => this.tick())
   }
 
   pause() {
-    this.running = false
-    if (this.hasPlayLabelTarget) this.playLabelTarget.textContent = "Play"
+    this.setRunning(false)
     if (this.frame) cancelAnimationFrame(this.frame)
     this.frame = null
+  }
+
+  setRunning(running) {
+    this.running = running
+    if (this.hasPlayLabelTarget) this.playLabelTarget.textContent = running ? "Pause" : "Play"
+  }
+
+  prefersReducedMotion() {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches
   }
 
   toggle() {
@@ -115,7 +124,7 @@ export default class extends Controller {
     this.pixels = new Uint8Array(width * height * 4)
     this.image = new ImageData(new Uint8ClampedArray(this.pixels.buffer), width, height)
     this.metricsEpoch = null
-    this.statusTarget.textContent = ""
+    this.clearStatus()
 
     this.draw()
     this.readOut()
@@ -163,7 +172,13 @@ export default class extends Controller {
     this.copyRateTarget.textContent = metrics.copy_rate.toFixed(3)
   }
 
+  clearStatus() {
+    this.statusTarget.textContent = ""
+    this.statusTarget.classList.remove(ERROR_CLASS)
+  }
+
   fail(message) {
     this.statusTarget.textContent = message
+    this.statusTarget.classList.add(ERROR_CLASS)
   }
 }

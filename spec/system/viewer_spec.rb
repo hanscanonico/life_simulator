@@ -28,6 +28,26 @@ RSpec.describe "The home page viewer", :js, type: :system do
     end
   end
 
+  def play_label
+    find("[data-viewer-target='playLabel']").text
+  end
+
+  def emulate_reduced_motion
+    page.driver.browser.execute_cdp("Emulation.setEmulatedMedia",
+                                    features: [{ name: "prefers-reduced-motion", value: "reduce" }])
+  end
+
+  # Without JavaScript nothing has compiled the engine yet, which is exactly the state the
+  # first-time visitor sees while the wasm module downloads.
+  it "announces that the engine is compiling before any script runs", js: false do
+    visit root_path
+
+    status = find("[data-viewer-target='status']")
+    expect(status.text).to eq("Compiling the world in your browser\u2026")
+    expect(status[:role]).to eq("status")
+    expect(status[:class]).not_to include("viewer-status--error")
+  end
+
   it "runs a world the visitor can play, pause, step and reseed" do
     visit root_path
 
@@ -35,6 +55,7 @@ RSpec.describe "The home page viewer", :js, type: :system do
     expect(page).to have_no_text("could not be loaded")
 
     wait_until { canvas_has_colour? }
+    expect(page).to have_no_text("Compiling the world")
     wait_until { epoch.positive? }
 
     # The readout prints the engine's own metrics_json; nothing computes them in JS.
@@ -57,5 +78,19 @@ RSpec.describe "The home page viewer", :js, type: :system do
     select "Life", from: "Substrate"
     expect(epoch).to eq(0)
     wait_until { canvas_has_colour? }
+  end
+
+  it "leaves the world paused at epoch 0 under prefers-reduced-motion" do
+    emulate_reduced_motion
+    visit root_path
+
+    wait_until { canvas_has_colour? }
+
+    expect(play_label).to eq("Play")
+    sleep 0.5
+    expect(epoch).to eq(0)
+
+    click_on "Play"
+    wait_until { epoch.positive? }
   end
 end

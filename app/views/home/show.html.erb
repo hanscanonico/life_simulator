@@ -10,7 +10,7 @@
        data-viewer-wasm-url-value="<%= @show.wasm_url %>">
     <canvas class="viewer-canvas" data-viewer-target="canvas" aria-label="The living world"></canvas>
 
-    <p class="viewer-status text-sm text-error" data-viewer-target="status" role="status"></p>
+    <p class="viewer-status text-sm" data-viewer-target="status" role="status">Compiling the world in your browser…</p>
 
     <div class="viewer-controls">
       <div class="form-group viewer-control">
@@ -32,7 +32,7 @@
 
       <div class="viewer-buttons">
         <button class="btn btn-primary" type="button" data-action="viewer#toggle">
-          <span data-viewer-target="playLabel">Pause</span>
+          <span data-viewer-target="playLabel">Play</span>
         </button>
         <button class="btn btn-outline" type="button" data-action="viewer#step">Step</button>
         <button class="btn btn-outline" type="button" data-action="viewer#reset">New seed</button>
