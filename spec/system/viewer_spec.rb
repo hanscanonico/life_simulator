@@ -32,6 +32,22 @@ RSpec.describe "The home page viewer", :js, type: :system do
     find("[data-viewer-target='playLabel']").text
   end
 
+  # The colour the status line is actually painted, next to the brand's negative token, so
+  # the error state is pinned without a hard-coded hex.
+  def status_colour_and_negative_token
+    page.evaluate_script(<<~JS)
+      (() => {
+        const probe = document.createElement("span")
+        probe.style.color = "var(--negative)"
+        document.body.append(probe)
+        const negative = getComputedStyle(probe).color
+        probe.remove()
+        const status = document.querySelector("[data-viewer-target='status']")
+        return [getComputedStyle(status).color, negative]
+      })()
+    JS
+  end
+
   def emulate_reduced_motion
     page.driver.browser.execute_cdp("Emulation.setEmulatedMedia",
                                     features: [{ name: "prefers-reduced-motion", value: "reduce" }])
@@ -78,6 +94,20 @@ RSpec.describe "The home page viewer", :js, type: :system do
     select "Life", from: "Substrate"
     expect(epoch).to eq(0)
     wait_until { canvas_has_colour? }
+  end
+
+  it "marks the missing-build message as an error" do
+    presenter = Home::ShowPage.build
+    allow(presenter).to receive(:wasm_url).and_return(nil)
+    allow(Home::ShowPage).to receive(:build).and_return(presenter)
+
+    visit root_path
+
+    status = find("[data-viewer-target='status']", text: "The simulation build is missing")
+    expect(status[:class]).to include("viewer-status--error")
+
+    painted, negative = status_colour_and_negative_token
+    expect(painted).to eq(negative)
   end
 
   it "leaves the world paused at epoch 0 under prefers-reduced-motion" do
