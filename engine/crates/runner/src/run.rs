@@ -84,6 +84,24 @@ pub enum Completion {
     Stopped { epochs_done: u64 },
 }
 
+/// A world that reads compressible from its first sample without having collapsed: two
+/// tapes of distinct non-instruction bytes, one per row parity, so nothing executes and
+/// the alphabet stays well clear of the detector's collapse guard (`docs/DESIGN.md` §1.2).
+/// Both tapes stay below the lowest instruction byte, `+` (43), so `2 * tape_len < 43`.
+#[cfg(test)]
+pub(crate) fn settling_world(params: &Params, seed: u64) -> World {
+    let mut world = World::new(params, seed).unwrap();
+    let stride = params.stride() as u8;
+    for y in 0..params.height {
+        let first = if y.is_multiple_of(2) { 1 } else { 1 + stride };
+        let tape: Vec<u8> = (0..stride).map(|at| first + at).collect();
+        for x in 0..params.width {
+            world.set_cell(x, y, &tape);
+        }
+    }
+    world
+}
+
 pub fn execute(
     params: &Params,
     seed: u64,
@@ -105,23 +123,6 @@ pub fn execute(
 /// much compute. Left `None` — local and file mode — only the cadence snapshots.
 /// `resumed_at` is the epoch a restored world came back from, whose observables were
 /// already measured and posted before the interruption.
-/// A world that reads compressible from its first sample without having collapsed: two
-/// tapes of distinct non-instruction bytes, one per row parity, so nothing executes and
-/// the alphabet stays well clear of the detector's collapse guard (`docs/DESIGN.md` §1.2).
-#[cfg(test)]
-pub(crate) fn settling_world(params: &Params, seed: u64) -> World {
-    let mut world = World::new(params, seed).unwrap();
-    let stride = params.stride() as u8;
-    for y in 0..params.height {
-        let first = if y.is_multiple_of(2) { 1 } else { 1 + stride };
-        let tape: Vec<u8> = (0..stride).map(|at| first + at).collect();
-        for x in 0..params.width {
-            world.set_cell(x, y, &tape);
-        }
-    }
-    world
-}
-
 pub fn execute_world(
     mut world: World,
     epochs: u64,
