@@ -25,7 +25,8 @@ const TICK: Duration = Duration::from_millis(100);
 /// dozen multi-megabyte snapshot answers in the same instant is what exhausted the
 /// mini-pc's swap; spreading the start-up spreads those reads.
 const STAGGER: Duration = Duration::from_millis(500);
-/// How often a blocked worker says so; a spike lasts minutes and every worker sees it.
+/// How often the guard says it is holding claims back. Every worker shares the one
+/// guard, so this is one line a minute for the runner, not one per blocked worker.
 const COMPLAINT: Duration = Duration::from_secs(60);
 const MIB: u64 = 1 << 20;
 
@@ -583,7 +584,11 @@ mod tests {
 
     #[test]
     fn the_detected_guard_names_the_source_it_reads() {
-        assert!(MemoryGuard::detect(5 << 30).describe().contains("5120 MiB"));
+        let guard = MemoryGuard::detect(5 << 30);
+
+        assert!(guard.describe().contains("5120 MiB"));
+        assert!(guard.describe().contains(guard.source));
+        assert_eq!((guard.usage)().is_some(), guard.source.starts_with('/'));
     }
 
     #[test]
@@ -592,10 +597,13 @@ mod tests {
         assert_eq!(parse_memory_size("512M"), Ok(512 << 20));
         assert_eq!(parse_memory_size("1024k"), Ok(1024 << 10));
         assert_eq!(parse_memory_size("6GiB"), Ok(6 << 30));
+        assert_eq!(parse_memory_size("512mb"), Ok(512 << 20));
         assert_eq!(parse_memory_size(" 4096 "), Ok(4096));
         assert!(parse_memory_size("plenty").is_err());
+        assert!(parse_memory_size("").is_err());
         assert!(parse_memory_size("0").is_err());
         assert!(parse_memory_size("-1g").is_err());
+        assert!(parse_memory_size("17179869184g").is_err());
     }
 
     #[test]
