@@ -12,7 +12,7 @@ use life_engine::World;
 use std::any::Any;
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -25,6 +25,10 @@ const TICK: Duration = Duration::from_millis(100);
 /// dozen multi-megabyte snapshot answers in the same instant is what exhausted the
 /// mini-pc's swap; spreading the start-up spreads those reads.
 const STAGGER: Duration = Duration::from_millis(500);
+/// How often the guard says it is holding claims back. Every worker shares the one
+/// guard, so this is one line a minute for the runner, not one per blocked worker.
+const COMPLAINT: Duration = Duration::from_secs(60);
+const MIB: u64 = 1 << 20;
 
 pub struct Lab {
     client: LabClient,
@@ -33,11 +37,18 @@ pub struct Lab {
     idle: Duration,
     heartbeat: Duration,
     stagger: Duration,
+    memory: Option<MemoryGuard>,
     stop: Arc<AtomicBool>,
 }
 
 impl Lab {
-    pub fn new(api: &str, token: &str, runner_id: &str, parallelism: usize) -> Self {
+    pub fn new(
+        api: &str,
+        token: &str,
+        runner_id: &str,
+        parallelism: usize,
+        max_memory: Option<u64>,
+    ) -> Self {
         Self {
             client: LabClient::new(api, token),
             runner_id: runner_id.to_string(),
@@ -45,6 +56,7 @@ impl Lab {
             idle: IDLE,
             heartbeat: HEARTBEAT,
             stagger: STAGGER,
+            memory: max_memory.map(MemoryGuard::detect),
             stop: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -55,8 +67,13 @@ impl Lab {
             signal_hook::flag::register(signal, Arc::clone(&self.stop))?;
         }
         println!(
-            "{}: lab mode, {} worker(s)",
-            self.runner_id, self.parallelism
+            "{}: lab mode, {} worker(s), {}",
+            self.runner_id,
+            self.parallelism,
+            match &self.memory {
+                Some(guard) => guard.describe(),
+                None => "no memory guard".to_string(),
+            }
         );
         thread::scope(|scope| {
             for worker in 0..self.parallelism {
@@ -71,6 +88,10 @@ impl Lab {
         let runner_id = format!("{}-{worker}", self.runner_id);
         self.wait(self.stagger * worker as u32);
         while !self.stopping() {
+            if self.out_of_memory_headroom(&runner_id) {
+                self.wait(self.idle);
+                continue;
+            }
             match self.client.claim(&runner_id) {
                 Ok(Some(claimed)) => {
                     println!("{runner_id}: claimed run {}", claimed.id);
@@ -84,6 +105,16 @@ impl Lab {
             }
         }
         println!("{runner_id}: stopped");
+    }
+
+    /// A claim can double the memory the process holds — a resumed world arrives as a
+    /// snapshot blob and becomes a `World` — so a worker that would claim past the limit
+    /// waits instead. Runs already in flight are never dropped: an OOM kill would cost
+    /// each of them the 5-minute stale release before anyone could resume it.
+    fn out_of_memory_headroom(&self, runner_id: &str) -> bool {
+        self.memory
+            .as_ref()
+            .is_some_and(|guard| guard.exceeded(runner_id))
     }
 
     /// Executes one claimed run. Anything that ends it other than completion or a signal
@@ -203,6 +234,149 @@ fn panic_message(panic: &Box<dyn Any + Send>) -> String {
     }
 }
 
+/// Holds claims back while the process is over `limit` bytes. The reader is a field so a
+/// test can hand in a usage figure instead of a file this machine may not have.
+struct MemoryGuard {
+    limit: u64,
+    source: &'static str,
+    usage: UsageReader,
+    complained_at: Mutex<Option<Instant>>,
+}
+
+/// Bytes the process holds, or `None` when this machine cannot say.
+type UsageReader = Box<dyn Fn() -> Option<u64> + Send + Sync>;
+
+/// cgroup v2, the shape of the mini-pc's docker host.
+const CGROUP_V2: &str = "/sys/fs/cgroup/memory.current";
+const CGROUP_V1: &str = "/sys/fs/cgroup/memory/memory.usage_in_bytes";
+const STATM: &str = "/proc/self/statm";
+/// `statm` counts pages, and there is no page size to ask for without libc; 4 KiB is
+/// right on the x86-64 host and this is the last resort of three sources anyway.
+const PAGE: u64 = 4096;
+
+impl MemoryGuard {
+    /// The first source that answers on this machine. macOS has none of them, so the
+    /// guard reads nothing there and local runs behave as they always did.
+    fn detect(limit: u64) -> Self {
+        match MemorySource::detect() {
+            Some(source) => Self::reading(limit, source.path, Box::new(source.read)),
+            None => Self::reading(limit, "no source on this platform", Box::new(|| None)),
+        }
+    }
+
+    fn reading(limit: u64, source: &'static str, usage: UsageReader) -> Self {
+        Self {
+            limit,
+            source,
+            usage,
+            complained_at: Mutex::new(None),
+        }
+    }
+
+    fn describe(&self) -> String {
+        format!(
+            "memory guard at {} MiB, read from {}",
+            self.limit / MIB,
+            self.source
+        )
+    }
+
+    fn exceeded(&self, runner_id: &str) -> bool {
+        let Some(usage) = (self.usage)() else {
+            return false;
+        };
+        if usage <= self.limit {
+            return false;
+        }
+        let mut complained_at = self.complained_at.lock().unwrap();
+        if complained_at.is_none_or(|at| at.elapsed() >= COMPLAINT) {
+            *complained_at = Some(Instant::now());
+            println!(
+                "{runner_id}: {} MiB held, over the {} MiB guard — waiting to claim",
+                usage / MIB,
+                self.limit / MIB
+            );
+        }
+        true
+    }
+}
+
+struct MemorySource {
+    path: &'static str,
+    read: fn() -> Option<u64>,
+}
+
+impl MemorySource {
+    /// The first of the three that this machine answers from.
+    fn detect() -> Option<Self> {
+        [
+            Self {
+                path: CGROUP_V2,
+                read: cgroup_v2_usage,
+            },
+            Self {
+                path: CGROUP_V1,
+                read: cgroup_v1_usage,
+            },
+            Self {
+                path: STATM,
+                read: statm_usage,
+            },
+        ]
+        .into_iter()
+        .find(|source| (source.read)().is_some())
+    }
+}
+
+fn cgroup_v2_usage() -> Option<u64> {
+    first_number(CGROUP_V2)
+}
+
+fn cgroup_v1_usage() -> Option<u64> {
+    first_number(CGROUP_V1)
+}
+
+/// The second field of `statm` is the resident set, in pages.
+fn statm_usage() -> Option<u64> {
+    let statm = std::fs::read_to_string(STATM).ok()?;
+    let pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
+    pages.checked_mul(PAGE)
+}
+
+fn first_number(path: &str) -> Option<u64> {
+    std::fs::read_to_string(path)
+        .ok()?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// `--max-memory` and compose's own limits speak the same sizes: `5g`, `512m`, or bytes.
+pub fn parse_memory_size(text: &str) -> Result<u64, String> {
+    let lowered = text.trim().to_ascii_lowercase();
+    let digits = lowered
+        .strip_suffix("ib")
+        .or_else(|| lowered.strip_suffix('b'))
+        .unwrap_or(&lowered);
+    let (digits, scale) = if let Some(rest) = digits.strip_suffix('g') {
+        (rest, 1 << 30)
+    } else if let Some(rest) = digits.strip_suffix('m') {
+        (rest, 1 << 20)
+    } else if let Some(rest) = digits.strip_suffix('k') {
+        (rest, 1 << 10)
+    } else {
+        (digits, 1)
+    };
+    let size: u64 = digits
+        .trim()
+        .parse()
+        .map_err(|_| format!("{text:?} is not a size like 5g, 512m or a byte count"))?;
+    size.checked_mul(scale)
+        .filter(|&bytes| bytes > 0)
+        .ok_or_else(|| format!("{text:?} is not a usable memory limit"))
+}
+
 /// The default worker count of DESIGN.md §2: every core but the two the site keeps.
 pub fn default_parallelism() -> usize {
     thread::available_parallelism()
@@ -228,8 +402,23 @@ mod tests {
             idle: Duration::from_millis(10),
             heartbeat: Duration::from_millis(10),
             stagger: Duration::ZERO,
+            memory: None,
             stop: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// A guard reading a fixed usage, so the test does not depend on this machine.
+    fn guard(limit: u64, usage: u64) -> MemoryGuard {
+        MemoryGuard::reading(limit, "a test reader", Box::new(move || Some(usage)))
+    }
+
+    /// Runs `worker` until `stop`, long enough for a claim or two.
+    fn claim_briefly(lab: &Lab, worker: usize) {
+        thread::scope(|scope| {
+            scope.spawn(|| lab.claim_loop(worker));
+            thread::sleep(Duration::from_millis(100));
+            lab.stop.store(true, Ordering::Relaxed);
+        });
     }
 
     fn claimed(params: Params, epochs: u64, epochs_done: u64) -> ClaimedRun {
@@ -360,6 +549,61 @@ mod tests {
             !claimants.contains(&"runner-test-2".to_string()),
             "{claimants:?}"
         );
+    }
+
+    #[test]
+    fn a_worker_over_the_memory_guard_claims_nothing() {
+        let mock = MockLab::start();
+        let mut lab = lab(&mock);
+        lab.memory = Some(guard(4 * MIB, 8 * MIB));
+
+        claim_briefly(&lab, 0);
+
+        assert_eq!(mock.count("POST /api/runs/claim"), 0);
+    }
+
+    #[test]
+    fn a_worker_under_the_memory_guard_claims_as_usual() {
+        let mock = MockLab::start();
+        let mut lab = lab(&mock);
+        lab.memory = Some(guard(8 * MIB, 4 * MIB));
+
+        claim_briefly(&lab, 0);
+
+        assert!(mock.count("POST /api/runs/claim") >= 1);
+        assert!(mock.count("POST /api/runs/1/finish") >= 1);
+    }
+
+    /// macOS, where none of the three sources exist: the guard reads nothing and claims.
+    #[test]
+    fn a_guard_without_a_memory_source_holds_nothing_back() {
+        let unreadable = MemoryGuard::reading(0, "no source", Box::new(|| None));
+
+        assert!(!unreadable.exceeded("runner-test-0"));
+    }
+
+    #[test]
+    fn the_detected_guard_names_the_source_it_reads() {
+        let guard = MemoryGuard::detect(5 << 30);
+
+        assert!(guard.describe().contains("5120 MiB"));
+        assert!(guard.describe().contains(guard.source));
+        assert_eq!((guard.usage)().is_some(), guard.source.starts_with('/'));
+    }
+
+    #[test]
+    fn memory_sizes_are_read_with_or_without_a_binary_suffix() {
+        assert_eq!(parse_memory_size("5g"), Ok(5 << 30));
+        assert_eq!(parse_memory_size("512M"), Ok(512 << 20));
+        assert_eq!(parse_memory_size("1024k"), Ok(1024 << 10));
+        assert_eq!(parse_memory_size("6GiB"), Ok(6 << 30));
+        assert_eq!(parse_memory_size("512mb"), Ok(512 << 20));
+        assert_eq!(parse_memory_size(" 4096 "), Ok(4096));
+        assert!(parse_memory_size("plenty").is_err());
+        assert!(parse_memory_size("").is_err());
+        assert!(parse_memory_size("0").is_err());
+        assert!(parse_memory_size("-1g").is_err());
+        assert!(parse_memory_size("17179869184g").is_err());
     }
 
     #[test]
