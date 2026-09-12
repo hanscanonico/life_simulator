@@ -101,6 +101,10 @@ Every run records its full metric series and periodic snapshots so a claim can b
 re-examined. A finding is published on the site with its phase diagram, the raw runs,
 and the seed of every run.
 
+Emergence is the first rung, not the whole programme. The ladder above it — persistence,
+heredity with variation, adaptation, open-ended evolution — with the observable and the
+refutable sweep for each, is the "evolution programme" entry in `docs/design_record.md`.
+
 ## 2. Architecture
 
 ```
