@@ -30,6 +30,11 @@ module FindingsHelper
     Run.joins(:experiment).where(experiment: { slug: experiment_slug }, status: "finished").count
   end
 
+  # Every transitioned run in the lab with what became of it, read at render time for the
+  # same reason the count above is: a write-up that spans the whole programme states its
+  # own denominator rather than freezing one.
+  def findings_persistence_survey = @findings_persistence_survey ||= Findings::PersistenceSurvey.build
+
   private
 
   # `(params, seed)` identifies a run inside its sweep — a seed alone does not, since every

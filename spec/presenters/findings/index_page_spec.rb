@@ -42,7 +42,7 @@ RSpec.describe Findings::IndexPage do
     end
 
     it "reads the whole log in a fixed number of queries" do
-      Findings::Registry.all.to_a.each { |finding| create(:experiment, slug: finding.experiment_slug) }
+      Findings::Registry.all.select(&:sweep?).each { |finding| create(:experiment, slug: finding.experiment_slug) }
 
       expect(queries_during { described_class.build.rows }).to eq(3)
     end

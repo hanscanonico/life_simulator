@@ -55,6 +55,18 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with a finding that names no sweep" do
+      it "rows it against every transitioned run instead of a missing sweep" do
+        create(:run, status: "finished", transition_epoch: 900)
+
+        get findings_path
+
+        expect(response.body.squish).to include("Emergence is a state a world can leave",
+                                                "Every sweep in the lab · 1 transitioned runs")
+        expect(response.body).to include(finding_path("emergence-can-be-left"))
+      end
+    end
+
     context "with the sweep missing" do
       it "says so instead of stating progress" do
         get findings_path
@@ -744,6 +756,95 @@ RSpec.describe "Findings", type: :request do
           expect(response.body.squish).to include("1 of the 40 runs have reached 20 000 epochs")
             .and include("recorded once every one of the 40 had finished")
           expect(response.body).to include(%(class="chart-cited"), run_path(run))
+        end
+      end
+    end
+
+    context "with the persistence write-up" do
+      let(:persistence) { Findings::Registry.find("emergence-can-be-left") }
+
+      def transitioned_run(experiment, seed, persistence_summary, samples_after: 4)
+        run = create(:run, experiment: experiment, seed: seed, status: "finished", transition_epoch: 1_000,
+                           persistence: persistence_summary)
+        samples_after.times { |index| create(:sample, run: run, epoch: 1_000 + (index * 10)) }
+        run
+      end
+
+      it "states the rule it reads a stored series by, and what it does not claim" do
+        get finding_path(persistence)
+
+        expect(response.body.squish)
+          .to include("Emergence is a state a world can leave",
+                      "the state ends at the first of 4 consecutive samples the rule rejects",
+                      "A persister persisted to its last sample, not forever.",
+                      "No hazard is estimated.",
+                      "Entering and leaving are decided by compression alone.",
+                      "not a colony that died",
+                      "The exit rule is a Rails-side definition.")
+      end
+
+      it "says its evidence is every transitioned run rather than one sweep" do
+        get finding_path(persistence)
+
+        expect(response.body.squish).to include("This finding rests on no single sweep")
+        expect(response.body.squish).not_to include("has not been queued in the lab yet")
+      end
+
+      it "says plainly that nothing has transitioned yet" do
+        get finding_path(persistence)
+
+        expect(response.body.squish).to include("No terminal run in this database has a transition epoch yet")
+      end
+
+      context "with transitioned runs in the database" do
+        it "counts the persisters and the relapsers and links the sweeps and the runs" do
+          radius = create(:experiment, name: "Radius", slug: "radius")
+          held = transitioned_run(radius, 1, { "census_peak" => 7, "peak_epoch" => 1_020,
+                                               "epochs_persisted" => 400, "relapsed" => false })
+          left = transitioned_run(radius, 2, { "census_peak" => 123, "peak_epoch" => 1_040,
+                                               "epochs_persisted" => 80, "relapsed" => true })
+
+          get finding_path(persistence)
+
+          expect(response.body.squish)
+            .to include("The lab has 2 terminal runs across 1 sweep with a transition epoch, and a " \
+                        "persistence summary behind 2 of them",
+                        "The split is 1 still in the transitioned state at their last sample against 1 " \
+                        "that climbed back out of it",
+                        "50% of the summarised runs relapsed",
+                        "held the state for 80 to 400 epochs, a median of 80",
+                        "peak at 7 to 123 cells, a median of 7")
+          expect(response.body).to include(experiment_path(radius), run_path(held), run_path(left),
+                                           "relapsed", "persisted")
+        end
+
+        it "splits the outcome by whether the census ever saw a colony" do
+          sweep = create(:experiment)
+          transitioned_run(sweep, 1, { "census_peak" => 123, "peak_epoch" => 1_040,
+                                       "epochs_persisted" => 80, "relapsed" => true })
+          transitioned_run(sweep, 2, { "census_peak" => 7, "peak_epoch" => 1_020,
+                                       "epochs_persisted" => 400, "relapsed" => false })
+          transitioned_run(sweep, 3, { "census_peak" => 0, "peak_epoch" => nil,
+                                       "epochs_persisted" => 60, "relapsed" => true })
+
+          get finding_path(persistence)
+
+          expect(response.body.squish)
+            .to include("Of the 2 summarised runs that counted a replicating cell, 1 persisted and 1 relapsed",
+                        "Of the 1 run whose census never left zero — or was never taken — 0 persisted " \
+                        "and 1 relapsed",
+                        "worlds the census never saw as a colony at all")
+        end
+
+        it "flags the persisters with no room for an exit to be confirmed in" do
+          transitioned_run(create(:experiment), 1,
+                           { "census_peak" => 7, "peak_epoch" => 1_020,
+                             "epochs_persisted" => 10, "relapsed" => false }, samples_after: 2)
+
+          get finding_path(persistence)
+
+          expect(response.body.squish)
+            .to include("Fewer than 4 samples follow the crossing in 1 persister")
         end
       end
     end

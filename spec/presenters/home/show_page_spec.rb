@@ -40,9 +40,11 @@ RSpec.describe Home::ShowPage do
 
     context "with the sweep in the lab" do
       it "hands the row its experiment" do
-        experiment = create(:experiment, slug: Findings::Registry.all.first.experiment_slug)
+        finding = Findings::Registry.all.find(&:sweep?)
+        experiment = create(:experiment, slug: finding.experiment_slug)
+        row = page.latest_findings.find { |candidate| candidate.finding == finding }
 
-        expect(page.latest_findings.first.experiment).to eq(experiment)
+        expect(row.experiment).to eq(experiment)
       end
     end
 
