@@ -103,8 +103,7 @@ and the seed of every run.
 
 Emergence is the first rung, not the whole programme. The ladder above it — persistence,
 heredity with variation, adaptation, open-ended evolution — with the observable and the
-refutable sweep for each, is the 2026-09-11 entry "the evolution programme" in
-`docs/design_record.md`.
+refutable sweep for each, is the "evolution programme" entry in `docs/design_record.md`.
 
 ## 2. Architecture
 
