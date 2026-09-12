@@ -73,6 +73,7 @@ namespace :lab do
 
       puts "run #{run.id}: #{run.transition_epoch || 'none'} → #{recomputed || 'none'}"
       run.update!(transition_epoch: recomputed)
+      Runs::PersistenceRefreshService.call(run: run)
       true
     end
 
@@ -91,11 +92,9 @@ namespace :lab do
 
     terminal = runs.to_a
     backfilled = terminal.count do |run|
-      summary = Runs::PersistenceSummaryService.call(run: run).to_h
-      next false if summary.stringify_keys == run.persistence
+      next false unless Runs::PersistenceRefreshService.call(run: run)
 
-      puts "run #{run.id}: #{summary.presence || 'no transition'}"
-      run.update!(persistence: summary)
+      puts "run #{run.id}: #{run.persistence.presence || 'no transition'}"
       true
     end
 

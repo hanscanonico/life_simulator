@@ -69,7 +69,7 @@ RSpec.describe Charts::Survival do
       end
     end
 
-    describe "#persisted" do
+    describe "#persisted_count" do
       def persistence(relapsed) = Runs::Persistence.new(census_peak: 3, peak_epoch: 1, epochs_persisted: 2, relapsed: relapsed)
 
       let(:arm) do
@@ -84,12 +84,12 @@ RSpec.describe Charts::Survival do
       end
 
       it "counts the emergences the world stayed in against the ones it left" do
-        expect(arm).to have_attributes(summarised: 3, persisted: 2, relapsed: 1)
+        expect(arm).to have_attributes(summarised_count: 3, persisted_count: 2, relapsed_count: 1)
       end
 
       context "with an arm nothing has summarised" do
         it "counts nothing rather than a row of zeroes" do
-          expect(Charts::Survival::Arm.new(label: "1", observations: observations([2, true])).summarised).to eq(0)
+          expect(Charts::Survival::Arm.new(label: "1", observations: observations([2, true])).summarised_count).to eq(0)
         end
       end
     end

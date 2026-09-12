@@ -33,7 +33,7 @@
   </p>
   <dl class="facts">
     <dt>census peak</dt>
-    <dd class="mono"><%= persistence.counted? ? number_with_delimiter(persistence.census_peak) : "0 (no replicator counted)" %></dd>
+    <dd class="mono"><%= @show.census_peak_label %></dd>
     <dt>peak epoch</dt>
     <dd class="mono"><%= persistence.peak_epoch ? number_with_delimiter(persistence.peak_epoch) : "—" %></dd>
     <dt>epochs persisted</dt>

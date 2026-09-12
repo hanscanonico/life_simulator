@@ -30,6 +30,16 @@ RSpec.describe Runs::FinishService do
     expect(run.reload.persistence_summary).to have_attributes(epochs_persisted: 300, relapsed: false)
   end
 
+  it "stores a summary the finished run reads back without reloading" do
+    [0.9, 0.4, 0.3, 0.2, 0.1].each_with_index do |ratio, index|
+      create(:sample, run: run, epoch: index * 100, values: { "compress_ratio" => ratio })
+    end
+
+    finished = described_class.call(run: run, transition_epoch: 100)
+
+    expect(finished.persistence_summary).to have_attributes(epochs_persisted: 300, relapsed: false)
+  end
+
   it "leaves the summary empty for a run the detector never flagged" do
     described_class.call(run: run)
 

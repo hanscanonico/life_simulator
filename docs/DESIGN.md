@@ -74,8 +74,11 @@ claim rests on it.
   against alphabet collapse, which produces a compressible world with no replication at
   all (run 183: two byte values, `op_density` exactly 1.0, `copy_rate` 0). Null until it
   happens. The primary dependent variable of every sweep is this number. The engine's
-  tracker is the single authority on this rule; Rails only re-reads stored samples by it
-  (`Runs::TransitionEpochService`), and samples recorded before `alphabet_size` existed
+  tracker is the single authority on this rule; Rails only re-reads stored samples by it,
+  from the one place that spells the predicate out (`Lab::TransitionRule`) — to recover
+  the epoch of a run measured before the tracker survived a resume
+  (`Runs::TransitionEpochService`) and to read what became of the world after that epoch
+  (`Runs::PersistenceSummaryService`). Samples recorded before `alphabet_size` existed
   are read by the `op_density` half of the guard alone.
 
 **Replicator test**: a tape `T` is a replicator if executing `T ++ R` for a random tape

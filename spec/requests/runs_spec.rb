@@ -102,6 +102,18 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
+    context "with a transitioned run whose samples carry no replicator count" do
+      it "reads the census peak as missing rather than as zero" do
+        run.update!(persistence: { "census_peak" => nil, "peak_epoch" => nil,
+                                   "epochs_persisted" => 2_000, "relapsed" => false })
+
+        get run_path(run)
+
+        expect(response.body.squish).to include("— (not sampled)")
+        expect(response.body.squish).not_to include("0 (no replicator counted)")
+      end
+    end
+
     context "with a run the detector never flagged" do
       it "says nothing about persistence" do
         run.update!(transition_epoch: nil)

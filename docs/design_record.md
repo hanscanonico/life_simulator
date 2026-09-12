@@ -238,3 +238,18 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   **environmental structure** (optional non-uniform world, default uniform — not
   built); **room to grow** (optional growable tapes, default fixed `tape_len` — not
   built). Findings and issues use these words and not synonyms.
+- 2026-09-12 — **Leaving the transitioned state defined, Rails-side.** §1.2 fixes when a
+  world enters the transitioned state; it says nothing about leaving one, and the engine's
+  tracker — which only ever reports the first crossing — has no exit rule to borrow. The
+  persistence summary (`Runs::PersistenceSummaryService`, stored on `runs.persistence`)
+  defines one: the state ends at the first of **`hold_samples + 1` consecutive samples**
+  `Lab::TransitionRule` rejects, and a run whose state never ends **persisted** to its last
+  sample. The count mirrors the entry hold — three further qualifying samples confirm an
+  entry, so three further rejecting samples confirm an exit, and the `+ 1` is the sample
+  that starts the run of rejections, exactly as the crossing sample starts the hold. A
+  single sample flickering back over the threshold is then no more a relapse than a single
+  sample under it is a transition. **Consequence**: a run with fewer than `hold_samples + 1`
+  samples after its transition cannot be flagged **relapsed** — it has no room for an exit
+  to be confirmed in — and so reads as persisted, which is a limit of the record and not a
+  reading of the world. This is a Rails-side definition over stored samples; the engine
+  stays the single authority on entry.

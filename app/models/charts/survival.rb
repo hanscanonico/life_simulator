@@ -52,11 +52,11 @@ module Charts
       # Of the emergences this arm has a persistence summary for, how many the world was
       # still in at its last sample and how many it climbed back out of. An arm whose
       # emergences have not been summarised has neither count rather than two zeroes.
-      def summarised = persistences.size
+      def summarised_count = persistences.size
 
-      def persisted = persistences.count { |persistence| !persistence.relapsed? }
+      def persisted_count = persistences.count { |persistence| !persistence.relapsed? }
 
-      def relapsed = persistences.count(&:relapsed?)
+      def relapsed_count = persistences.count(&:relapsed?)
 
       def hazard = @hazard ||= PoissonRate.new(events: events, exposure: exposure)
 

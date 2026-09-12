@@ -95,6 +95,14 @@ RSpec.describe "the lab queue tasks" do
       expect(run.reload.transition_epoch).to eq(10)
     end
 
+    it "recomputes the persistence summary against the epoch it has just rewritten" do
+      run = run_with_drop(transition_epoch: 40)
+
+      invoke("lab:backfill_transitions", "bff-control")
+
+      expect(run.reload.persistence_summary).to have_attributes(epochs_persisted: 30, relapsed: false)
+    end
+
     it "clears a transition epoch the samples do not support" do
       run = create(:run, experiment: experiment, status: "finished", transition_epoch: 900)
 

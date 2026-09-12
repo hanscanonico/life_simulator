@@ -13,6 +13,14 @@ RSpec.describe Runs::Persistence do
       expect(persistence).to be_counted
     end
 
+    it "reads a summary that has not been through the jsonb column yet" do
+      persistence = described_class.from(census_peak: 12, peak_epoch: 80, epochs_persisted: 900,
+                                         relapsed: true)
+
+      expect(persistence).to have_attributes(census_peak: 12, peak_epoch: 80, epochs_persisted: 900)
+      expect(persistence).to be_relapsed
+    end
+
     it "is nothing for a run with no summary" do
       expect(described_class.from({})).to be_nil
       expect(described_class.from(nil)).to be_nil
@@ -23,6 +31,16 @@ RSpec.describe Runs::Persistence do
     it "is false for a census that never left zero" do
       expect(described_class.new(census_peak: 0, peak_epoch: nil, epochs_persisted: 40, relapsed: true))
         .not_to be_counted
+    end
+  end
+
+  describe "#sampled?" do
+    it "tells a census that read zero from samples that carried no census at all" do
+      zero = described_class.new(census_peak: 0, peak_epoch: nil, epochs_persisted: 40, relapsed: true)
+      missing = described_class.new(census_peak: nil, peak_epoch: nil, epochs_persisted: 40, relapsed: true)
+
+      expect(zero).to be_sampled
+      expect(missing).not_to be_sampled
     end
   end
 end
