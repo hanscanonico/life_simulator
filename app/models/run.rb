@@ -19,6 +19,9 @@ class Run < ApplicationRecord
   validates :priority, numericality: { only_integer: true }
 
   scope :terminal, -> { where(status: TERMINAL_STATUSES) }
+  # A run the detector flagged and that will not run again — failures included, since a
+  # world that crossed before its runner died still crossed.
+  scope :transitioned, -> { terminal.where.not(transition_epoch: nil) }
   scope :stale, -> { where(status: %w[claimed running]).where(heartbeat_at: ...STALE_AFTER.ago) }
 
   def terminal? = TERMINAL_STATUSES.include?(status)

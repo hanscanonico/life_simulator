@@ -28,6 +28,10 @@ module Findings
 
     def programme_status = @programme_status ||= Programme::Status.build
 
+    # The denominator of a finding that names no sweep: the same set of runs its own
+    # page surveys, so the row and the write-up never state different totals.
+    def transitioned_runs_count = @transitioned_runs_count ||= Run.transitioned.count
+
     private
 
     def findings = @findings ||= Registry.all

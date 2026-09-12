@@ -1,0 +1,212 @@
+<% survey = findings_persistence_survey %>
+<% hold = Lab::TransitionRule::HOLD_SAMPLES %>
+<% exit_samples = Findings::PersistenceSurvey::CONFIRMABLE_SAMPLES %>
+<% threshold = Lab::TransitionRule::THRESHOLD %>
+
+<h2>Question</h2>
+<p>
+  Every other finding in this log counts transitions: DESIGN §1.2 says when a world enters
+  the transitioned state, the engine's tracker reports the first epoch it does, and a sweep
+  is scored on how many of its seeds got there. None of that says anything about what
+  happens next. The
+  <%= link_to "60 000-epoch re-run", finding_path("mutation-rate-long-horizon") %> already
+  showed why that is a gap: one of its confirmed emergences ends with the world back in the
+  soup it started in. So the question here is not how often emergence happens but whether it
+  lasts — of the worlds that crossed, how many were still across at their last sample, how
+  many climbed back out, and how long the ones that held held for.
+</p>
+
+<h2>Method</h2>
+<p>
+  Every terminal run in the lab with a transition epoch, whichever sweep queued it, read
+  through the persistence summary derived from its own stored samples
+  (<span class="mono">Runs::PersistenceSummaryService</span>). "In the transitioned state"
+  is the engine's own rule applied sample by sample — <span class="mono">compress_ratio</span>
+  below <%= threshold %> with no alphabet collapse — so Rails re-reads a stored series by the
+  criterion the engine used to flag it and never invents a second one. Leaving the state is
+  that rule's hold in reverse: the state ends at the first of <%= exit_samples %> consecutive
+  samples the rule rejects, mirroring the <%= hold %> further qualifying samples that confirm
+  an entry, so a single sample flickering back over the threshold is no more a relapse than a
+  single sample under it is a transition. A state that never ends persisted to the run's last
+  sample. Beside it the summary records the largest <span class="mono">replicator_count</span>
+  the run ever sampled and the epoch it first stood at.
+</p>
+<p>
+  This is a survey and not a sweep. The runs below come from different grids at different
+  budgets, chosen by nothing but having transitioned, so what follows is a count of outcomes
+  and never a hazard.
+</p>
+
+<h2>Result</h2>
+<% if survey.any? %>
+  <p>
+    <strong>
+      <% if survey.summarised_count.zero? %>
+        No transitioned world in the lab has been read for what became of it yet.
+      <% elsif survey.relapsed_count.zero? %>
+        No transitioned world in the lab has left the state yet.
+      <% elsif survey.relapse_share < 0.5 %>
+        Emergence is not a terminal state, and it is not usually left either.
+      <% else %>
+        Emergence is not a terminal state, and more worlds leave it than hold it.
+      <% end %>
+    </strong>
+    The lab has <%= pluralize survey.transitioned_count, "terminal run" %> across
+    <%= pluralize survey.sweeps.size, "sweep" %> with a transition epoch, and a persistence
+    summary behind <%= survey.summarised_count %> of them.
+    <% if survey.summarised_count.positive? %>
+      The split is <%= survey.persisted_count %> still in the transitioned state at their
+      last sample against <%= survey.relapsed_count %> that climbed back out of it —
+      <%= percent_value survey.relapse_share %> of the summarised runs relapsed within their
+      own budget.
+      <% if survey.epochs_persisted.any? %>
+        The worlds held the state for
+        <%= number_with_delimiter survey.shortest_persistence %> to
+        <%= number_with_delimiter survey.longest_persistence %> epochs, a median of
+        <%= number_with_delimiter survey.median_persistence %>.
+      <% end %>
+      <% if survey.counted_count.positive? %>
+        <%= survey.counted_count %> of them counted a replicating cell at all, and those
+        censuses peak at <%= count_value survey.census_peaks.first %> to
+        <%= count_value survey.largest_census %> cells, a median of
+        <%= count_value survey.median_census %>.
+      <% else %>
+        None of them counted a replicating cell at any sample, so the census says nothing
+        about this set yet.
+      <% end %>
+    <% end %>
+  </p>
+
+  <% if survey.summarised_count.positive? %>
+    <p>
+      <strong>The census splits the outcome in two.</strong> The transitioned state is the
+      compression rule's, and a run can be in it without the census ever seeing a colony, so
+      the two halves are worth separating. Of the
+      <%= pluralize survey.counted_count, "summarised run" %> that counted a replicating
+      cell, <%= survey.counted_persisted_count %> persisted and
+      <%= survey.counted_relapsed_count %> relapsed. Of the
+      <%= pluralize survey.uncounted_count, "run" %> whose census never left zero — or was
+      never taken — <%= survey.uncounted_persisted_count %> persisted and
+      <%= survey.uncounted_relapsed_count %> relapsed.
+      <% if survey.uncounted_relapsed_count.positive? %>
+        So part of the relapse count is worlds the census never saw as a colony
+        at all, and reading the totals alone would bury that.
+      <% end %>
+    </p>
+  <% end %>
+
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Persistence of every transitioned run">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Sweep</th>
+          <th>Run</th>
+          <th class="numeric">Transition epoch</th>
+          <th class="numeric">Epochs persisted</th>
+          <th class="numeric">Census peak (epoch)</th>
+          <th>Outcome</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% survey.table_rows.each do |row| %>
+          <tr>
+            <td><%= link_to row.experiment.name, experiment_path(row.experiment) %></td>
+            <td><%= link_to "seed #{row.run.seed}", run_path(row.run) %></td>
+            <td class="numeric mono"><%= number_with_delimiter row.run.transition_epoch %></td>
+            <td class="numeric mono">
+              <%= row.epochs_persisted ? number_with_delimiter(row.epochs_persisted) : "—" %>
+            </td>
+            <td class="numeric mono">
+              <% if row.counted? %>
+                <%= count_value row.census_peak %>
+                (<%= number_with_delimiter row.peak_epoch %>)
+              <% elsif row.summarised? && row.persistence.sampled? %>
+                0
+              <% else %>
+                —
+              <% end %>
+            </td>
+            <td>
+              <% if !row.summarised? %>
+                <span class="text-muted">not summarised</span>
+              <% elsif row.relapsed? %>
+                <span class="badge badge-warning">relapsed</span>
+              <% else %>
+                <span class="badge badge-success">persisted</span>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-sm text-muted">
+    One row per terminal run the detector flagged, grouped by sweep. "Epochs persisted" is
+    the span from the transition to the last sample the transition rule still accepted;
+    "Census peak" is the largest <span class="mono">replicator_count</span> the run ever
+    sampled, with the epoch it first reached it in brackets; "—" means the run never had a
+    value.
+    <% if survey.capped? %>
+      The table stops at <%= Findings::PersistenceSurvey::MAX_ROWS %> rows; the counts above
+      are over all <%= survey.transitioned_count %>.
+    <% end %>
+  </p>
+<% else %>
+  <p class="text-muted">
+    No terminal run in this database has a transition epoch yet, so there is nothing to
+    summarise: the counts above fill in as the lab finishes runs that crossed.
+  </p>
+<% end %>
+
+<h2>What this does not claim</h2>
+<p>
+  <strong>A persister persisted to its last sample, not forever.</strong> Every run here was
+  stopped by its own budget — or, for a run that failed, by whatever ended it — rather than
+  by the world settling anything, so "persisted" means "had not relapsed when the clock ran
+  out". The longest span above is a lower bound on nothing but itself.
+  <% if survey.unconfirmable_count.positive? %>
+    Fewer than <%= exit_samples %> samples stand at or after the crossing in
+    <%= pluralize survey.unconfirmable_count, "persister" %>, which is not enough room for an
+    exit to be confirmed in: they read as persisted because nothing could have flagged them
+    otherwise.
+  <% end %>
+</p>
+<p>
+  <strong>No hazard is estimated.</strong> These runs are not an arm of anything — they are
+  whatever transitioned across sweeps with different world sizes, mutation rates,
+  interaction budgets and horizons — so the relapse share above is a description of this
+  set of runs and not a rate the substrate has. Whether the hazard of relapse falls with a
+  colony's age, which is the question the design record's first rung asks, cannot be read
+  off a set assembled this way.
+</p>
+<p>
+  <strong>Entering and leaving are decided by compression alone.</strong> Both ends of the
+  state are the <span class="mono">compress_ratio</span> rule of §1.2 with its collapse
+  guard; the census enters neither. A relapse in a run whose
+  <span class="mono">replicator_count</span> never left zero is therefore a soup that briefly
+  compressed and then stopped compressing, not a colony that died, and it is counted here
+  because the transitioned state is defined that way — not because anything replicated.
+  Every zero-census row above should be read as the detector's event ending, and only the
+  rows with a census peak as a colony that was seen and then was not.
+</p>
+<p>
+  <strong>The exit rule is a Rails-side definition.</strong> §1.2 and the engine own entry;
+  leaving the state is defined over stored samples, at the sampling cadence each sweep chose.
+  A world that dipped out and back between two samples reads as having held throughout, and
+  a sparser cadence makes both the persistence span and the census peak coarser. By §2 the
+  engine has to be the one that measures persistence, and it does not yet.
+</p>
+<p>
+  This stays partial for both reasons at once: runs remain on the clock, so the denominators
+  above move, and the set they are drawn from was assembled by accident rather than designed.
+</p>
+
+<h2>What next</h2>
+<p>
+  The <span class="mono">persistence</span> sweep of the evolution programme is what turns
+  this survey into a measurement: the parameter points that already transition, at 20 seeds
+  and a budget several times 60 000, so the relapse hazard has enough events and enough
+  post-transition time to be fitted against colony age rather than merely counted. The
+  observable belongs in the engine before then. Until it is run, the honest reading of the
+  table is that a transitioned world is not safe: some of them come back.
+</p>
