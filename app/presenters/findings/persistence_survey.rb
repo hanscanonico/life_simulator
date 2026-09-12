@@ -12,9 +12,9 @@ module Findings
   class PersistenceSurvey
     MAX_ROWS = 100
 
-    # A run needs `hold_samples + 1` samples after its crossing for an exit to be
-    # confirmed in (docs/design_record.md, 2026-09-12); one with fewer reads as persisted
-    # because nothing could have flagged it otherwise.
+    # An exit is `hold_samples + 1` consecutive rejecting samples (docs/design_record.md,
+    # 2026-09-12), so a run needs that many samples from its crossing onwards for one to be
+    # confirmed in; a run with fewer reads as persisted whatever it did.
     CONFIRMABLE_SAMPLES = Runs::PersistenceSummaryService::EXIT_SAMPLES
 
     Row = Data.define(:run, :experiment, :persistence, :samples_after_transition) do
@@ -64,8 +64,8 @@ module Findings
 
     def relapsed_count = relapsed_rows.size
 
-    # Persisters whose run was too short after the crossing for a relapse to have been
-    # confirmed: they are the part of the persisted count that carries no information.
+    # Persisters whose series was too short from the crossing onwards for a relapse to have
+    # been confirmed: they are the part of the persisted count that carries no information.
     def unconfirmable_count = persisted_rows.count { |row| !row.relapse_confirmable? }
 
     def relapse_share
@@ -117,8 +117,8 @@ module Findings
     # Ordered the way the table reads: sweep by sweep, and inside a sweep by the epoch the
     # world crossed.
     def transitioned_runs
-      @transitioned_runs ||= Run.terminal.where.not(transition_epoch: nil)
-                                .includes(:experiment).order(:experiment_id, :transition_epoch, :id).to_a
+      @transitioned_runs ||= Run.transitioned.includes(:experiment)
+                                .order(:experiment_id, :transition_epoch, :id).to_a
     end
 
     # One grouped query for the whole page: how many samples each run stored at or after

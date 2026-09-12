@@ -41,7 +41,7 @@
               <span class="text-muted">Sweep <span class="mono"><%= row.finding.experiment_slug %></span> is not in the lab yet.</span>
             <% else %>
               <span class="text-muted">
-                Every sweep in the lab · <%= @index.programme_status.seeds_transitioned %> transitioned runs
+                Every sweep in the lab · <%= pluralize @index.transitioned_runs_count, "transitioned run" %>
               </span>
             <% end %>
           </p>

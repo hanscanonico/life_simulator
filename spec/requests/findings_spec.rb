@@ -58,11 +58,13 @@ RSpec.describe "Findings", type: :request do
     context "with a finding that names no sweep" do
       it "rows it against every transitioned run instead of a missing sweep" do
         create(:run, status: "finished", transition_epoch: 900)
+        create(:run, status: "failed", transition_epoch: 900)
+        create(:run, status: "running", transition_epoch: 900)
 
         get findings_path
 
         expect(response.body.squish).to include("Emergence is a state a world can leave",
-                                                "Every sweep in the lab · 1 transitioned runs")
+                                                "Every sweep in the lab · 2 transitioned runs")
         expect(response.body).to include(finding_path("emergence-can-be-left"))
       end
     end
@@ -790,6 +792,17 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish).not_to include("has not been queued in the lab yet")
       end
 
+      it "says nothing of what became of runs it has no summary for" do
+        create(:run, status: "finished", transition_epoch: 900)
+
+        get finding_path(persistence)
+
+        expect(response.body.squish)
+          .to include("No transitioned world in the lab has been read for what became of it yet",
+                      "a persistence summary behind 0 of them")
+        expect(response.body.squish).not_to include("has left the state yet.")
+      end
+
       it "says plainly that nothing has transitioned yet" do
         get finding_path(persistence)
 
@@ -844,7 +857,7 @@ RSpec.describe "Findings", type: :request do
           get finding_path(persistence)
 
           expect(response.body.squish)
-            .to include("Fewer than 4 samples follow the crossing in 1 persister")
+            .to include("Fewer than 4 samples stand at or after the crossing in 1 persister")
         end
       end
     end

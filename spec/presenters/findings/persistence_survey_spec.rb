@@ -88,6 +88,7 @@ RSpec.describe Findings::PersistenceSurvey do
     transitioned_run(persistence: { census_peak: 0, peak_epoch: nil, epochs_persisted: 40, relapsed: true })
     transitioned_run(persistence: { census_peak: 0, peak_epoch: nil, epochs_persisted: 40, relapsed: true })
     transitioned_run(persistence: { census_peak: nil, peak_epoch: nil, epochs_persisted: 40, relapsed: false })
+    transitioned_run(persistence: {})
 
     survey = described_class.build
 

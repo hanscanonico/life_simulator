@@ -41,7 +41,9 @@
 <% if survey.any? %>
   <p>
     <strong>
-      <% if survey.relapsed_count.zero? %>
+      <% if survey.summarised_count.zero? %>
+        No transitioned world in the lab has been read for what became of it yet.
+      <% elsif survey.relapsed_count.zero? %>
         No transitioned world in the lab has left the state yet.
       <% elsif survey.relapse_share < 0.5 %>
         Emergence is not a terminal state, and it is not usually left either.
@@ -159,11 +161,11 @@
 <h2>What this does not claim</h2>
 <p>
   <strong>A persister persisted to its last sample, not forever.</strong> Every run here was
-  stopped by its own budget rather than by the world settling anything, so "persisted" means
-  "had not relapsed when the clock ran out". The longest span above is a lower bound on
-  nothing but itself.
+  stopped by its own budget — or, for a run that failed, by whatever ended it — rather than
+  by the world settling anything, so "persisted" means "had not relapsed when the clock ran
+  out". The longest span above is a lower bound on nothing but itself.
   <% if survey.unconfirmable_count.positive? %>
-    Fewer than <%= exit_samples %> samples follow the crossing in
+    Fewer than <%= exit_samples %> samples stand at or after the crossing in
     <%= pluralize survey.unconfirmable_count, "persister" %>, which is not enough room for an
     exit to be confirmed in: they read as persisted because nothing could have flagged them
     otherwise.
