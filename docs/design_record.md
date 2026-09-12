@@ -165,13 +165,14 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
      radius sweep entry's radius-2 run and the `mutation-rate-long` entry's 2^-12 seed 10
      (census peak 123 at 28 100, all 16 384 tapes distinct again by 60 000) both did it.
      The gap is that nothing measures how long a colony held: Rails derives the census
-     peak from stored samples (`Findings::ShowPage`) and re-reads the engine's transition
-     rule by it (`Runs::TransitionEpochService`), and that is all. **Persistence** as a
-     per-run observable is not yet in the engine, and by §2 the engine has to be the one
-     that measures it. Sweep: `persistence`, the transitioned parameter points (128²,
-     2^-13) at 20 seeds and a budget several times 60 000. Hypothesis: **the hazard of
-     relapse is constant per epoch** — a colony is never established, it is only lucky so
-     far. Refuted if the relapse hazard falls with colony age.
+     peak from stored samples (`Findings::ShowPage`) and re-reads those samples by the
+     engine's transition rule (`Runs::TransitionEpochService`), and that is all.
+     **Persistence** as a per-run observable is not yet in the engine, and by §2 the
+     engine has to be the one that measures it. Sweep: `persistence`, the transitioned
+     parameter points (128², 2^-13) at 20 seeds and a budget several times 60 000.
+     Hypothesis: **the hazard of relapse is constant per epoch** — a colony is never
+     established, it is only lucky so far. Refuted if the relapse hazard falls with
+     colony age.
   2. **Heredity with variation** — lineages that share ancestry and drift apart. The two
      observables it needs are the **lineage id** and the **modal tape**, and neither is a
      recorded value today: `skeleton_hue` in `render.rs` builds an FNV-1a digest over a
@@ -209,6 +210,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
      does. `room-to-grow` — hypothesis: **room to grow raises the plateau**, refuted if
      tapes free to lengthen plateau where fixed-length tapes do. Either refutation says
      the ceiling was never the binding constraint.
+
   The invariant every ticket on this ladder depends on: **a new observable or an optional
   substrate parameter must leave every existing run byte-identical.** §1.1 says a run is
   determined by `(params, seed)`, and three sweeps have now checked it rather than
@@ -219,6 +221,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   of §3 keep pinning the same `(params, seed) → hash` for every substrate. A parameter is
   data (§3): name, default and validated range in `Params`, exposed to Rails through
   `runner schema`.
+
   Vocabulary, locked, defined here and nowhere else, with what is built today marked:
   **lineage** (tapes descended by copying from one ancestor — not built); **lineage id**
   (FNV-1a digest of a tape's instruction skeleton, which `render.rs` already computes on
