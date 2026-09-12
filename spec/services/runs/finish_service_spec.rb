@@ -20,6 +20,32 @@ RSpec.describe Runs::FinishService do
     expect(run.reload.epochs_done).to eq(20_000)
   end
 
+  it "summarises what became of the world after the transition" do
+    [0.9, 0.4, 0.3, 0.2, 0.1].each_with_index do |ratio, index|
+      create(:sample, run: run, epoch: index * 100, values: { "compress_ratio" => ratio })
+    end
+
+    described_class.call(run: run, transition_epoch: 100)
+
+    expect(run.reload.persistence_summary).to have_attributes(epochs_persisted: 300, relapsed: false)
+  end
+
+  it "stores a summary the finished run reads back without reloading" do
+    [0.9, 0.4, 0.3, 0.2, 0.1].each_with_index do |ratio, index|
+      create(:sample, run: run, epoch: index * 100, values: { "compress_ratio" => ratio })
+    end
+
+    finished = described_class.call(run: run, transition_epoch: 100)
+
+    expect(finished.persistence_summary).to have_attributes(epochs_persisted: 300, relapsed: false)
+  end
+
+  it "leaves the summary empty for a run the detector never flagged" do
+    described_class.call(run: run)
+
+    expect(run.reload.persistence).to eq({})
+  end
+
   it "keeps the earlier transition epoch a sample batch already reported" do
     run.update!(transition_epoch: 300)
 

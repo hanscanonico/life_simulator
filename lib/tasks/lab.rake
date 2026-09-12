@@ -73,10 +73,32 @@ namespace :lab do
 
       puts "run #{run.id}: #{run.transition_epoch || 'none'} → #{recomputed || 'none'}"
       run.update!(transition_epoch: recomputed)
+      Runs::PersistenceRefreshService.call(run: run)
       true
     end
 
     puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
+  end
+
+  desc "Derive the persistence summary of every terminal run from its stored samples (one experiment, or all)"
+  task :backfill_persistence, [:slug] => :environment do |_task, args|
+    runs = Run.terminal.order(:id)
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+      runs = runs.where(experiment: experiment)
+    end
+
+    terminal = runs.to_a
+    backfilled = terminal.count do |run|
+      next false unless Runs::PersistenceRefreshService.call(run: run)
+
+      puts "run #{run.id}: #{run.persistence.presence || 'no transition'}"
+      true
+    end
+
+    puts "summarised #{backfilled} of #{terminal.size} terminal runs"
   end
 
   desc "Read the transition detector and the replicator census side by side, per run and per arm " \

@@ -14,7 +14,9 @@ module Runs
 
     def call
       Run.transaction do
-        @run.update!(run_attributes)
+        @run.assign_attributes(run_attributes)
+        @run.persistence = persistence_summary
+        @run.save!
         finish_experiment
       end
       log_outcome
@@ -44,6 +46,11 @@ module Runs
       attributes[:transition_epoch] = @transition_epoch if @run.earlier_transition_epoch?(@transition_epoch)
       attributes
     end
+
+    # Read off the samples already stored, against the transition epoch this finish has
+    # just settled — the run page and the sweep page read the stored value, never the
+    # series.
+    def persistence_summary = PersistenceSummaryService.call(run: @run).to_h
 
     def finish_experiment
       return if experiment.runs.where.not(status: Run::TERMINAL_STATUSES).exists?

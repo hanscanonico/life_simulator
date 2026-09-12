@@ -395,6 +395,25 @@ RSpec.describe "Experiments", type: :request do
                                          "stroke-dasharray", "2 — 1 of 2 emerged", "4 — 0 of 1 emerged")
       end
 
+      it "counts the emergences the world stayed in, arm by arm" do
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 400,
+                     params: Lab::Schema.run_defaults.merge("radius" => 1),
+                     persistence: { "census_peak" => 867, "peak_epoch" => 500, "epochs_persisted" => 19_600,
+                                    "relapsed" => false })
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 600,
+                     params: Lab::Schema.run_defaults.merge("radius" => 1),
+                     persistence: { "census_peak" => 42, "peak_epoch" => 900, "epochs_persisted" => 19_400,
+                                    "relapsed" => false })
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 800,
+                     params: Lab::Schema.run_defaults.merge("radius" => 1),
+                     persistence: { "census_peak" => 0, "peak_epoch" => nil, "epochs_persisted" => 200,
+                                    "relapsed" => true })
+
+        get experiment_path(experiment)
+
+        expect(response.body.squish).to include("Persisted", "2 of 3", "1 relapsed")
+      end
+
       it "tabulates the hazard per arm and pooled over the sweep" do
         get experiment_path(experiment)
 

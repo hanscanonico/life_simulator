@@ -8,4 +8,14 @@
     <%= hazard_value(rate.value) %>
     <span class="text-muted"><%= hazard_interval(rate) %></span>
   </td>
+  <td class="numeric mono">
+    <% if arm.summarised_count.zero? %>
+      —
+    <% else %>
+      <%= arm.persisted_count %> of <%= arm.summarised_count %>
+      <% if arm.relapsed_count.positive? %>
+        <span class="text-muted"><%= arm.relapsed_count %> relapsed</span>
+      <% end %>
+    <% end %>
+  </td>
 </tr>

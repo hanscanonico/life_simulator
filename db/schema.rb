@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_11_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_11_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -59,6 +59,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_170000) do
     t.datetime "finished_at"
     t.datetime "heartbeat_at"
     t.jsonb "params", default: {}, null: false
+    t.jsonb "persistence", default: {}, null: false
     t.integer "priority", default: 0, null: false
     t.string "runner_id"
     t.bigint "seed", null: false

@@ -39,6 +39,19 @@ module Runs
 
     def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)
 
+    # Only a run the detector flagged has one, and only once its finish — or
+    # `rake lab:backfill_persistence` — has derived it from the samples.
+    def persistence = run.persistence_summary
+
+    # A run none of whose samples carried a `replicator_count` has no census reading at
+    # all, which is a gap in the record and not a peak that happened to be zero.
+    def census_peak_label
+      return "— (not sampled)" unless persistence.sampled?
+      return "0 (no replicator counted)" unless persistence.counted?
+
+      ActiveSupport::NumberHelper.number_to_delimited(persistence.census_peak)
+    end
+
     def charts_empty? = charts.all?(&:empty?)
 
     def transition_label

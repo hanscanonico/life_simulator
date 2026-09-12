@@ -23,6 +23,34 @@
   <p class="alert alert-error"><%= @show.run.error %></p>
 <% end %>
 
+<% if @show.persistence %>
+  <% persistence = @show.persistence %>
+  <h2>Persistence</h2>
+  <p class="text-muted">
+    What became of the world after the transition at epoch
+    <%= number_with_delimiter @show.run.transition_epoch %>, read off this run's stored samples by the
+    engine's own transition rule: a transition is a state a world can leave.
+  </p>
+  <dl class="facts">
+    <dt>census peak</dt>
+    <dd class="mono"><%= @show.census_peak_label %></dd>
+    <dt>peak epoch</dt>
+    <dd class="mono"><%= persistence.peak_epoch ? number_with_delimiter(persistence.peak_epoch) : "—" %></dd>
+    <dt>epochs persisted</dt>
+    <dd class="mono"><%= number_with_delimiter persistence.epochs_persisted %></dd>
+    <dt>outcome</dt>
+    <dd>
+      <% if persistence.relapsed? %>
+        <span class="badge badge-warning">relapsed</span>
+        the world climbed back out of the transitioned state before its last sample
+      <% else %>
+        <span class="badge badge-success">persisted</span>
+        the world was still in the transitioned state at its last sample
+      <% end %>
+    </dd>
+  </dl>
+<% end %>
+
 <h2>Metrics</h2>
 <p><%= link_to "Download CSV", samples_run_path(@show.run, format: :csv), class: "btn btn-sm btn-outline" %></p>
 <% if @show.charts_empty? %>
