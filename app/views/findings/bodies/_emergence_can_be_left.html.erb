@@ -48,8 +48,10 @@
         No transitioned world in the lab has left the state yet.
       <% elsif outcome.relapse_share < 0.5 %>
         Emergence is not a terminal state, and it is not usually left either.
-      <% else %>
+      <% elsif outcome.relapse_share > 0.5 %>
         Emergence is not a terminal state, and more worlds leave it than hold it.
+      <% else %>
+        Emergence is not a terminal state: as many worlds have left it as have held it.
       <% end %>
     </strong>
     The lab has <%= pluralize survey.transitioned_count, "terminal run" %> that crossed,
