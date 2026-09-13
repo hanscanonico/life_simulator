@@ -127,6 +127,7 @@ RSpec.describe Findings::PersistenceSurvey do
 
     expect(survey.rows.size).to eq(3)
     expect(survey.rows.map(&:seed)).to eq(survey.rows.map { |row| row.run.seed })
+    expect(survey).to have_attributes(table_rows: survey.rows, capped?: false, rows_omitted: 0)
   end
 
   it "hands a row the run facts the table states" do

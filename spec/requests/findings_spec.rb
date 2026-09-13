@@ -878,7 +878,7 @@ RSpec.describe "Findings", type: :request do
           get finding_path(persistence)
 
           expect(response.body.squish)
-            .to include("The table stops at 1 rows and leaves 1 further transitioned run out; every one " \
+            .to include("The table stops at 1 row and leaves 1 further transitioned run out; every one " \
                         "of them is counted in the figures above")
           expect(response.parsed_body.css("#transitioned-runs tbody tr").size).to eq(1)
         end

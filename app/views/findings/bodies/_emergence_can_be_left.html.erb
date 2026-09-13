@@ -145,7 +145,7 @@
     sampled, with the epoch it first reached it in brackets; "—" means the run never had a
     value.
     <% if survey.capped? %>
-      The table stops at <%= Findings::ShowPage::MAX_TRANSITIONS %> rows and leaves
+      The table stops at <%= pluralize Findings::ShowPage::MAX_TRANSITIONS, "row" %> and leaves
       <%= pluralize survey.rows_omitted, "further transitioned run" %> out; every one of
       them is counted in the figures above.
     <% else %>
