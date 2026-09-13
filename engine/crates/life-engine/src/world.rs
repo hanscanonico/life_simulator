@@ -153,10 +153,10 @@ impl World {
         }
     }
 
-    /// A snapshot carries tapes, not lineage tags — adding them would change the bytes
-    /// Postgres already holds — so a resumed run starts the lineage census over from one
-    /// id per cell. Its tapes, its RNG stream and every other observable continue exactly
-    /// as the uninterrupted run would have.
+    /// The snapshot format (v2) carries tapes and no lineage tags, so a resumed run starts
+    /// the lineage census over from one id per cell. Its tapes, its RNG stream and every
+    /// other observable continue exactly as the uninterrupted run would have; only the two
+    /// lineage observables read a world younger than it is.
     pub fn from_snapshot(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
         let (header, cells) = snapshot::decode(params, bytes)?;
         Ok(Self {
@@ -768,6 +768,46 @@ mod tests {
             let tag = world.lineage(x, y);
             assert!(seeded.contains(&tag), "cell {x},{y} kept its own tag {tag}");
         }
+    }
+
+    #[test]
+    fn a_tape_inherits_only_when_it_ends_strictly_closer_to_its_partner() {
+        assert!(
+            inherits_partner(b"wxyz", b"abcd", b"wxyz"),
+            "an exact copy of the partner's arriving tape inherits"
+        );
+        assert!(
+            !inherits_partner(b"abcd", b"abcd", b"wxyz"),
+            "a tape that did not move keeps its own tag"
+        );
+        assert!(
+            !inherits_partner(b"abcz", b"abcd", b"wxyz"),
+            "one byte from its own arrival, three from the partner's: keeps its own"
+        );
+        assert!(
+            !inherits_partner(b"abyz", b"abcd", b"wxyz"),
+            "two bytes from each arrival is a tie, and a tie keeps its own"
+        );
+    }
+
+    /// Both halves are judged against the pair as it arrived, so a pair that swapped tapes
+    /// swaps its two tags rather than collapsing both onto one.
+    #[test]
+    fn an_exchange_of_tapes_swaps_the_two_lineage_tags() {
+        let params = Params {
+            tape_len: 8,
+            ..soup(4, 4)
+        };
+        let mut world = World::new(&params, 1).unwrap();
+        let stride = params.stride();
+        let before = *b"abcdefghstuvwxyz";
+        let exchanged = *b"stuvwxyzabcdefgh";
+        let (was_a, was_b) = (world.lineage(0, 0), world.lineage(1, 0));
+        assert_ne!(was_a, was_b);
+
+        world.inherit_lineages(0, 1, &exchanged, &before, stride);
+
+        assert_eq!((world.lineage(0, 0), world.lineage(1, 0)), (was_b, was_a));
     }
 
     #[test]
