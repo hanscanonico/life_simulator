@@ -126,7 +126,7 @@ impl World {
         let measured = self.sample(compressed);
         (
             measured,
-            snapshot::encode_compressed(&self.snapshot_header(), &payload),
+            snapshot::encode_compressed(&self.snapshot_header(), &payload, &self.lineages),
         )
     }
 
@@ -139,7 +139,7 @@ impl World {
     }
 
     pub fn snapshot(&self) -> Vec<u8> {
-        snapshot::encode(&self.snapshot_header(), &self.cells)
+        snapshot::encode(&self.snapshot_header(), &self.cells, &self.lineages)
     }
 
     fn snapshot_header(&self) -> snapshot::Header {
@@ -153,21 +153,21 @@ impl World {
         }
     }
 
-    /// The snapshot format (v2) carries tapes and no lineage tags, so a resumed run starts
-    /// the lineage census over from one id per cell. Its tapes, its RNG stream and every
-    /// other observable continue exactly as the uninterrupted run would have; only the two
+    /// The snapshot format (v3) carries the lineage tags beside the tapes, so a resumed
+    /// run continues its lineage census where the snapshot left it. A version 1 or 2 blob
+    /// held tapes only: its lineages are minted fresh, one id per cell, and only the two
     /// lineage observables read a world younger than it is.
     pub fn from_snapshot(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
-        let (header, cells) = snapshot::decode(params, bytes)?;
+        let restored = snapshot::decode(params, bytes)?;
         Ok(Self {
             params: params.clone(),
             seed,
-            epoch: header.epoch,
-            cells,
+            epoch: restored.header.epoch,
+            cells: restored.cells,
             scratch: life_scratch(params),
-            transition: TransitionTracker::from_state(header.transition),
+            transition: TransitionTracker::from_state(restored.header.transition),
             copy_rate: 0.0,
-            lineages: fresh_lineages(params),
+            lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
         })
     }
 
@@ -438,6 +438,7 @@ fn draw_cell_byte(rng: &mut Rng, substrate: Substrate) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::metrics::TransitionState;
 
     /// Pinned so a change in the rules, the RNG or the visiting order cannot pass unseen:
     /// `Params::default()` at 32×32, seed 42, after 50 epochs.
@@ -510,6 +511,35 @@ mod tests {
             world.step();
         }
         world
+    }
+
+    fn colony_params() -> Params {
+        Params {
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            mutation_rate: 0.0,
+            ..soup(8, 8)
+        }
+    }
+
+    /// A soup with one row of the handwritten replicator in it: a world whose lineage
+    /// census moves, epoch by epoch, as the colony copies itself over its neighbours.
+    fn colony(params: &Params, seed: u64) -> World {
+        let mut world = World::new(params, seed).unwrap();
+        let tape = replicator::handwritten_replicator();
+        for x in 0..params.width {
+            world.set_cell(x, 0, &tape);
+        }
+        world
+    }
+
+    fn lineage_series(world: &mut World, epochs: usize) -> Vec<(u64, f64)> {
+        (0..epochs)
+            .map(|_| {
+                world.step();
+                let measured = world.metrics();
+                (measured.distinct_lineages, measured.top_lineage_share)
+            })
+            .collect()
     }
 
     /// One cell of `determinism_holds_across_the_parameter_matrix`: the same
@@ -872,6 +902,57 @@ mod tests {
         world.step();
         restored.step();
         assert_eq!(restored.world_hash(), world.world_hash());
+    }
+
+    /// The lineage tags are world state now that a snapshot carries them, so a run cut in
+    /// half and resumed has to read the same lineage series as the uninterrupted run —
+    /// digit for digit, over a colony where the tags actually move.
+    #[test]
+    fn a_resumed_run_reads_the_lineage_series_of_an_uninterrupted_run() {
+        const EPOCHS: usize = 20;
+        let params = colony_params();
+        let mut uninterrupted = colony(&params, 5);
+        let mut interrupted = colony(&params, 5);
+
+        let expected = lineage_series(&mut uninterrupted, EPOCHS);
+        assert_eq!(
+            lineage_series(&mut interrupted, EPOCHS / 2),
+            expected[..EPOCHS / 2]
+        );
+        assert!(
+            expected.last().unwrap().0 < expected.first().unwrap().0,
+            "the colony must swallow lineages for the series to say anything: {expected:?}"
+        );
+
+        let mut resumed = World::from_snapshot(&params, 5, &interrupted.snapshot()).unwrap();
+        assert_eq!(
+            lineage_series(&mut resumed, EPOCHS / 2),
+            expected[EPOCHS / 2..]
+        );
+    }
+
+    /// A version 1 or 2 blob carries tapes and no tags: its lineages are minted fresh,
+    /// one per cell, and the world it restores is otherwise the world that was stored.
+    #[test]
+    fn a_blob_from_before_lineage_tags_restores_with_one_lineage_per_cell() {
+        let params = colony_params();
+        let mut world = colony(&params, 5);
+        for _ in 0..10 {
+            world.step();
+        }
+        assert!(world.metrics().distinct_lineages < 64);
+
+        let older = snapshot::legacy::v2_blob(
+            &params,
+            world.epoch(),
+            TransitionState::default(),
+            &world.cells,
+        );
+        let mut restored = World::from_snapshot(&params, 5, &older).unwrap();
+
+        assert_eq!(restored.world_hash(), world.world_hash());
+        assert_eq!(restored.epoch(), world.epoch());
+        assert_eq!(restored.metrics().distinct_lineages, 64);
     }
 
     #[test]

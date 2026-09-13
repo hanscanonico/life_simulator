@@ -270,3 +270,17 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   carries tapes only, so a **resumed run starts its lineage census over** from one id per
   cell, which is a limit of the record, not a reading of the world. A run whose lineage
   series is to be read end to end has to be one the runner did not resume.
+- 2026-09-13 — **A snapshot carries the lineage tags (format version 3).** The entry above
+  recorded, as a consequence of tagging by descent, that a resumed run starts its lineage
+  census over and that a run whose lineage series is to be read end to end has to be one
+  the runner did not resume. Rung 2 is measured over long runs, which the lab resumes, so
+  that limit would have cost the programme its evidence. The snapshot format now carries
+  the tags as a second zlib payload after the cells, with the cell payload's length in the
+  header: a resumed run continues the census it was keeping, and a corpus rescore reads the
+  ancestry the world actually had. Version 1 and version 2 blobs, which Postgres still
+  holds, decode as before and restore with one lineage id per cell — for those runs the old
+  limit stands, and only for them. **Consequences**: the determinism decision is honoured
+  where it was not before — a run resumed from a version 3 snapshot reproduces the lineage
+  series of an uninterrupted run digit for digit; and a snapshot grows by the compressed
+  tags, at most ~194 KiB for the largest world the programme runs (512×256), against a
+  snapshot cap of 64 MiB that does not move.

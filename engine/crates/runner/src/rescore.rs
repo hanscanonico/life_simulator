@@ -79,6 +79,11 @@ pub struct Report {
     pub seed: u64,
     pub width: u32,
     pub height: u32,
+    /// The ancestry the blob carries (`docs/DESIGN.md` §1.2). A lineage census reads the
+    /// world, not the `top_k` window, so it belongs to the report and not to a setting;
+    /// a version 1 or 2 blob carries no tags and reads one lineage per cell.
+    pub distinct_lineages: u64,
+    pub top_lineage_share: f64,
     pub settings: Vec<Setting>,
     pub top_tapes: Vec<TapeReading>,
 }
@@ -229,7 +234,7 @@ fn measure(stored: &StoredWorld, run: Option<i64>, top_k: &[u32]) -> Result<Repo
         bail!("rescore needs at least one top_k");
     }
 
-    let (header, cells) = life_engine::snapshot::decode(&stored.params, &stored.blob)?;
+    let restored = life_engine::snapshot::decode(&stored.params, &stored.blob)?;
     let mut measured: BTreeMap<u32, Metrics> = BTreeMap::new();
     for top_k in asked.iter().copied().chain(1..=TOP_TAPES) {
         if measured.contains_key(&top_k) {
@@ -238,17 +243,20 @@ fn measure(stored: &StoredWorld, run: Option<i64>, top_k: &[u32]) -> Result<Repo
         measured.insert(top_k, at_top_k(stored, top_k)?);
     }
 
+    let census = measured.values().next().expect("at least one top_k");
     Ok(Report {
         run,
-        epoch: header.epoch,
+        epoch: restored.header.epoch,
         seed: stored.seed,
         width: stored.params.width,
         height: stored.params.height,
+        distinct_lineages: census.distinct_lineages,
+        top_lineage_share: census.top_lineage_share,
         settings: asked
             .iter()
             .map(|top_k| setting(*top_k, &measured[top_k]))
             .collect(),
-        top_tapes: top_tapes(stored, &cells, &measured),
+        top_tapes: top_tapes(stored, &restored.cells, &measured),
     })
 }
 
@@ -307,8 +315,13 @@ impl Report {
             .run
             .map_or_else(|| "a stored world".to_string(), |run| format!("run {run}"));
         println!(
-            "{run} at epoch {}, seed {}, {}×{}",
-            self.epoch, self.seed, self.width, self.height
+            "{run} at epoch {}, seed {}, {}×{}, {} lineages, top share {:.6}",
+            self.epoch,
+            self.seed,
+            self.width,
+            self.height,
+            self.distinct_lineages,
+            self.top_lineage_share
         );
         println!(
             "\n{:>6}  {:>16}  {:>10}  {:>14}  {:>14}  {:>12}",
@@ -396,6 +409,43 @@ mod tests {
         }
     }
 
+    /// A rescore reads the ancestry the blob carries: the lineage census of the report is
+    /// the one the run itself reported at that epoch, not a fresh id per cell.
+    #[test]
+    fn a_rescore_reports_the_lineage_census_the_stored_world_carries() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..Params::default()
+        };
+        let mut world = World::new(&params, 3).expect("legal params");
+        let tape = replicator::handwritten_replicator();
+        for x in 0..params.width {
+            world.set_cell(x, 0, &tape);
+        }
+        for _ in 0..20 {
+            world.step();
+        }
+        let live = world.metrics();
+        assert!(
+            live.distinct_lineages < u64::from(params.width * params.height),
+            "the colony must have swallowed lineages: {live:?}"
+        );
+
+        let stored = StoredWorld {
+            params,
+            seed: 3,
+            blob: world.snapshot(),
+        };
+        let report = measure(&stored, None, &[16]).unwrap();
+
+        assert_eq!(report.distinct_lineages, live.distinct_lineages);
+        assert_eq!(report.top_lineage_share, live.top_lineage_share);
+    }
+
     /// Run 186 of bff-control read a census of 0 replicators at `top_k` 16 and 38 at 64:
     /// the lineage had diffused across more tape variants than the default census looks
     /// at, so most of its cells sat below the cut and went uncounted.
@@ -422,7 +472,9 @@ mod tests {
     /// How many of the variants the census at `top_k` 64 reaches and the one at 16 does
     /// not — the cells the default cut loses.
     fn variants_ranked_below_the_default(stored: &StoredWorld) -> u64 {
-        let (_, cells) = life_engine::snapshot::decode(&stored.params, &stored.blob).unwrap();
+        let cells = life_engine::snapshot::decode(&stored.params, &stored.blob)
+            .unwrap()
+            .cells;
         let zero_tape = vec![0u8; stored.params.stride()];
         metrics::ranked_tapes(&cells, stored.params.stride())
             .iter()
