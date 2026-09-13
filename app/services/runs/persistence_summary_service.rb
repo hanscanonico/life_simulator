@@ -17,6 +17,11 @@ module Runs
 
     EXIT_SAMPLES = Lab::TransitionRule::HOLD_SAMPLES + 1
 
+    # An exit takes EXIT_SAMPLES consecutive rejecting samples, so a series with fewer than
+    # that from the crossing onwards has no room for one to be confirmed in: such a run
+    # reads as persisted whatever the world did.
+    def self.exit_confirmable?(sample_count_from_transition) = sample_count_from_transition >= EXIT_SAMPLES
+
     def initialize(run:)
       @run = run
     end

@@ -145,4 +145,13 @@ RSpec.describe Runs::PersistenceSummaryService do
     expect(summary.epochs_persisted).to eq(10)
     expect(summary).to be_relapsed
   end
+  describe ".exit_confirmable?" do
+    it "needs as many samples from the crossing onwards as an exit takes" do
+      expect(described_class.exit_confirmable?(described_class::EXIT_SAMPLES)).to be(true)
+    end
+
+    it "reads a shorter series as having no room for an exit" do
+      expect(described_class.exit_confirmable?(described_class::EXIT_SAMPLES - 1)).to be(false)
+    end
+  end
 end

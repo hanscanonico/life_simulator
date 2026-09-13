@@ -1,6 +1,7 @@
-<% survey = findings_persistence_survey %>
+<% survey = @show.persistence_survey %>
+<% outcome = survey.outcome %>
 <% hold = Lab::TransitionRule::HOLD_SAMPLES %>
-<% exit_samples = Findings::PersistenceSurvey::CONFIRMABLE_SAMPLES %>
+<% exit_samples = Runs::PersistenceSummaryService::EXIT_SAMPLES %>
 <% threshold = Lab::TransitionRule::THRESHOLD %>
 
 <h2>Question</h2>
@@ -43,9 +44,9 @@
     <strong>
       <% if survey.summarised_count.zero? %>
         No transitioned world in the lab has been read for what became of it yet.
-      <% elsif survey.relapsed_count.zero? %>
+      <% elsif outcome.relapsed_count.zero? %>
         No transitioned world in the lab has left the state yet.
-      <% elsif survey.relapse_share < 0.5 %>
+      <% elsif outcome.relapse_share < 0.5 %>
         Emergence is not a terminal state, and it is not usually left either.
       <% else %>
         Emergence is not a terminal state, and more worlds leave it than hold it.
@@ -55,9 +56,9 @@
     <%= pluralize survey.sweeps.size, "sweep" %> with a transition epoch, and a persistence
     summary behind <%= survey.summarised_count %> of them.
     <% if survey.summarised_count.positive? %>
-      The split is <%= survey.persisted_count %> still in the transitioned state at their
-      last sample against <%= survey.relapsed_count %> that climbed back out of it —
-      <%= percent_value survey.relapse_share %> of the summarised runs relapsed within their
+      The split is <%= outcome.persisted_count %> still in the transitioned state at their
+      last sample against <%= outcome.relapsed_count %> that climbed back out of it —
+      <%= percent_value outcome.relapse_share %> of the summarised runs relapsed within their
       own budget.
       <% if survey.epochs_persisted.any? %>
         The worlds held the state for
@@ -65,9 +66,9 @@
         <%= number_with_delimiter survey.longest_persistence %> epochs, a median of
         <%= number_with_delimiter survey.median_persistence %>.
       <% end %>
-      <% if survey.counted_count.positive? %>
-        <%= survey.counted_count %> of them counted a replicating cell at all, and those
-        censuses peak at <%= count_value survey.census_peaks.first %> to
+      <% if survey.counted_outcome.any? %>
+        <%= survey.counted_outcome.count %> of them counted a replicating cell at all, and those
+        censuses peak at <%= count_value survey.smallest_census %> to
         <%= count_value survey.largest_census %> cells, a median of
         <%= count_value survey.median_census %>.
       <% else %>
@@ -82,13 +83,13 @@
       <strong>The census splits the outcome in two.</strong> The transitioned state is the
       compression rule's, and a run can be in it without the census ever seeing a colony, so
       the two halves are worth separating. Of the
-      <%= pluralize survey.counted_count, "summarised run" %> that counted a replicating
-      cell, <%= survey.counted_persisted_count %> persisted and
-      <%= survey.counted_relapsed_count %> relapsed. Of the
-      <%= pluralize survey.uncounted_count, "run" %> whose census never left zero — or was
-      never taken — <%= survey.uncounted_persisted_count %> persisted and
-      <%= survey.uncounted_relapsed_count %> relapsed.
-      <% if survey.uncounted_relapsed_count.positive? %>
+      <%= pluralize survey.counted_outcome.count, "summarised run" %> that counted a
+      replicating cell, <%= survey.counted_outcome.persisted_count %> persisted and
+      <%= survey.counted_outcome.relapsed_count %> relapsed. Of the
+      <%= pluralize survey.uncounted_outcome.count, "run" %> whose census never left zero —
+      or was never taken — <%= survey.uncounted_outcome.persisted_count %> persisted and
+      <%= survey.uncounted_outcome.relapsed_count %> relapsed.
+      <% if survey.uncounted_outcome.relapsed_count.positive? %>
         So part of the relapse count is worlds the census never saw as a colony
         at all, and reading the totals alone would bury that.
       <% end %>
@@ -108,11 +109,11 @@
         </tr>
       </thead>
       <tbody>
-        <% survey.table_rows.each do |row| %>
+        <% survey.rows.each do |row| %>
           <tr>
             <td><%= link_to row.experiment.name, experiment_path(row.experiment) %></td>
-            <td><%= link_to "seed #{row.run.seed}", run_path(row.run) %></td>
-            <td class="numeric mono"><%= number_with_delimiter row.run.transition_epoch %></td>
+            <td><%= link_to "seed #{row.seed}", run_path(row.run) %></td>
+            <td class="numeric mono"><%= number_with_delimiter row.transition_epoch %></td>
             <td class="numeric mono">
               <%= row.epochs_persisted ? number_with_delimiter(row.epochs_persisted) : "—" %>
             </td>
@@ -120,7 +121,7 @@
               <% if row.counted? %>
                 <%= count_value row.census_peak %>
                 (<%= number_with_delimiter row.peak_epoch %>)
-              <% elsif row.summarised? && row.persistence.sampled? %>
+              <% elsif row.census_sampled? %>
                 0
               <% else %>
                 —
@@ -145,11 +146,7 @@
     the span from the transition to the last sample the transition rule still accepted;
     "Census peak" is the largest <span class="mono">replicator_count</span> the run ever
     sampled, with the epoch it first reached it in brackets; "—" means the run never had a
-    value.
-    <% if survey.capped? %>
-      The table stops at <%= Findings::PersistenceSurvey::MAX_ROWS %> rows; the counts above
-      are over all <%= survey.transitioned_count %>.
-    <% end %>
+    value. Every transitioned run in the lab has a row.
   </p>
 <% else %>
   <p class="text-muted">

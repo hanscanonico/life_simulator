@@ -10,14 +10,9 @@ module Findings
   # different grids at different budgets, so it counts outcomes and never estimates a
   # hazard. It reads and changes nothing.
   class PersistenceSurvey
-    MAX_ROWS = 100
+    Row = Data.define(:run, :experiment, :persistence, :sample_count_after_transition) do
+      delegate :seed, :transition_epoch, to: :run
 
-    # An exit is `hold_samples + 1` consecutive rejecting samples (docs/design_record.md,
-    # 2026-09-12), so a run needs that many samples from its crossing onwards for one to be
-    # confirmed in; a run with fewer reads as persisted whatever it did.
-    CONFIRMABLE_SAMPLES = Runs::PersistenceSummaryService::EXIT_SAMPLES
-
-    Row = Data.define(:run, :experiment, :persistence, :samples_after_transition) do
       def summarised? = persistence.present?
 
       def relapsed? = summarised? && persistence.relapsed?
@@ -32,7 +27,28 @@ module Findings
 
       def counted? = summarised? && persistence.counted?
 
-      def relapse_confirmable? = samples_after_transition >= CONFIRMABLE_SAMPLES
+      def census_sampled? = summarised? && persistence.sampled?
+
+      def relapse_confirmable?
+        Runs::PersistenceSummaryService.exit_confirmable?(sample_count_after_transition)
+      end
+    end
+
+    # One set of rows read as persisters against relapsers. The write-up states the same
+    # sentence of the whole survey and of each half of the census split, so the shape is
+    # named once.
+    Outcome = Data.define(:rows) do
+      delegate :count, :any?, to: :rows
+
+      def persisted_count = rows.count(&:persisted?)
+
+      def relapsed_count = rows.count(&:relapsed?)
+
+      def relapse_share
+        return nil if rows.empty?
+
+        relapsed_count.fdiv(rows.size)
+      end
     end
 
     def self.build = new
@@ -42,13 +58,9 @@ module Findings
     def rows
       @rows ||= transitioned_runs.map do |run|
         Row.new(run: run, experiment: run.experiment, persistence: run.persistence_summary,
-                samples_after_transition: samples_after_transition.fetch(run.id, 0))
+                sample_count_after_transition: sample_counts_after_transition.fetch(run.id, 0))
       end
     end
-
-    def table_rows = rows.first(MAX_ROWS)
-
-    def capped? = rows.size > MAX_ROWS
 
     def transitioned_count = rows.size
 
@@ -56,22 +68,12 @@ module Findings
 
     def summarised_count = summarised_rows.size
 
-    def persisted_rows = @persisted_rows ||= summarised_rows.select(&:persisted?)
-
-    def persisted_count = persisted_rows.size
-
-    def relapsed_rows = @relapsed_rows ||= summarised_rows.select(&:relapsed?)
-
-    def relapsed_count = relapsed_rows.size
+    def outcome = @outcome ||= Outcome.new(rows: summarised_rows)
 
     # Persisters whose series was too short from the crossing onwards for a relapse to have
     # been confirmed: they are the part of the persisted count that carries no information.
-    def unconfirmable_count = persisted_rows.count { |row| !row.relapse_confirmable? }
-
-    def relapse_share
-      return nil if summarised_count.zero?
-
-      relapsed_count.fdiv(summarised_count)
+    def unconfirmable_count
+      summarised_rows.count { |row| row.persisted? && !row.relapse_confirmable? }
     end
 
     def epochs_persisted = @epochs_persisted ||= summarised_rows.map(&:epochs_persisted).compact.sort
@@ -82,32 +84,20 @@ module Findings
 
     def median_persistence = median(epochs_persisted)
 
-    def counted_rows = @counted_rows ||= summarised_rows.select(&:counted?)
+    # The transitioned state is the compression rule's, and the census is a second
+    # observable that often disagrees with it, so the outcome is read again on each side of
+    # whether the run ever counted a replicating cell at all.
+    def counted_outcome = @counted_outcome ||= Outcome.new(rows: summarised_rows.select(&:counted?))
 
-    def counted_count = counted_rows.size
+    def uncounted_outcome = @uncounted_outcome ||= Outcome.new(rows: summarised_rows.reject(&:counted?))
 
-    def census_peaks = @census_peaks ||= counted_rows.map(&:census_peak).sort
+    def census_peaks = @census_peaks ||= counted_outcome.rows.map(&:census_peak).sort
+
+    def smallest_census = census_peaks.first
 
     def largest_census = census_peaks.last
 
     def median_census = median(census_peaks)
-
-    def largest_census_row = counted_rows.max_by(&:census_peak)
-
-    # The transitioned state is the compression rule's, and the census is a second
-    # observable that often disagrees with it, so both halves of the outcome are split by
-    # whether the run ever counted a replicating cell at all.
-    def counted_persisted_count = counted_rows.count(&:persisted?)
-
-    def counted_relapsed_count = counted_rows.count(&:relapsed?)
-
-    def uncounted_rows = @uncounted_rows ||= summarised_rows.reject(&:counted?)
-
-    def uncounted_count = uncounted_rows.size
-
-    def uncounted_persisted_count = uncounted_rows.count(&:persisted?)
-
-    def uncounted_relapsed_count = uncounted_rows.count(&:relapsed?)
 
     # The sweeps the survey rests on, named the way their own pages name them.
     def sweeps = @sweeps ||= rows.map(&:experiment).uniq.sort_by(&:name)
@@ -123,8 +113,8 @@ module Findings
 
     # One grouped query for the whole page: how many samples each run stored at or after
     # its own crossing, which is what says whether a relapse could have been confirmed.
-    def samples_after_transition
-      @samples_after_transition ||=
+    def sample_counts_after_transition
+      @sample_counts_after_transition ||=
         Sample.joins(:run).where(run_id: transitioned_runs.map(&:id))
               .where("samples.epoch >= runs.transition_epoch").group(:run_id).count
     end

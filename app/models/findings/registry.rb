@@ -15,17 +15,17 @@ module Findings
         summary: "DESIGN §1.2 fixes when a world enters the transitioned state, and the " \
                  "engine reports only that first crossing; nothing said when a world " \
                  "leaves one. Every terminal run now carries a persistence summary read " \
-                 "off its own stored samples, and this is every one of them the lab has, " \
-                 "whichever sweep it came from: how many transitioned worlds were still " \
-                 "in the state at their last sample, how many climbed back out, how long " \
-                 "each held, and how high its replicator census rose. Relapse is not an " \
-                 "edge case: mutation-rate-long's 2^-12 seed 10 climbed back out after a " \
-                 "census peak of 123, and so did the radius sweep's radius-2 run, whose " \
-                 "census never counted a cell at all — which is why the counts are split " \
-                 "by whether the census ever saw a colony. The counts are read from the " \
-                 "database at render time and describe the runs the lab happens to have: " \
-                 "each was censored by its own budget, so a world that persisted " \
-                 "persisted to its last sample and no further."
+                 "off its own stored samples, and this reads every one of them the lab " \
+                 "has, whichever sweep it came from: how many transitioned worlds were " \
+                 "still in the state at their last sample, how many climbed back out, how " \
+                 "long each held, and how high its replicator census rose. Relapse is not " \
+                 "an edge case — the design record's two recorded relapses are only the " \
+                 "ones that were noticed — and the outcome is split by whether the census " \
+                 "ever saw a colony, since a world can leave a state no replicator was " \
+                 "ever counted in. Every number is read from the database at render time " \
+                 "and describes the runs the lab happens to have: each was censored by " \
+                 "its own budget, so a world that persisted persisted to its last sample " \
+                 "and no further."
       ),
       Finding.new(
         slug: "mutation-rate-long-horizon",

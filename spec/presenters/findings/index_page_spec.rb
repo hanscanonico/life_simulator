@@ -41,6 +41,17 @@ RSpec.describe Findings::IndexPage do
       expect(row.transition_rate.fraction).to eq(0.5)
     end
 
+    it "counts a run that crossed and then failed among the sweep's transitions" do
+      experiment = create(:experiment, slug: "mutation-rate")
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 5_030)
+      create(:run, experiment: experiment, status: "failed", transition_epoch: 6_000)
+      create(:run, experiment: experiment, status: "running", transition_epoch: 7_000)
+
+      row = page.rows.find { |candidate| candidate.finding.experiment_slug == "mutation-rate" }
+
+      expect(row.transitioned).to eq(2)
+    end
+
     it "reads the whole log in a fixed number of queries" do
       Findings::Registry.all.select(&:sweep?).each { |finding| create(:experiment, slug: finding.experiment_slug) }
 

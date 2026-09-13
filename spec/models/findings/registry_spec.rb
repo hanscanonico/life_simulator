@@ -56,8 +56,15 @@ RSpec.describe Findings::Registry do
 
     expect(finding.summary).to include("nothing said when a world leaves one",
                                        "Relapse is not an edge case",
+                                       "the design record's two recorded relapses",
                                        "split by whether the census ever saw a colony",
                                        "persisted to its last sample and no further")
+  end
+
+  it "leaves the figures of individual runs to the body, which reads them live" do
+    finding = described_class.find("emergence-can-be-left")
+
+    expect(finding.summary).not_to match(/\d{2,}/)
   end
 
   it "ships the body partial every finding names" do
@@ -70,12 +77,12 @@ RSpec.describe Findings::Registry do
 
   it "renders the body partial every finding names" do
     described_class.all.to_a.each do |finding|
-      expect(ApplicationController.render(partial: finding.body_partial)).to include("<h2>")
+      expect(render_body(finding)).to include("<h2>")
     end
   end
 
   it "leaves per-run facts out of the mutation-rate body" do
-    body = ApplicationController.render(partial: described_class.find("mutation-rate-window").body_partial)
+    body = render_body(described_class.find("mutation-rate-window"))
 
     expect(body).not_to match(/\d{2}:\d{2} CEST/)
     expect(body).not_to match(/run 41/i)
@@ -83,7 +90,7 @@ RSpec.describe Findings::Registry do
 
   it "leaves lab timestamps out of every body" do
     described_class.all.to_a.each do |finding|
-      expect(ApplicationController.render(partial: finding.body_partial)).not_to include("CEST")
+      expect(render_body(finding)).not_to include("CEST")
     end
   end
 
@@ -168,6 +175,13 @@ RSpec.describe Findings::Registry do
 
   it "returns nothing for an unknown slug" do
     expect(described_class.find("nope")).to be_nil
+  end
+
+  # A body reads the page presenter the controller assigns, the same way the show view does.
+  def render_body(finding)
+    show = Findings::ShowPage.build(finding: finding, paginate: ->(scope) { [nil, scope] })
+
+    ApplicationController.render(partial: finding.body_partial, assigns: { show: show })
   end
 
   def finding(slug, experiment_slug, date)

@@ -46,8 +46,8 @@ RSpec.describe Findings::PersistenceSurvey do
 
     survey = described_class.build
 
-    expect(survey).to have_attributes(summarised_count: 3, persisted_count: 1, relapsed_count: 2,
-                                      relapse_share: 2.0 / 3)
+    expect(survey.summarised_count).to eq(3)
+    expect(survey.outcome).to have_attributes(persisted_count: 1, relapsed_count: 2, relapse_share: 2.0 / 3)
   end
 
   it "counts a transitioned run without a summary in neither half" do
@@ -55,8 +55,8 @@ RSpec.describe Findings::PersistenceSurvey do
 
     survey = described_class.build
 
-    expect(survey).to have_attributes(transitioned_count: 1, summarised_count: 0, persisted_count: 0,
-                                      relapsed_count: 0, relapse_share: nil)
+    expect(survey).to have_attributes(transitioned_count: 1, summarised_count: 0)
+    expect(survey.outcome).to have_attributes(persisted_count: 0, relapsed_count: 0, relapse_share: nil)
   end
 
   it "reads the spread of epochs persisted off the summaries" do
@@ -78,8 +78,8 @@ RSpec.describe Findings::PersistenceSurvey do
 
     survey = described_class.build
 
-    expect(survey).to have_attributes(counted_count: 2, median_census: 7, largest_census: 123)
-    expect(survey.largest_census_row.census_peak).to eq(123)
+    expect(survey).to have_attributes(median_census: 7, smallest_census: 7, largest_census: 123)
+    expect(survey.counted_outcome.count).to eq(2)
   end
 
   it "splits both outcomes by whether the census ever saw a colony" do
@@ -92,20 +92,20 @@ RSpec.describe Findings::PersistenceSurvey do
 
     survey = described_class.build
 
-    expect(survey).to have_attributes(counted_count: 2, counted_persisted_count: 1, counted_relapsed_count: 1,
-                                      uncounted_count: 3, uncounted_persisted_count: 1,
-                                      uncounted_relapsed_count: 2)
+    expect(survey.counted_outcome).to have_attributes(count: 2, persisted_count: 1, relapsed_count: 1)
+    expect(survey.uncounted_outcome).to have_attributes(count: 3, persisted_count: 1, relapsed_count: 2)
   end
 
   it "names the persisters too short after their crossing for an exit to be confirmed" do
-    transitioned_run(samples_after: described_class::CONFIRMABLE_SAMPLES,
+    transitioned_run(samples_after: Runs::PersistenceSummaryService::EXIT_SAMPLES,
                      persistence: { census_peak: 1, peak_epoch: 110, epochs_persisted: 40, relapsed: false })
-    transitioned_run(samples_after: described_class::CONFIRMABLE_SAMPLES - 1,
+    transitioned_run(samples_after: Runs::PersistenceSummaryService::EXIT_SAMPLES - 1,
                      persistence: { census_peak: 1, peak_epoch: 110, epochs_persisted: 10, relapsed: false })
 
     survey = described_class.build
 
-    expect(survey).to have_attributes(persisted_count: 2, unconfirmable_count: 1)
+    expect(survey.outcome.persisted_count).to eq(2)
+    expect(survey.unconfirmable_count).to eq(1)
     expect(survey.rows.map(&:relapse_confirmable?)).to eq([true, false])
   end
 
@@ -113,21 +113,31 @@ RSpec.describe Findings::PersistenceSurvey do
     run = create(:run, status: "finished", transition_epoch: 500,
                        persistence: { "census_peak" => 1, "peak_epoch" => 510,
                                       "epochs_persisted" => 40, "relapsed" => false })
-    described_class::CONFIRMABLE_SAMPLES.times { |index| create(:sample, run: run, epoch: index * 10) }
+    Runs::PersistenceSummaryService::EXIT_SAMPLES.times { |index| create(:sample, run: run, epoch: index * 10) }
 
     expect(described_class.build.unconfirmable_count).to eq(1)
   end
 
-  it "caps the table it shows without capping the counts it states" do
-    stub_const("#{described_class}::MAX_ROWS", 1)
-    2.times do
+  it "rows every transitioned run rather than a page of them" do
+    3.times do
       transitioned_run(persistence: { census_peak: 1, peak_epoch: 110, epochs_persisted: 40, relapsed: false })
     end
 
     survey = described_class.build
 
-    expect(survey.table_rows.size).to eq(1)
-    expect(survey).to have_attributes(capped?: true, transitioned_count: 2, persisted_count: 2)
+    expect(survey.rows.size).to eq(3)
+    expect(survey.rows.map(&:seed)).to eq(survey.rows.map { |row| row.run.seed })
+  end
+
+  it "hands a row the run facts the table states" do
+    run = transitioned_run(transition_epoch: 700,
+                           persistence: { census_peak: 0, peak_epoch: nil, epochs_persisted: 40,
+                                          relapsed: false })
+
+    row = described_class.build.rows.first
+
+    expect(row).to have_attributes(seed: run.seed, transition_epoch: 700, census_sampled?: true,
+                                   counted?: false)
   end
 
   it "says plainly that it has nothing to survey" do

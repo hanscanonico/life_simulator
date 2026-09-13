@@ -64,8 +64,9 @@ RSpec.describe "Findings", type: :request do
         get findings_path
 
         expect(response.body.squish).to include("Emergence is a state a world can leave",
-                                                "Every sweep in the lab · 2 transitioned runs")
-        expect(response.body).to include(finding_path("emergence-can-be-left"))
+                                                "Every sweep in the lab",
+                                                "2 transitioned runs behind this finding")
+        expect(response.body).to include(finding_path("emergence-can-be-left"), experiments_path)
       end
     end
 
