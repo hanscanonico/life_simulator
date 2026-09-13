@@ -75,6 +75,42 @@ RSpec.describe Runs::ShowPage do
     end
   end
 
+  describe "#meta_description" do
+    let(:run) do
+      create(:run, experiment: create(:experiment, name: "BFF control"), seed: 7, status: "finished",
+                   epochs: 20_000, epochs_done: 20_000, transition_epoch: 4_000)
+    end
+
+    it "names the sweep the way the record spells it, acronym and all" do
+      expect(page.meta_description).to start_with("Run ##{run.id} of the BFF control sweep")
+    end
+
+    it "states the seed, the progress and the epoch life appeared" do
+      expect(page.meta_description)
+        .to end_with("seed 7: finished, 20,000 of 20,000 epochs, self-replicators from epoch 4,000.")
+    end
+
+    context "with a run that has not transitioned" do
+      let(:run) { create(:run, status: "running", transition_epoch: nil) }
+
+      it "leaves the door open the way the page does" do
+        expect(page.meta_description).to end_with("no emergence yet.")
+      end
+    end
+
+    context "with a run inside a swept arm" do
+      let(:experiment) do
+        create(:experiment, name: "Neighbourhood radius", param_grid: { "radius" => [0, 1, 2] })
+      end
+      let(:run) { create(:run, experiment: experiment, params: Lab::Schema.run_defaults.merge("radius" => 0)) }
+
+      it "names the arm the sweep's own tables name" do
+        expect(page.arm_label).to eq("well-mixed")
+        expect(page.meta_description).to include(" sweep (well-mixed), seed ")
+      end
+    end
+  end
+
   describe "#charts_empty?" do
     it "is true for a run that has not run an epoch" do
       expect(described_class.build(run: create(:run, epochs_done: 0))).to be_charts_empty

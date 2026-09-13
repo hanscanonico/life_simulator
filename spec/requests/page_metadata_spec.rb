@@ -27,6 +27,17 @@ RSpec.describe "Page metadata", type: :request do
       expect(metadata.map(&:last).uniq.size).to eq(pages.size)
       expect(metadata.flatten).to all(be_present)
     end
+
+    # A description written by hand, unlike one read off a record, is under its author's
+    # control, so it fits the limit rather than reaching the head cut in half.
+    it "states the hand-written ones in full" do
+      pages = [root_path, how_it_works_path, experiments_path, findings_path, lab_path]
+
+      descriptions = pages.map { |path| metadata_of(path).last }
+
+      expect(descriptions).to all(end_with("."))
+      expect(descriptions).not_to include(a_string_ending_with("..."))
+    end
   end
 
   describe "GET /" do
@@ -99,7 +110,7 @@ RSpec.describe "Page metadata", type: :request do
       title, description = metadata_of(run_path(run))
 
       expect(title).to eq("Run ##{run.id} — Life Simulator")
-      expect(description).to include("mutation rate sweep", "seed 7", "finished")
+      expect(description).to include("Mutation rate sweep", "seed 7", "finished")
     end
   end
 

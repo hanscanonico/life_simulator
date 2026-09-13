@@ -65,7 +65,7 @@ module Runs
     def meta_description
       arm = arm_label ? " (#{arm_label})" : ""
 
-      "Run ##{run.id} of the #{run.experiment.name.downcase} sweep#{arm}, seed #{run.seed}: " \
+      "Run ##{run.id} of the #{run.experiment.name} sweep#{arm}, seed #{run.seed}: " \
         "#{run.status}, #{delimited(run.epochs_done)} of #{delimited(run.epochs)} epochs, #{emergence_label}."
     end
 
