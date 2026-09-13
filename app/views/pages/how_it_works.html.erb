@@ -115,6 +115,18 @@
       a particular partner.
     </dd>
 
+    <dt class="mono">distinct_lineages</dt>
+    <dd>
+      How many lineages the world holds. Every cell starts its own; after an interaction a
+      cell takes its partner's lineage when the tape it ends with differs in fewer bytes
+      from the tape its partner arrived with than from the tape it arrived with itself, and
+      keeps its own on a tie. It counts descent rather than shape, so two lineages that
+      drifted onto the same tape still read as two.
+    </dd>
+
+    <dt class="mono">top_lineage_share</dt>
+    <dd>The fraction of cells held by the largest lineage.</dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which

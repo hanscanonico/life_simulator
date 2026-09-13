@@ -12,7 +12,9 @@ module Runs
       "op_density" => "Instruction density",
       "entropy_bits" => "Entropy (bits)",
       "alphabet_size" => "Alphabet size",
-      "copy_rate" => "Copy rate"
+      "copy_rate" => "Copy rate",
+      "distinct_lineages" => "Distinct lineages",
+      "top_lineage_share" => "Share of the largest lineage"
     }.freeze
 
     SAMPLE_CLOCK = "COUNT(*), MIN(epoch), MAX(epoch), MIN(created_at), MAX(created_at)"

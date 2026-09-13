@@ -68,6 +68,16 @@ claim rests on it.
   they are not a copy. Replication caught in situ, so it sees the replicators the
   replicator test misses — those that only copy with a kin partner or into a particular
   layout. Counted only on the epochs a sample reads; the life substrate reports 0.
+- `distinct_lineages`: how many lineage ids the cells hold. Every cell starts its own at
+  init; after an interaction a cell takes its partner's lineage id when the tape it ends
+  with is closer — Hamming distance over the tape's bytes — to the tape its partner
+  arrived with than to the tape it arrived with itself, and keeps its own on a tie. The
+  reading counts descent rather than shape, so two lineages that drifted onto the same
+  tape still read as two. Tags sit beside the tapes: they are never written into a tape,
+  never drawn from the RNG stream, and mutation never moves one, so a run's bytes are what
+  they were before lineages existed. A snapshot carries tapes only, so a resumed run
+  starts its lineage census over from one id per cell. The life substrate reports 0.
+- `top_lineage_share`: fraction of cells held by the largest lineage.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard
