@@ -399,10 +399,10 @@ impl World {
             let read = replicator::assay(tape, self.params.max_steps, ops, &mut rng);
             if read.replicates() {
                 census.count += cells;
-                if census.copy_cost.is_none() {
-                    census.copy_cost = read.copy_cost;
+                if census.complexity.is_none() {
                     census.complexity = Some(metrics::Complexity::of(tape, ops));
                 }
+                census.copy_cost = census.copy_cost.or(read.copy_cost);
             }
         }
         census
@@ -1208,10 +1208,56 @@ mod tests {
             let measured = world.metrics();
             assert_eq!(measured.replicator_count, 4, "{measured:?}");
             assert_eq!(measured.copy_cost, Some(expected), "{measured:?}");
+        }
+    }
+
+    /// The hand-written copier with its filler replaced by non-zero junk, a third of it op
+    /// bytes the interpreter never reaches: it copies itself exactly as the plain tape does
+    /// and for the same 1 794 steps, so it is the same replicator at a different size.
+    fn bulkier_replicator() -> Vec<u8> {
+        let mut tape = replicator::handwritten_replicator();
+        let mut state: u8 = 1;
+        for (index, byte) in tape.iter_mut().enumerate().skip(16) {
+            state = state.wrapping_mul(37).wrapping_add(11) | 1;
+            *byte = if index % 3 == 0 { b'+' } else { state };
+        }
+        tape
+    }
+
+    /// Which of several replicators the complexity is read off is the same population
+    /// question the cost is settled by, and the two readings must come off one tape: with
+    /// two replicators of equal cost in a world, the sample reports the size of the tape
+    /// more cells hold.
+    #[test]
+    fn the_complexity_is_read_off_the_most_populous_replicator() {
+        let params = Params {
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(4, 4)
+        };
+        let plain = replicator::handwritten_replicator();
+        let bulky = bulkier_replicator();
+
+        for (plain_cells, expected) in [(3, (36, 15)), (1, (84, 95))] {
+            let mut world = World::new(&params, 3).unwrap();
+            for x in 0..4 {
+                world.set_cell(x, 0, if x < plain_cells { &plain } else { &bulky });
+            }
+            let measured = world.metrics();
+            assert_eq!(measured.replicator_count, 4, "{measured:?}");
             assert_eq!(
-                measured.dominant_instruction_count,
-                Some(15),
-                "both tapes run the same fifteen instructions"
+                measured.copy_cost,
+                Some(1_794),
+                "the two tapes cost the same, so only the size can tell them apart"
+            );
+            assert_eq!(
+                (
+                    measured.dominant_compressed_len,
+                    measured.dominant_instruction_count
+                ),
+                (Some(expected.0), Some(expected.1)),
+                "{measured:?}"
             );
         }
     }
