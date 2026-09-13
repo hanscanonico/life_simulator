@@ -35,6 +35,15 @@ RSpec.describe Runs::SamplesCsvService do
     expect(rows.pluck(column)).to eq(["copy_cost", nil, "1794"])
   end
 
+  it "exports the complexity of the dominant replicator in its own two columns" do
+    create(:sample, run: run, epoch: 100,
+                    values: { "dominant_compressed_len" => 36, "dominant_instruction_count" => 15 })
+
+    columns = %w[dominant_compressed_len dominant_instruction_count].map { |name| Sample::OBSERVABLES.index(name) + 1 }
+
+    expect(rows.last.values_at(*columns)).to eq(%w[36 15])
+  end
+
   it "reads no sample before the reader pulls the first row" do
     create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
 

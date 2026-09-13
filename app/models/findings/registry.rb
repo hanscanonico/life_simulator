@@ -24,6 +24,23 @@ module Findings
                  "winning rather than one lineage improving."
       ),
       Finding.new(
+        slug: "replicator-complexity-plateau",
+        title: "Does the replicator keep getting more complicated?",
+        date: Date.new(2026, 9, 13),
+        experiment_slug: nil,
+        status: :partial,
+        summary: "Every sample now records how much tape the dominant replicator is — the " \
+                 "compressed length of the most populous tape that passes the replicator " \
+                 "test, and how many of its bytes the run's instruction set executes. That " \
+                 "is the open-endedness baseline every later substrate is measured " \
+                 "against: a world that keeps elaborating what it found reads a rising " \
+                 "length, a world that found one recipe and stopped reads a flat one. This " \
+                 "reads the series off every transitioned run the lab has and counts how " \
+                 "many end more complicated than they started. It measures a tape's size, " \
+                 "not its abilities, and the runs were assembled by having transitioned " \
+                 "rather than designed to answer this."
+      ),
+      Finding.new(
         slug: "emergence-can-be-left",
         title: "Emergence is a state a world can leave",
         date: Date.new(2026, 9, 12),

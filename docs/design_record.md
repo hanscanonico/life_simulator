@@ -324,3 +324,20 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   it — so a run's bytes and every existing observable are untouched, and the pinned
   determinism hashes and metric strings in `world.rs` do not move. No run recorded a copy
   cost before this change, so every series starts where the lab first ran the new engine.
+- 2026-09-13 — **Complexity of the dominant replicator is compressed tape length and
+  executed instruction count.** Rung 4 of the evolution programme needs a baseline for
+  open-endedness, and §1.2 now carries one as `dominant_compressed_len` and
+  `dominant_instruction_count`. Three choices are fixed here. The tape read is the **same
+  dominant replicator `copy_cost` is priced on** — the most populous tape among the `top_k`
+  tested that passes the replicator test — so a run's three replicator observables always
+  describe one tape and can be read against each other. Compressed length is **zlib at the
+  compressor `compress_ratio` already uses**, not a bespoke coder: it is already a dependency,
+  it is deterministic, and it puts a tape and the world it sits in on one scale. The
+  instruction count is counted against the **run's own op set**, so an ablation sweep counts
+  only the bytes its interpreter would execute; with the default set it is the tape's
+  `op_density` times its length. **Consequences**: both readings are pure functions of a tape
+  the replicator test already selected — no trial is re-run, nothing is drawn from the RNG
+  stream — so a run's bytes and every existing observable are untouched and the pinned
+  determinism hashes and observable strings in `world.rs` do not move. A tape that does not
+  replicate reports null, which reaches Rails as a JSON null and draws no point, and no run
+  recorded either reading before this change.

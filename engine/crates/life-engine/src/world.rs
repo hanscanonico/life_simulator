@@ -364,44 +364,58 @@ impl World {
         let top_share = ranked.first().map_or(0.0, |(_, n)| *n as f64 / cells);
         let histogram = metrics::ByteHistogram::of(&self.cells);
         let (distinct_lineages, top_lineage_share) = metrics::lineage_census(&self.lineages);
-        let (replicator_count, copy_cost) = self.replicator_census(&ranked);
+        let census = self.replicator_census(&ranked);
 
         Metrics {
             compress_ratio,
             distinct_tapes: ranked.len() as u64,
             top_share,
             op_density: histogram.op_density(),
-            replicator_count,
+            replicator_count: census.count,
             entropy_bits: histogram.entropy_bits(),
             alphabet_size: histogram.alphabet_size(),
             copy_rate: self.copy_rate,
             distinct_lineages,
             top_lineage_share,
             lineage_variation: metrics::lineage_variation(&self.cells, stride, &self.lineages),
-            copy_cost,
+            copy_cost: census.copy_cost,
+            dominant_compressed_len: census.complexity.map(|read| read.compressed_len),
+            dominant_instruction_count: census.complexity.map(|read| read.instruction_count),
         }
     }
 
     /// Cells holding one of the `top_k` most common tapes that passes the replicator test,
-    /// and the copy cost of the dominant one — the first tape to pass, `ranked` being in
-    /// population order. Life cells are single bits and have no replicator reading.
-    fn replicator_census(&self, ranked: &[(&[u8], u64)]) -> (u64, Option<u32>) {
+    /// and what the dominant one — the first tape to pass, `ranked` being in population
+    /// order — costs and carries. Life cells are single bits and have no replicator
+    /// reading.
+    fn replicator_census(&self, ranked: &[(&[u8], u64)]) -> ReplicatorCensus {
         if self.params.substrate != Substrate::Soup {
-            return (0, None);
+            return ReplicatorCensus::default();
         }
         let mut rng = rng::seeded(self.seed, STREAM_REPLICATOR, self.epoch);
         let ops = self.params.op_set();
-        let mut count = 0;
-        let mut copy_cost = None;
+        let mut census = ReplicatorCensus::default();
         for (tape, cells) in ranked.iter().take(self.params.top_k as usize) {
             let read = replicator::assay(tape, self.params.max_steps, ops, &mut rng);
             if read.replicates() {
-                count += cells;
-                copy_cost = copy_cost.or(read.copy_cost);
+                census.count += cells;
+                if census.copy_cost.is_none() {
+                    census.copy_cost = read.copy_cost;
+                    census.complexity = Some(metrics::Complexity::of(tape, ops));
+                }
             }
         }
-        (count, copy_cost)
+        census
     }
+}
+
+/// What one sample's run of the replicator test read: how many cells hold a tape that
+/// passed, and the dominant passing tape's own observables.
+#[derive(Default)]
+struct ReplicatorCensus {
+    count: u64,
+    copy_cost: Option<u32>,
+    complexity: Option<metrics::Complexity>,
 }
 
 /// Whether a tape resembles its partner's arriving tape more closely than its own, by
@@ -901,11 +915,13 @@ mod tests {
     }
 
     #[test]
-    fn a_life_world_reads_no_copy_cost() {
+    fn a_life_world_reads_nothing_of_a_dominant_replicator() {
         let mut world = World::new(&life(4, 4), 1).unwrap();
         let measured = world.metrics();
         assert_eq!(measured.replicator_count, 0);
         assert_eq!(measured.copy_cost, None);
+        assert_eq!(measured.dominant_compressed_len, None);
+        assert_eq!(measured.dominant_instruction_count, None);
     }
 
     #[test]
@@ -1119,6 +1135,8 @@ mod tests {
             measured.copy_cost, None,
             "nothing replicates to cost anything"
         );
+        assert_eq!(measured.dominant_compressed_len, None);
+        assert_eq!(measured.dominant_instruction_count, None);
         assert_eq!(measured.copy_rate, 0.0, "nothing has interacted yet");
         assert!((measured.top_share - 1.0 / 256.0).abs() < 1e-9);
     }
@@ -1142,6 +1160,14 @@ mod tests {
             measured.copy_cost,
             Some(1_794),
             "the dominant replicator is the handwritten tape, at its known cost"
+        );
+        assert_eq!(
+            (
+                measured.dominant_compressed_len,
+                measured.dominant_instruction_count
+            ),
+            (Some(36), Some(15)),
+            "and at its known complexity"
         );
         assert!(
             (measured.top_share - 13.0 / 16.0).abs() < 1e-9,
@@ -1182,6 +1208,11 @@ mod tests {
             let measured = world.metrics();
             assert_eq!(measured.replicator_count, 4, "{measured:?}");
             assert_eq!(measured.copy_cost, Some(expected), "{measured:?}");
+            assert_eq!(
+                measured.dominant_instruction_count,
+                Some(15),
+                "both tapes run the same fifteen instructions"
+            );
         }
     }
 

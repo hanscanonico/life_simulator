@@ -157,6 +157,8 @@ mod tests {
             top_lineage_share: 0.5,
             lineage_variation: 0.0,
             copy_cost: None,
+            dominant_compressed_len: None,
+            dominant_instruction_count: None,
         }
     }
 

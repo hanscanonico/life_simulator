@@ -14,10 +14,13 @@ RSpec.describe Runs::ShowPage do
       end
     end
 
+    def chart_for(metric) = page.charts[described_class::METRICS.keys.index(metric)]
+
     it "draws one chart per DESIGN observable" do
       expect(described_class::METRICS.keys)
         .to eq(%w[compress_ratio distinct_tapes top_share replicator_count op_density entropy_bits alphabet_size
-                  copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost])
+                  copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost
+                  dominant_compressed_len dominant_instruction_count])
       expect(described_class::METRICS.keys).to match_array(Sample::OBSERVABLES)
       expect(page.charts.map(&:title)).to eq(described_class::METRICS.values)
     end
@@ -42,7 +45,17 @@ RSpec.describe Runs::ShowPage do
       create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794 })
       create(:sample, run: run, epoch: 200, values: { "copy_cost" => nil })
 
-      expect(page.charts.last).not_to be_empty
+      expect(chart_for("copy_cost")).not_to be_empty
+    end
+
+    it "draws the complexity of the dominant replicator of the samples that carry one" do
+      create(:sample, run: run, epoch: 100,
+                      values: { "dominant_compressed_len" => 36, "dominant_instruction_count" => 15 })
+      create(:sample, run: run, epoch: 200,
+                      values: { "dominant_compressed_len" => nil, "dominant_instruction_count" => nil })
+
+      expect(chart_for("dominant_compressed_len")).not_to be_empty
+      expect(chart_for("dominant_instruction_count")).not_to be_empty
     end
   end
 

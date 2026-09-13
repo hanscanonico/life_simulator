@@ -1,0 +1,174 @@
+<% survey = @show.complexity_survey %>
+
+<h2>Question</h2>
+<p>
+  A world that crosses into self-replication has found something. The programme can now say
+  when it crossed, <%= link_to "whether it stays there", finding_path("emergence-can-be-left") %>
+  and <%= link_to "what a copy costs it", finding_path("copy-cost-adaptation") %> — but not
+  whether what it found keeps growing. That is the open-endedness question in its plainest
+  form: after emergence, does the dominant replicator get more complicated as the epochs go
+  by, or does the world settle on one recipe and elaborate nothing further? Every richer
+  substrate this programme goes on to try is worth trying only against an answer to that on
+  the substrate it already has.
+</p>
+
+<h2>Method</h2>
+<p>
+  Each sample already picks out a <strong>dominant replicator</strong>: the most populous
+  tape among the <span class="mono">top_k</span> tested that passes the replicator test, the
+  tape <span class="mono">copy_cost</span> is priced on. The engine now reads that same tape
+  two more ways. <span class="mono">dominant_compressed_len</span> is its length in bytes
+  after zlib — the compressor <span class="mono">compress_ratio</span> already uses, so a
+  tape and the world it sits in are measured on one scale, and a tape of filler with a short
+  program in it reads short however long the tape is.
+  <span class="mono">dominant_instruction_count</span> is how many of its bytes the run's own
+  instruction set executes, so an ablation sweep counts only what its interpreter would run.
+  Both are null when no tested tape replicates. The hand-written replicator in the engine's
+  test suite reads <strong>36 bytes and 15 instructions</strong>, which is what pins them.
+</p>
+<p>
+  This page then reads the series back out of the lab: every transitioned run, whichever
+  sweep queued it, its samples at or after its own crossing epoch, in epoch order. A run is
+  counted as growing when its last recorded length is above its first post-transition one,
+  shrinking when it is below, flat when the two are equal. Counts of directions, nothing
+  fitted.
+</p>
+
+<h2>Result</h2>
+<% if survey.any? %>
+  <p>
+    <strong>
+      <% if survey.compared_count.zero? %>
+        No run has two readings of the length yet, so nothing can be compared.
+      <% elsif survey.grew_count > survey.shrank_count + survey.flat_count %>
+        More transitioned worlds end with a more complicated replicator than end with a
+        simpler or an unchanged one.
+      <% elsif survey.grew_count.zero? %>
+        No transitioned world in the lab ends with a more complicated replicator than it
+        started with: on this substrate, complexity plateaus after emergence.
+      <% else %>
+        Growth is the exception rather than the rule: most transitioned worlds end no more
+        complicated than they started.
+      <% end %>
+    </strong>
+    The lab has <%= pluralize survey.transitioned_count, "terminal run" %> that crossed, with
+    a complexity reading after the crossing in <%= survey.measured_count %> of them, across
+    <%= pluralize survey.sweeps.size, "sweep" %>.
+    <% if survey.compared_count.positive? %>
+      Among the <%= pluralize survey.compared_count, "run" %> with at least two readings, the
+      split is <%= survey.grew_count %> ending above their first post-transition length,
+      <%= survey.shrank_count %> below it and <%= survey.flat_count %> on it.
+    <% end %>
+  </p>
+
+  <div id="complexity-runs" class="table-scroll" tabindex="0" role="region"
+       aria-label="Complexity of the dominant replicator in every transitioned run that recorded one">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Sweep</th>
+          <th>Run</th>
+          <th class="numeric">Transition epoch</th>
+          <th class="numeric">Readings</th>
+          <th class="numeric">First length (epoch)</th>
+          <th class="numeric">Last length (epoch)</th>
+          <th class="numeric">Largest</th>
+          <th class="numeric">Instructions, first → last</th>
+          <th>Direction</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% survey.table_rows.each do |row| %>
+          <tr>
+            <td><%= link_to row.experiment.name, experiment_path(row.experiment) %></td>
+            <td><%= link_to "seed #{row.seed}", run_path(row.run) %></td>
+            <td class="numeric mono"><%= number_with_delimiter row.transition_epoch %></td>
+            <td class="numeric mono"><%= number_with_delimiter row.readings %></td>
+            <td class="numeric mono">
+              <%= number_with_delimiter row.first_length %>
+              (<%= number_with_delimiter row.first_epoch %>)
+            </td>
+            <td class="numeric mono">
+              <%= number_with_delimiter row.last_length %>
+              (<%= number_with_delimiter row.last_epoch %>)
+            </td>
+            <td class="numeric mono"><%= number_with_delimiter row.max_length %></td>
+            <td class="numeric mono">
+              <%= number_with_delimiter row.first_instructions %> →
+              <%= number_with_delimiter row.last_instructions %>
+            </td>
+            <td>
+              <% if row.grew? %>
+                <span class="badge badge-success">more complicated</span>
+              <% elsif row.shrank? %>
+                <span class="badge badge-warning">simpler</span>
+              <% elsif row.flat? %>
+                <span class="badge badge-info">unchanged</span>
+              <% else %>
+                <span class="text-muted">one reading</span>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-sm text-muted">
+    One row per transitioned run whose samples carry a complexity reading at or after its
+    crossing, grouped by sweep. Lengths are bytes of the run's dominant replicator after
+    zlib at that sample; "Largest" is the biggest the run ever recorded.
+    <% if survey.capped? %>
+      The table stops at <%= pluralize Findings::ShowPage::MAX_TRANSITIONS, "row" %> and
+      leaves <%= pluralize survey.rows_omitted, "further run" %> out; every one of them is
+      counted in the figures above.
+    <% end %>
+  </p>
+<% else %>
+  <p class="text-muted">
+    No run in this database has recorded the complexity of its dominant replicator yet. The
+    observable is new, and a run only carries it from the moment the lab's runners started
+    measuring it, so this table fills in as the worlds now on the clock reach their next
+    sample — and stays empty for every run that finished before the engine could read a tape
+    this way.
+  </p>
+<% end %>
+
+<h2>What this does not claim</h2>
+<p>
+  <strong>Compressed length is size, not ability.</strong> A tape that grows by a hundred
+  bytes of junk it never executes reads as more complicated here, and a tape that learns to
+  do something new in the bytes it already had reads as unchanged. Length and instruction
+  count bound the recipe rather than describe it; nothing on this page opens a tape and says
+  what it does.
+</p>
+<p>
+  <strong>"Dominant replicator" is a tape, not a lineage.</strong> The reading is taken off
+  the most populous tape that passes the replicator test at that sample. A length that jumps
+  between two samples can be one colony elaborating itself — or a different, longer
+  replicator taking over, which is a different sentence, and this page cannot tell the two
+  apart.
+</p>
+<p>
+  <strong>A plateau here is a plateau at these budgets.</strong> Every series is censored at
+  both ends: no run recorded a complexity before this observable existed, so each starts
+  wherever the lab first ran the new engine rather than at the world's crossing, and ends
+  wherever that run's budget ended. A world that would have elaborated at epoch 200 000 and
+  was stopped at 60 000 reads flat.
+</p>
+<p>
+  <strong>This is not the open-endedness sweep.</strong> The runs above transitioned in
+  sweeps built to answer other questions — mutation rate, world size, locality, interaction
+  budget — none of them designed or funded to watch a replicator grow. A count of directions
+  over such a set describes the set.
+</p>
+
+<h2>What next</h2>
+<p>
+  The series has to accumulate before it can be read: the runs on the clock need to sample
+  under the new engine for long enough to give more than a couple of readings each. After
+  that, the reading that would really settle the matter is per lineage rather than per
+  dominant tape, so one colony can be watched growing; and the answer this page eventually
+  gives is the baseline against which the substrate bets of the design record — a richer
+  instruction set, an environment with something to exploit — are worth running at all. If
+  complexity plateaus here and plateaus there too, the substrate was not what was limiting.
+</p>

@@ -99,6 +99,15 @@ claim rests on it.
   It is read off the runs the test performs — same order, same stream, no trial re-run —
   so it moves no tape byte and draws nothing. The hand-written replicator of the engine's
   test suite costs 1 794 steps.
+- `dominant_compressed_len` / `dominant_instruction_count`: how much tape the **dominant
+  replicator** is, read two ways — the length in bytes of its tape under the same zlib
+  compressor `compress_ratio` uses, and how many of its bytes the run's own instruction set
+  executes (all ten unless `ops` ablates some). Read off the very tape `copy_cost` is priced
+  on, so the three observables describe one tape; null when no tested tape replicates, and on
+  the life substrate. Together they are the open-endedness baseline every later substrate is
+  measured against: a world whose replicator keeps getting more complicated after emergence
+  reads a rising length, a world that found one recipe and stopped reads a flat one. The
+  hand-written replicator of the engine's test suite reads 36 bytes and 15 instructions.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard

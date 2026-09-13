@@ -6,7 +6,8 @@ class Sample < ApplicationRecord
   # engine/crates/life-engine/src/metrics.rs.
   OBSERVABLES = %w[
     compress_ratio distinct_tapes top_share op_density replicator_count entropy_bits alphabet_size copy_rate
-    distinct_lineages top_lineage_share lineage_variation copy_cost
+    distinct_lineages top_lineage_share lineage_variation copy_cost dominant_compressed_len
+    dominant_instruction_count
   ].freeze
 
   belongs_to :run

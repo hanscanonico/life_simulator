@@ -147,6 +147,18 @@
       move: the hand-written replicator the engine tests itself against needs 1 794 steps.
     </dd>
 
+    <dt class="mono">dominant_compressed_len</dt>
+    <dd>
+      How much tape the dominant replicator is, in bytes, once zlib has squeezed it — the
+      same compressor the compression ratio uses, so a tape and the world it sits in are
+      read on one scale. Beside it <span class="mono">dominant_instruction_count</span>
+      counts how many of that tape's bytes the run's instruction set executes. They are the
+      baseline for open-endedness: a world whose replicator keeps getting more complicated
+      after emergence reads a rising length, one that found a recipe and stopped reads a
+      flat one. The hand-written replicator reads 36 bytes and 15 instructions. Null when no
+      tested tape replicates.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which
