@@ -15,13 +15,6 @@ module Runs
   class PersistenceSummaryService
     include Callable
 
-    EXIT_SAMPLES = Lab::TransitionRule::HOLD_SAMPLES + 1
-
-    # An exit takes EXIT_SAMPLES consecutive rejecting samples, so a series with fewer than
-    # that from the crossing onwards has no room for one to be confirmed in: such a run
-    # reads as persisted whatever the world did.
-    def self.exit_confirmable?(sample_count_from_transition) = sample_count_from_transition >= EXIT_SAMPLES
-
     def initialize(run:)
       @run = run
     end
@@ -56,7 +49,8 @@ module Runs
       return @exit_index if defined?(@exit_index)
 
       qualifying = transitioned_samples.map { |_, values| Lab::TransitionRule.qualifies?(values) }
-      @exit_index = (0..(qualifying.size - EXIT_SAMPLES)).find { |index| qualifying[index, EXIT_SAMPLES].none? }
+      exit_samples = Persistence::EXIT_SAMPLES
+      @exit_index = (0..(qualifying.size - exit_samples)).find { |index| qualifying[index, exit_samples].none? }
     end
 
     def census_peak = peak_sample&.last&.fetch("replicator_count")

@@ -56,17 +56,25 @@ RSpec.describe "Findings", type: :request do
     end
 
     context "with a finding that names no sweep" do
+      let(:table_link) do
+        anchor = finding_path("emergence-can-be-left", anchor: "transitioned-runs")
+
+        %(<a href="#{anchor}">2 terminal runs that crossed, finished or failed</a>)
+      end
+
       it "rows it against every transitioned run instead of a missing sweep" do
-        create(:run, status: "finished", transition_epoch: 900)
-        create(:run, status: "failed", transition_epoch: 900)
-        create(:run, status: "running", transition_epoch: 900)
+        crossed = create(:run, status: "finished", transition_epoch: 900)
+        died = create(:run, status: "failed", transition_epoch: 900)
+        still_going = create(:run, status: "running", transition_epoch: 900)
 
         get findings_path
 
-        expect(response.body.squish).to include("Emergence is a state a world can leave",
-                                                "2 transitioned runs behind this finding",
-                                                %(<a href="#{experiments_path}">Every sweep in the lab</a>))
-        expect(response.body).to include(finding_path("emergence-can-be-left"))
+        expect(response.body.squish)
+          .to include("Emergence is a state a world can leave",
+                      %(<a href="#{experiment_path(crossed.experiment)}">#{crossed.experiment.name}</a>),
+                      %(<a href="#{experiment_path(died.experiment)}">#{died.experiment.name}</a>),
+                      table_link)
+        expect(response.body).not_to include(experiment_path(still_going.experiment))
       end
     end
 
@@ -821,8 +829,8 @@ RSpec.describe "Findings", type: :request do
           get finding_path(persistence)
 
           expect(response.body.squish)
-            .to include("The lab has 2 terminal runs across 1 sweep with a transition epoch, and a " \
-                        "persistence summary behind 2 of them",
+            .to include("The lab has 2 terminal runs that crossed, finished or failed, across 1 sweep, " \
+                        "and a persistence summary behind 2 of them",
                         "The split is 1 still in the transitioned state at their last sample against 1 " \
                         "that climbed back out of it",
                         "50% of the summarised runs relapsed",
@@ -848,6 +856,31 @@ RSpec.describe "Findings", type: :request do
                         "Of the 1 run whose census never left zero — or was never taken — 0 persisted " \
                         "and 1 relapsed",
                         "worlds the census never saw as a colony at all")
+        end
+
+        it "rows every transitioned run and says so" do
+          transitioned_run(create(:experiment), 1, { "census_peak" => 7, "peak_epoch" => 1_020,
+                                                     "epochs_persisted" => 400, "relapsed" => false })
+
+          get finding_path(persistence)
+
+          expect(response.body.squish).to include("Every transitioned run in the lab has a row")
+        end
+
+        it "names what a capped table leaves out, and says the figures still count it" do
+          stub_const("Findings::ShowPage::MAX_TRANSITIONS", 1)
+          sweep = create(:experiment)
+          2.times do |index|
+            transitioned_run(sweep, index, { "census_peak" => 7, "peak_epoch" => 1_020,
+                                             "epochs_persisted" => 400, "relapsed" => false })
+          end
+
+          get finding_path(persistence)
+
+          expect(response.body.squish)
+            .to include("The table stops at 1 rows and leaves 1 further transitioned run out; every one " \
+                        "of them is counted in the figures above")
+          expect(response.parsed_body.css("#transitioned-runs tbody tr").size).to eq(1)
         end
 
         it "flags the persisters with no room for an exit to be confirmed in" do

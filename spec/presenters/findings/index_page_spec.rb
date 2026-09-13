@@ -54,6 +54,17 @@ RSpec.describe Findings::IndexPage do
       expect(row.transition_rate.fraction).to eq(sweep.transition_rate.fraction)
     end
 
+    it "names the sweeps a transitioned run came from" do
+      radius = create(:experiment, name: "Radius", slug: "radius")
+      world_size = create(:experiment, name: "World size", slug: "world-size")
+      create(:run, experiment: world_size, status: "failed", transition_epoch: 900)
+      create(:run, experiment: radius, status: "finished", transition_epoch: 900)
+      create(:run, experiment: create(:experiment), status: "running", transition_epoch: 900)
+
+      expect(page.transitioned_sweeps.map(&:name)).to eq(["Radius", "World size"])
+      expect(page.transitioned_runs_count).to eq(2)
+    end
+
     it "reads the whole log in a fixed number of queries" do
       Findings::Registry.all.select(&:sweep?).each { |finding| create(:experiment, slug: finding.experiment_slug) }
 

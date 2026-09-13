@@ -8,30 +8,14 @@ module Findings
   #
   # This is a survey of runs that already exist rather than a sweep: the runs come from
   # different grids at different budgets, so it counts outcomes and never estimates a
-  # hazard. It reads and changes nothing.
+  # hazard.
   class PersistenceSurvey
-    Row = Data.define(:run, :experiment, :persistence, :sample_count_after_transition) do
+    Row = Data.define(:run, :experiment, :persistence, :sample_count_from_transition) do
       delegate :seed, :transition_epoch, to: :run
+      delegate :summarised?, :relapsed?, :persisted?, :counted?, :census_peak, :peak_epoch,
+               :epochs_persisted, :compact_census_label, to: :persistence
 
-      def summarised? = persistence.present?
-
-      def relapsed? = summarised? && persistence.relapsed?
-
-      def persisted? = summarised? && !persistence.relapsed?
-
-      def epochs_persisted = persistence&.epochs_persisted
-
-      def census_peak = persistence&.census_peak
-
-      def peak_epoch = persistence&.peak_epoch
-
-      def counted? = summarised? && persistence.counted?
-
-      def census_sampled? = summarised? && persistence.sampled?
-
-      def relapse_confirmable?
-        Runs::PersistenceSummaryService.exit_confirmable?(sample_count_after_transition)
-      end
+      def relapse_confirmable? = Runs::Persistence.exit_confirmable?(sample_count_from_transition)
     end
 
     # One set of rows read as persisters against relapsers. The write-up states the same
@@ -57,12 +41,19 @@ module Findings
 
     def rows
       @rows ||= transitioned_runs.map do |run|
-        Row.new(run: run, experiment: run.experiment, persistence: run.persistence_summary,
-                sample_count_after_transition: sample_counts_after_transition.fetch(run.id, 0))
+        Row.new(run: run, experiment: run.experiment,
+                persistence: run.persistence_summary || Runs::Persistence.none,
+                sample_count_from_transition: sample_counts_from_transition.fetch(run.id, 0))
       end
     end
 
     def transitioned_count = rows.size
+
+    def table_rows = rows.first(ShowPage::MAX_TRANSITIONS)
+
+    def rows_omitted = [rows.size - ShowPage::MAX_TRANSITIONS, 0].max
+
+    def capped? = rows_omitted.positive?
 
     def summarised_rows = @summarised_rows ||= rows.select(&:summarised?)
 
@@ -113,8 +104,8 @@ module Findings
 
     # One grouped query for the whole page: how many samples each run stored at or after
     # its own crossing, which is what says whether a relapse could have been confirmed.
-    def sample_counts_after_transition
-      @sample_counts_after_transition ||=
+    def sample_counts_from_transition
+      @sample_counts_from_transition ||=
         Sample.joins(:run).where(run_id: transitioned_runs.map(&:id))
               .where("samples.epoch >= runs.transition_epoch").group(:run_id).count
     end

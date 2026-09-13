@@ -97,9 +97,9 @@ RSpec.describe Findings::PersistenceSurvey do
   end
 
   it "names the persisters too short after their crossing for an exit to be confirmed" do
-    transitioned_run(samples_after: Runs::PersistenceSummaryService::EXIT_SAMPLES,
+    transitioned_run(samples_after: Runs::Persistence::EXIT_SAMPLES,
                      persistence: { census_peak: 1, peak_epoch: 110, epochs_persisted: 40, relapsed: false })
-    transitioned_run(samples_after: Runs::PersistenceSummaryService::EXIT_SAMPLES - 1,
+    transitioned_run(samples_after: Runs::Persistence::EXIT_SAMPLES - 1,
                      persistence: { census_peak: 1, peak_epoch: 110, epochs_persisted: 10, relapsed: false })
 
     survey = described_class.build
@@ -113,7 +113,7 @@ RSpec.describe Findings::PersistenceSurvey do
     run = create(:run, status: "finished", transition_epoch: 500,
                        persistence: { "census_peak" => 1, "peak_epoch" => 510,
                                       "epochs_persisted" => 40, "relapsed" => false })
-    Runs::PersistenceSummaryService::EXIT_SAMPLES.times { |index| create(:sample, run: run, epoch: index * 10) }
+    Runs::Persistence::EXIT_SAMPLES.times { |index| create(:sample, run: run, epoch: index * 10) }
 
     expect(described_class.build.unconfirmable_count).to eq(1)
   end
@@ -136,8 +136,30 @@ RSpec.describe Findings::PersistenceSurvey do
 
     row = described_class.build.rows.first
 
-    expect(row).to have_attributes(seed: run.seed, transition_epoch: 700, census_sampled?: true,
-                                   counted?: false)
+    expect(row).to have_attributes(seed: run.seed, transition_epoch: 700, counted?: false,
+                                   compact_census_label: "0")
+  end
+
+  it "reads a run with no summary through a persistence that answers nothing" do
+    transitioned_run(persistence: {})
+
+    row = described_class.build.rows.first
+
+    expect(row).to have_attributes(summarised?: false, persisted?: false, relapsed?: false,
+                                   counted?: false, epochs_persisted: nil,
+                                   compact_census_label: "—")
+  end
+
+  it "caps the table at the number of transitions every finding shows" do
+    stub_const("Findings::ShowPage::MAX_TRANSITIONS", 1)
+    2.times do
+      transitioned_run(persistence: { census_peak: 1, peak_epoch: 110, epochs_persisted: 40, relapsed: false })
+    end
+
+    survey = described_class.build
+
+    expect(survey.table_rows.size).to eq(1)
+    expect(survey).to have_attributes(capped?: true, rows_omitted: 1, transitioned_count: 2)
   end
 
   it "says plainly that it has nothing to survey" do

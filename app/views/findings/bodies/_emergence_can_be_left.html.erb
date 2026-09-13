@@ -1,7 +1,7 @@
 <% survey = @show.persistence_survey %>
 <% outcome = survey.outcome %>
 <% hold = Lab::TransitionRule::HOLD_SAMPLES %>
-<% exit_samples = Runs::PersistenceSummaryService::EXIT_SAMPLES %>
+<% exit_samples = Runs::Persistence::EXIT_SAMPLES %>
 <% threshold = Lab::TransitionRule::THRESHOLD %>
 
 <h2>Question</h2>
@@ -52,9 +52,9 @@
         Emergence is not a terminal state, and more worlds leave it than hold it.
       <% end %>
     </strong>
-    The lab has <%= pluralize survey.transitioned_count, "terminal run" %> across
-    <%= pluralize survey.sweeps.size, "sweep" %> with a transition epoch, and a persistence
-    summary behind <%= survey.summarised_count %> of them.
+    The lab has <%= pluralize survey.transitioned_count, "terminal run" %> that crossed,
+    finished or failed, across <%= pluralize survey.sweeps.size, "sweep" %>, and a
+    persistence summary behind <%= survey.summarised_count %> of them.
     <% if survey.summarised_count.positive? %>
       The split is <%= outcome.persisted_count %> still in the transitioned state at their
       last sample against <%= outcome.relapsed_count %> that climbed back out of it —
@@ -96,7 +96,8 @@
     </p>
   <% end %>
 
-  <div class="table-scroll" tabindex="0" role="region" aria-label="Persistence of every transitioned run">
+  <div id="transitioned-runs" class="table-scroll" tabindex="0" role="region"
+       aria-label="Persistence of every transitioned run">
     <table class="data-table">
       <thead>
         <tr>
@@ -109,7 +110,7 @@
         </tr>
       </thead>
       <tbody>
-        <% survey.rows.each do |row| %>
+        <% survey.table_rows.each do |row| %>
           <tr>
             <td><%= link_to row.experiment.name, experiment_path(row.experiment) %></td>
             <td><%= link_to "seed #{row.seed}", run_path(row.run) %></td>
@@ -118,13 +119,9 @@
               <%= row.epochs_persisted ? number_with_delimiter(row.epochs_persisted) : "—" %>
             </td>
             <td class="numeric mono">
+              <%= row.compact_census_label %>
               <% if row.counted? %>
-                <%= count_value row.census_peak %>
                 (<%= number_with_delimiter row.peak_epoch %>)
-              <% elsif row.census_sampled? %>
-                0
-              <% else %>
-                —
               <% end %>
             </td>
             <td>
@@ -146,7 +143,14 @@
     the span from the transition to the last sample the transition rule still accepted;
     "Census peak" is the largest <span class="mono">replicator_count</span> the run ever
     sampled, with the epoch it first reached it in brackets; "—" means the run never had a
-    value. Every transitioned run in the lab has a row.
+    value.
+    <% if survey.capped? %>
+      The table stops at <%= Findings::ShowPage::MAX_TRANSITIONS %> rows and leaves
+      <%= pluralize survey.rows_omitted, "further transitioned run" %> out; every one of
+      them is counted in the figures above.
+    <% else %>
+      Every transitioned run in the lab has a row.
+    <% end %>
   </p>
 <% else %>
   <p class="text-muted">
