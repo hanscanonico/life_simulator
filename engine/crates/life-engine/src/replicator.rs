@@ -167,9 +167,11 @@ mod tests {
             &mut rng::seeded(0, 0, 0)
         ));
 
+        let two_of_four = assay(&tape, 8192, OpSet::ALL, &mut rng::seeded(2, 0, 0));
+        assert_eq!(two_of_four.passes, 2);
         assert_eq!(
-            assay(&tape, 8192, OpSet::ALL, &mut rng::seeded(2, 0, 0)).passes,
-            2
+            two_of_four.copy_cost, None,
+            "two trials copied, but a tape that is not a replicator has no copy to price"
         );
         assert!(!is_replicator(
             &tape,
@@ -202,15 +204,16 @@ mod tests {
         assert_eq!(read.copy_cost, None);
     }
 
-    /// The trials that spin out burn the whole budget; the cost must come from the trials
-    /// that copied.
+    /// Unlike the hand-written copier, this one's price depends on its partner: at this
+    /// seed the three trials that copied paid 1 932, 2 058 and 2 067 steps while the
+    /// fourth spun out on the whole 8 192 budget, so the reading is the middle price of a
+    /// copy and never the price of spinning.
     #[test]
     fn the_parity_gated_replicator_reports_a_cost_from_its_passing_trials_only() {
         let tape = parity_gated_replicator();
         let read = assay(&tape, 8192, OpSet::ALL, &mut rng::seeded(0, 0, 0));
         assert_eq!(read.passes, 3);
-        let cost = read.copy_cost.expect("a passing tape reports a cost");
-        assert!(cost < 8192, "{cost}");
+        assert_eq!(read.copy_cost, Some(2_058));
     }
 
     #[test]

@@ -1149,6 +1149,42 @@ mod tests {
         );
     }
 
+    /// The hand-written copier with one filler byte pushed in front of its program: it
+    /// copies exactly the same way one step later, which is a second replicator whose cost
+    /// differs from the first by a known step.
+    fn dearer_replicator() -> Vec<u8> {
+        let mut tape = replicator::handwritten_replicator();
+        let len = tape.len();
+        tape.copy_within(1..len - 1, 2);
+        tape[1] = b'a';
+        tape
+    }
+
+    /// Which of several replicators the cost is read off is a population question, not an
+    /// order-of-discovery one: with two of them in a world, the sample reports the cost of
+    /// the tape more cells hold.
+    #[test]
+    fn the_copy_cost_is_read_off_the_most_populous_replicator() {
+        let params = Params {
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(4, 4)
+        };
+        let cheap = replicator::handwritten_replicator();
+        let dear = dearer_replicator();
+
+        for (cheap_cells, expected) in [(3, 1_794), (1, 1_795)] {
+            let mut world = World::new(&params, 3).unwrap();
+            for x in 0..4 {
+                world.set_cell(x, 0, if x < cheap_cells { &cheap } else { &dear });
+            }
+            let measured = world.metrics();
+            assert_eq!(measured.replicator_count, 4, "{measured:?}");
+            assert_eq!(measured.copy_cost, Some(expected), "{measured:?}");
+        }
+    }
+
     #[test]
     fn metrics_read_no_replicator_when_the_run_ablates_the_op_it_copies_with() {
         let params = Params {
