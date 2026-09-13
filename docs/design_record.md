@@ -309,3 +309,18 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   the reading is a pure read of tapes and tags at sample time — no tape byte moves, nothing
   is drawn from the RNG stream — so existing runs are unchanged, and the two pinned
   readings in `world.rs` now carry the lineage observables as well as the pre-lineage ones.
+- 2026-09-13 — **Copy cost is the median over the passing trials, for the most populous
+  tape that passes.** Rung 3 of the evolution programme fixed the vocabulary — copy cost is
+  interpreter steps per byte-exact copy — and §1.2 now carries it as `copy_cost`. Three
+  choices are fixed here. The **dominant replicator** is the most populous tape among the
+  `top_k` tested that passes the replicator test, not the largest lineage: the census the
+  observable sits beside is over tapes, and a lineage-wise cost needs a per-lineage assay
+  that does not exist. The aggregate over the four trials is the **median of the passing
+  ones**, lower of the two middles, so a tape whose cost depends on its partner reports a
+  price some trial actually paid rather than a mean of costs and non-costs. A tape that does
+  not replicate reports **null**, which reaches Rails as a JSON null and draws no point.
+  **Consequences**: the cost is read off `Outcome.steps` of the trials the replicator test
+  already runs, in the same order on the same stream — no trial is ever re-run to measure
+  it — so a run's bytes and every existing observable are untouched, and the pinned
+  determinism hashes and metric strings in `world.rs` do not move. No run recorded a copy
+  cost before this change, so every series starts where the lab first ran the new engine.

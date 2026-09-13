@@ -43,6 +43,10 @@ pub struct Metrics {
     /// for a colony of clones, and climbing as a lineage drifts apart under mutation. 0
     /// on the life substrate.
     pub lineage_variation: f64,
+    /// Interpreter steps the dominant replicator needs for one byte-exact copy: the median
+    /// over the passing trials of the replicator test, read of the most populous tape among
+    /// the `top_k` that passes it. `None` when no tested tape replicates.
+    pub copy_cost: Option<u32>,
 }
 
 impl Metrics {
@@ -646,6 +650,7 @@ mod tests {
             distinct_lineages: 128,
             top_lineage_share: 0.1,
             lineage_variation: 0.0,
+            copy_cost: None,
         }
     }
 

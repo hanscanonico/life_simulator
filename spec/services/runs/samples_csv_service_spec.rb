@@ -27,6 +27,14 @@ RSpec.describe Runs::SamplesCsvService do
     expect(rows.last[1]).to be_nil
   end
 
+  it "leaves the copy cost of a sample that reported none empty" do
+    create(:sample, run: run, epoch: 100, values: { "copy_rate" => 0.31, "copy_cost" => nil })
+    create(:sample, run: run, epoch: 200, values: { "copy_rate" => 0.31, "copy_cost" => 1_794 })
+
+    column = Sample::OBSERVABLES.index("copy_cost") + 1
+    expect(rows.pluck(column)).to eq(["copy_cost", nil, "1794"])
+  end
+
   it "reads no sample before the reader pulls the first row" do
     create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
 

@@ -364,38 +364,43 @@ impl World {
         let top_share = ranked.first().map_or(0.0, |(_, n)| *n as f64 / cells);
         let histogram = metrics::ByteHistogram::of(&self.cells);
         let (distinct_lineages, top_lineage_share) = metrics::lineage_census(&self.lineages);
+        let (replicator_count, copy_cost) = self.replicator_census(&ranked);
 
         Metrics {
             compress_ratio,
             distinct_tapes: ranked.len() as u64,
             top_share,
             op_density: histogram.op_density(),
-            replicator_count: self.count_replicators(&ranked),
+            replicator_count,
             entropy_bits: histogram.entropy_bits(),
             alphabet_size: histogram.alphabet_size(),
             copy_rate: self.copy_rate,
             distinct_lineages,
             top_lineage_share,
             lineage_variation: metrics::lineage_variation(&self.cells, stride, &self.lineages),
+            copy_cost,
         }
     }
 
-    /// Cells holding one of the `top_k` most common tapes that passes the replicator
-    /// test. Life cells are single bits and have no replicator reading.
-    fn count_replicators(&self, ranked: &[(&[u8], u64)]) -> u64 {
+    /// Cells holding one of the `top_k` most common tapes that passes the replicator test,
+    /// and the copy cost of the dominant one — the first tape to pass, `ranked` being in
+    /// population order. Life cells are single bits and have no replicator reading.
+    fn replicator_census(&self, ranked: &[(&[u8], u64)]) -> (u64, Option<u32>) {
         if self.params.substrate != Substrate::Soup {
-            return 0;
+            return (0, None);
         }
         let mut rng = rng::seeded(self.seed, STREAM_REPLICATOR, self.epoch);
         let ops = self.params.op_set();
-        ranked
-            .iter()
-            .take(self.params.top_k as usize)
-            .filter(|(tape, _)| {
-                replicator::is_replicator(tape, self.params.max_steps, ops, &mut rng)
-            })
-            .map(|(_, count)| *count)
-            .sum()
+        let mut count = 0;
+        let mut copy_cost = None;
+        for (tape, cells) in ranked.iter().take(self.params.top_k as usize) {
+            let read = replicator::assay(tape, self.params.max_steps, ops, &mut rng);
+            if read.replicates() {
+                count += cells;
+                copy_cost = copy_cost.or(read.copy_cost);
+            }
+        }
+        (count, copy_cost)
     }
 }
 
@@ -896,6 +901,14 @@ mod tests {
     }
 
     #[test]
+    fn a_life_world_reads_no_copy_cost() {
+        let mut world = World::new(&life(4, 4), 1).unwrap();
+        let measured = world.metrics();
+        assert_eq!(measured.replicator_count, 0);
+        assert_eq!(measured.copy_cost, None);
+    }
+
+    #[test]
     fn pinned_soup_determinism() {
         let mut world = World::new(&soup(32, 32), 42).unwrap();
         for _ in 0..50 {
@@ -1102,6 +1115,10 @@ mod tests {
             "a random soup holds every byte value"
         );
         assert_eq!(measured.replicator_count, 0);
+        assert_eq!(
+            measured.copy_cost, None,
+            "nothing replicates to cost anything"
+        );
         assert_eq!(measured.copy_rate, 0.0, "nothing has interacted yet");
         assert!((measured.top_share - 1.0 / 256.0).abs() < 1e-9);
     }
@@ -1121,10 +1138,51 @@ mod tests {
         }
         let measured = world.metrics();
         assert_eq!(measured.replicator_count, 3);
+        assert_eq!(
+            measured.copy_cost,
+            Some(1_794),
+            "the dominant replicator is the handwritten tape, at its known cost"
+        );
         assert!(
             (measured.top_share - 13.0 / 16.0).abs() < 1e-9,
             "{measured:?}"
         );
+    }
+
+    /// The hand-written copier with one filler byte pushed in front of its program: it
+    /// copies exactly the same way one step later, which is a second replicator whose cost
+    /// differs from the first by a known step.
+    fn dearer_replicator() -> Vec<u8> {
+        let mut tape = replicator::handwritten_replicator();
+        let len = tape.len();
+        tape.copy_within(1..len - 1, 2);
+        tape[1] = b'a';
+        tape
+    }
+
+    /// Which of several replicators the cost is read off is a population question, not an
+    /// order-of-discovery one: with two of them in a world, the sample reports the cost of
+    /// the tape more cells hold.
+    #[test]
+    fn the_copy_cost_is_read_off_the_most_populous_replicator() {
+        let params = Params {
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(4, 4)
+        };
+        let cheap = replicator::handwritten_replicator();
+        let dear = dearer_replicator();
+
+        for (cheap_cells, expected) in [(3, 1_794), (1, 1_795)] {
+            let mut world = World::new(&params, 3).unwrap();
+            for x in 0..4 {
+                world.set_cell(x, 0, if x < cheap_cells { &cheap } else { &dear });
+            }
+            let measured = world.metrics();
+            assert_eq!(measured.replicator_count, 4, "{measured:?}");
+            assert_eq!(measured.copy_cost, Some(expected), "{measured:?}");
+        }
     }
 
     #[test]

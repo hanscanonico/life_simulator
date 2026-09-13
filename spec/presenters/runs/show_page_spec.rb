@@ -17,7 +17,7 @@ RSpec.describe Runs::ShowPage do
     it "draws one chart per DESIGN observable" do
       expect(described_class::METRICS.keys)
         .to eq(%w[compress_ratio distinct_tapes top_share replicator_count op_density entropy_bits alphabet_size
-                  copy_rate distinct_lineages top_lineage_share lineage_variation])
+                  copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost])
       expect(described_class::METRICS.keys).to match_array(Sample::OBSERVABLES)
       expect(page.charts.map(&:title)).to eq(described_class::METRICS.values)
     end
@@ -36,6 +36,13 @@ RSpec.describe Runs::ShowPage do
       create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
 
       expect(page.charts.last).to be_empty
+    end
+
+    it "draws the copy cost of the samples that carry one" do
+      create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794 })
+      create(:sample, run: run, epoch: 200, values: { "copy_cost" => nil })
+
+      expect(page.charts.last).not_to be_empty
     end
   end
 

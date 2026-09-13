@@ -34,6 +34,8 @@ module Findings
     # lab, read at render time so the write-up states its own denominators.
     def persistence_survey = @persistence_survey ||= PersistenceSurvey.build
 
+    def copy_cost_survey = @copy_cost_survey ||= CopyCostSurvey.build
+
     # The evidence is read through the experiment's own presenter: a finding never
     # re-derives a diagram of its own.
     def evidence

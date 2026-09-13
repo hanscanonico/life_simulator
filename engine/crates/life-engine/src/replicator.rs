@@ -8,26 +8,55 @@ use crate::rng::{self, Rng};
 pub const TRIALS: u32 = 4;
 pub const TRIALS_TO_PASS: u32 = 3;
 
-pub fn is_replicator(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> bool {
-    trials_passed(tape, max_steps, ops, rng) >= TRIALS_TO_PASS
+/// What the replicator test read of one tape: how many trials it passed, and what a copy
+/// cost it when it worked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Assay {
+    pub passes: u32,
+    /// Interpreter steps per byte-exact copy: the median over the passing trials, lower of
+    /// the two middles on an even count. `None` unless the tape replicates.
+    pub copy_cost: Option<u32>,
 }
 
-/// How many of the `TRIALS` trials left `tape` in the second half.
-fn trials_passed(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> u32 {
+impl Assay {
+    pub fn replicates(&self) -> bool {
+        self.passes >= TRIALS_TO_PASS
+    }
+}
+
+pub fn is_replicator(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> bool {
+    assay(tape, max_steps, ops, rng).replicates()
+}
+
+/// Runs the `TRIALS` trials and reads both observables off them. The cost is taken from
+/// the very same runs the test performs, in the same order and off the same RNG stream: a
+/// trial is never re-run to measure it.
+pub fn assay(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> Assay {
     let len = tape.len();
     let mut buf = vec![0u8; len * 2];
-    let mut passes = 0;
+    let mut costs = Vec::with_capacity(TRIALS as usize);
     for _ in 0..TRIALS {
         buf[..len].copy_from_slice(tape);
         for byte in &mut buf[len..] {
             *byte = rng::byte(rng);
         }
-        bff::run_with(&mut buf, max_steps, ops);
+        let outcome = bff::run_with(&mut buf, max_steps, ops);
         if &buf[len..] == tape {
-            passes += 1;
+            costs.push(outcome.steps);
         }
     }
-    passes
+    let passes = costs.len() as u32;
+    let copy_cost = (passes >= TRIALS_TO_PASS)
+        .then(|| median(&mut costs))
+        .flatten();
+    Assay { passes, copy_cost }
+}
+
+/// The lower of the two middles on an even count, so the reading is always a cost some
+/// trial actually paid.
+fn median(steps: &mut [u32]) -> Option<u32> {
+    steps.sort_unstable();
+    steps.get((steps.len().checked_sub(1)?) / 2).copied()
 }
 
 /// A 256-byte tape that copies itself over its partner — written by hand, so the test
@@ -58,6 +87,10 @@ pub fn handwritten_replicator() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The cost of one copy by `handwritten_replicator`, derived in
+    /// `the_handwritten_tapes_copy_cost_is_known`.
+    const COPY_COST: u32 = 1_794;
 
     #[test]
     fn the_handwritten_tape_replicates() {
@@ -124,7 +157,7 @@ mod tests {
         let tape = parity_gated_replicator();
 
         assert_eq!(
-            trials_passed(&tape, 8192, OpSet::ALL, &mut rng::seeded(0, 0, 0)),
+            assay(&tape, 8192, OpSet::ALL, &mut rng::seeded(0, 0, 0)).passes,
             3
         );
         assert!(is_replicator(
@@ -134,9 +167,11 @@ mod tests {
             &mut rng::seeded(0, 0, 0)
         ));
 
+        let two_of_four = assay(&tape, 8192, OpSet::ALL, &mut rng::seeded(2, 0, 0));
+        assert_eq!(two_of_four.passes, 2);
         assert_eq!(
-            trials_passed(&tape, 8192, OpSet::ALL, &mut rng::seeded(2, 0, 0)),
-            2
+            two_of_four.copy_cost, None,
+            "two trials copied, but a tape that is not a replicator has no copy to price"
         );
         assert!(!is_replicator(
             &tape,
@@ -144,6 +179,50 @@ mod tests {
             OpSet::ALL,
             &mut rng::seeded(2, 0, 0)
         ));
+    }
+
+    /// The hand-written copier's cost is arithmetic, not luck: one no-op byte, `-`, `[`,
+    /// 255 turns of the three-op counter loop, `}`, then `.`, `>`, `}` and `[` before 255
+    /// turns of the four-op copy loop, and the unmatched `[` that halts it. The partner's
+    /// bytes never enter the count, so every trial pays the same price and the median is
+    /// that price.
+    #[test]
+    fn the_handwritten_tapes_copy_cost_is_known() {
+        let tape = handwritten_replicator();
+        let mut rng = rng::seeded(7, 0, 0);
+        let read = assay(&tape, 8192, OpSet::ALL, &mut rng);
+        assert!(read.replicates());
+        assert_eq!(read.copy_cost, Some(COPY_COST));
+    }
+
+    #[test]
+    fn the_copy_cost_is_none_for_a_tape_that_does_not_replicate() {
+        let mut rng = rng::seeded(11, 0, 0);
+        let tape: Vec<u8> = (0..256).map(|_| rng::byte(&mut rng)).collect();
+        let read = assay(&tape, 8192, OpSet::ALL, &mut rng);
+        assert!(!read.replicates());
+        assert_eq!(read.copy_cost, None);
+    }
+
+    /// Unlike the hand-written copier, this one's price depends on its partner: at this
+    /// seed the three trials that copied paid 1 932, 2 058 and 2 067 steps while the
+    /// fourth spun out on the whole 8 192 budget, so the reading is the middle price of a
+    /// copy and never the price of spinning.
+    #[test]
+    fn the_parity_gated_replicator_reports_a_cost_from_its_passing_trials_only() {
+        let tape = parity_gated_replicator();
+        let read = assay(&tape, 8192, OpSet::ALL, &mut rng::seeded(0, 0, 0));
+        assert_eq!(read.passes, 3);
+        assert_eq!(read.copy_cost, Some(2_058));
+    }
+
+    #[test]
+    fn the_median_takes_the_lower_middle_of_an_even_count() {
+        assert_eq!(median(&mut []), None);
+        assert_eq!(median(&mut [5]), Some(5));
+        assert_eq!(median(&mut [9, 3]), Some(3));
+        assert_eq!(median(&mut [9, 3, 5]), Some(5));
+        assert_eq!(median(&mut [9, 3, 5, 7]), Some(5));
     }
 
     #[test]

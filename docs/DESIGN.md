@@ -91,6 +91,14 @@ claim rests on it.
   alone in its lineage sits at distance 0 from itself, and the crowd of them a young soup
   carries would dilute a drifting colony to nothing. The 8 is a constant of the engine
   (`metrics::VARIATION_TOP_LINEAGES`), not a parameter. The life substrate reports 0.
+- `copy_cost`: interpreter steps per byte-exact copy by the **dominant replicator** — the
+  most populous tape among the `top_k` tested that passes the replicator test. The test
+  already executes four trials per tape; the reading is the **median** of the steps the
+  passing trials took, the lower of the two middles on an even count, so it is always a
+  price some trial paid. Null when no tested tape replicates, and on the life substrate.
+  It is read off the runs the test performs — same order, same stream, no trial re-run —
+  so it moves no tape byte and draws nothing. The hand-written replicator of the engine's
+  test suite costs 1 794 steps.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard
