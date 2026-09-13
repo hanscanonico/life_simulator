@@ -4,12 +4,21 @@ module ApplicationHelper
   DEFAULT_DESCRIPTION = "A research instrument for the spontaneous emergence of self-replicators " \
                         "in a spatial program soup."
 
+  # What a search result shows of a description before it cuts it off.
+  DESCRIPTION_LIMIT = 155
+
   def page_title
     [content_for(:title), "Life Simulator"].compact.join(" — ")
   end
 
   def page_description
     content_for(:description) || DEFAULT_DESCRIPTION
+  end
+
+  # Truncation happens before content_for escapes the text, so an entity is never cut in
+  # half and handed to the head as markup.
+  def meta_description(text)
+    content_for(:description, text.to_s.squish.truncate(DESCRIPTION_LIMIT))
   end
 
   # Colour is a redundant cue on a badge that already spells the status out, so an
