@@ -37,7 +37,8 @@ if Rails.env.development?
           "entropy_bits" => (8.0 - (3.1 * progress)).round(3),
           "copy_rate" => (0.6 * progress).round(4),
           "distinct_lineages" => (16_384 * (1 - (0.97 * progress))).round,
-          "top_lineage_share" => (0.0001 + (0.8 * progress)).round(4)
+          "top_lineage_share" => (0.0001 + (0.8 * progress)).round(4),
+          "lineage_variation" => (9.5 * progress * (1 - progress)).round(3)
         } }
     end
     # Runs::RecordSamplesService writes the newest sample onto the run as it ingests a

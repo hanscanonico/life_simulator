@@ -291,3 +291,21 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   reverting it after the first one as stranding every run whose latest snapshot is version
   3 — such a run resumes only from an older version 2 snapshot, if one survives the pruner,
   or not at all.
+- 2026-09-13 — **Variation within a lineage is a pooled mean over the 8 largest lineages
+  that hold more than one cell.** Descent alone says which cells are kin, not whether kin
+  are clones, so §1.2 gains `lineage_variation`: the mean bytes by which a cell's tape
+  differs from the **modal tape** of its lineage — Hamming distance, the same reading the
+  lineage rule makes — over the members of the 8 largest lineages. Four choices are fixed
+  here rather than left open. The **modal tape** is the tape most of a lineage's cells
+  hold, the lowest of any that tie, so the reading is a function of the world alone and
+  needs no centroid that no cell holds. The mean is **pooled over the cells** of those
+  lineages rather than averaged per lineage, so a lineage counts for as many cells as it
+  holds and a two-cell lineage cannot outweigh a colony. **Lineages of a single cell are
+  excluded**: such a cell is a clone of itself at distance 0, and a soup carries one
+  lineage per cell until a colony spreads, so pooling them would have read a drifting
+  colony as near zero for as long as the crowd outnumbered it — a world holding no lineage
+  of 2 reads 0 instead. The **8** is a constant of the engine, not a parameter: a sweep
+  axis over that number would study the instrument instead of the world. **Consequences**:
+  the reading is a pure read of tapes and tags at sample time — no tape byte moves, nothing
+  is drawn from the RNG stream — so existing runs are unchanged, and the two pinned
+  readings in `world.rs` now carry the lineage observables as well as the pre-lineage ones.

@@ -126,6 +126,18 @@
     <dt class="mono">top_lineage_share</dt>
     <dd>The fraction of cells held by the largest lineage.</dd>
 
+    <dt class="mono">lineage_variation</dt>
+    <dd>
+      Whether a colony is a clone or a drifting population, in bytes per cell. For each of
+      the eight largest lineages that hold more than one cell, the tape most of its cells
+      hold is its modal tape; the reading is the mean number of bytes by which a cell
+      differs from the modal tape of its own lineage, pooled over the cells of those
+      lineages. Lineages of a single cell are left out — a cell is a clone of itself, and
+      the crowd of them a young soup carries would read as no variation at all. It reads 0
+      for a lineage of identical tapes and climbs as mutation spreads one over neighbouring
+      tapes.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which
