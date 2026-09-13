@@ -9,9 +9,6 @@ module Findings
 
       def runs_total = experiment.runs_count
 
-      # `transitioned` is every terminal run the detector flagged (Run.transitioned) while
-      # `runs_done` counts the finished ones, so a sweep whose only crossing then failed
-      # reads above its own finished rate rather than losing the event.
       def transition_rate = Experiments::TransitionRate.new(transitioned: transitioned, finished: runs_done)
     end
 
@@ -50,8 +47,8 @@ module Findings
     end
 
     def transitioned_counts
-      @transitioned_counts ||= Run.transitioned.where(experiment_id: experiment_ids)
-                                  .group(:experiment_id).count
+      @transitioned_counts ||= Run.where(experiment_id: experiment_ids, status: "finished")
+                                  .where.not(transition_epoch: nil).group(:experiment_id).count
     end
 
     def experiment_ids = experiments.values.map(&:id)
