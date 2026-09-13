@@ -28,6 +28,16 @@ module Findings
 
     def programme_status = @programme_status ||= Programme::Status.build
 
+    # The denominator of a finding that names no sweep: the same set of runs its own
+    # page surveys, so the row and the write-up never state different totals.
+    def transitioned_runs_count = @transitioned_runs_count ||= Run.transitioned.count
+
+    # The sweeps that set of runs came from, so the row links what the finding rests on
+    # rather than the whole lab.
+    def transitioned_sweeps
+      @transitioned_sweeps ||= Experiment.where(id: Run.transitioned.select(:experiment_id)).order(:name).to_a
+    end
+
     private
 
     def findings = @findings ||= Registry.all

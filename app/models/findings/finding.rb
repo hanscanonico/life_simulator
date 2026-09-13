@@ -32,6 +32,10 @@ module Findings
 
     def to_param = slug
 
+    # A finding usually writes up one sweep, but one can rest on every run the lab has
+    # instead, in which case it names no sweep and carries its own evidence.
+    def sweep? = experiment_slug.present?
+
     def badge_class = BADGE_CLASSES.fetch(status)
 
     def status_label = status.to_s

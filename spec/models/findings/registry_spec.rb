@@ -22,7 +22,8 @@ RSpec.describe Findings::Registry do
   it "leads a shared date with the strongest current result" do
     slugs = described_class.all.map(&:slug)
 
-    expect(slugs.first(3)).to eq(%w[mutation-rate-long-horizon mutation-rate-window bff-control])
+    expect(slugs.first(4))
+      .to eq(%w[emergence-can-be-left mutation-rate-long-horizon mutation-rate-window bff-control])
   end
 
   it "keeps the order of findings sharing a date fixed across calls" do
@@ -39,8 +40,31 @@ RSpec.describe Findings::Registry do
 
   it "names a sweep the lab knows how to build" do
     known = Lab::SWEEPS.keys.map { |sweep| Lab.slug_for(sweep) }
+    named = described_class.all.select(&:sweep?).map(&:experiment_slug)
 
-    expect(described_class.all.map(&:experiment_slug)).to all(be_in(known))
+    expect(named).to all(be_in(known))
+  end
+
+  it "lets a finding that spans the whole programme name no sweep" do
+    finding = described_class.find("emergence-can-be-left")
+
+    expect(finding).to have_attributes(experiment_slug: nil, sweep?: false, status: :partial)
+  end
+
+  it "reads persistence across every transitioned run as partial while the set is accidental" do
+    finding = described_class.find("emergence-can-be-left")
+
+    expect(finding.summary).to include("nothing said when a world leaves one",
+                                       "Relapse is not an edge case",
+                                       "the design record's two recorded relapses",
+                                       "split by whether the census ever saw a colony",
+                                       "persisted to its last sample and no further")
+  end
+
+  it "leaves the figures of individual runs to the body, which reads them live" do
+    finding = described_class.find("emergence-can-be-left")
+
+    expect(finding.summary).not_to match(/\d{2,}/)
   end
 
   it "ships the body partial every finding names" do
@@ -53,12 +77,12 @@ RSpec.describe Findings::Registry do
 
   it "renders the body partial every finding names" do
     described_class.all.to_a.each do |finding|
-      expect(ApplicationController.render(partial: finding.body_partial)).to include("<h2>")
+      expect(render_body(finding)).to include("<h2>")
     end
   end
 
   it "leaves per-run facts out of the mutation-rate body" do
-    body = ApplicationController.render(partial: described_class.find("mutation-rate-window").body_partial)
+    body = render_body(described_class.find("mutation-rate-window"))
 
     expect(body).not_to match(/\d{2}:\d{2} CEST/)
     expect(body).not_to match(/run 41/i)
@@ -66,7 +90,7 @@ RSpec.describe Findings::Registry do
 
   it "leaves lab timestamps out of every body" do
     described_class.all.to_a.each do |finding|
-      expect(ApplicationController.render(partial: finding.body_partial)).not_to include("CEST")
+      expect(render_body(finding)).not_to include("CEST")
     end
   end
 
@@ -151,6 +175,13 @@ RSpec.describe Findings::Registry do
 
   it "returns nothing for an unknown slug" do
     expect(described_class.find("nope")).to be_nil
+  end
+
+  # A body reads the page presenter the controller assigns, the same way the show view does.
+  def render_body(finding)
+    show = Findings::ShowPage.build(finding: finding, paginate: ->(scope) { [nil, scope] })
+
+    ApplicationController.render(partial: finding.body_partial, assigns: { show: show })
   end
 
   def finding(slug, experiment_slug, date)
