@@ -3,6 +3,19 @@
 require "rails_helper"
 
 RSpec.describe ApplicationHelper, type: :helper do
+  describe "#page_title" do
+    it "names the site alone on a page that states no title of its own" do
+      expect(helper.page_title).to eq("Life Simulator")
+    end
+
+    it "escapes a title spelled with markup characters exactly once" do
+      helper.content_for(:title, %(Radius 1 & "well-mixed" <arms>))
+
+      expect(helper.page_title).to eq(%(Radius 1 &amp; &quot;well-mixed&quot; &lt;arms&gt; — Life Simulator))
+      expect(helper.page_title).to be_html_safe
+    end
+  end
+
   describe "#describe_page" do
     it "collapses a description a record spells across several lines" do
       helper.describe_page("Radius 1,\n  then radius 2.\n")

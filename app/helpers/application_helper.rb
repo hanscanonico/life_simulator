@@ -7,8 +7,10 @@ module ApplicationHelper
   # What a search result shows of a description before it cuts it off.
   DESCRIPTION_LIMIT = 155
 
+  # Array#join would hand the head a plain String, and ERB would escape a title that
+  # content_for has already escaped a second time.
   def page_title
-    [content_for(:title), "Life Simulator"].compact.join(" — ")
+    safe_join([content_for(:title), "Life Simulator"].compact, " — ")
   end
 
   def page_description

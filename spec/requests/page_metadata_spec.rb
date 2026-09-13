@@ -84,6 +84,15 @@ RSpec.describe "Page metadata", type: :request do
       expect(response.parsed_body.css("meta[name=description]").attribute("content").value)
         .to eq(%(Radius 1 & "well-mixed" <arms>))
     end
+
+    it "escapes a name the record spells with markup characters" do
+      experiment.update!(name: %(Radius 1 & 2))
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include("<title>Radius 1 &amp; 2 — Life Simulator</title>")
+      expect(response.parsed_body.css("title").text).to eq(%(Radius 1 & 2 — Life Simulator))
+    end
   end
 
   describe "GET /findings" do
