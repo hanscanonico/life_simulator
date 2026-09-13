@@ -415,10 +415,7 @@ fn inherits_partner(result: &[u8], own: &[u8], partner: &[u8]) -> bool {
 /// One id per cell, unique in the world: the cell's own index, so a lineage census at
 /// epoch 0 reads one cell per lineage without drawing anything.
 fn fresh_lineages(params: &Params) -> Vec<u64> {
-    match params.substrate {
-        Substrate::Soup => (0..params.cell_count() as u64).collect(),
-        Substrate::Life => Vec::new(),
-    }
+    (0..params.lineage_count() as u64).collect()
 }
 
 fn life_scratch(params: &Params) -> Vec<u8> {
@@ -902,6 +899,24 @@ mod tests {
         world.step();
         restored.step();
         assert_eq!(restored.world_hash(), world.world_hash());
+    }
+
+    #[test]
+    fn a_life_snapshot_restores_a_world_that_carries_no_lineages() {
+        let params = Params {
+            init: Init::Random,
+            ..life(8, 8)
+        };
+        let mut world = World::new(&params, 4).unwrap();
+        for _ in 0..3 {
+            world.step();
+        }
+
+        let mut restored = World::from_snapshot(&params, 4, &world.snapshot()).unwrap();
+
+        assert_eq!(restored.epoch(), world.epoch());
+        assert_eq!(restored.world_hash(), world.world_hash());
+        assert_eq!(restored.metrics().distinct_lineages, 0);
     }
 
     /// The lineage tags are world state now that a snapshot carries them, so a run cut in

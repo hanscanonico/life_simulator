@@ -331,6 +331,15 @@ impl Params {
     pub fn cell_count(&self) -> usize {
         self.width as usize * self.height as usize
     }
+
+    /// How many lineage tags a world of these params holds: one per cell in the soup,
+    /// none in life, which carries no ancestry.
+    pub fn lineage_count(&self) -> usize {
+        match self.substrate {
+            Substrate::Soup => self.cell_count(),
+            Substrate::Life => 0,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -491,6 +500,24 @@ mod tests {
         assert_eq!(
             transition["min_alphabet_size"],
             TRANSITION_MIN_ALPHABET_SIZE
+        );
+    }
+
+    #[test]
+    fn only_the_soup_counts_lineages() {
+        let soup = Params {
+            width: 8,
+            height: 4,
+            ..Params::default()
+        };
+        assert_eq!(soup.lineage_count(), soup.cell_count());
+        assert_eq!(
+            Params {
+                substrate: Substrate::Life,
+                ..soup
+            }
+            .lineage_count(),
+            0
         );
     }
 

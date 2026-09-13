@@ -272,9 +272,22 @@ mod tests {
     struct RecordingSink {
         samples: Vec<u64>,
         copy_rates: Vec<f64>,
+        lineages: Vec<(u64, f64)>,
         snapshots: Vec<u64>,
+        blobs: Vec<Vec<u8>>,
         reasons: Vec<SnapshotReason>,
         finished: bool,
+    }
+
+    impl RecordingSink {
+        fn blob_at(&self, epoch: u64) -> &[u8] {
+            let at = self
+                .snapshots
+                .iter()
+                .position(|taken| *taken == epoch)
+                .unwrap_or_else(|| panic!("no snapshot at epoch {epoch}: {:?}", self.snapshots));
+            &self.blobs[at]
+        }
     }
 
     impl RunSink for RecordingSink {
@@ -286,6 +299,8 @@ mod tests {
         ) -> Result<()> {
             self.samples.push(epoch);
             self.copy_rates.push(metrics.copy_rate);
+            self.lineages
+                .push((metrics.distinct_lineages, metrics.top_lineage_share));
             Ok(())
         }
 
@@ -298,6 +313,7 @@ mod tests {
         ) -> Result<()> {
             assert!(!raw.is_empty() && !png.is_empty());
             self.snapshots.push(epoch);
+            self.blobs.push(raw.to_vec());
             self.reasons.push(reason);
             Ok(())
         }
@@ -470,6 +486,66 @@ mod tests {
             "{:?}",
             sink.copy_rates
         );
+    }
+
+    /// A colony of the handwritten replicator, whose lineage census actually moves:
+    /// sampled every 2 epochs and snapshotted every 4, so epoch 4 is a resume point.
+    fn colony_params() -> Params {
+        Params {
+            width: 8,
+            height: 8,
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            sample_every: 2,
+            snapshot_every: 4,
+            ..params()
+        }
+    }
+
+    fn colony(params: &Params, seed: u64) -> World {
+        let mut world = World::new(params, seed).unwrap();
+        let tape = life_engine::replicator::handwritten_replicator();
+        for x in 0..params.width {
+            world.set_cell(x, 0, &tape);
+        }
+        world
+    }
+
+    fn run_colony(world: World, epochs: u64, resumed_at: Option<u64>) -> RecordingSink {
+        let mut sink = RecordingSink::default();
+        execute_world(
+            world,
+            epochs,
+            resumed_at,
+            None,
+            &mut sink,
+            &Progress::default(),
+        )
+        .unwrap();
+        sink
+    }
+
+    /// The runner survives a restart by resuming from the last snapshot it posted, and a
+    /// version 3 blob carries the lineage tags: the resumed run has to report the lineage
+    /// readings the uninterrupted run reported, not a census of freshly minted ids.
+    #[test]
+    fn a_resumed_run_reports_the_lineage_readings_of_an_uninterrupted_run() {
+        let params = colony_params();
+        let uninterrupted = run_colony(colony(&params, 3), 8, None);
+        assert_eq!(uninterrupted.samples, vec![0, 2, 4, 6, 8]);
+        assert!(
+            uninterrupted.lineages.last().unwrap().0 < uninterrupted.lineages[0].0,
+            "the colony must swallow lineages: {:?}",
+            uninterrupted.lineages
+        );
+
+        let interrupted = run_colony(colony(&params, 3), 4, None);
+        let resumed = World::from_snapshot(&params, 3, interrupted.blob_at(4)).unwrap();
+        let after = run_colony(resumed, 8, Some(4));
+
+        assert_eq!(after.samples, vec![6, 8]);
+        assert_eq!(after.lineages, uninterrupted.lineages[3..]);
     }
 
     #[test]
