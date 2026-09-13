@@ -4,12 +4,23 @@ module ApplicationHelper
   DEFAULT_DESCRIPTION = "A research instrument for the spontaneous emergence of self-replicators " \
                         "in a spatial program soup."
 
+  # What a search result shows of a description before it cuts it off.
+  DESCRIPTION_LIMIT = 155
+
+  # Array#join would hand the head a plain String, and ERB would escape a title that
+  # content_for has already escaped a second time.
   def page_title
-    [content_for(:title), "Life Simulator"].compact.join(" — ")
+    safe_join([content_for(:title), "Life Simulator"].compact, " — ")
   end
 
   def page_description
     content_for(:description) || DEFAULT_DESCRIPTION
+  end
+
+  # Truncation happens before the escaping, so an entity is never cut in half and handed
+  # to the head as markup.
+  def describe_page(text)
+    content_for(:description, h(text.to_s.squish.truncate(DESCRIPTION_LIMIT)), flush: true)
   end
 
   # Colour is a redundant cue on a badge that already spells the status out, so an

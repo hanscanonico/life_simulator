@@ -3,6 +3,55 @@
 require "rails_helper"
 
 RSpec.describe ApplicationHelper, type: :helper do
+  describe "#page_title" do
+    it "names the site alone on a page that states no title of its own" do
+      expect(helper.page_title).to eq("Life Simulator")
+    end
+
+    it "escapes a title spelled with markup characters exactly once" do
+      helper.content_for(:title, %(Radius 1 & "well-mixed" <arms>))
+
+      expect(helper.page_title).to eq(%(Radius 1 &amp; &quot;well-mixed&quot; &lt;arms&gt; — Life Simulator))
+      expect(helper.page_title).to be_html_safe
+    end
+  end
+
+  describe "#describe_page" do
+    it "collapses a description a record spells across several lines" do
+      helper.describe_page("Radius 1,\n  then radius 2.\n")
+
+      expect(helper.page_description).to eq("Radius 1, then radius 2.")
+    end
+
+    it "cuts a description at what a search result shows of it" do
+      helper.describe_page("Mutation. #{'word ' * 100}")
+
+      expect(helper.page_description.length).to eq(155)
+      expect(helper.page_description).to end_with("...")
+    end
+
+    it "escapes a description spelled with markup characters exactly once" do
+      helper.describe_page(%(Radius 1 & "well-mixed" <arms>))
+
+      expect(helper.page_description).to eq(%(Radius 1 &amp; &quot;well-mixed&quot; &lt;arms&gt;))
+    end
+
+    it "replaces a description an earlier call already stated" do
+      helper.describe_page("The first description.")
+      helper.describe_page("The second description.")
+
+      expect(helper.page_description).to eq("The second description.")
+    end
+
+    context "with nothing to describe" do
+      it "falls back to the site's own description" do
+        helper.describe_page(nil)
+
+        expect(helper.page_description).to eq(described_class::DEFAULT_DESCRIPTION)
+      end
+    end
+  end
+
   describe "#status_badge_class" do
     it "reads a finished run as success" do
       expect(helper.status_badge_class("finished")).to eq("badge-success")

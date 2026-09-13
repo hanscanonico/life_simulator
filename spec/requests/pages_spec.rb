@@ -4,16 +4,6 @@ require "rails_helper"
 
 RSpec.describe "Pages", type: :request do
   describe "GET /" do
-    it "titles itself with the bare site name and falls back to the site description" do
-      get root_path
-
-      expect(response.body).to include(
-        "<title>Life Simulator</title>",
-        %(<meta name="description" content="A research instrument for the spontaneous emergence of ) +
-        %(self-replicators in a spatial program soup.">)
-      )
-    end
-
     it "strips the programme's standing above the copy" do
       create(:experiment)
       create(:run, status: "finished", epochs_done: 1_234, transition_epoch: 5_030)

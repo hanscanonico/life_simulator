@@ -68,7 +68,7 @@ RSpec.describe "Experiments", type: :request do
     it "frames the page for a browser and a crawler" do
       get experiments_path
 
-      expect(response.body).to include('<html lang="en">', "<title>Experiments — Life Simulator</title>",
+      expect(response.body).to include('<html lang="en-GB">', "<title>Experiments — Life Simulator</title>",
                                        '<meta property="og:type" content="website">')
     end
 

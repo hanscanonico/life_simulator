@@ -48,9 +48,18 @@ module Runs
     def charts_empty? = charts.all?(&:empty?)
 
     def transition_label
-      return ActiveSupport::NumberHelper.number_to_delimited(run.transition_epoch) if run.transition_epoch
+      return delimited(run.transition_epoch) if run.transition_epoch
 
       run.terminal? ? "no emergence" : "no emergence yet"
+    end
+
+    # A run is named by its sweep, its arm and its seed (DESIGN.md §1.1), so the line a
+    # search result or a shared link shows names it the same way rather than by its id alone.
+    def meta_description
+      arm = arm_label ? " (#{arm_label})" : ""
+
+      "Run ##{run.id} of the #{run.experiment.name} sweep#{arm}, seed #{run.seed}: " \
+        "#{run.status}, #{delimited(run.epochs_done)} of #{delimited(run.epochs)} epochs, #{emergence_label}."
     end
 
     # The arm this run sits in, named the way the sweep's own tables name it:
@@ -100,6 +109,14 @@ module Runs
     end
 
     private
+
+    def emergence_label
+      return transition_label unless run.transition_epoch
+
+      "self-replicators from epoch #{delimited(run.transition_epoch)}"
+    end
+
+    def delimited(number) = ActiveSupport::NumberHelper.number_to_delimited(number)
 
     def sample_clock = @sample_clock ||= run.samples.pick(Arel.sql(SAMPLE_CLOCK))
 
