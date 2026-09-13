@@ -9,6 +9,11 @@ publish.workspace = true
 name = "life_engine"
 path = "src/lib.rs"
 
+[features]
+# Fixture builders for the pre-lineage snapshot formats, for crates that must keep
+# reading them; `engine/crates/runner` enables it as a dev-dependency.
+legacy-fixtures = []
+
 [dependencies]
 flate2.workspace = true
 rand_core.workspace = true

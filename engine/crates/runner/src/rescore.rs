@@ -80,10 +80,11 @@ pub struct Report {
     pub width: u32,
     pub height: u32,
     /// The ancestry the blob carries (`docs/DESIGN.md` §1.2). A lineage census reads the
-    /// world, not the `top_k` window, so it belongs to the report and not to a setting;
-    /// a version 1 or 2 blob carries no tags and reads one lineage per cell.
-    pub distinct_lineages: u64,
-    pub top_lineage_share: f64,
+    /// world, not the `top_k` window, so it belongs to the report and not to a setting.
+    /// `None` for a version 1 or 2 blob, which carries no tags: there is no census to
+    /// report of a world whose ancestry was never written down.
+    pub distinct_lineages: Option<u64>,
+    pub top_lineage_share: Option<f64>,
     pub settings: Vec<Setting>,
     pub top_tapes: Vec<TapeReading>,
 }
@@ -243,15 +244,15 @@ fn measure(stored: &StoredWorld, run: Option<i64>, top_k: &[u32]) -> Result<Repo
         measured.insert(top_k, at_top_k(stored, top_k)?);
     }
 
-    let census = measured.values().next().expect("at least one top_k");
+    let census = restored.lineages.as_deref().map(metrics::lineage_census);
     Ok(Report {
         run,
         epoch: restored.header.epoch,
         seed: stored.seed,
         width: stored.params.width,
         height: stored.params.height,
-        distinct_lineages: census.distinct_lineages,
-        top_lineage_share: census.top_lineage_share,
+        distinct_lineages: census.map(|(distinct, _)| distinct),
+        top_lineage_share: census.map(|(_, share)| share),
         settings: asked
             .iter()
             .map(|top_k| setting(*top_k, &measured[top_k]))
@@ -310,19 +311,27 @@ fn setting(top_k: u32, metrics: &Metrics) -> Setting {
 }
 
 impl Report {
-    pub fn print(&self) {
+    /// The line `print` opens with. The lineage census only appears when the blob carried
+    /// one: a version 1 or 2 blob has no ancestry, and the ids the world was restored with
+    /// would read as a census of lineages nobody counted.
+    fn print_line(&self) -> String {
         let run = self
             .run
             .map_or_else(|| "a stored world".to_string(), |run| format!("run {run}"));
-        println!(
-            "{run} at epoch {}, seed {}, {}×{}, {} lineages, top share {:.6}",
-            self.epoch,
-            self.seed,
-            self.width,
-            self.height,
-            self.distinct_lineages,
-            self.top_lineage_share
-        );
+        let census = match (self.distinct_lineages, self.top_lineage_share) {
+            (Some(distinct), Some(share)) => {
+                format!(", {distinct} lineages, top share {share:.6}")
+            }
+            _ => String::new(),
+        };
+        format!(
+            "{run} at epoch {}, seed {}, {}×{}{census}",
+            self.epoch, self.seed, self.width, self.height
+        )
+    }
+
+    pub fn print(&self) {
+        println!("{}", self.print_line());
         println!(
             "\n{:>6}  {:>16}  {:>10}  {:>14}  {:>14}  {:>12}",
             "top_k", "replicators", "top_share", "distinct_tapes", "compress_ratio", "entropy_bits"
@@ -442,8 +451,37 @@ mod tests {
         };
         let report = measure(&stored, None, &[16]).unwrap();
 
-        assert_eq!(report.distinct_lineages, live.distinct_lineages);
-        assert_eq!(report.top_lineage_share, live.top_lineage_share);
+        assert_eq!(report.distinct_lineages, Some(live.distinct_lineages));
+        assert_eq!(report.top_lineage_share, Some(live.top_lineage_share));
+        assert!(report.print_line().contains("lineages"));
+    }
+
+    /// A blob written before lineage tags has no ancestry to report: the world restores
+    /// with freshly minted ids, and a report that printed their count would pass a full
+    /// census of a world whose lineages were never recorded off as a reading.
+    #[test]
+    fn a_blob_from_before_lineage_tags_reports_no_lineage_census() {
+        let stored = seeded_world(3);
+        let restored = life_engine::snapshot::decode(&stored.params, &stored.blob).unwrap();
+        let older = StoredWorld {
+            blob: life_engine::snapshot::legacy::v2_blob(
+                &stored.params,
+                restored.header.epoch,
+                restored.header.transition,
+                &restored.cells,
+            ),
+            ..stored
+        };
+
+        let report = measure(&older, None, &[16]).unwrap();
+
+        assert_eq!(report.distinct_lineages, None);
+        assert_eq!(report.top_lineage_share, None);
+        assert!(!report.print_line().contains("lineages"), "{report:?}");
+        assert_eq!(
+            serde_json::to_value(&report).unwrap()["distinct_lineages"],
+            Value::Null
+        );
     }
 
     /// Run 186 of bff-control read a census of 0 replicators at `top_k` 16 and 38 at 64:

@@ -84,10 +84,7 @@ pub fn encode_compressed(header: &Header, payload: &[u8], lineages: &[u64]) -> V
     let mut out = Vec::with_capacity(HEADER_LEN + payload.len() + tags.len());
     out.extend_from_slice(&MAGIC);
     out.push(VERSION);
-    out.push(match header.substrate {
-        Substrate::Soup => 0,
-        Substrate::Life => 1,
-    });
+    out.push(substrate_byte(header.substrate));
     out.extend_from_slice(&header.width.to_le_bytes());
     out.extend_from_slice(&header.height.to_le_bytes());
     out.extend_from_slice(&header.tape_len.to_le_bytes());
@@ -102,21 +99,19 @@ pub fn encode_compressed(header: &Header, payload: &[u8], lineages: &[u64]) -> V
     out
 }
 
+fn substrate_byte(substrate: Substrate) -> u8 {
+    match substrate {
+        Substrate::Soup => 0,
+        Substrate::Life => 1,
+    }
+}
+
 fn lineage_bytes(lineages: &[u64]) -> Vec<u8> {
     let mut out = Vec::with_capacity(lineages.len() * LINEAGE_BYTES);
     for id in lineages {
         out.extend_from_slice(&id.to_le_bytes());
     }
     out
-}
-
-/// How many bytes of lineage tags the params describe: one `u64` per cell in the soup,
-/// none in life, which carries no ancestry.
-fn expected_lineage_bytes(params: &Params) -> usize {
-    match params.substrate {
-        Substrate::Soup => params.cell_count() * LINEAGE_BYTES,
-        Substrate::Life => 0,
-    }
 }
 
 fn lineages_from(bytes: &[u8]) -> Vec<u64> {
@@ -195,7 +190,11 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
     }
 
     let (cell_payload, lineage_payload) = if header_len == HEADER_LEN {
-        let payload_len = u64::from_le_bytes(bytes[54..62].try_into().expect("eight bytes"));
+        let payload_len = u64::from_le_bytes(
+            bytes[HEADER_LEN_V2..HEADER_LEN]
+                .try_into()
+                .expect("eight bytes"),
+        );
         let rest = &bytes[header_len..];
         let payload_len = usize::try_from(payload_len).map_err(|_| SnapshotError::Truncated)?;
         if rest.len() < payload_len {
@@ -226,7 +225,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
 }
 
 fn decode_lineages(params: &Params, payload: &[u8]) -> Result<Vec<u64>, SnapshotError> {
-    let expected = expected_lineage_bytes(params);
+    let expected = params.lineage_count() * LINEAGE_BYTES;
     let tags = inflate_bounded(payload, expected)?;
     if tags.len() != expected {
         return Err(SnapshotError::Mismatch {
@@ -238,12 +237,13 @@ fn decode_lineages(params: &Params, payload: &[u8]) -> Result<Vec<u64>, Snapshot
 
 /// Blobs in the formats Postgres still holds, written the way the engine wrote them
 /// before lineage tags — every module that has to keep reading them tests against these.
-#[cfg(test)]
-pub(crate) mod legacy {
+/// The `legacy-fixtures` feature hands them to the crates downstream that do too.
+#[cfg(any(test, feature = "legacy-fixtures"))]
+pub mod legacy {
     use super::*;
 
     /// A snapshot as the first released engine wrote it: the 26-byte header, version 1.
-    pub(crate) fn v1_blob(params: &Params, epoch: u64, cells: &[u8]) -> Vec<u8> {
+    pub fn v1_blob(params: &Params, epoch: u64, cells: &[u8]) -> Vec<u8> {
         let mut out = prefix(params, 1, epoch);
         out.extend_from_slice(&metrics::compress(cells));
         out
@@ -251,7 +251,7 @@ pub(crate) mod legacy {
 
     /// A snapshot as the engine wrote it before lineage tags: the 54-byte header, version
     /// 2, the transition tracker and the cell payload, and nothing after it.
-    pub(crate) fn v2_blob(
+    pub fn v2_blob(
         params: &Params,
         epoch: u64,
         transition: TransitionState,
@@ -271,10 +271,7 @@ pub(crate) mod legacy {
         let mut out = Vec::new();
         out.extend_from_slice(&MAGIC);
         out.push(version);
-        out.push(match params.substrate {
-            Substrate::Soup => 0,
-            Substrate::Life => 1,
-        });
+        out.push(substrate_byte(params.substrate));
         out.extend_from_slice(&params.width.to_le_bytes());
         out.extend_from_slice(&params.height.to_le_bytes());
         out.extend_from_slice(&params.tape_len.to_le_bytes());
@@ -335,6 +332,25 @@ mod tests {
         let bytes = encode(&header(&params, 3), &cells, &tags);
 
         assert_eq!(decode(&params, &bytes).unwrap().lineages, Some(tags));
+    }
+
+    /// The life substrate carries no ancestry, so a version 3 blob of a life world holds
+    /// an empty tag payload — which has to inflate back to no lineages rather than fail
+    /// the count the params describe.
+    #[test]
+    fn a_life_world_round_trips_with_an_empty_lineage_payload() {
+        let params = Params {
+            substrate: Substrate::Life,
+            ..params()
+        };
+        let cells: Vec<u8> = (0..params.cell_count()).map(|i| (i % 2) as u8).collect();
+
+        let bytes = encode(&header(&params, 5), &cells, &[]);
+
+        let restored = decode(&params, &bytes).unwrap();
+        assert_eq!(restored.cells, cells);
+        assert_eq!(restored.header.epoch, 5);
+        assert_eq!(restored.lineages, Some(Vec::new()));
     }
 
     #[test]
