@@ -80,6 +80,15 @@ claim rests on it.
   2 blob, written before the tags existed, restores with one id per cell. The life
   substrate reports 0.
 - `top_lineage_share`: fraction of cells held by the largest lineage.
+- `lineage_variation`: heredity with variation, measured. For each of the 8 largest
+  lineages the reading takes that lineage's **modal tape** — the tape most of its cells
+  hold, the lowest tape of any that tie — and the mean number of bytes by which a member
+  differs from it, Hamming distance again, pooled over those lineages' cells so a big
+  lineage weighs what it holds. A colony of clones reads 0 and a lineage drifting under
+  mutation reads more the further it has drifted. The 8 is a constant of the engine
+  (`metrics::VARIATION_TOP_LINEAGES`), not a parameter: a soup is a crowd of singleton
+  lineages until a colony spreads, and a mean over all of them would read the crowd. The
+  life substrate reports 0.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard

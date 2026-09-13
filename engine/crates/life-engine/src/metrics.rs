@@ -37,6 +37,10 @@ pub struct Metrics {
     pub distinct_lineages: u64,
     /// Share of cells held by the largest lineage.
     pub top_lineage_share: f64,
+    /// Mean bytes by which a cell's tape differs from the modal tape of its lineage,
+    /// over the members of the largest lineages: 0 for a colony of clones, and climbing
+    /// as a lineage drifts apart under mutation. 0 on the life substrate.
+    pub lineage_variation: f64,
 }
 
 impl Metrics {
@@ -192,6 +196,89 @@ pub fn lineage_census(lineages: &[u64]) -> (u64, f64) {
     (distinct, top as f64 / lineages.len() as f64)
 }
 
+/// How many of the largest lineages `lineage_variation` reads. A soup is a crowd of
+/// singleton lineages until a colony spreads through it, and the mean over all of them
+/// would read the crowd rather than the colonies; a handful of the largest reads the
+/// populations a viewer can actually see.
+pub const VARIATION_TOP_LINEAGES: usize = 8;
+
+/// Variation within a lineage: the mean number of bytes by which a cell's tape differs
+/// from the modal tape of its lineage — Hamming distance, the same reading the lineage
+/// rule makes of descent — pooled over the members of the `VARIATION_TOP_LINEAGES`
+/// largest lineages. 0 for a colony of clones, and it climbs as mutation spreads a
+/// lineage over neighbouring tapes.
+pub fn lineage_variation(cells: &[u8], stride: usize, lineages: &[u64]) -> f64 {
+    if lineages.is_empty() || stride == 0 {
+        return 0.0;
+    }
+    let mut members: Vec<(u64, &[u8])> = lineages
+        .iter()
+        .copied()
+        .zip(cells.chunks_exact(stride))
+        .collect();
+    // Ordered by lineage then by tape, so each lineage is a contiguous run and the tapes
+    // inside it are run-length countable; a tie for the modal tape keeps the lowest tape,
+    // so the reading is a function of the world alone.
+    members.sort_unstable();
+
+    let mut ranked: Vec<Lineage> = members
+        .chunk_by(|(one, _), (other, _)| one == other)
+        .map(|members| Lineage { members })
+        .collect();
+    ranked.sort_by_key(|lineage| (std::cmp::Reverse(lineage.members.len()), lineage.id()));
+
+    let mut distance = 0u64;
+    let mut counted = 0usize;
+    for lineage in ranked.into_iter().take(VARIATION_TOP_LINEAGES) {
+        distance += lineage.distance_to_modal_tape();
+        counted += lineage.members.len();
+    }
+    if counted == 0 {
+        return 0.0;
+    }
+    distance as f64 / counted as f64
+}
+
+/// One lineage's cells, ordered by tape: the grouping `lineage_variation` reads.
+struct Lineage<'a> {
+    members: &'a [(u64, &'a [u8])],
+}
+
+impl Lineage<'_> {
+    fn id(&self) -> u64 {
+        self.members[0].0
+    }
+
+    fn distance_to_modal_tape(&self) -> u64 {
+        let modal = self.modal_tape();
+        self.members
+            .iter()
+            .map(|(_, tape)| hamming_distance(tape, modal))
+            .sum()
+    }
+
+    /// The most common tape of the members, which arrive sorted by tape: the longest run
+    /// of equal tapes, and the lowest tape of the runs that tie.
+    fn modal_tape(&self) -> &[u8] {
+        let mut modal = self.members[0].1;
+        let mut best = 0usize;
+        for run in self.members.chunk_by(|(_, one), (_, other)| one == other) {
+            if run.len() > best {
+                best = run.len();
+                modal = run[0].1;
+            }
+        }
+        modal
+    }
+}
+
+fn hamming_distance(one: &[u8], other: &[u8]) -> u64 {
+    one.iter()
+        .zip(other)
+        .filter(|(left, right)| left != right)
+        .count() as u64
+}
+
 /// The first sampled epoch at which a qualifying sample appears and holds — the primary
 /// dependent variable of every sweep. A sample qualifies on `Metrics::transition_candidate`:
 /// `compress_ratio` below the threshold, and neither of the two collapse guards tripped.
@@ -288,6 +375,43 @@ mod tests {
         let all: Vec<u8> = (0..=255).collect();
         assert!((entropy_bits(&all) - 8.0).abs() < 1e-9);
         assert_eq!(entropy_bits(&[]), 0.0);
+    }
+
+    #[test]
+    fn a_clonal_lineage_varies_by_nothing_and_a_drifted_one_by_its_drift() {
+        let stride = 4;
+        assert_eq!(lineage_variation(b"", stride, &[]), 0.0);
+        assert_eq!(lineage_variation(b"abcdabcdabcd", stride, &[1, 1, 1]), 0.0);
+        // Two members on the modal tape, one a byte away: one differing byte over three
+        // members.
+        assert_eq!(
+            lineage_variation(b"abcdabcdabce", stride, &[1, 1, 1]),
+            1.0 / 3.0
+        );
+        // No tape is more common than another, so the modal tape is the lowest of them
+        // and the other reads its whole distance from it.
+        assert_eq!(lineage_variation(b"abcdwxyz", stride, &[1, 1]), 2.0);
+    }
+
+    #[test]
+    fn lineage_variation_weighs_every_lineage_it_reads_by_population() {
+        // Lineage 1 holds four cells, two of them on its modal tape; lineage 2 is one
+        // cell, a clone of itself, and pulls the pooled mean down by its weight alone.
+        assert_eq!(lineage_variation(b"aaaabbccdd", 2, &[1, 1, 1, 1, 2]), 0.8);
+    }
+
+    #[test]
+    fn lineage_variation_reads_only_the_largest_lineages() {
+        let mut cells: Vec<u8> = b"aaaabb".to_vec();
+        let mut lineages: Vec<u64> = vec![1, 1, 1];
+        for id in 2..=(VARIATION_TOP_LINEAGES as u64 + 2) {
+            cells.extend_from_slice(&[b'a' + id as u8, b'z']);
+            lineages.push(id);
+        }
+
+        // The three-cell lineage and the seven lowest-id singletons, not the twelve cells:
+        // two differing bytes over ten members rather than over all of them.
+        assert_eq!(lineage_variation(&cells, 2, &lineages), 0.2);
     }
 
     #[test]
@@ -426,6 +550,7 @@ mod tests {
             copy_rate: 0.0,
             distinct_lineages: 128,
             top_lineage_share: 0.1,
+            lineage_variation: 0.0,
         }
     }
 

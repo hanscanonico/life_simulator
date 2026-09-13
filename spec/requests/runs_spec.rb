@@ -18,7 +18,7 @@ RSpec.describe "Runs", type: :request do
       expect(lines.first).to eq("epoch,#{Sample::OBSERVABLES.join(',')}")
       blanks = "," * (Sample::OBSERVABLES.size - 1)
       expect(lines.second).to eq("100,0.9#{blanks}")
-      expect(lines.third).to eq("200,0.4,,,,,,,0.31,,")
+      expect(lines.third).to eq("200,0.4,,,,,,,0.31,,,")
     end
 
     context "with no sample" do

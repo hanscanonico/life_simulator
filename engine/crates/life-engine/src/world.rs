@@ -376,6 +376,7 @@ impl World {
             copy_rate: self.copy_rate,
             distinct_lineages,
             top_lineage_share,
+            lineage_variation: metrics::lineage_variation(&self.cells, stride, &self.lineages),
         }
     }
 
@@ -452,6 +453,10 @@ mod tests {
     const PINNED_SEEDED_OBSERVABLES: &str = "compress_ratio=0.01153564453125 distinct_tapes=57 \
          top_share=0.49609375 op_density=0.058837890625 replicator_count=196 \
          entropy_bits=0.5501352213732266 alphabet_size=61 copy_rate=0.51171875";
+    /// The lineage observables of those same two worlds, as they read when #158 added
+    /// them — a within-lineage reading must not move a lineage.
+    const PINNED_LINEAGES: &str = "distinct_lineages=1022 top_lineage_share=0.001953125";
+    const PINNED_SEEDED_LINEAGES: &str = "distinct_lineages=51 top_lineage_share=0.09375";
 
     fn observable_digest(measured: &Metrics) -> String {
         format!(
@@ -465,6 +470,15 @@ mod tests {
             measured.entropy_bits,
             measured.alphabet_size,
             measured.copy_rate,
+        )
+    }
+
+    /// The two lineage observables of #158, read apart from the digest above: that one is
+    /// pinned to readings taken before lineages existed and cannot carry them.
+    fn lineage_digest(measured: &Metrics) -> String {
+        format!(
+            "distinct_lineages={} top_lineage_share={:?}",
+            measured.distinct_lineages, measured.top_lineage_share,
         )
     }
 
@@ -676,7 +690,9 @@ mod tests {
         for _ in 0..50 {
             world.step();
         }
-        assert_eq!(observable_digest(&world.metrics()), PINNED_OBSERVABLES);
+        let measured = world.metrics();
+        assert_eq!(observable_digest(&measured), PINNED_OBSERVABLES);
+        assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
     }
 
     #[test]
@@ -695,10 +711,9 @@ mod tests {
         for _ in 0..params.sample_every {
             world.step();
         }
-        assert_eq!(
-            observable_digest(&world.metrics()),
-            PINNED_SEEDED_OBSERVABLES
-        );
+        let measured = world.metrics();
+        assert_eq!(observable_digest(&measured), PINNED_SEEDED_OBSERVABLES);
+        assert_eq!(lineage_digest(&measured), PINNED_SEEDED_LINEAGES);
     }
 
     /// A colony of the handwritten replicator is one lineage spreading: each cell it
@@ -837,12 +852,53 @@ mod tests {
         assert_eq!((world.lineage(0, 0), world.lineage(1, 0)), (was_b, was_a));
     }
 
+    /// A colony of clones varies by nothing, and mutation is what makes it vary: the same
+    /// world seeded with one tape everywhere reads 0 without mutation and more the harder
+    /// mutation pushes it apart.
+    #[test]
+    fn a_clonal_colony_varies_by_nothing_and_mutation_makes_it_drift() {
+        assert_eq!(clonal_variation(0.0), 0.0);
+
+        let drifting = clonal_variation(0.002);
+        let drifting_harder = clonal_variation(0.02);
+        assert!(
+            drifting > 0.0,
+            "mutation must split the lineage: {drifting}"
+        );
+        assert!(
+            drifting_harder > drifting,
+            "more mutation, more variation: {drifting_harder} vs {drifting}"
+        );
+    }
+
+    /// A soup of one tape everywhere, so every lineage that holds more than a cell holds
+    /// clones of it until mutation says otherwise, read after 20 epochs.
+    fn clonal_variation(mutation_rate: f64) -> f64 {
+        let params = Params {
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            mutation_rate,
+            ..soup(8, 8)
+        };
+        let mut world = World::new(&params, 11).unwrap();
+        let tape = replicator::handwritten_replicator();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        for _ in 0..20 {
+            world.step();
+        }
+        world.metrics().lineage_variation
+    }
+
     #[test]
     fn a_life_world_carries_no_lineages() {
         let mut world = World::new(&life(4, 4), 1).unwrap();
         let measured = world.metrics();
         assert_eq!(measured.distinct_lineages, 0);
         assert_eq!(measured.top_lineage_share, 0.0);
+        assert_eq!(measured.lineage_variation, 0.0);
     }
 
     #[test]
