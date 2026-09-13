@@ -387,7 +387,8 @@ mod tests {
     fn a_snapshots_payload_length_reads_the_same_compress_ratio() {
         let mut rng = crate::rng::seeded(10, 0, 0);
         let cells: Vec<u8> = (0..4096).map(|_| crate::rng::byte(&mut rng)).collect();
-        let encoded = crate::snapshot::encode(
+        let payload = compress(&cells);
+        let encoded = crate::snapshot::encode_compressed(
             &crate::snapshot::Header {
                 substrate: crate::params::Substrate::Soup,
                 width: 8,
@@ -396,11 +397,15 @@ mod tests {
                 epoch: 0,
                 transition: TransitionState::default(),
             },
-            &cells,
+            &payload,
+            &[],
         );
-        let payload = encoded.len() - crate::snapshot::HEADER_LEN;
         assert_eq!(
-            compress_ratio_of(payload, cells.len()),
+            &encoded[crate::snapshot::HEADER_LEN..crate::snapshot::HEADER_LEN + payload.len()],
+            &payload[..]
+        );
+        assert_eq!(
+            compress_ratio_of(payload.len(), cells.len()),
             compress_ratio(&cells)
         );
         assert_eq!(compress_ratio_of(0, 0), 0.0);

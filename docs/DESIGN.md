@@ -75,8 +75,10 @@ claim rests on it.
   reading counts descent rather than shape, so two lineages that drifted onto the same
   tape still read as two. Tags sit beside the tapes: they are never written into a tape,
   never drawn from the RNG stream, and mutation never moves one, so a run's bytes are what
-  they were before lineages existed. A snapshot carries tapes only, so a resumed run
-  starts its lineage census over from one id per cell. The life substrate reports 0.
+  they were before lineages existed. A snapshot (format version 3) carries the tags beside
+  the tapes, so a run resumed from one continues the census it was keeping; a version 1 or
+  2 blob, written before the tags existed, restores with one id per cell. The life
+  substrate reports 0.
 - `top_lineage_share`: fraction of cells held by the largest lineage.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <

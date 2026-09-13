@@ -270,3 +270,24 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   carries tapes only, so a **resumed run starts its lineage census over** from one id per
   cell, which is a limit of the record, not a reading of the world. A run whose lineage
   series is to be read end to end has to be one the runner did not resume.
+- 2026-09-13 — **A snapshot carries the lineage tags (format version 3).** The entry above
+  recorded, as a consequence of tagging by descent, that a resumed run starts its lineage
+  census over and that a run whose lineage series is to be read end to end has to be one
+  the runner did not resume. Rung 2 is measured over long runs, which the lab resumes, so
+  that limit would have cost the programme its evidence. The snapshot format now carries
+  the tags as a second zlib payload after the cells, with the cell payload's length in the
+  header: a resumed run continues the census it was keeping, and a corpus rescore reads the
+  ancestry the world actually had. Version 1 and version 2 blobs, which Postgres still
+  holds, decode as before and restore with one lineage id per cell — for those runs the old
+  limit stands, and only for them. **Consequences**: the determinism decision is honoured
+  where it was not before — a run resumed from a version 3 snapshot reproduces the lineage
+  series of an uninterrupted run digit for digit; and a snapshot grows by the compressed
+  tags — for the largest world the programme runs (512×256) that is ~194 KiB at epoch 0,
+  ~1.5 KiB once one lineage dominates, and under 400 KiB even for a scrambled world where
+  every cell still holds a distinct id — against a snapshot cap of 64 MiB that does not
+  move. **Deploy order**: the format is forward-only, so an engine that predates version 3
+  rejects a version 3 blob outright (`UnsupportedVersion(3)`) rather than resuming it
+  without tags. Deploy the engine before any run writes a version 3 snapshot, and treat
+  reverting it after the first one as stranding every run whose latest snapshot is version
+  3 — such a run resumes only from an older version 2 snapshot, if one survives the pruner,
+  or not at all.

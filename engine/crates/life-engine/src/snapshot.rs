@@ -1,5 +1,10 @@
-//! The snapshot container: a small header plus the zlib-compressed cell bytes. Rails
-//! stores these verbatim, so the header carries enough to reject a mismatched restore.
+//! The snapshot container: a small header plus the zlib-compressed cell bytes and, since
+//! version 3, the zlib-compressed lineage tags beside them. Rails stores these verbatim,
+//! so the header carries enough to reject a mismatched restore.
+//!
+//! Version 3 layout: `MAGIC`, version, substrate, width, height, tape_len, epoch, the
+//! four transition fields, then the length of the cell payload as a `u64` — the two
+//! payloads follow back to back, cells first.
 
 use crate::metrics::{self, TransitionState};
 use crate::params::{Params, Substrate};
@@ -8,11 +13,13 @@ use std::fmt;
 use std::io::Read;
 
 pub const MAGIC: [u8; 4] = *b"LSNP";
-pub const VERSION: u8 = 2;
-pub const HEADER_LEN: usize = 54;
-/// Version 1 carried no transition tracker; Postgres still holds those blobs and every
-/// run they belong to must stay resumable.
+pub const VERSION: u8 = 3;
+pub const HEADER_LEN: usize = 62;
+/// Version 2 carried tapes only, version 1 not even the transition tracker; Postgres
+/// still holds both, and every run they belong to must stay resumable.
+const HEADER_LEN_V2: usize = 54;
 const HEADER_LEN_V1: usize = 26;
+const LINEAGE_BYTES: usize = 8;
 const NO_EPOCH: i64 = -1;
 
 #[derive(Debug)]
@@ -47,6 +54,15 @@ pub struct Header {
     pub transition: TransitionState,
 }
 
+/// What a blob restores: the header, the cells, and the lineage tags a version 3 blob
+/// carries. `lineages` is `None` for the older formats, which held no ancestry — the
+/// caller mints a fresh census there rather than inventing one here.
+pub struct Restored {
+    pub header: Header,
+    pub cells: Vec<u8>,
+    pub lineages: Option<Vec<u64>>,
+}
+
 fn epoch_field(epoch: Option<u64>) -> i64 {
     epoch.map_or(NO_EPOCH, |epoch| epoch as i64)
 }
@@ -55,21 +71,20 @@ fn epoch_from_field(field: i64) -> Option<u64> {
     (field >= 0).then_some(field as u64)
 }
 
-pub fn encode(header: &Header, cells: &[u8]) -> Vec<u8> {
-    encode_compressed(header, &metrics::compress(cells))
+pub fn encode(header: &Header, cells: &[u8], lineages: &[u64]) -> Vec<u8> {
+    encode_compressed(header, &metrics::compress(cells), lineages)
 }
 
-/// A snapshot built from a payload already compressed by `compress` — the header is a
-/// plain prefix, so a caller that needs the payload's length for `compress_ratio` can
-/// compress the cells once and still produce the very same snapshot bytes.
-pub fn encode_compressed(header: &Header, payload: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(HEADER_LEN + payload.len());
+/// A snapshot built from a cell payload already compressed by `compress` — the header and
+/// the lineage payload bracket it unchanged, so a caller that needs the payload's length
+/// for `compress_ratio` can compress the cells once and still produce the very same
+/// snapshot bytes.
+pub fn encode_compressed(header: &Header, payload: &[u8], lineages: &[u64]) -> Vec<u8> {
+    let tags = metrics::compress(&lineage_bytes(lineages));
+    let mut out = Vec::with_capacity(HEADER_LEN + payload.len() + tags.len());
     out.extend_from_slice(&MAGIC);
     out.push(VERSION);
-    out.push(match header.substrate {
-        Substrate::Soup => 0,
-        Substrate::Life => 1,
-    });
+    out.push(substrate_byte(header.substrate));
     out.extend_from_slice(&header.width.to_le_bytes());
     out.extend_from_slice(&header.height.to_le_bytes());
     out.extend_from_slice(&header.tape_len.to_le_bytes());
@@ -78,8 +93,30 @@ pub fn encode_compressed(header: &Header, payload: &[u8]) -> Vec<u8> {
     out.extend_from_slice(&header.transition.held.to_le_bytes());
     out.extend_from_slice(&epoch_field(header.transition.settled).to_le_bytes());
     out.extend_from_slice(&epoch_field(header.transition.last_epoch).to_le_bytes());
+    out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
     out.extend_from_slice(payload);
+    out.extend_from_slice(&tags);
     out
+}
+
+fn substrate_byte(substrate: Substrate) -> u8 {
+    match substrate {
+        Substrate::Soup => 0,
+        Substrate::Life => 1,
+    }
+}
+
+fn lineage_bytes(lineages: &[u64]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(lineages.len() * LINEAGE_BYTES);
+    for id in lineages {
+        out.extend_from_slice(&id.to_le_bytes());
+    }
+    out
+}
+
+fn lineages_from(bytes: &[u8]) -> Vec<u64> {
+    let (ids, _) = bytes.as_chunks::<LINEAGE_BYTES>();
+    ids.iter().copied().map(u64::from_le_bytes).collect()
 }
 
 /// Inflates a payload one byte past the world the params describe: enough to tell "too
@@ -96,7 +133,7 @@ fn inflate_bounded(payload: &[u8], expected: usize) -> Result<Vec<u8>, SnapshotE
 }
 
 /// Reads a snapshot back, checking it describes the world `params` describes.
-pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), SnapshotError> {
+pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> {
     if bytes.len() < HEADER_LEN_V1 {
         return Err(SnapshotError::Truncated);
     }
@@ -105,6 +142,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), Snapsh
     }
     let header_len = match bytes[4] {
         1 => HEADER_LEN_V1,
+        2 => HEADER_LEN_V2,
         VERSION => HEADER_LEN,
         version => return Err(SnapshotError::UnsupportedVersion(version)),
     };
@@ -119,7 +157,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), Snapsh
     let word =
         |at: usize| u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
     let signed = |at: usize| i64::from_le_bytes(bytes[at..at + 8].try_into().expect("eight bytes"));
-    let transition = if header_len == HEADER_LEN {
+    let transition = if header_len > HEADER_LEN_V1 {
         TransitionState {
             candidate: epoch_from_field(signed(26)),
             held: word(34),
@@ -151,18 +189,101 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<(Header, Vec<u8>), Snapsh
         return Err(SnapshotError::Mismatch { field: "tape_len" });
     }
 
+    let (cell_payload, lineage_payload) = if header_len == HEADER_LEN {
+        let payload_len = u64::from_le_bytes(
+            bytes[HEADER_LEN_V2..HEADER_LEN]
+                .try_into()
+                .expect("eight bytes"),
+        );
+        let rest = &bytes[header_len..];
+        let payload_len = usize::try_from(payload_len).map_err(|_| SnapshotError::Truncated)?;
+        if rest.len() < payload_len {
+            return Err(SnapshotError::Truncated);
+        }
+        let (cells, tags) = rest.split_at(payload_len);
+        (cells, Some(tags))
+    } else {
+        (&bytes[header_len..], None)
+    };
+
     let expected = params.cell_count() * params.stride();
-    let cells = inflate_bounded(&bytes[header_len..], expected)?;
+    let cells = inflate_bounded(cell_payload, expected)?;
     if cells.len() != expected {
         return Err(SnapshotError::Mismatch {
             field: "cell count",
         });
     }
-    Ok((header, cells))
+
+    let lineages = lineage_payload
+        .map(|payload| decode_lineages(params, payload))
+        .transpose()?;
+    Ok(Restored {
+        header,
+        cells,
+        lineages,
+    })
+}
+
+fn decode_lineages(params: &Params, payload: &[u8]) -> Result<Vec<u64>, SnapshotError> {
+    let expected = params.lineage_count() * LINEAGE_BYTES;
+    let tags = inflate_bounded(payload, expected)?;
+    if tags.len() != expected {
+        return Err(SnapshotError::Mismatch {
+            field: "lineage count",
+        });
+    }
+    Ok(lineages_from(&tags))
+}
+
+/// Blobs in the formats Postgres still holds, written the way the engine wrote them
+/// before lineage tags — every module that has to keep reading them tests against these.
+/// The `legacy-fixtures` feature hands them to the crates downstream that do too.
+#[cfg(any(test, feature = "legacy-fixtures"))]
+pub mod legacy {
+    use super::*;
+
+    /// A snapshot as the first released engine wrote it: the 26-byte header, version 1.
+    pub fn v1_blob(params: &Params, epoch: u64, cells: &[u8]) -> Vec<u8> {
+        let mut out = prefix(params, 1, epoch);
+        out.extend_from_slice(&metrics::compress(cells));
+        out
+    }
+
+    /// A snapshot as the engine wrote it before lineage tags: the 54-byte header, version
+    /// 2, the transition tracker and the cell payload, and nothing after it.
+    pub fn v2_blob(
+        params: &Params,
+        epoch: u64,
+        transition: TransitionState,
+        cells: &[u8],
+    ) -> Vec<u8> {
+        let mut out = prefix(params, 2, epoch);
+        out.extend_from_slice(&epoch_field(transition.candidate).to_le_bytes());
+        out.extend_from_slice(&transition.held.to_le_bytes());
+        out.extend_from_slice(&epoch_field(transition.settled).to_le_bytes());
+        out.extend_from_slice(&epoch_field(transition.last_epoch).to_le_bytes());
+        assert_eq!(out.len(), HEADER_LEN_V2);
+        out.extend_from_slice(&metrics::compress(cells));
+        out
+    }
+
+    fn prefix(params: &Params, version: u8, epoch: u64) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&MAGIC);
+        out.push(version);
+        out.push(substrate_byte(params.substrate));
+        out.extend_from_slice(&params.width.to_le_bytes());
+        out.extend_from_slice(&params.height.to_le_bytes());
+        out.extend_from_slice(&params.tape_len.to_le_bytes());
+        out.extend_from_slice(&epoch.to_le_bytes());
+        assert_eq!(out.len(), HEADER_LEN_V1);
+        out
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::legacy::{v1_blob, v2_blob};
     use super::*;
 
     fn params() -> Params {
@@ -185,31 +306,51 @@ mod tests {
         }
     }
 
-    /// A snapshot as the first released engine wrote it: the 26-byte header, version 1.
-    fn v1_blob(params: &Params, epoch: u64, cells: &[u8]) -> Vec<u8> {
-        let mut out = Vec::new();
-        out.extend_from_slice(&MAGIC);
-        out.push(1);
-        out.push(0);
-        out.extend_from_slice(&params.width.to_le_bytes());
-        out.extend_from_slice(&params.height.to_le_bytes());
-        out.extend_from_slice(&params.tape_len.to_le_bytes());
-        out.extend_from_slice(&epoch.to_le_bytes());
-        out.extend_from_slice(&metrics::compress(cells));
-        out
+    fn lineages(params: &Params) -> Vec<u64> {
+        (0..params.cell_count() as u64).map(|id| id * 3).collect()
     }
 
     #[test]
     fn round_trips_cells_and_epoch() {
         let params = params();
         let cells: Vec<u8> = (0..128).map(|i| i as u8).collect();
-        let bytes = encode(&header(&params, 99), &cells);
-        assert!(bytes.len() < cells.len() + HEADER_LEN + 32);
+        let bytes = encode(&header(&params, 99), &cells, &lineages(&params));
+        assert!(bytes.len() < cells.len() + HEADER_LEN + 64);
 
-        let (header, decoded) = decode(&params, &bytes).unwrap();
-        assert_eq!(decoded, cells);
-        assert_eq!(header.epoch, 99);
-        assert_eq!(header.width, 4);
+        let restored = decode(&params, &bytes).unwrap();
+        assert_eq!(restored.cells, cells);
+        assert_eq!(restored.header.epoch, 99);
+        assert_eq!(restored.header.width, 4);
+    }
+
+    #[test]
+    fn round_trips_the_lineage_tags() {
+        let params = params();
+        let cells = vec![7u8; 128];
+        let tags = lineages(&params);
+
+        let bytes = encode(&header(&params, 3), &cells, &tags);
+
+        assert_eq!(decode(&params, &bytes).unwrap().lineages, Some(tags));
+    }
+
+    /// The life substrate carries no ancestry, so a version 3 blob of a life world holds
+    /// an empty tag payload — which has to inflate back to no lineages rather than fail
+    /// the count the params describe.
+    #[test]
+    fn a_life_world_round_trips_with_an_empty_lineage_payload() {
+        let params = Params {
+            substrate: Substrate::Life,
+            ..params()
+        };
+        let cells: Vec<u8> = (0..params.cell_count()).map(|i| (i % 2) as u8).collect();
+
+        let bytes = encode(&header(&params, 5), &cells, &[]);
+
+        let restored = decode(&params, &bytes).unwrap();
+        assert_eq!(restored.cells, cells);
+        assert_eq!(restored.header.epoch, 5);
+        assert_eq!(restored.lineages, Some(Vec::new()));
     }
 
     #[test]
@@ -228,10 +369,11 @@ mod tests {
                 ..header(&params, 500)
             },
             &cells,
+            &lineages(&params),
         );
 
-        let (header, _) = decode(&params, &bytes).unwrap();
-        assert_eq!(header.transition, transition);
+        let restored = decode(&params, &bytes).unwrap();
+        assert_eq!(restored.header.transition, transition);
     }
 
     #[test]
@@ -239,10 +381,29 @@ mod tests {
         let params = params();
         let cells: Vec<u8> = (0..128).map(|i| i as u8).collect();
 
-        let (header, decoded) = decode(&params, &v1_blob(&params, 7, &cells)).unwrap();
-        assert_eq!(decoded, cells);
-        assert_eq!(header.epoch, 7);
-        assert_eq!(header.transition, TransitionState::default());
+        let restored = decode(&params, &v1_blob(&params, 7, &cells)).unwrap();
+        assert_eq!(restored.cells, cells);
+        assert_eq!(restored.header.epoch, 7);
+        assert_eq!(restored.header.transition, TransitionState::default());
+        assert_eq!(restored.lineages, None);
+    }
+
+    #[test]
+    fn version_two_blobs_still_decode_with_their_tracker_and_no_lineages() {
+        let params = params();
+        let cells: Vec<u8> = (0..128).map(|i| i as u8).collect();
+        let transition = TransitionState {
+            candidate: Some(12),
+            held: 1,
+            settled: None,
+            last_epoch: Some(20),
+        };
+
+        let restored = decode(&params, &v2_blob(&params, 20, transition, &cells)).unwrap();
+        assert_eq!(restored.cells, cells);
+        assert_eq!(restored.header.epoch, 20);
+        assert_eq!(restored.header.transition, transition);
+        assert_eq!(restored.lineages, None);
     }
 
     #[test]
@@ -264,7 +425,11 @@ mod tests {
     fn rejects_a_payload_that_inflates_past_the_world() {
         let params = params();
         let expected = params.cell_count() * params.stride();
-        let bytes = encode(&header(&params, 0), &vec![0u8; expected * 8]);
+        let bytes = encode(
+            &header(&params, 0),
+            &vec![0u8; expected * 8],
+            &lineages(&params),
+        );
 
         assert!(matches!(
             decode(&params, &bytes),
@@ -275,10 +440,37 @@ mod tests {
     }
 
     #[test]
+    fn rejects_lineage_tags_that_do_not_count_the_cells() {
+        let params = params();
+        let cells = vec![0u8; 128];
+        let bytes = encode(&header(&params, 0), &cells, &vec![0u64; 128]);
+
+        assert!(matches!(
+            decode(&params, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "lineage count"
+            })
+        ));
+    }
+
+    #[test]
+    fn rejects_a_cell_payload_length_the_blob_cannot_hold() {
+        let params = params();
+        let mut bytes = encode(&header(&params, 0), &[0u8; 128], &lineages(&params));
+        let overrun = (bytes.len() as u64).to_le_bytes();
+        bytes[HEADER_LEN_V2..HEADER_LEN].copy_from_slice(&overrun);
+
+        assert!(matches!(
+            decode(&params, &bytes),
+            Err(SnapshotError::Truncated)
+        ));
+    }
+
+    #[test]
     fn rejects_snapshots_that_do_not_fit_the_params() {
         let params = params();
         let cells = vec![0u8; 128];
-        let bytes = encode(&header(&params, 0), &cells);
+        let bytes = encode(&header(&params, 0), &cells, &lineages(&params));
 
         let other = Params {
             width: 8,
@@ -298,10 +490,10 @@ mod tests {
         ));
 
         let mut future = bytes.clone();
-        future[4] = 3;
+        future[4] = 4;
         assert!(matches!(
             decode(&params, &future),
-            Err(SnapshotError::UnsupportedVersion(3))
+            Err(SnapshotError::UnsupportedVersion(4))
         ));
     }
 }
