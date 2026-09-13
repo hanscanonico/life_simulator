@@ -79,12 +79,14 @@ pub struct Report {
     pub seed: u64,
     pub width: u32,
     pub height: u32,
-    /// The ancestry the blob carries (`docs/DESIGN.md` §1.2). A lineage census reads the
-    /// world, not the `top_k` window, so it belongs to the report and not to a setting.
-    /// `None` for a version 1 or 2 blob, which carries no tags: there is no census to
-    /// report of a world whose ancestry was never written down.
+    /// The ancestry the blob carries (`docs/DESIGN.md` §1.2). A lineage census and the
+    /// variation within a lineage read the world, not the `top_k` window, so they belong
+    /// to the report and not to a setting. `None` for a version 1 or 2 blob, which
+    /// carries no tags: there is no ancestry to report of a world whose descent was never
+    /// written down.
     pub distinct_lineages: Option<u64>,
     pub top_lineage_share: Option<f64>,
+    pub lineage_variation: Option<f64>,
     pub settings: Vec<Setting>,
     pub top_tapes: Vec<TapeReading>,
 }
@@ -245,6 +247,9 @@ fn measure(stored: &StoredWorld, run: Option<i64>, top_k: &[u32]) -> Result<Repo
     }
 
     let census = restored.lineages.as_deref().map(metrics::lineage_census);
+    let variation = restored.lineages.as_deref().map(|lineages| {
+        metrics::lineage_variation(&restored.cells, stored.params.stride(), lineages)
+    });
     Ok(Report {
         run,
         epoch: restored.header.epoch,
@@ -253,6 +258,7 @@ fn measure(stored: &StoredWorld, run: Option<i64>, top_k: &[u32]) -> Result<Repo
         height: stored.params.height,
         distinct_lineages: census.map(|(distinct, _)| distinct),
         top_lineage_share: census.map(|(_, share)| share),
+        lineage_variation: variation,
         settings: asked
             .iter()
             .map(|top_k| setting(*top_k, &measured[top_k]))
@@ -318,9 +324,13 @@ impl Report {
         let run = self
             .run
             .map_or_else(|| "a stored world".to_string(), |run| format!("run {run}"));
-        let census = match (self.distinct_lineages, self.top_lineage_share) {
-            (Some(distinct), Some(share)) => {
-                format!(", {distinct} lineages, top share {share:.6}")
+        let census = match (
+            self.distinct_lineages,
+            self.top_lineage_share,
+            self.lineage_variation,
+        ) {
+            (Some(distinct), Some(share), Some(variation)) => {
+                format!(", {distinct} lineages, top share {share:.6}, variation {variation:.4}")
             }
             _ => String::new(),
         };
@@ -453,7 +463,47 @@ mod tests {
 
         assert_eq!(report.distinct_lineages, Some(live.distinct_lineages));
         assert_eq!(report.top_lineage_share, Some(live.top_lineage_share));
+        assert_eq!(report.lineage_variation, Some(live.lineage_variation));
         assert!(report.print_line().contains("lineages"));
+    }
+
+    /// The variation within a lineage reads the world like the census does, so a rescore
+    /// of a colony that mutation pushed apart reports the drift the run itself read.
+    #[test]
+    fn a_rescore_reports_the_lineage_variation_of_a_drifted_colony() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            init: Init::Zero,
+            mutation_rate: 0.02,
+            ..Params::default()
+        };
+        let mut world = World::new(&params, 5).expect("legal params");
+        let tape = replicator::handwritten_replicator();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        for _ in 0..20 {
+            world.step();
+        }
+        let live = world.metrics();
+        assert!(
+            live.lineage_variation > 0.0,
+            "mutation must have split a lineage: {live:?}"
+        );
+
+        let stored = StoredWorld {
+            params,
+            seed: 5,
+            blob: world.snapshot(),
+        };
+        let report = measure(&stored, None, &[16]).unwrap();
+
+        assert_eq!(report.lineage_variation, Some(live.lineage_variation));
+        assert!(report.print_line().contains("variation"), "{report:?}");
     }
 
     /// A blob written before lineage tags has no ancestry to report: the world restores
@@ -477,11 +527,13 @@ mod tests {
 
         assert_eq!(report.distinct_lineages, None);
         assert_eq!(report.top_lineage_share, None);
+        assert_eq!(report.lineage_variation, None);
         assert!(!report.print_line().contains("lineages"), "{report:?}");
         let json = serde_json::to_value(&report).unwrap();
         let fields = json.as_object().expect("a report is an object");
         assert_eq!(fields["distinct_lineages"], Value::Null);
         assert_eq!(fields["top_lineage_share"], Value::Null);
+        assert_eq!(fields["lineage_variation"], Value::Null);
     }
 
     /// Run 186 of bff-control read a census of 0 replicators at `top_k` 16 and 38 at 64:

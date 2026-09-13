@@ -15,7 +15,7 @@ module Runs
       "copy_rate" => "Copy rate",
       "distinct_lineages" => "Distinct lineages",
       "top_lineage_share" => "Share of the largest lineage",
-      "lineage_variation" => "Variation within a lineage (bytes)"
+      "lineage_variation" => "Variation within a lineage"
     }.freeze
 
     SAMPLE_CLOCK = "COUNT(*), MIN(epoch), MAX(epoch), MIN(created_at), MAX(created_at)"

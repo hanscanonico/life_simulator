@@ -404,13 +404,7 @@ impl World {
 /// and the same byte-by-byte reading `copy_rate` makes of an exact copy. A tie keeps the
 /// cell's own lineage, so a tape that did not move keeps its tag.
 fn inherits_partner(result: &[u8], own: &[u8], partner: &[u8]) -> bool {
-    let mut to_own = 0usize;
-    let mut to_partner = 0usize;
-    for ((ended, was), theirs) in result.iter().zip(own).zip(partner) {
-        to_own += usize::from(ended != was);
-        to_partner += usize::from(ended != theirs);
-    }
-    to_partner < to_own
+    metrics::hamming_distance(result, partner) < metrics::hamming_distance(result, own)
 }
 
 /// One id per cell, unique in the world: the cell's own index, so a lineage census at
