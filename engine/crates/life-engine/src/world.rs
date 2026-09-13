@@ -1225,6 +1225,12 @@ mod tests {
         assert_eq!(rescored.entropy_bits, live.entropy_bits);
         assert_eq!(rescored.op_density, live.op_density);
         assert_eq!(rescored.alphabet_size, live.alphabet_size);
+        assert!(
+            live.distinct_lineages < u64::from(params.width * params.height),
+            "the colony must have swallowed lineages for the census to say anything: {live:?}"
+        );
+        assert_eq!(rescored.distinct_lineages, live.distinct_lineages);
+        assert_eq!(rescored.top_lineage_share, live.top_lineage_share);
         assert!(live.copy_rate > 0.0, "the epoch just run must have copied");
         assert_eq!(rescored.copy_rate, 0.0);
     }
