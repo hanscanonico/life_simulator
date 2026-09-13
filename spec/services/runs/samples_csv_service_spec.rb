@@ -16,13 +16,14 @@ RSpec.describe Runs::SamplesCsvService do
     create(:sample, run: run, epoch: 200, values: { "compress_ratio" => 0.4 })
     create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
 
-    expect(rows.drop(1)).to eq([["100", "0.9", *[nil] * 7], ["200", "0.4", *[nil] * 7]])
+    blanks = Sample::OBSERVABLES.size - 1
+    expect(rows.drop(1)).to eq([["100", "0.9", *[nil] * blanks], ["200", "0.4", *[nil] * blanks]])
   end
 
   it "leaves an observable the sample never reported empty" do
     create(:sample, run: run, epoch: 100, values: { "copy_rate" => 0.31 })
 
-    expect(rows.last.last).to eq("0.31")
+    expect(rows.last[Sample::OBSERVABLES.index("copy_rate") + 1]).to eq("0.31")
     expect(rows.last[1]).to be_nil
   end
 

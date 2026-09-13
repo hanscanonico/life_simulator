@@ -31,6 +31,12 @@ pub struct Metrics {
     /// copied over the other half, counting only the pairs that started out different —
     /// replication caught in situ, whoever the partner was.
     pub copy_rate: f64,
+    /// How many distinct lineage ids the world's cells hold: descent counted rather than
+    /// tape shape, so two lineages that drifted to the same tape still read as two. 0 on
+    /// the life substrate, which has no tapes to descend.
+    pub distinct_lineages: u64,
+    /// Share of cells held by the largest lineage.
+    pub top_lineage_share: f64,
 }
 
 impl Metrics {
@@ -160,6 +166,32 @@ pub fn ranked_tapes(cells: &[u8], stride: usize) -> Vec<(&[u8], u64)> {
     ranked
 }
 
+/// How many distinct lineage ids the cells hold, and the share of cells the largest
+/// lineage holds. Counted the way `ranked_tapes` counts tapes — sort, then read the runs.
+pub fn lineage_census(lineages: &[u64]) -> (u64, f64) {
+    if lineages.is_empty() {
+        return (0, 0.0);
+    }
+    let mut sorted = lineages.to_vec();
+    sorted.sort_unstable();
+
+    let mut distinct: u64 = 0;
+    let mut top: u64 = 0;
+    let mut run: u64 = 0;
+    let mut previous: Option<u64> = None;
+    for id in sorted {
+        if previous == Some(id) {
+            run += 1;
+        } else {
+            distinct += 1;
+            run = 1;
+            previous = Some(id);
+        }
+        top = top.max(run);
+    }
+    (distinct, top as f64 / lineages.len() as f64)
+}
+
 /// The first sampled epoch at which a qualifying sample appears and holds — the primary
 /// dependent variable of every sweep. A sample qualifies on `Metrics::transition_candidate`:
 /// `compress_ratio` below the threshold, and neither of the two collapse guards tripped.
@@ -256,6 +288,14 @@ mod tests {
         let all: Vec<u8> = (0..=255).collect();
         assert!((entropy_bits(&all) - 8.0).abs() < 1e-9);
         assert_eq!(entropy_bits(&[]), 0.0);
+    }
+
+    #[test]
+    fn the_lineage_census_counts_ids_and_the_largest_share() {
+        assert_eq!(lineage_census(&[]), (0, 0.0));
+        assert_eq!(lineage_census(&[7, 7, 7, 7]), (1, 1.0));
+        assert_eq!(lineage_census(&[0, 1, 2, 3]), (4, 0.25));
+        assert_eq!(lineage_census(&[5, 9, 5, 2]), (3, 0.5));
     }
 
     #[test]
@@ -379,6 +419,8 @@ mod tests {
             entropy_bits: 5.0,
             alphabet_size: 256,
             copy_rate: 0.0,
+            distinct_lineages: 128,
+            top_lineage_share: 0.1,
         }
     }
 

@@ -153,6 +153,8 @@ mod tests {
             entropy_bits: 7.9,
             alphabet_size: 256,
             copy_rate: 0.0,
+            distinct_lineages: 3,
+            top_lineage_share: 0.5,
         }
     }
 

@@ -29,6 +29,10 @@ pub struct World {
     transition: TransitionTracker,
     /// The `copy_rate` of the most recently counted epoch; see `step_soup`.
     copy_rate: f64,
+    /// One lineage id per cell, unique at init and inherited by descent in `step_soup`.
+    /// Empty on the life substrate. A tag is read and written beside the tapes and never
+    /// from the RNG stream, so a run's bytes are what they were before lineages existed.
+    lineages: Vec<u64>,
 }
 
 impl World {
@@ -42,6 +46,7 @@ impl World {
             scratch: life_scratch(params),
             transition: TransitionTracker::default(),
             copy_rate: 0.0,
+            lineages: fresh_lineages(params),
         };
         if params.init == Init::Random {
             let mut rng = rng::seeded(seed, STREAM_INIT, 0);
@@ -78,6 +83,12 @@ impl World {
         let stride = self.params.stride();
         let at = self.index(x, y) * stride;
         &self.cells[at..at + stride]
+    }
+
+    /// The lineage id of one cell: the ancestor its tape descends from by copying
+    /// (`docs/DESIGN.md` §1.2). 0 on the life substrate, which carries no lineages.
+    pub fn lineage(&self, x: u32, y: u32) -> u64 {
+        self.lineages.get(self.index(x, y)).copied().unwrap_or(0)
     }
 
     /// Panics unless `bytes` is exactly one cell wide; callers know the stride.
@@ -142,6 +153,10 @@ impl World {
         }
     }
 
+    /// The snapshot format (v2) carries tapes and no lineage tags, so a resumed run starts
+    /// the lineage census over from one id per cell. Its tapes, its RNG stream and every
+    /// other observable continue exactly as the uninterrupted run would have; only the two
+    /// lineage observables read a world younger than it is.
     pub fn from_snapshot(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
         let (header, cells) = snapshot::decode(params, bytes)?;
         Ok(Self {
@@ -152,6 +167,7 @@ impl World {
             scratch: life_scratch(params),
             transition: TransitionTracker::from_state(header.transition),
             copy_rate: 0.0,
+            lineages: fresh_lineages(params),
         })
     }
 
@@ -183,8 +199,9 @@ impl World {
     }
 
     /// One epoch of the soup, and — on the epochs a sample will read — the `copy_rate`
-    /// of those interactions. Counting costs one extra `2 × stride` copy and at most three
-    /// comparisons per interaction, so it is off on every other epoch.
+    /// of those interactions. The pre-execution pair is kept every epoch — the lineage
+    /// rule reads it — and counting copies adds at most three comparisons per interaction,
+    /// so it stays off on every other epoch.
     fn step_soup(&mut self, rng: &mut Rng) {
         let stride = self.params.stride();
         let max_steps = self.params.max_steps;
@@ -205,9 +222,7 @@ impl World {
             }
             pair[..stride].copy_from_slice(&self.cells[a * stride..a * stride + stride]);
             pair[stride..].copy_from_slice(&self.cells[b * stride..b * stride + stride]);
-            if counting {
-                before.copy_from_slice(&pair);
-            }
+            before.copy_from_slice(&pair);
             bff::run_with(&mut pair, max_steps, ops);
             if counting {
                 interactions += 1;
@@ -220,6 +235,7 @@ impl World {
             }
             self.cells[a * stride..a * stride + stride].copy_from_slice(&pair[..stride]);
             self.cells[b * stride..b * stride + stride].copy_from_slice(&pair[stride..]);
+            self.inherit_lineages(a, b, &pair, &before, stride);
         }
         if counting {
             self.copy_rate = if interactions == 0 {
@@ -227,6 +243,21 @@ impl World {
             } else {
                 copies as f64 / interactions as f64
             };
+        }
+    }
+
+    /// Descent, read off the one interaction that just ran: a cell takes its partner's
+    /// lineage id when the tape it ends with is closer to the tape its partner arrived
+    /// with than to the tape it arrived with itself, and keeps its own on a tie. Both
+    /// cells are judged against the pair as it arrived, so an exchange swaps the two tags
+    /// rather than collapsing them onto one.
+    fn inherit_lineages(&mut self, a: usize, b: usize, pair: &[u8], before: &[u8], stride: usize) {
+        let (was_a, was_b) = (self.lineages[a], self.lineages[b]);
+        if inherits_partner(&pair[..stride], &before[..stride], &before[stride..]) {
+            self.lineages[a] = was_b;
+        }
+        if inherits_partner(&pair[stride..], &before[stride..], &before[..stride]) {
+            self.lineages[b] = was_a;
         }
     }
 
@@ -332,6 +363,7 @@ impl World {
         let ranked = metrics::ranked_tapes(&self.cells, stride);
         let top_share = ranked.first().map_or(0.0, |(_, n)| *n as f64 / cells);
         let histogram = metrics::ByteHistogram::of(&self.cells);
+        let (distinct_lineages, top_lineage_share) = metrics::lineage_census(&self.lineages);
 
         Metrics {
             compress_ratio,
@@ -342,6 +374,8 @@ impl World {
             entropy_bits: histogram.entropy_bits(),
             alphabet_size: histogram.alphabet_size(),
             copy_rate: self.copy_rate,
+            distinct_lineages,
+            top_lineage_share,
         }
     }
 
@@ -361,6 +395,29 @@ impl World {
             })
             .map(|(_, count)| *count)
             .sum()
+    }
+}
+
+/// Whether a tape resembles its partner's arriving tape more closely than its own, by
+/// Hamming distance over the tape's bytes — the plainest distance on a fixed-length tape,
+/// and the same byte-by-byte reading `copy_rate` makes of an exact copy. A tie keeps the
+/// cell's own lineage, so a tape that did not move keeps its tag.
+fn inherits_partner(result: &[u8], own: &[u8], partner: &[u8]) -> bool {
+    let mut to_own = 0usize;
+    let mut to_partner = 0usize;
+    for ((ended, was), theirs) in result.iter().zip(own).zip(partner) {
+        to_own += usize::from(ended != was);
+        to_partner += usize::from(ended != theirs);
+    }
+    to_partner < to_own
+}
+
+/// One id per cell, unique in the world: the cell's own index, so a lineage census at
+/// epoch 0 reads one cell per lineage without drawing anything.
+fn fresh_lineages(params: &Params) -> Vec<u64> {
+    match params.substrate {
+        Substrate::Soup => (0..params.cell_count() as u64).collect(),
+        Substrate::Life => Vec::new(),
     }
 }
 
@@ -388,6 +445,30 @@ mod tests {
     const PINNED_LIFE_HASH: u64 = 0x200a_f822_08b5_96b9;
     /// The same run with `,` ablated (DESIGN §1.3, sweep 5).
     const PINNED_ABLATED_SOUP_HASH: u64 = 0xb115_dbaa_f8d8_9bec;
+    /// The §1.2 observables of that same run, as they read before lineage tags.
+    const PINNED_OBSERVABLES: &str = "compress_ratio=0.9942169189453125 distinct_tapes=1024 \
+         top_share=0.0009765625 op_density=0.04241943359375 replicator_count=0 \
+         entropy_bits=7.995914331881839 alphabet_size=256 copy_rate=0.0";
+    /// And of a 16×16 soup half seeded with the handwritten replicator, seed 7, epoch 10 —
+    /// a world where every observable reads something, `copy_rate` included.
+    const PINNED_SEEDED_OBSERVABLES: &str = "compress_ratio=0.01153564453125 distinct_tapes=57 \
+         top_share=0.49609375 op_density=0.058837890625 replicator_count=196 \
+         entropy_bits=0.5501352213732266 alphabet_size=61 copy_rate=0.51171875";
+
+    fn observable_digest(measured: &Metrics) -> String {
+        format!(
+            "compress_ratio={:?} distinct_tapes={} top_share={:?} op_density={:?} \
+             replicator_count={} entropy_bits={:?} alphabet_size={} copy_rate={:?}",
+            measured.compress_ratio,
+            measured.distinct_tapes,
+            measured.top_share,
+            measured.op_density,
+            measured.replicator_count,
+            measured.entropy_bits,
+            measured.alphabet_size,
+            measured.copy_rate,
+        )
+    }
 
     fn soup(width: u32, height: u32) -> Params {
         Params {
@@ -556,6 +637,185 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Every observable of §1.2 as it read before lineage tags existed, captured at
+    /// `Params::default()` 32×32, seed 42, epoch 50 on the commit before them. A run is
+    /// determined by `(params, seed)`, so anything that moved a tape byte or drew from the
+    /// RNG stream would move these digits too.
+    #[test]
+    fn the_observables_of_a_fixed_seed_read_what_they_read_before_lineage_tags() {
+        let mut world = World::new(&soup(32, 32), 42).unwrap();
+        for _ in 0..50 {
+            world.step();
+        }
+        assert_eq!(observable_digest(&world.metrics()), PINNED_OBSERVABLES);
+    }
+
+    #[test]
+    fn the_observables_of_a_seeded_soup_read_what_they_read_before_lineage_tags() {
+        let params = Params {
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 7).unwrap();
+        let tape = replicator::handwritten_replicator();
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        for _ in 0..params.sample_every {
+            world.step();
+        }
+        assert_eq!(
+            observable_digest(&world.metrics()),
+            PINNED_SEEDED_OBSERVABLES
+        );
+    }
+
+    /// A colony of the handwritten replicator is one lineage spreading: each cell it
+    /// copies itself over ends holding the copier's arriving tape, which is as close to it
+    /// as a tape can be, so the tag travels with the bytes.
+    #[test]
+    fn a_replicator_spreads_one_lineage_across_the_world() {
+        let params = Params {
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            mutation_rate: 0.0,
+            ..soup(8, 8)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        assert_eq!(
+            world.metrics().distinct_lineages,
+            64,
+            "every cell starts its own lineage"
+        );
+
+        let tape = replicator::handwritten_replicator();
+        for x in 0..params.width {
+            world.set_cell(x, 0, &tape);
+        }
+        for _ in 0..40 {
+            world.step();
+        }
+        let measured = world.metrics();
+
+        assert!(
+            measured.top_lineage_share > 0.5,
+            "one lineage should hold the world: {measured:?}"
+        );
+        assert!(measured.distinct_lineages < 16, "{measured:?}");
+
+        let mut control = World::new(&params, 5).unwrap();
+        for _ in 0..40 {
+            control.step();
+        }
+        let drifted = control.metrics();
+        assert!(
+            drifted.top_lineage_share < measured.top_lineage_share,
+            "a soup with no replicator in it should stay polyphyletic: {drifted:?}"
+        );
+    }
+
+    /// Descent is decided on the pair the interpreter just ran, which is before the epoch
+    /// mutates: a byte flipped by mutation cannot move a tag.
+    #[test]
+    fn mutation_never_moves_a_lineage_id() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.5,
+            ..soup(8, 8)
+        };
+        let mut world = World::new(&params, 2).unwrap();
+        let before: Vec<u64> = (0..8).map(|x| world.lineage(x, 0)).collect();
+        world.step();
+
+        assert_ne!(world.world_hash(), 0, "mutation rewrote the tapes");
+        let after: Vec<u64> = (0..8).map(|x| world.lineage(x, 0)).collect();
+        assert_eq!(after, before);
+    }
+
+    /// A cell overwritten by its partner takes the partner's tag, so a tag only ever
+    /// travels where the bytes it belongs to travelled: every copy of the seeded tape is
+    /// tagged with one of the cells it was seeded into, never with the cell it landed on.
+    #[test]
+    fn a_copied_over_cell_takes_its_partners_lineage() {
+        let params = Params {
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            mutation_rate: 0.0,
+            ..soup(4, 4)
+        };
+        let mut world = World::new(&params, 1).unwrap();
+        let tape = replicator::handwritten_replicator();
+        for x in 0..params.width {
+            world.set_cell(x, 0, &tape);
+        }
+        let seeded: Vec<u64> = (0..params.width).map(|x| world.lineage(x, 0)).collect();
+
+        let mut copies: Vec<(u32, u32)> = Vec::new();
+        for _ in 0..20 {
+            world.step();
+            copies = (0..params.width)
+                .flat_map(|x| (1..params.height).map(move |y| (x, y)))
+                .filter(|(x, y)| world.cell(*x, *y) == tape)
+                .collect();
+            if !copies.is_empty() {
+                break;
+            }
+        }
+        assert!(!copies.is_empty(), "the replicator must have spread");
+        for (x, y) in copies {
+            let tag = world.lineage(x, y);
+            assert!(seeded.contains(&tag), "cell {x},{y} kept its own tag {tag}");
+        }
+    }
+
+    #[test]
+    fn a_tape_inherits_only_when_it_ends_strictly_closer_to_its_partner() {
+        assert!(
+            inherits_partner(b"wxyz", b"abcd", b"wxyz"),
+            "an exact copy of the partner's arriving tape inherits"
+        );
+        assert!(
+            !inherits_partner(b"abcd", b"abcd", b"wxyz"),
+            "a tape that did not move keeps its own tag"
+        );
+        assert!(
+            !inherits_partner(b"abcz", b"abcd", b"wxyz"),
+            "one byte from its own arrival, three from the partner's: keeps its own"
+        );
+        assert!(
+            !inherits_partner(b"abyz", b"abcd", b"wxyz"),
+            "two bytes from each arrival is a tie, and a tie keeps its own"
+        );
+    }
+
+    /// Both halves are judged against the pair as it arrived, so a pair that swapped tapes
+    /// swaps its two tags rather than collapsing both onto one.
+    #[test]
+    fn an_exchange_of_tapes_swaps_the_two_lineage_tags() {
+        let params = Params {
+            tape_len: 8,
+            ..soup(4, 4)
+        };
+        let mut world = World::new(&params, 1).unwrap();
+        let stride = params.stride();
+        let before = *b"abcdefghstuvwxyz";
+        let exchanged = *b"stuvwxyzabcdefgh";
+        let (was_a, was_b) = (world.lineage(0, 0), world.lineage(1, 0));
+        assert_ne!(was_a, was_b);
+
+        world.inherit_lineages(0, 1, &exchanged, &before, stride);
+
+        assert_eq!((world.lineage(0, 0), world.lineage(1, 0)), (was_b, was_a));
+    }
+
+    #[test]
+    fn a_life_world_carries_no_lineages() {
+        let mut world = World::new(&life(4, 4), 1).unwrap();
+        let measured = world.metrics();
+        assert_eq!(measured.distinct_lineages, 0);
+        assert_eq!(measured.top_lineage_share, 0.0);
     }
 
     #[test]

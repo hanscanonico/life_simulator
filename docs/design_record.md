@@ -253,3 +253,20 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   to be confirmed in — and so reads as persisted, which is a limit of the record and not a
   reading of the world. This is a Rails-side definition over stored samples; the engine
   stays the single authority on entry.
+- 2026-09-13 — **Lineage id is a tag carried by descent, not a digest of a tape.** The
+  evolution programme entry defined the **lineage id** as the FNV-1a digest of a tape's
+  instruction skeleton, and said in the same breath that such a digest is an approximation
+  of descent and not descent itself: two lineages that converge on one skeleton read as
+  one, and one lineage that drifts a single op reads as two. Rung 2 is heredity, so the
+  observable has to be ancestry. §1.2 now defines the lineage id as a tag beside each cell's
+  tape, unique per cell at init, which a cell takes from its partner when the tape it ends
+  with is closer — **Hamming distance over the tape's bytes**, the plainest distance on a
+  fixed-length tape and the same byte-by-byte reading `copy_rate` makes of an exact copy —
+  to the partner's arriving tape than to its own, keeping its own on a tie. `distinct_lineages`
+  and `top_lineage_share` are the two recorded observables. The skeleton digest keeps its
+  one job, the hue in `render.rs`. **Consequences**: the invariant holds — a tag is never
+  written into a tape and never drawn from the RNG stream, so every existing run is
+  byte-identical and two pinned observable readings in `world.rs` say so; and a snapshot
+  carries tapes only, so a **resumed run starts its lineage census over** from one id per
+  cell, which is a limit of the record, not a reading of the world. A run whose lineage
+  series is to be read end to end has to be one the runner did not resume.
