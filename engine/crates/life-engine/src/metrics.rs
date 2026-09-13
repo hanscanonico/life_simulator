@@ -388,9 +388,20 @@ mod tests {
             lineage_variation(b"abcdabcdabce", stride, &[1, 1, 1]),
             1.0 / 3.0
         );
-        // No tape is more common than another, so the modal tape is the lowest of them
-        // and the other reads its whole distance from it.
+        // Two tapes, neither more common than the other and every byte apart: whichever
+        // of them is modal, the other reads the whole tape.
         assert_eq!(lineage_variation(b"abcdwxyz", stride, &[1, 1]), 2.0);
+    }
+
+    #[test]
+    fn the_modal_tape_is_the_most_common_one_and_the_lowest_of_any_that_tie() {
+        // Two members on "bb" and one on "aa": the modal tape is the one most members
+        // hold, not the lowest one they hold, so this reads 2 bytes over 3 members and
+        // not the 4 it would read from "aa".
+        assert_eq!(lineage_variation(b"bbbbaa", 2, &[1, 1, 1]), 2.0 / 3.0);
+        // Three tapes, none more common than another: the lowest breaks the tie, so the
+        // distances are measured from "aa" and not from "bc", which would read 1.0.
+        assert_eq!(lineage_variation(b"aabbbc", 2, &[1, 1, 1]), 4.0 / 3.0);
     }
 
     #[test]
@@ -402,12 +413,18 @@ mod tests {
 
     #[test]
     fn lineage_variation_reads_only_the_largest_lineages() {
-        let mut cells: Vec<u8> = b"aaaabb".to_vec();
-        let mut lineages: Vec<u64> = vec![1, 1, 1];
-        for id in 2..=(VARIATION_TOP_LINEAGES as u64 + 2) {
+        let singletons = VARIATION_TOP_LINEAGES as u64 + 1;
+        let mut cells: Vec<u8> = Vec::new();
+        let mut lineages: Vec<u64> = Vec::new();
+        for id in 1..=singletons {
             cells.extend_from_slice(&[b'a' + id as u8, b'z']);
             lineages.push(id);
         }
+        // The one lineage worth reading holds the highest id, so a reading that took the
+        // first eight lineages rather than the largest would miss it and report 0.
+        let largest = singletons + 1;
+        cells.extend_from_slice(b"aaaabb");
+        lineages.extend_from_slice(&[largest, largest, largest]);
 
         // The three-cell lineage and the seven lowest-id singletons, not the twelve cells:
         // two differing bytes over ten members rather than over all of them.
