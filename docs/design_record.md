@@ -282,10 +282,12 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   limit stands, and only for them. **Consequences**: the determinism decision is honoured
   where it was not before — a run resumed from a version 3 snapshot reproduces the lineage
   series of an uninterrupted run digit for digit; and a snapshot grows by the compressed
-  tags, at most ~194 KiB for the largest world the programme runs (512×256), against a
-  snapshot cap of 64 MiB that does not move. **Deploy order**: the format is forward-only,
-  so an engine that predates version 3 rejects a version 3 blob outright
-  (`UnsupportedVersion(3)`) rather than resuming it without tags. Deploy the engine before
-  any run writes a version 3 snapshot, and treat reverting it after the first one as
-  stranding every run whose latest snapshot is version 3 — such a run resumes only from an
-  older version 2 snapshot, if one survives the pruner, or not at all.
+  tags — for the largest world the programme runs (512×256) that is ~194 KiB at epoch 0,
+  ~1.5 KiB once one lineage dominates, and under 400 KiB even for a scrambled world where
+  every cell still holds a distinct id — against a snapshot cap of 64 MiB that does not
+  move. **Deploy order**: the format is forward-only, so an engine that predates version 3
+  rejects a version 3 blob outright (`UnsupportedVersion(3)`) rather than resuming it
+  without tags. Deploy the engine before any run writes a version 3 snapshot, and treat
+  reverting it after the first one as stranding every run whose latest snapshot is version
+  3 — such a run resumes only from an older version 2 snapshot, if one survives the pruner,
+  or not at all.

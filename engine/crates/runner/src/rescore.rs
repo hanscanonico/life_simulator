@@ -478,10 +478,10 @@ mod tests {
         assert_eq!(report.distinct_lineages, None);
         assert_eq!(report.top_lineage_share, None);
         assert!(!report.print_line().contains("lineages"), "{report:?}");
-        assert_eq!(
-            serde_json::to_value(&report).unwrap()["distinct_lineages"],
-            Value::Null
-        );
+        let json = serde_json::to_value(&report).unwrap();
+        let fields = json.as_object().expect("a report is an object");
+        assert_eq!(fields["distinct_lineages"], Value::Null);
+        assert_eq!(fields["top_lineage_share"], Value::Null);
     }
 
     /// Run 186 of bff-control read a census of 0 replicators at `top_k` 16 and 38 at 64:
