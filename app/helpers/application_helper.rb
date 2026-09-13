@@ -18,8 +18,7 @@ module ApplicationHelper
   end
 
   # Truncation happens before the escaping, so an entity is never cut in half and handed
-  # to the head as markup. A flushing content_for replaces rather than appends — it takes
-  # the text as safe, so the escaping the appending form would do has to be done here.
+  # to the head as markup.
   def describe_page(text)
     content_for(:description, h(text.to_s.squish.truncate(DESCRIPTION_LIMIT)), flush: true)
   end

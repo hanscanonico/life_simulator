@@ -2,9 +2,8 @@
 
 require "rails_helper"
 
-PageMetadata = Data.define(:title, :description)
-
 RSpec.describe "Page metadata", type: :request do
+  let(:page_metadata) { Data.define(:title, :description) }
   let(:experiment) { create(:experiment, name: "Mutation rate", description: "Does mutation buy emergence?") }
   let(:run) { create(:run, experiment: experiment, seed: 7, status: "finished", epochs_done: 1_000) }
   let(:finding) { Findings::Registry.all.first }
@@ -13,8 +12,8 @@ RSpec.describe "Page metadata", type: :request do
     get path
     document = response.parsed_body
 
-    PageMetadata.new(title: document.css("title").text,
-                     description: document.css("meta[name=description]").attribute("content").value)
+    page_metadata.new(title: document.css("title").text,
+                      description: document.css("meta[name=description]").attribute("content").value)
   end
 
   describe "the public pages" do
