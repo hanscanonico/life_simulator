@@ -30,6 +30,10 @@ module Findings
 
     def experiment? = experiment.present?
 
+    # A finding that names no sweep carries its own evidence: every transitioned run in the
+    # lab, read at render time so the write-up states its own denominators.
+    def persistence_survey = @persistence_survey ||= PersistenceSurvey.build
+
     # The evidence is read through the experiment's own presenter: a finding never
     # re-derives a diagram of its own.
     def evidence

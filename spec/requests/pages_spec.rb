@@ -39,7 +39,7 @@ RSpec.describe "Pages", type: :request do
 
     context "with the newest finding's sweep in the lab" do
       it "links the sweep beside it" do
-        experiment = create(:experiment, slug: Findings::Registry.all.first.experiment_slug)
+        experiment = create(:experiment, slug: Findings::Registry.all.find(&:sweep?).experiment_slug)
 
         get root_path
 

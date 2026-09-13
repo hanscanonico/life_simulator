@@ -180,4 +180,16 @@ RSpec.describe Findings::ShowPage do
       expect(page).to be_pending
     end
   end
+  describe "#persistence_survey" do
+    it "surveys every transitioned run in the lab, whatever sweep the finding names" do
+      create(:run, status: "finished", transition_epoch: 900,
+                   persistence: { "census_peak" => 3, "peak_epoch" => 940,
+                                  "epochs_persisted" => 60, "relapsed" => false })
+
+      survey = page.persistence_survey
+
+      expect(survey.transitioned_count).to eq(1)
+      expect(survey.outcome.persisted_count).to eq(1)
+    end
+  end
 end

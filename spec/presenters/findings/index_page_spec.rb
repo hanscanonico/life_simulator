@@ -41,10 +41,38 @@ RSpec.describe Findings::IndexPage do
       expect(row.transition_rate.fraction).to eq(0.5)
     end
 
-    it "reads the whole log in a fixed number of queries" do
-      Findings::Registry.all.to_a.each { |finding| create(:experiment, slug: finding.experiment_slug) }
+    it "rates a sweep over the same population its own page does" do
+      experiment = create(:experiment, slug: "mutation-rate")
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 5_030)
+      create(:run, experiment: experiment, status: "failed", transition_epoch: 6_000)
+      create(:run, experiment: experiment, status: "running", transition_epoch: 7_000)
 
-      expect(queries_during { described_class.build.rows }).to eq(3)
+      row = page.rows.find { |candidate| candidate.finding.experiment_slug == "mutation-rate" }
+      sweep = Experiments::ShowPage.build(experiment: experiment, paginate: ->(scope) { [nil, scope] })
+
+      expect(row.transitioned).to eq(1)
+      expect(row.transition_rate.fraction).to eq(sweep.transition_rate.fraction)
+    end
+
+    it "names the sweeps a transitioned run came from, in the order a reader scans them" do
+      world_size = create(:experiment, name: "World size", slug: "world-size")
+      radius = create(:experiment, name: "Radius", slug: "radius")
+      create(:run, experiment: world_size, status: "failed", transition_epoch: 900)
+      create(:run, experiment: radius, status: "finished", transition_epoch: 900)
+      create(:run, experiment: create(:experiment), status: "running", transition_epoch: 900)
+
+      expect(page.transitioned_sweeps.map(&:name)).to eq(["Radius", "World size"])
+      expect(page.transitioned_runs_count).to eq(2)
+    end
+
+    it "reads everything the page asks it for in a fixed number of queries" do
+      Findings::Registry.all.select(&:sweep?).each { |finding| create(:experiment, slug: finding.experiment_slug) }
+      3.times { |seed| create(:run, seed: seed, status: "finished", transition_epoch: 900) }
+
+      built = described_class.build
+
+      expect(queries_during { built.rows }).to eq(3)
+      expect(queries_during { built.transitioned_runs_count && built.transitioned_sweeps }).to eq(2)
     end
   end
 

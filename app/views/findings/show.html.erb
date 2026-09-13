@@ -17,7 +17,12 @@
     Transition, flagged, census and arm are used here in the senses set out in
     <%= link_to "the glossary", how_it_works_path(anchor: "glossary") %>.
   </p>
-  <% if @show.experiment? %>
+  <% if !@show.finding.sweep? %>
+    <p class="text-muted">
+      This finding rests on no single sweep: its evidence is every transitioned run in the
+      lab, tabled above with the sweep and the seed each one came from.
+    </p>
+  <% elsif @show.experiment? %>
     <p class="text-sm">
       Sweep: <%= link_to @show.experiment.name, experiment_path(@show.experiment) %>
     </p>
