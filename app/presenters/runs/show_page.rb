@@ -49,13 +49,13 @@ module Runs
       return "— (not sampled)" unless persistence.sampled?
       return "0 (no replicator counted)" unless persistence.counted?
 
-      ActiveSupport::NumberHelper.number_to_delimited(persistence.census_peak)
+      delimited(persistence.census_peak)
     end
 
     def charts_empty? = charts.all?(&:empty?)
 
     def transition_label
-      return ActiveSupport::NumberHelper.number_to_delimited(run.transition_epoch) if run.transition_epoch
+      return delimited(run.transition_epoch) if run.transition_epoch
 
       run.terminal? ? "no emergence" : "no emergence yet"
     end

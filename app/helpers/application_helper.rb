@@ -15,10 +15,11 @@ module ApplicationHelper
     content_for(:description) || DEFAULT_DESCRIPTION
   end
 
-  # Truncation happens before content_for escapes the text, so an entity is never cut in
-  # half and handed to the head as markup.
-  def meta_description(text)
-    content_for(:description, text.to_s.squish.truncate(DESCRIPTION_LIMIT))
+  # Truncation happens before the escaping, so an entity is never cut in half and handed
+  # to the head as markup. A flushing content_for replaces rather than appends — it takes
+  # the text as safe, so the escaping the appending form would do has to be done here.
+  def describe_page(text)
+    content_for(:description, h(text.to_s.squish.truncate(DESCRIPTION_LIMIT)), flush: true)
   end
 
   # Colour is a redundant cue on a badge that already spells the status out, so an

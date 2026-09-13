@@ -3,29 +3,36 @@
 require "rails_helper"
 
 RSpec.describe ApplicationHelper, type: :helper do
-  describe "#meta_description" do
+  describe "#describe_page" do
     it "collapses a description a record spells across several lines" do
-      helper.meta_description("Radius 1,\n  then radius 2.\n")
+      helper.describe_page("Radius 1,\n  then radius 2.\n")
 
       expect(helper.page_description).to eq("Radius 1, then radius 2.")
     end
 
     it "cuts a description at what a search result shows of it" do
-      helper.meta_description("Mutation. #{'word ' * 100}")
+      helper.describe_page("Mutation. #{'word ' * 100}")
 
       expect(helper.page_description.length).to eq(155)
       expect(helper.page_description).to end_with("...")
     end
 
     it "escapes a description spelled with markup characters exactly once" do
-      helper.meta_description(%(Radius 1 & "well-mixed" <arms>))
+      helper.describe_page(%(Radius 1 & "well-mixed" <arms>))
 
       expect(helper.page_description).to eq(%(Radius 1 &amp; &quot;well-mixed&quot; &lt;arms&gt;))
     end
 
+    it "replaces a description an earlier call already stated" do
+      helper.describe_page("The first description.")
+      helper.describe_page("The second description.")
+
+      expect(helper.page_description).to eq("The second description.")
+    end
+
     context "with nothing to describe" do
       it "falls back to the site's own description" do
-        helper.meta_description(nil)
+        helper.describe_page(nil)
 
         expect(helper.page_description).to eq(described_class::DEFAULT_DESCRIPTION)
       end
