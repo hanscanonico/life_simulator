@@ -7,6 +7,23 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "copy-cost-adaptation",
+        title: "Does copying get cheaper?",
+        date: Date.new(2026, 9, 13),
+        experiment_slug: nil,
+        status: :partial,
+        summary: "Every sample now records the copy cost of the dominant replicator — the " \
+                 "interpreter steps the most populous tape that passes the replicator test " \
+                 "needs for one byte-exact copy — so a world that got better at copying " \
+                 "itself can be seen getting better rather than inferred. This reads that " \
+                 "series off every transitioned run the lab has, whichever sweep it came " \
+                 "from, and counts how many end cheaper than they started. It is the first " \
+                 "direct test of adaptation in the programme and it is not yet the " \
+                 "adaptation sweep: the runs were assembled by having transitioned, not " \
+                 "designed to answer this, and a falling cost can be a cheaper replicator " \
+                 "winning rather than one lineage improving."
+      ),
+      Finding.new(
         slug: "emergence-can-be-left",
         title: "Emergence is a state a world can leave",
         date: Date.new(2026, 9, 12),

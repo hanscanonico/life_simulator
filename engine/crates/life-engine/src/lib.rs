@@ -17,6 +17,6 @@ pub mod world;
 pub use bff::OpSet;
 pub use metrics::Metrics;
 pub use params::{Init, ParamError, Params, Substrate};
-pub use replicator::is_replicator;
+pub use replicator::{assay, is_replicator, Assay};
 pub use snapshot::SnapshotError;
 pub use world::World;

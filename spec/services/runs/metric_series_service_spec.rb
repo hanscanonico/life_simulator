@@ -25,6 +25,13 @@ RSpec.describe Runs::MetricSeriesService do
     expect(series).to eq([[200, 0.4]])
   end
 
+  it "counts no point for an observable the engine reported as null" do
+    create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9, "copy_cost" => nil })
+    create(:sample, run: run, epoch: 200, values: { "compress_ratio" => 0.9, "copy_cost" => 1_794 })
+
+    expect(described_class.call(run: run, metric: "copy_cost")).to eq([[200, 1_794]])
+  end
+
   it "skips a value that is not a number" do
     create(:sample, run: run, epoch: 100, values: { "compress_ratio" => "NaN" })
 

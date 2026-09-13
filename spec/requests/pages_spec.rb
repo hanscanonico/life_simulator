@@ -41,7 +41,7 @@ RSpec.describe "Pages", type: :request do
   describe "GET /how-it-works" do
     let(:observables) do
       %w[compress_ratio distinct_tapes top_share op_density replicator_count entropy_bits alphabet_size
-         copy_rate distinct_lineages top_lineage_share lineage_variation transition_epoch]
+         copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost transition_epoch]
     end
 
     it "defines the substrate and links to the sweeps" do

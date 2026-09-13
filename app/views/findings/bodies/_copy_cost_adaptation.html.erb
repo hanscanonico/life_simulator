@@ -1,0 +1,162 @@
+<% survey = @show.copy_cost_survey %>
+
+<h2>Question</h2>
+<p>
+  The programme can say when a world crosses into self-replication and
+  <%= link_to "whether it stays there", finding_path("emergence-can-be-left") %>, but nothing
+  in it has yet asked whether what emerged gets any <em>better</em>. Selection, if it is
+  running at all, has something to push on: a replicator that finishes its copy in fewer
+  interpreter steps spends less of an interaction's budget on it, and in a fixed budget that
+  is the difference between copying and running out of time. So the question is the plainest
+  version of adaptation this substrate allows — once a world holds replicators, does the
+  cost of a copy fall as the epochs go by?
+</p>
+
+<h2>Method</h2>
+<p>
+  The engine's replicator test already runs four trials of <span class="mono">T ++ R</span>
+  per tested tape and counts the ones that leave <span class="mono">T</span> in the second
+  half. It now also keeps what each passing trial cost in interpreter steps and reports the
+  median of them: <strong>copy cost</strong>, the vocabulary the design record's evolution
+  programme fixes, measured on the runs the test was already performing rather than on new
+  ones. The sample records the cost of the <em>dominant</em> replicator — the most populous
+  tape among the <span class="mono">top_k</span> tested that passes the test — and null when
+  no tested tape replicates. The hand-written replicator in the engine's own test suite
+  copies itself in 1 794 steps, which is what pins the reading.
+</p>
+<p>
+  This page then reads that series back out of the lab: every transitioned run, whichever
+  sweep queued it, its samples at or after its own crossing epoch, in epoch order. A run is
+  counted as falling when its last recorded cost is below its first post-transition one,
+  rising when it is above, flat when they are equal. Counts of directions, nothing fitted.
+</p>
+
+<h2>Result</h2>
+<% if survey.any? %>
+  <p>
+    <strong>
+      <% if survey.compared_count.zero? %>
+        No run has two readings of the cost yet, so nothing can be compared.
+      <% elsif survey.fell_count > survey.rose_count %>
+        More transitioned worlds end up copying themselves more cheaply than end up copying
+        themselves more dearly.
+      <% elsif survey.fell_count.zero? %>
+        No transitioned world in the lab ends cheaper than it started.
+      <% else %>
+        The direction is not one way: as many worlds get dearer as get cheaper.
+      <% end %>
+    </strong>
+    The lab has <%= pluralize survey.transitioned_count, "terminal run" %> that crossed, with a
+    copy cost recorded after the crossing in <%= survey.measured_count %> of them, across
+    <%= pluralize survey.sweeps.size, "sweep" %>.
+    <% if survey.compared_count.positive? %>
+      Among the <%= pluralize survey.compared_count, "run" %> with at least two readings, the
+      split is <%= survey.fell_count %> ending below their first post-transition cost,
+      <%= survey.rose_count %> above it and <%= survey.flat_count %> on it.
+    <% end %>
+  </p>
+
+  <div id="copy-cost-runs" class="table-scroll" tabindex="0" role="region"
+       aria-label="Copy cost of every transitioned run that recorded one">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Sweep</th>
+          <th>Run</th>
+          <th class="numeric">Transition epoch</th>
+          <th class="numeric">Readings</th>
+          <th class="numeric">First cost (epoch)</th>
+          <th class="numeric">Last cost (epoch)</th>
+          <th class="numeric">Cheapest</th>
+          <th>Direction</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% survey.table_rows.each do |row| %>
+          <tr>
+            <td><%= link_to row.experiment.name, experiment_path(row.experiment) %></td>
+            <td><%= link_to "seed #{row.seed}", run_path(row.run) %></td>
+            <td class="numeric mono"><%= number_with_delimiter row.transition_epoch %></td>
+            <td class="numeric mono"><%= number_with_delimiter row.readings %></td>
+            <td class="numeric mono">
+              <%= number_with_delimiter row.first_cost %>
+              (<%= number_with_delimiter row.first_epoch %>)
+            </td>
+            <td class="numeric mono">
+              <%= number_with_delimiter row.last_cost %>
+              (<%= number_with_delimiter row.last_epoch %>)
+            </td>
+            <td class="numeric mono"><%= number_with_delimiter row.min_cost %></td>
+            <td>
+              <% if row.fell? %>
+                <span class="badge badge-success">cheaper</span>
+              <% elsif row.rose? %>
+                <span class="badge badge-warning">dearer</span>
+              <% elsif row.flat? %>
+                <span class="badge badge-info">unchanged</span>
+              <% else %>
+                <span class="text-muted">one reading</span>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-sm text-muted">
+    One row per transitioned run whose samples carry a copy cost at or after its crossing,
+    grouped by sweep. Costs are interpreter steps for one byte-exact copy by the run's
+    dominant replicator at that sample; "Cheapest" is the smallest the run ever recorded.
+    <% if survey.capped? %>
+      The table stops at <%= pluralize Findings::ShowPage::MAX_TRANSITIONS, "row" %> and
+      leaves <%= pluralize survey.rows_omitted, "further run" %> out; every one of them is
+      counted in the figures above.
+    <% end %>
+  </p>
+<% else %>
+  <p class="text-muted">
+    No run in this database has recorded a copy cost yet. The observable is new, and a run
+    only carries it from the moment the lab's runners started measuring it, so this table
+    fills in as the worlds now on the clock reach their next sample — and stays empty for
+    every run that finished before the engine could count the steps.
+  </p>
+<% end %>
+
+<h2>What this does not claim</h2>
+<p>
+  <strong>This is not the adaptation sweep.</strong> The design record's evolution programme
+  asks for a grid designed to measure adaptation: parameter points that transition, long
+  budgets, enough seeds for the direction to mean something. What is above is every run that
+  happened to transition, from sweeps built to answer other questions at other budgets, none
+  of them run to answer this one. A count of directions over such a set describes the set.
+</p>
+<p>
+  <strong>"Dominant replicator" is a tape, not a lineage.</strong> The cost is read off the
+  most populous tape that passes the replicator test at that sample. When it falls between
+  two samples, that can be one colony getting cheaper — or a cheaper replicator taking over
+  from a dearer one, which is selection too but a different sentence, and this page cannot
+  tell the two apart. It also says nothing about the tapes below the top of the census.
+</p>
+<p>
+  <strong>Every series is censored at both ends.</strong> No run recorded a copy cost before
+  this observable existed, so each series starts wherever the lab first ran the new engine
+  rather than at the world's crossing, and ends wherever that run's budget ended. A cost
+  that was falling when the clock ran out was falling, not converging.
+</p>
+<p>
+  <strong>Steps are not fitness.</strong> Copy cost is the price of one copy in a test the
+  engine performs against a random partner, not the rate at which a tape actually spreads
+  through the world. A cheaper copier that meets fewer partners spreads more slowly than a
+  dearer one that meets more; <span class="mono">copy_rate</span> and the census remain the
+  observables of what happened in situ.
+</p>
+
+<h2>What next</h2>
+<p>
+  The series has to accumulate before it can be read: the runs on the clock need to sample
+  under the new engine for long enough to give more than a couple of readings each. After
+  that, the honest form of this question is the adaptation sweep — the transitioning
+  parameter points at many seeds and a long budget — and the version of it that would really
+  settle the matter reads copy cost per lineage rather than per dominant tape, so a single
+  colony can be watched getting cheaper.
+</p>

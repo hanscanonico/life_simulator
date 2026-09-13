@@ -896,6 +896,68 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the copy-cost write-up" do
+      let(:copy_cost) { Findings::Registry.find("copy-cost-adaptation") }
+
+      def run_with_costs(experiment, seed, costs)
+        run = create(:run, experiment: experiment, seed: seed, status: "finished", transition_epoch: 1_000)
+        costs.each_with_index do |cost, index|
+          create(:sample, run: run, epoch: 1_000 + (index * 10), values: { "copy_cost" => cost })
+        end
+        run
+      end
+
+      it "states what copy cost is and what the count does not claim" do
+        get finding_path(copy_cost)
+
+        expect(response.body.squish)
+          .to include("Does copying get cheaper?",
+                      "copies itself in 1 794 steps",
+                      "This is not the adaptation sweep.",
+                      %("Dominant replicator" is a tape, not a lineage.),
+                      "Every series is censored at both ends.",
+                      "Steps are not fitness.")
+      end
+
+      it "says plainly that no run has recorded a cost yet" do
+        create(:run, status: "finished", transition_epoch: 900)
+
+        get finding_path(copy_cost)
+
+        expect(response.body.squish).to include("No run in this database has recorded a copy cost yet")
+      end
+
+      context "with recorded costs in the database" do
+        it "counts the directions and links the sweeps and the runs" do
+          radius = create(:experiment, name: "Radius", slug: "radius")
+          cheaper = run_with_costs(radius, 1, [1_794, 1_600, 1_200])
+          dearer = run_with_costs(radius, 2, [900, 1_500])
+
+          get finding_path(copy_cost)
+
+          expect(response.body.squish)
+            .to include("The lab has 2 terminal runs that crossed, with a copy cost recorded after " \
+                        "the crossing in 2 of them, across 1 sweep",
+                        "Among the 2 runs with at least two readings, the split is 1 ending below " \
+                        "their first post-transition cost, 1 above it and 0 on it")
+          expect(response.body).to include(experiment_path(radius), run_path(cheaper), run_path(dearer),
+                                           "cheaper", "dearer")
+        end
+
+        it "names what a capped table leaves out, and says the figures still count it" do
+          stub_const("Findings::ShowPage::MAX_TRANSITIONS", 1)
+          sweep = create(:experiment)
+          2.times { |index| run_with_costs(sweep, index, [1_794, 1_200]) }
+
+          get finding_path(copy_cost)
+
+          expect(response.body.squish)
+            .to include("The table stops at 1 row and leaves 1 further run out")
+          expect(response.parsed_body.css("#copy-cost-runs tbody tr").size).to eq(1)
+        end
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

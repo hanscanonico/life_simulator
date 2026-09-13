@@ -23,7 +23,7 @@ RSpec.describe Findings::Registry do
     slugs = described_class.all.map(&:slug)
 
     expect(slugs.first(4))
-      .to eq(%w[emergence-can-be-left mutation-rate-long-horizon mutation-rate-window bff-control])
+      .to eq(%w[copy-cost-adaptation emergence-can-be-left mutation-rate-long-horizon mutation-rate-window])
   end
 
   it "keeps the order of findings sharing a date fixed across calls" do

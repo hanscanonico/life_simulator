@@ -138,6 +138,15 @@
       tapes.
     </dd>
 
+    <dt class="mono">copy_cost</dt>
+    <dd>
+      What one copy costs the dominant replicator, in interpreter steps. The replicator
+      test already runs four trials per tested tape; this is the median of the trials that
+      copied, read off the most populous tape that passes the test. Null when no tested
+      tape replicates. It is the observable a world that got better at copying itself would
+      move: the hand-written replicator the engine tests itself against needs 1 794 steps.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which
