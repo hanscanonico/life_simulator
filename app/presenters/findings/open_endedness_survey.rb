@@ -44,9 +44,7 @@ module Findings
     ].freeze
 
     # One transitioned run, as the two series its samples carry at or after its crossing.
-    Reading = Data.define(:run, :series) do
-      def readings(observable) = points(observable).size
-
+    Reading = Data.define(:series) do
       def measured?(observable) = points(observable).any?
 
       # The highest reading after the crossing, which is a ceiling rather than a level the
@@ -59,7 +57,7 @@ module Findings
       # readings, not against its first: one step up right after the crossing is a step,
       # not a world still climbing.
       def rising?(observable)
-        readings(observable) >= 2 && last_of(observable) > Median.of(values_of(observable))
+        points(observable).size >= 2 && last_of(observable) > Median.of(values_of(observable))
       end
 
       def values_of(observable) = points(observable).map(&:last)
@@ -185,7 +183,7 @@ module Findings
         arm_runs = runs.select { |run| axis.matches?(run.params, value) }
 
         Arm.new(value: value, label: axis.label_of(value), control: value == axis.values.first,
-                readings: arm_runs.map { |run| Reading.new(run: run, series: series_by_run.fetch(run.id, {})) })
+                readings: arm_runs.map { |run| Reading.new(series: series_by_run.fetch(run.id, {})) })
       end
     end
 
