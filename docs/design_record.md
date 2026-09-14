@@ -440,8 +440,11 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   copier's last head step claimed — do not unmake the copy, and a half too short to hold
   the whole source is no copy of it. Read the other way round, an interaction that grew
   could never register a copy at all and the reading would be biased down in exactly the
-  arms this sweep studies; on a pair whose halves are the same length the rule is the
-  equality it always was, so no fixed-tape run moves.
+  arms this sweep studies. The exclusion of pairs that arrive a copy already reads the
+  same rule, not plain inequality: a frozen world of tapes beside the tapes one head step
+  lengthened would otherwise report half its interactions as copies with nothing having
+  run, the same bias pointing up. On a pair whose halves are the same length rule and
+  exclusion are both the equality they always were, so no fixed-tape run moves.
   **The snapshot** carries the lengths, in a version 4 container: the cell payload is the
   ragged live bytes end to end, a third zlib payload holds one length per cell, and the
   header carries the cap they were written under, checked against the run's own like every

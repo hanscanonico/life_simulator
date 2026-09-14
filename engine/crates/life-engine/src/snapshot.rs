@@ -586,6 +586,58 @@ mod tests {
         }
     }
 
+    /// A round trip through this file's own encoder cannot see a field that moved, and
+    /// Postgres holds blobs a later build has to read. So the version 4 layout is pinned
+    /// here field by field, offset by offset, payloads in the order they follow the
+    /// header: cells, tags, lengths.
+    #[test]
+    fn pins_the_version_four_layout() {
+        let params = Params {
+            max_tape_len: 300,
+            ..params()
+        };
+        let lens: Vec<u32> = (0..params.cell_count() as u32)
+            .map(|cell| 4 + cell)
+            .collect();
+        let live: Vec<u8> = (0..lens.iter().sum::<u32>()).map(|at| at as u8).collect();
+        let tags = lineages(&params);
+
+        let bytes = encode(&header(&params, 9), &live, &tags, &lens);
+
+        assert_eq!(bytes[..4], MAGIC);
+        assert_eq!(bytes[4], VERSION_RAGGED);
+        assert_eq!(bytes[5], substrate_byte(params.substrate));
+        assert_eq!(bytes[6..10], params.width.to_le_bytes());
+        assert_eq!(bytes[10..14], params.height.to_le_bytes());
+        assert_eq!(bytes[14..18], params.tape_len.to_le_bytes());
+        assert_eq!(bytes[18..26], 9u64.to_le_bytes());
+        assert_eq!(bytes[26..34], NO_EPOCH.to_le_bytes(), "no candidate");
+        assert_eq!(bytes[34..38], 0u32.to_le_bytes(), "nothing held");
+        assert_eq!(bytes[38..46], NO_EPOCH.to_le_bytes(), "nothing settled");
+        assert_eq!(bytes[46..54], NO_EPOCH.to_le_bytes(), "no last epoch");
+        assert_eq!(bytes[70..74], 300u32.to_le_bytes(), "the cap");
+
+        let cells_len = u64::from_le_bytes(bytes[54..62].try_into().unwrap()) as usize;
+        let tags_len = u64::from_le_bytes(bytes[62..70].try_into().unwrap()) as usize;
+        let body = &bytes[HEADER_LEN_V4..];
+        assert_eq!(
+            inflate_bounded(&body[..cells_len], live.len()).unwrap(),
+            live
+        );
+        assert_eq!(
+            inflate_bounded(
+                &body[cells_len..cells_len + tags_len],
+                tags.len() * LINEAGE_BYTES
+            )
+            .unwrap(),
+            lineage_bytes(&tags)
+        );
+        assert_eq!(
+            inflate_bounded(&body[cells_len + tags_len..], lens.len() * LEN_BYTES).unwrap(),
+            len_bytes(&lens)
+        );
+    }
+
     /// The lengths alone cannot tell the cap they were written under: a blob whose tapes
     /// all happen to fit a narrower world would restore into it silently, and the run
     /// would carry room it was never given. The version 4 header carries the cap for

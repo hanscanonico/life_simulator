@@ -293,12 +293,17 @@ impl World {
             energy.spend(a, b, outcome.steps);
             if counting {
                 interactions += 1;
-                // Two halves that arrived identical cannot show a copy: they already end
-                // equal to each other's pre-execution tape whether or not anything ran, and
-                // counting them reads 1.0 on a frozen monoculture.
-                let copied = before[..live_a] != before[live_a..]
-                    && (copied_onto(&pair[live_a..], &before[..live_a])
-                        || copied_onto(&pair[..live_a], &before[live_a..]));
+                // A pair that arrives already satisfying the rule cannot show a copy: it
+                // ends satisfying it whether or not anything ran. Reading that exclusion
+                // as plain inequality would count every frozen pair whose shorter half is
+                // its partner's prefix — a tape and the tape one head step lengthened —
+                // and read near 1.0 on a monoculture that never moved.
+                let (arrived_a, arrived_b) = (&before[..live_a], &before[live_a..]);
+                let arrived_copied =
+                    copied_onto(arrived_b, arrived_a) || copied_onto(arrived_a, arrived_b);
+                let copied = !arrived_copied
+                    && (copied_onto(&pair[live_a..], arrived_a)
+                        || copied_onto(&pair[..live_a], arrived_b));
                 copies += u64::from(copied);
             }
             // The split stays where the pair was joined: the first cell keeps the length it
@@ -552,11 +557,12 @@ pub fn halt_reason(outcome: &bff::Outcome, budget: u32, max_steps: u32) -> bff::
     outcome.halt
 }
 
-/// Whether one half of a pair ends holding a byte-exact image of the tape its partner
-/// arrived with, read from byte zero (`copy_rate`, DESIGN §1.2). A half too short to hold
-/// the whole source is no copy of it; bytes past the image — the room a growing tape
-/// claimed and never wrote into — do not unmake one, or an interaction that grew could
-/// never register a copy at all.
+/// Whether one half of a pair holds a byte-exact image of a tape, read from byte zero
+/// (`copy_rate`, DESIGN §1.2). A half too short to hold the whole source is no copy of it;
+/// bytes past the image — the room a growing tape claimed and never wrote into — do not
+/// unmake one, or an interaction that grew could never register a copy at all. The rule
+/// reads the pair as it arrived as well as the pair it left, so a pair that already
+/// satisfied it is excluded rather than counted.
 fn copied_onto(result: &[u8], source: &[u8]) -> bool {
     result.len() >= source.len() && result[..source.len()] == *source
 }
@@ -2023,6 +2029,39 @@ mod tests {
             .any(|cell| cell.len() > tape.len() && cell[..tape.len()] == tape[..]);
         assert!(grew_a_copy, "no partner was copied onto and lengthened");
         assert!(world.metrics().copy_rate > 0.0);
+    }
+
+    /// The mixed-length twin of the frozen monoculture below: tapes that differ only in
+    /// the byte one of them gained. Nothing runs, yet every such pair satisfies the copy
+    /// rule on arrival, so counting them would read half the interactions as copies in a
+    /// world that never moved — the bias the rule exists to remove, pointing the other way.
+    #[test]
+    fn a_frozen_ragged_monoculture_reports_no_copies() {
+        let params = Params {
+            tape_len: 200,
+            max_tape_len: 512,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let inert: Vec<u8> = [vec![b']'], vec![b'x'; 199]].concat();
+        let longer: Vec<u8> = [inert.clone(), vec![b'x']].concat();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, if (x + y) % 2 == 0 { &inert } else { &longer });
+            }
+        }
+        let before = world.world_hash();
+
+        world.step();
+
+        assert_eq!(world.world_hash(), before, "nothing moved");
+        assert_eq!(
+            world.metrics().copy_rate,
+            0.0,
+            "a half that arrived a copy of its partner is not one"
+        );
     }
 
     #[test]
