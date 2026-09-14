@@ -280,10 +280,6 @@ fn at_top_k(stored: &StoredWorld, top_k: u32) -> Result<Metrics> {
     Ok(world.metrics())
 }
 
-/// The engine puts the ranked tapes through the replicator test in rank order from one
-/// stream, so `replicator_count` at `top_k = r` differs from the count at `r - 1` exactly
-/// when rank `r` passed the test — which is how a per-tape verdict is read off the sweep
-/// rather than by re-running the test here with a stream of our own.
 /// The restored cells read as tapes: ragged wherever the blob carried live lengths.
 fn tapes_of<'a>(stored: &StoredWorld, restored: &'a Restored) -> metrics::Tapes<'a> {
     metrics::Tapes::ragged(
@@ -293,6 +289,10 @@ fn tapes_of<'a>(stored: &StoredWorld, restored: &'a Restored) -> metrics::Tapes<
     )
 }
 
+/// The engine puts the ranked tapes through the replicator test in rank order from one
+/// stream, so `replicator_count` at `top_k = r` differs from the count at `r - 1` exactly
+/// when rank `r` passed the test — which is how a per-tape verdict is read off the sweep
+/// rather than by re-running the test here with a stream of our own.
 fn top_tapes(
     tapes: metrics::Tapes<'_>,
     stored: &StoredWorld,

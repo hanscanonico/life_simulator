@@ -1495,16 +1495,24 @@ mod tests {
     }
 
     /// The same bytes under two different sets of lengths are two different worlds, and a
-    /// hash that read the slots alone would call them one.
+    /// hash that read the slots alone would call them one. A tape that claimed bytes
+    /// without writing to them is exactly that case: its slot holds what the shorter tape
+    /// it grew from holds, zeros past the live bytes either way.
     #[test]
     fn the_world_hash_reads_the_lengths_as_well_as_the_bytes() {
         let params = roomy_soup(128);
         let mut shorter = World::new(&params, 5).unwrap();
-        let mut longer = World::new(&params, 5).unwrap();
-        let tape = [7u8; 64];
-        shorter.set_cell(0, 0, &tape[..32]);
-        longer.set_cell(0, 0, &tape[..64]);
-        assert_ne!(shorter.world_hash(), longer.world_hash());
+        let mut claimed = World::new(&params, 5).unwrap();
+        let grown: Vec<u8> = [vec![7u8; 32], vec![0u8; 64]].concat();
+        shorter.set_cell(0, 0, &grown[..32]);
+        claimed.set_cell(0, 0, &grown);
+
+        assert_eq!(
+            shorter.cells, claimed.cells,
+            "the two worlds hold one array"
+        );
+        assert_eq!(shorter.lens[0] + 64, claimed.lens[0]);
+        assert_ne!(shorter.world_hash(), claimed.world_hash());
     }
 
     /// A mixed-length world is read on its live bytes alone: the zeros a slot holds past a

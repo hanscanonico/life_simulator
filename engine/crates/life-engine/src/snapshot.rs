@@ -540,6 +540,63 @@ mod tests {
         ));
     }
 
+    /// Version 4: the ragged live bytes go in and come back laid into the `stride`-wide
+    /// slots the world holds them in, the lengths beside them and the padding zero.
+    #[test]
+    fn round_trips_the_live_bytes_and_the_lengths_of_a_ragged_world() {
+        let params = Params {
+            max_tape_len: 32,
+            ..params()
+        };
+        let lens: Vec<u32> = (0..params.cell_count() as u32)
+            .map(|cell| 8 + cell % 3)
+            .collect();
+        let live: Vec<u8> = (0..lens.iter().sum::<u32>()).map(|at| at as u8).collect();
+
+        let bytes = encode(&header(&params, 7), &live, &lineages(&params), &lens);
+
+        assert_eq!(bytes[4], VERSION_RAGGED);
+        let restored = decode(&params, &bytes).unwrap();
+        assert_eq!(restored.lens, Some(lens.clone()));
+        let mut at = 0;
+        for (cell, len) in lens.iter().enumerate() {
+            let len = *len as usize;
+            let slot = &restored.cells[cell * params.stride()..(cell + 1) * params.stride()];
+            assert_eq!(&slot[..len], &live[at..at + len], "cell {cell}");
+            assert!(slot[len..].iter().all(|byte| *byte == 0), "cell {cell}");
+            at += len;
+        }
+    }
+
+    /// A length no slot of this world can hold — a blob written under a wider cap — is
+    /// refused, rather than laid into a slot it overruns; and so is a length of zero,
+    /// which no tape ever has.
+    #[test]
+    fn rejects_lengths_that_do_not_fit_the_params() {
+        let params = params();
+        let over_the_cap = encode(
+            &header(&params, 0),
+            &vec![0u8; 16 * params.cell_count()],
+            &lineages(&params),
+            &vec![16u32; params.cell_count()],
+        );
+        assert!(matches!(
+            decode(&params, &over_the_cap),
+            Err(SnapshotError::Mismatch { field: "tape_len" })
+        ));
+
+        let empty_tapes = encode(
+            &header(&params, 0),
+            &[],
+            &lineages(&params),
+            &vec![0u32; params.cell_count()],
+        );
+        assert!(matches!(
+            decode(&params, &empty_tapes),
+            Err(SnapshotError::Mismatch { field: "tape_len" })
+        ));
+    }
+
     #[test]
     fn rejects_lineage_tags_that_do_not_count_the_cells() {
         let params = params();

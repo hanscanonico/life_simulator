@@ -428,7 +428,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   histogram behind `op_density`, `entropy_bits` and `alphabet_size`, the tape ranking, and
   the replicator test all see the ragged concatenation. Two tapes of different lengths are
   different tapes, so the ranking separates a grown replicator from the shorter one it
-  descends from. Hamming distance — which both the lineage rule and `lineage_variation`
+  descends from. The replicator test of §1.2 is otherwise unchanged: a candidate is still
+  paired with a random tape of its own length, and that pair never grows, so a tape is put
+  to the same test in every arm of the sweep. Hamming distance — which both the lineage rule and `lineage_variation`
   read — counts a length difference as that many mismatches, so a tape that grew has moved
   away from its lineage's modal tape by exactly the bytes it gained. No observable is
   normalised by `tape_len`, so none of them had to be redefined for a mixed-length world.
