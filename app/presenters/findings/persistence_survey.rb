@@ -73,7 +73,7 @@ module Findings
 
     def longest_persistence = epochs_persisted.last
 
-    def median_persistence = median(epochs_persisted)
+    def median_persistence = Median.of(epochs_persisted)
 
     # The transitioned state is the compression rule's, and the census is a second
     # observable that often disagrees with it, so the outcome is read again on each side of
@@ -88,7 +88,7 @@ module Findings
 
     def largest_census = census_peaks.last
 
-    def median_census = median(census_peaks)
+    def median_census = Median.of(census_peaks)
 
     # The sweeps the survey rests on, named the way their own pages name them.
     def sweeps = @sweeps ||= rows.map(&:experiment).uniq.sort_by(&:name)
@@ -108,14 +108,6 @@ module Findings
       @sample_counts_from_transition ||=
         Sample.joins(:run).where(run_id: transitioned_runs.map(&:id))
               .where("samples.epoch >= runs.transition_epoch").group(:run_id).count
-    end
-
-    # The lower of the two middle values on an even count: the distribution is small
-    # enough that an interpolated median would suggest a resolution it does not have.
-    def median(values)
-      return nil if values.empty?
-
-      values[(values.size - 1) / 2]
     end
   end
 end

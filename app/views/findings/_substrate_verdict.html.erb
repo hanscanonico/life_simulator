@@ -1,17 +1,16 @@
 <%# One hypothesis of the open-endedness finding: the verdict its own sweep supports, then
     the arm-by-arm counts it was read from. `reading` names the deciding observable and
-    `unit` what it is measured in, so the same table serves a length and a lineage count. %>
+    `unit` what it is measured in. %>
 <p>
   <span class="badge <%= bet.badge_class %>"><%= bet.verdict_label %></span>
   <strong>
     <% if bet.verdict == :supported %>
       <%= safe_join(bet.raising_arms.map { |arm| tag.span(arm.label, class: "mono") }, ", ") %>
-      settles above the control arm in most of its runs.
+      reads above the control arm in most of its runs.
     <% elsif bet.verdict == :not_supported %>
-      No arm with at least
-      <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> settles
-      above the control arm in most of them — the refutation condition of the hypothesis,
-      at the seeds this sweep has.
+      No arm of the sweep reads above the control arm in most of its runs, and every arm has
+      at least <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> —
+      the refutation condition of the hypothesis, at the seeds this sweep has.
     <% else %>
       Not enough transitioned seeds to decide it either way.
     <% end %>
@@ -24,64 +23,24 @@
     The sweep <span class="mono"><%= bet.slug %></span> is not in this database, so it has
     no runs behind it here.
   <% end %>
-  <% if bet.resolved? %>
-    The control arm's median is
-    <%= number_with_precision bet.control_median, precision: 1, strip_insignificant_zeros: true %>
+  <% if bet.control_comparable? %>
+    The control arm's median peak is
+    <%= number_with_precision bet.control_median_peak, precision: 1, strip_insignificant_zeros: true %>
     <%= unit %>, and every other arm with at least
     <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> is counted
     against it.
   <% else %>
-    A verdict needs at least
-    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> in the
-    control arm and in one other arm; until then the hypothesis is untested rather than
-    refuted.
+    The control arm carries fewer than
+    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %>, so there is
+    nothing to count the other arms against yet.
+  <% end %>
+  <% if bet.untestable_arms.any? %>
+    Untestable here:
+    <%= safe_join(bet.untestable_arms.map { |arm| tag.span(arm.label, class: "mono") }, ", ") %>
+    <%= bet.untestable_arms.one? ? "carries" : "carry" %> fewer than
+    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %>, so the
+    sweep cannot read as not supported until <%= bet.untestable_arms.one? ? "it is" : "they are" %>
+    seeded — one arm nobody has run refutes nothing.
   <% end %>
 </p>
-
-<div class="table-scroll" tabindex="0" role="region" id="<%= bet.slug %>-<%= bet.decided_by %>-arms"
-     aria-label="Arms of the <%= bet.slug %> sweep, against its control arm">
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>Arm</th>
-        <th class="numeric">Transitioned runs</th>
-        <th class="numeric">Measured</th>
-        <th class="numeric">Median <%= unit %></th>
-        <th class="numeric">Above control</th>
-        <th class="numeric">Still rising</th>
-      </tr>
-    </thead>
-    <tbody>
-      <% bet.arms.each do |arm| %>
-        <tr>
-          <td>
-            <span class="mono"><%= arm.label %></span>
-            <% if arm.control? %><span class="badge badge-info">control</span><% end %>
-          </td>
-          <td class="numeric mono"><%= arm.transitioned_count %></td>
-          <td class="numeric mono"><%= arm.measured_count(bet.decided_by) %></td>
-          <td class="numeric mono">
-            <% median = arm.median_plateau(bet.decided_by) %>
-            <%= median ? number_with_precision(median, precision: 1, strip_insignificant_zeros: true) : "—" %>
-          </td>
-          <td class="numeric mono">
-            <% if arm.control? || bet.control_median.nil? %>
-              —
-            <% else %>
-              <%= arm.above_count(bet.decided_by, bet.control_median) %>
-            <% end %>
-          </td>
-          <td class="numeric mono"><%= arm.rising_count(bet.decided_by) %></td>
-        </tr>
-      <% end %>
-    </tbody>
-  </table>
-</div>
-<p class="text-sm text-muted">
-  One row per arm of the sweep. "Measured" counts the transitioned runs whose samples carry
-  the reading after their own crossing; the median is of each run's highest post-crossing
-  reading, the plateau it settled at. "Above control" counts the runs of the arm whose
-  plateau is strictly above the control arm's median — a dash until the control arm has a
-  median to count against — and "Still rising" the runs whose last reading is above their
-  first.
-</p>
+<%= render "findings/substrate_arms", bet: bet, unit: unit %>

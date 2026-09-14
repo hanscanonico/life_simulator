@@ -1,7 +1,4 @@
 <% survey = @show.open_endedness_survey %>
-<% cost = survey.bet("energy-per-epoch") %>
-<% structure = survey.bet("environmental-structure") %>
-<% room = survey.bet("max-tape-len") %>
 
 <h2>Question</h2>
 <p>
@@ -29,19 +26,27 @@
   or after that run's own crossing epoch: <span class="mono">dominant_compressed_len</span>,
   the compressed length of the most populous tape that passes the replicator test, and
   <span class="mono">distinct_lineages</span>, how many lineage ids the cells hold. A run's
-  <strong>plateau</strong> is the highest reading its samples record after the crossing —
-  the level it settled at, not a fitted trend — and a run is <strong>still rising</strong>
-  when its last reading is above its first. An arm is then placed by counting: a treated arm
-  raises the plateau when more than half of its measured runs sit strictly above the median
-  plateau of the control arm's runs. Nothing on this page is fitted, and nothing is
-  averaged across sweeps.
+  <strong>peak</strong> is the highest reading its samples record after the crossing — a
+  ceiling the run touched, not a level it settled at and not a fitted trend — and a run is
+  <strong>still rising</strong> when its last reading is above the median of its own
+  post-crossing readings. An arm is then placed by counting: a treated arm raises the peak
+  when more than half of its measured runs read strictly above the median peak of the
+  control arm's runs. Nothing on this page is fitted, and nothing is averaged across sweeps.
 </p>
 <p>
-  A verdict needs
-  <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> in the control
-  arm and in at least one other arm of the same sweep. Below that the hypothesis reads
-  <strong>unresolved</strong> with the counts behind that: an arm nothing transitioned in
-  refutes nothing.
+  A hypothesis reads <strong>supported</strong> as soon as one arm with at least
+  <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> raises the
+  peak. It reads <strong>not supported</strong> only when the control arm and every treated
+  arm of the sweep carry at least that many measured runs and none of the treated arms
+  raises it — the refutation DESIGN states, with nothing left unseeded. Anything between the
+  two reads <strong>unresolved</strong>, and the arms that were untestable are named: an arm
+  nothing transitioned in refutes nothing.
+</p>
+<p>
+  Each sweep is decided on the one observable its DESIGN hypothesis names. The other
+  observable is printed underneath it in the same shape and carries no verdict, so both
+  readings of every sweep are on the page without a second hypothesis being invented for
+  them.
 </p>
 
 <h2>Hypothesis 1 — instruction cost</h2>
@@ -51,7 +56,10 @@
   records of that is the lineages it keeps alive, so the priced arms are read against the
   costless one on <span class="mono">distinct_lineages</span>.
 </p>
-<%= render "findings/substrate_verdict", bet: cost, reading: "a lineage count", unit: "lineages" %>
+<%= render "findings/substrate_verdict", bet: survey.instruction_cost,
+           reading: "a lineage count", unit: "lineages" %>
+<%= render "findings/substrate_reading", bet: survey.instruction_cost_complexity,
+           reading: "complexity in bytes", unit: "bytes", decided_on: "lineages" %>
 
 <h2>Hypothesis 2 — environmental structure</h2>
 <p>
@@ -59,12 +67,14 @@
   replicator's complexity settles at, refuted if a world whose regions differ plateaus where
   a uniform world does.</em>
 </p>
-<%= render "findings/substrate_verdict", bet: structure, reading: "a complexity in bytes", unit: "bytes" %>
+<%= render "findings/substrate_verdict", bet: survey.environmental_structure,
+           reading: "a complexity in bytes", unit: "bytes" %>
 <p>
   Its secondary prediction — <em>a heterogeneous world keeps more lineages alive after
-  emergence</em> — is the same arms read on <span class="mono">distinct_lineages</span>.
+  emergence</em> — is the same arms read on <span class="mono">distinct_lineages</span>, and
+  DESIGN states it as a prediction, so this one does carry a verdict.
 </p>
-<%= render "findings/substrate_verdict", bet: structure.with(decided_by: :lineages),
+<%= render "findings/substrate_verdict", bet: survey.environmental_structure_lineages,
            reading: "a lineage count", unit: "lineages" %>
 
 <h2>Hypothesis 3 — room to grow</h2>
@@ -73,7 +83,10 @@
   complexity settles at, refuted if tapes free to lengthen plateau where fixed-length tapes
   do</em> — which would say the 64-byte ceiling was never the binding constraint.
 </p>
-<%= render "findings/substrate_verdict", bet: room, reading: "a complexity in bytes", unit: "bytes" %>
+<%= render "findings/substrate_verdict", bet: survey.room_to_grow,
+           reading: "a complexity in bytes", unit: "bytes" %>
+<%= render "findings/substrate_reading", bet: survey.room_to_grow_lineages,
+           reading: "lineage count", unit: "lineages", decided_on: "complexity" %>
 
 <h2>Does anything keep rising?</h2>
 <% if survey.any? %>
@@ -81,12 +94,11 @@
     Across the three sweeps the lab holds
     <%= pluralize survey.transitioned_count, "transitioned run" %>.
     <%= survey.measured_count(:length) %> of them carry a complexity reading after their
-    crossing and <%= survey.rising_count(:length) %> end above their first;
-    <%= survey.measured_count(:lineages) %> carry a lineage count and
-    <%= survey.rising_count(:lineages) %> end above their first. Rising here is one run's
-    last sample against its first, censored at both ends by that run's budget — a world
-    still climbing when its epochs ran out reads as rising, and one that would have climbed
-    later reads as flat.
+    crossing and <%= survey.rising_count(:length) %> end above the middle of their own
+    post-crossing readings; <%= survey.measured_count(:lineages) %> carry a lineage count and
+    <%= survey.rising_count(:lineages) %> end above the middle of theirs. That is a
+    description of where each run ended, not a trend, and it is censored at both ends by that
+    run's budget.
   </p>
 <% else %>
   <p class="text-muted">
@@ -98,16 +110,24 @@
 
 <h2>What this does not claim</h2>
 <p>
-  <strong>A plateau is a plateau at these budgets.</strong> Every arm runs the same 20 000
+  <strong>A peak is a peak at these budgets.</strong> Every arm runs the same 20 000
   epochs as the sweeps it is compared to, and a run's series is cut off wherever its budget
   ended. A substrate that would have elaborated at epoch 200 000 reads flat here, and the
   refutation condition DESIGN states is met at this budget rather than in general.
 </p>
 <p>
+  <strong>"Still rising" is a description, not a verdict.</strong> No hypothesis on this page
+  turns on it. A run counts as rising when its last post-crossing reading is above the median
+  of its post-crossing readings, which rules out a single step up right after the crossing
+  but is still one reading against a summary of a short series rather than a trend, and it is
+  censored at both ends: a world still climbing when its epochs ran out reads as rising, and
+  one that would have climbed later reads as flat.
+</p>
+<p>
   <strong>Counts, not effect sizes.</strong> A majority of an arm's runs above the control
-  arm's median is a direction, not a magnitude, and at the seed counts these sweeps carry a
-  direction is compatible with a large range of true effects. None of the three verdicts is
-  a significance test.
+  arm's median peak is a direction, not a magnitude, and at the seed counts these sweeps
+  carry a direction is compatible with a large range of true effects. None of the three
+  verdicts is a significance test.
 </p>
 <p>
   <strong>Complexity is size and lineages are descent.</strong> Compressed length bounds the
@@ -126,18 +146,19 @@
 </p>
 <p>
   <strong>One reading per sweep decides it.</strong> Each hypothesis is judged on the
-  observable it names and nothing else. An arm that raises the complexity plateau while
-  losing lineages would read supported on sweep 7's primary prediction and not supported on
-  its secondary one, which is two sentences about the same world rather than a contradiction.
+  observable it names and nothing else; the second reading of each sweep is printed beside
+  it and decides nothing. An arm that raises the complexity peak while losing lineages would
+  read supported on sweep 7's primary prediction and not supported on its secondary one,
+  which is two sentences about the same world rather than a contradiction.
 </p>
 
 <h2>What next</h2>
 <p>
-  If every arm plateaus where its control does, the three substrate bets are spent and the
+  If every arm reads where its control does, the three substrate bets are spent and the
   design record's rung 4 needs a richer substrate rather than a wider grid — and this page is
-  the evidence for saying so. If an arm does raise the plateau, the next run is that arm
-  alone at a budget long enough to see whether the new level is itself a plateau. Either way
-  the reading that would settle it is per lineage rather than per dominant tape, so one
-  colony can be watched elaborating instead of a population being scored by whichever tape
-  is most populous at each sample.
+  the evidence for saying so. If an arm does raise the peak, the next run is that arm
+  alone at a budget long enough to see whether the new level holds. Either way the reading
+  that would settle it is per lineage rather than per dominant tape, so one colony can be
+  watched elaborating instead of a population being scored by whichever tape is most
+  populous at each sample.
 </p>

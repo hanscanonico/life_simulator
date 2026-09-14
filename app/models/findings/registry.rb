@@ -20,12 +20,12 @@ module Findings
                  "established. Each of those sweeps carries its own control arm: the cost " \
                  "off, a uniform world, a tape that cannot lengthen, the substrate every " \
                  "earlier sweep ran. This reads each sweep at render time and asks the " \
-                 "same two questions of every arm — does the dominant replicator settle " \
-                 "at a higher complexity than the control arm settles at, and does the " \
-                 "world keep more lineages alive — by placing each transitioned run above " \
-                 "or below its own control and counting, never fitting a trend. An arm " \
-                 "with too few transitioned seeds decides nothing, and the hypothesis it " \
-                 "belongs to reads unresolved rather than answered."
+                 "same two questions of every arm — does the dominant replicator reach a " \
+                 "higher complexity than the control arm reaches, and does the world keep " \
+                 "more lineages alive — by placing each transitioned run above or below " \
+                 "its own control and counting, never fitting a trend. An arm with too " \
+                 "few transitioned seeds decides nothing, and the hypothesis it belongs " \
+                 "to reads unresolved rather than answered."
       ),
       Finding.new(
         slug: "copy-cost-adaptation",

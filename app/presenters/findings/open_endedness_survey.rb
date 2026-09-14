@@ -9,27 +9,27 @@ module Findings
   # Each sweep carries its own control: the first arm of its grid is the substrate every
   # earlier sweep ran — the cost off, a uniform world, a tape that cannot lengthen — so a
   # treated arm is read against the default substrate inside the same experiment and never
-  # across sweeps. Nothing is fitted: a run's plateau is placed above or below its control
+  # across sweeps. Nothing is fitted: a run's peak is placed above or below its control
   # arm's median and the directions are counted, the way `ComplexitySurvey` counts them.
   class OpenEndednessSurvey
     # Below this many measured runs an arm decides nothing, and the hypothesis it belongs
     # to reads unresolved rather than resting on a single seed.
     MIN_ARM_RUNS = 2
 
-    # The two observables of DESIGN §1.2 this reads, by the name a sample stores them
-    # under. The aggregate is spelled out per observable below rather than built from the
-    # name: no SQL on this page is assembled from a variable.
-    OBSERVABLES = { length: "dominant_compressed_len", lineages: "distinct_lineages" }.freeze
+    # Both observables are read out of the same jsonb column with the same guard, so the
+    # expression is written once and bound to the key rather than spelled out twice.
+    def self.numeric_reading(key)
+      Arel.sql(
+        ApplicationRecord.sanitize_sql_array(
+          ["CASE WHEN jsonb_typeof(samples.values -> ?) = 'number' " \
+           "THEN (samples.values ->> ?)::numeric END", key, key]
+        )
+      )
+    end
+    private_class_method :numeric_reading
 
-    LENGTH_READING = Arel.sql(
-      "CASE WHEN jsonb_typeof(samples.values -> 'dominant_compressed_len') = 'number' " \
-      "THEN (samples.values ->> 'dominant_compressed_len')::numeric END"
-    )
-
-    LINEAGE_READING = Arel.sql(
-      "CASE WHEN jsonb_typeof(samples.values -> 'distinct_lineages') = 'number' " \
-      "THEN (samples.values ->> 'distinct_lineages')::numeric END"
-    )
+    LENGTH_READING = numeric_reading("dominant_compressed_len")
+    LINEAGE_READING = numeric_reading("distinct_lineages")
 
     VERDICT_BADGES = { supported: "badge-success", not_supported: "badge-error",
                        unresolved: "badge-info" }.freeze
@@ -45,23 +45,24 @@ module Findings
 
     # One transitioned run, as the two series its samples carry at or after its crossing.
     Reading = Data.define(:run, :series) do
-      delegate :seed, :transition_epoch, to: :run
-
       def readings(observable) = points(observable).size
 
       def measured?(observable) = points(observable).any?
 
-      def plateau(observable) = points(observable).map(&:last).max
+      # The highest reading after the crossing, which is a ceiling rather than a level the
+      # run settled at: nothing here says the run stayed there.
+      def peak(observable) = values_of(observable).max
 
-      def first_of(observable) = points(observable).first&.last
+      def last_of(observable) = values_of(observable).last
 
-      def last_of(observable) = points(observable).last&.last
-
-      # Two readings or it went nowhere that can be told: a single sample is unread, not
-      # flat.
+      # Rising is the last reading against the middle of the run's own post-crossing
+      # readings, not against its first: one step up right after the crossing is a step,
+      # not a world still climbing.
       def rising?(observable)
-        readings(observable) >= 2 && last_of(observable) > first_of(observable)
+        readings(observable) >= 2 && last_of(observable) > Median.of(values_of(observable))
       end
+
+      def values_of(observable) = points(observable).map(&:last)
 
       def points(observable) = series.fetch(observable, [])
     end
@@ -76,14 +77,14 @@ module Findings
 
       def rising_count(observable) = measured(observable).count { |reading| reading.rising?(observable) }
 
-      def plateaus(observable) = measured(observable).map { |reading| reading.plateau(observable) }
+      def peaks(observable) = measured(observable).map { |reading| reading.peak(observable) }
 
-      def median_plateau(observable) = OpenEndednessSurvey.median(plateaus(observable))
+      def median_peak(observable) = Median.of(peaks(observable))
 
       def above_count(observable, threshold)
         return 0 if threshold.nil?
 
-        plateaus(observable).count { |plateau| plateau > threshold }
+        peaks(observable).count { |peak| peak > threshold }
       end
 
       def comparable?(observable) = measured_count(observable) >= MIN_ARM_RUNS
@@ -91,8 +92,10 @@ module Findings
       def transitioned_count = readings.size
     end
 
-    # One hypothesis: a sweep, its arms and the verdict its own runs support.
-    Bet = Data.define(:slug, :experiment, :axis, :arms, :decided_by) do
+    # One hypothesis: a sweep, its arms and the verdict its own runs support. The same
+    # object serves the other observable of the same sweep, read but not decided, through
+    # `with(decided_by:)`.
+    Bet = Data.define(:slug, :experiment, :arms, :decided_by) do
       def experiment? = experiment.present?
 
       def control_arm = arms.find(&:control?)
@@ -101,22 +104,27 @@ module Findings
 
       def comparable_arms = treated_arms.select { |arm| arm.comparable?(decided_by) }
 
-      def control_median = control_arm&.median_plateau(decided_by)
+      def untestable_arms = treated_arms.reject { |arm| arm.comparable?(decided_by) }
 
-      # A control arm that says nothing cannot be raised above, and neither can a treated
-      # arm that has not been run: either way the hypothesis is untested, not refuted.
-      def resolved? = control_arm&.comparable?(decided_by).present? && comparable_arms.any?
+      def control_comparable? = control_arm&.comparable?(decided_by).present?
 
-      # An arm raises the plateau when most of its runs settle strictly above the median
-      # of the control arm's runs. A majority, not a mean: the reading is a count.
-      def raises?(arm) = arm.above_count(decided_by, control_median) * 2 > arm.measured_count(decided_by)
+      def control_median_peak = control_arm&.median_peak(decided_by)
 
-      def raising_arms = resolved? ? comparable_arms.select { |arm| raises?(arm) } : []
+      # An arm raises the peak when most of its runs read strictly above the median of the
+      # control arm's runs. A majority, not a mean: the reading is a count.
+      def raises?(arm) = arm.above_count(decided_by, control_median_peak) * 2 > arm.measured_count(decided_by)
+
+      def raising_arms = control_comparable? ? comparable_arms.select { |arm| raises?(arm) } : []
+
+      # The refutation DESIGN states is "every treated substrate reads where the default
+      # one does", so it needs every treated arm to have been run: an arm nothing has
+      # transitioned in leaves the hypothesis untested, however many the others carry.
+      def refutable? = control_comparable? && comparable_arms.any? && untestable_arms.empty?
 
       def verdict
-        return :unresolved unless resolved?
+        return :supported if raising_arms.any?
 
-        raising_arms.any? ? :supported : :not_supported
+        refutable? ? :not_supported : :unresolved
       end
 
       def verdict_label = verdict.to_s.tr("_", " ")
@@ -134,29 +142,23 @@ module Findings
 
     def self.build = new
 
-    # The median of a sorted list, averaging the middle pair on an even count: one number
-    # standing for an arm, chosen so one runaway seed cannot carry it.
-    def self.median(values)
-      return nil if values.empty?
-
-      sorted = values.sort
-      middle = sorted.size / 2
-      sorted.size.odd? ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2.0
-    end
-
     def bets = @bets ||= BETS.map { |bet| build_bet(bet.fetch(:sweep), bet.fetch(:decided_by)) }
 
     def bet(slug) = bets.find { |bet| bet.slug == slug }
 
-    def experiments = bets.filter_map(&:experiment)
+    def instruction_cost = bet("energy-per-epoch")
+
+    def instruction_cost_complexity = instruction_cost.with(decided_by: :length)
+
+    def environmental_structure = bet("environmental-structure")
+
+    def environmental_structure_lineages = environmental_structure.with(decided_by: :lineages)
+
+    def room_to_grow = bet("max-tape-len")
+
+    def room_to_grow_lineages = room_to_grow.with(decided_by: :lineages)
 
     def any? = bets.any? { |bet| bet.transitioned_count.positive? }
-
-    def resolved_bets = bets.select(&:resolved?)
-
-    def supported_bets = bets.select { |bet| bet.verdict == :supported }
-
-    def unresolved_bets = bets.select { |bet| bet.verdict == :unresolved }
 
     def transitioned_count = bets.sum(&:transitioned_count)
 
@@ -171,7 +173,7 @@ module Findings
       axis = Experiments::Axis.sweep(Lab::SWEEPS.fetch(sweep).fetch(:param_grid)).first
       experiment = experiments_by_slug[slug]
 
-      Bet.new(slug: slug, experiment: experiment, axis: axis, decided_by: decided_by,
+      Bet.new(slug: slug, experiment: experiment, decided_by: decided_by,
               arms: arms_of(axis, runs_by_experiment.fetch(experiment&.id, [])))
     end
 

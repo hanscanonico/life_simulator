@@ -1,0 +1,50 @@
+<%# The arm-by-arm counts one bet was read from, on whichever observable `bet.decided_by`
+    names. `unit` is what that observable is measured in, so the same table serves a
+    length and a lineage count. %>
+<div class="table-scroll" tabindex="0" role="region" id="<%= bet.slug %>-<%= bet.decided_by %>-arms"
+     aria-label="Arms of the <%= bet.slug %> sweep, against its control arm">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Arm</th>
+        <th class="numeric">Transitioned runs</th>
+        <th class="numeric">Measured</th>
+        <th class="numeric">Median peak <%= unit %></th>
+        <th class="numeric">Above control</th>
+        <th class="numeric">Still rising</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% bet.arms.each do |arm| %>
+        <tr>
+          <td>
+            <span class="mono"><%= arm.label %></span>
+            <% if arm.control? %><span class="badge badge-info">control</span><% end %>
+          </td>
+          <td class="numeric mono"><%= arm.transitioned_count %></td>
+          <td class="numeric mono"><%= arm.measured_count(bet.decided_by) %></td>
+          <td class="numeric mono">
+            <% median = arm.median_peak(bet.decided_by) %>
+            <%= median ? number_with_precision(median, precision: 1, strip_insignificant_zeros: true) : "—" %>
+          </td>
+          <td class="numeric mono">
+            <% if arm.control? || bet.control_median_peak.nil? %>
+              —
+            <% else %>
+              <%= arm.above_count(bet.decided_by, bet.control_median_peak) %>
+            <% end %>
+          </td>
+          <td class="numeric mono"><%= arm.rising_count(bet.decided_by) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p class="text-sm text-muted">
+  One row per arm of the sweep. "Measured" counts the transitioned runs whose samples carry
+  the reading after their own crossing; the median is of each run's peak, the highest
+  post-crossing reading it recorded. "Above control" counts the runs of the arm whose peak
+  is strictly above the control arm's median peak — a dash until the control arm has a
+  median to count against — and "Still rising" the runs whose last reading is above the
+  median of their own post-crossing readings.
+</p>

@@ -1064,9 +1064,23 @@ RSpec.describe "Findings", type: :request do
                       "a heterogeneous world keeps more lineages alive after emergence",
                       "room to grow raises the plateau the dominant replicator's complexity settles at, " \
                       "refuted if tapes free to lengthen plateau where fixed-length tapes do",
-                      "A plateau is a plateau at these budgets.",
+                      "A peak is a peak at these budgets.",
+                      "\"Still rising\" is a description, not a verdict.",
                       "Counts, not effect sizes.",
                       "Every run is read from its own crossing.")
+      end
+
+      it "reads every sweep on both observables and decides it on only one" do
+        get finding_path(open_endedness)
+
+        tables = response.parsed_body.css(".table-scroll").pluck("id")
+
+        expect(tables).to include("energy-per-epoch-lineages-arms", "energy-per-epoch-length-arms",
+                                  "environmental-structure-length-arms", "environmental-structure-lineages-arms",
+                                  "max-tape-len-length-arms", "max-tape-len-lineages-arms")
+        expect(response.body.squish)
+          .to include("Read but not the hypothesis under test.",
+                      "neither support nor refute the hypothesis above")
       end
 
       it "links the three sweeps it weighs and the baseline finding it is read against" do
@@ -1091,7 +1105,7 @@ RSpec.describe "Findings", type: :request do
         expect(treated.css("td").map { |cell| cell.text.squish }).to eq(["2048", "0", "0", "—", "—", "0"])
       end
 
-      context "with an arm settling above its control" do
+      context "with an arm reading above its control" do
         it "reads the hypothesis as supported and names the arm" do
           sweep = substrate_sweep("max_tape_len")
           2.times { arm_run(sweep, { "max_tape_len" => 64 }, [36, 40]) }
@@ -1100,14 +1114,14 @@ RSpec.describe "Findings", type: :request do
           get finding_path(open_endedness)
 
           expect(response.body.squish)
-            .to include("supported", "settles above the control arm in most of its runs",
+            .to include("supported", "reads above the control arm in most of its runs",
                         "has 4 transitioned runs, 4 of them carrying a complexity in bytes after the crossing",
-                        "The control arm's median is 40 bytes")
+                        "The control arm's median peak is 40 bytes")
           expect(response.parsed_body.css("#max-tape-len-length-arms tbody tr").size).to eq(4)
         end
       end
 
-      context "with every arm plateauing where its control does" do
+      context "with every arm measured and reading where its control does" do
         it "reads the hypothesis as not supported, which is the refutation the design states" do
           sweep = substrate_sweep("environmental_structure")
           2.times { arm_run(sweep, { "structure" => "uniform" }, [36, 44]) }
@@ -1118,12 +1132,30 @@ RSpec.describe "Findings", type: :request do
 
           expect(response.body.squish)
             .to include("not supported",
-                        "No arm with at least 2 measured runs settles above the control arm in most " \
-                        "of them — the refutation condition of the hypothesis")
+                        "No arm of the sweep reads above the control arm in most of its runs, and every arm " \
+                        "has at least 2 measured runs — the refutation condition of the hypothesis")
         end
       end
 
-      context "with one transitioned seed in an arm" do
+      context "with an arm nothing has been seeded in" do
+        it "stays unresolved and names the arm that could not be tested" do
+          sweep = substrate_sweep("environmental_structure")
+          2.times { arm_run(sweep, { "structure" => "uniform" }, [36, 44]) }
+          2.times { arm_run(sweep, { "structure" => "gradient" }, [36, 40]) }
+
+          get finding_path(open_endedness)
+
+          paragraphs = response.parsed_body.css("p").map { |paragraph| paragraph.text.squish }
+
+          expect(response.body.squish).to include("Not enough transitioned seeds to decide it either way")
+          expect(paragraphs)
+            .to include(a_string_including("Untestable here: patchwork carries fewer than 2 measured runs, " \
+                                           "so the sweep cannot read as not supported until it is seeded — " \
+                                           "one arm nobody has run refutes nothing"))
+        end
+      end
+
+      context "with one transitioned seed in the control arm" do
         it "keeps the hypothesis unresolved and states the counts behind that" do
           sweep = substrate_sweep("energy_per_epoch")
           arm_run(sweep, { "energy_per_epoch" => 0 }, [36, 40])
@@ -1134,7 +1166,8 @@ RSpec.describe "Findings", type: :request do
           expect(response.body.squish)
             .to include("Not enough transitioned seeds to decide it either way",
                         "has 3 transitioned runs, 3 of them carrying a lineage count after the crossing",
-                        "A verdict needs at least 2 measured runs in the control arm and in one other arm")
+                        "The control arm carries fewer than 2 measured runs, so there is nothing to count " \
+                        "the other arms against yet")
         end
       end
     end

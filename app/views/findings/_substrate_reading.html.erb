@@ -1,0 +1,10 @@
+<%# The sweep's other observable, printed beside the hypothesis it does not decide:
+    the counts are the same shape, the verdict column is deliberately absent. %>
+<p>
+  <span class="badge badge-info">no verdict</span>
+  <strong>Read but not the hypothesis under test.</strong>
+  DESIGN decides this sweep on <%= decided_on %>, so the <%= reading %> below is printed for
+  completeness and no verdict is drawn from it: whichever way these counts fall, they
+  neither support nor refute the hypothesis above.
+</p>
+<%= render "findings/substrate_arms", bet: bet, unit: unit %>
