@@ -459,8 +459,10 @@ impl EpochEnergy {
 
 /// Why an interaction stopped, as the world reads it. The interpreter only ever knows the
 /// cap it was handed, so a halt at a cap the epoch's energy imposed — rather than
-/// `max_steps` — is renamed here: a soup whose interactions are cut short because its cells
-/// are out of energy is a different reading from one whose programs outrun the step budget.
+/// `max_steps` — reads as `EnergySpent` here: a soup whose interactions are cut short
+/// because its cells are out of energy is a different reading from one whose programs
+/// outrun the step budget. No observable of §1.2 records a halt, so the epoch loop does not
+/// call this: it is the reading a caller that wants the two apart asks the world for.
 pub fn halt_reason(outcome: &bff::Outcome, budget: u32, max_steps: u32) -> bff::Halt {
     if outcome.halt == bff::Halt::StepLimit && budget < max_steps {
         return bff::Halt::EnergySpent;
