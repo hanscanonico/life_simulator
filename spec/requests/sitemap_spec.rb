@@ -15,7 +15,8 @@ RSpec.describe "Sitemap", type: :request do
       expect(document.root.namespace.href).to eq("http://www.sitemaps.org/schemas/sitemap/0.9")
 
       locations = document.css("url loc").map(&:text)
-      expect(locations).to include("http://www.example.com/", "http://www.example.com/how-it-works")
+      expect(locations).to include("http://www.example.com/", "http://www.example.com/how-it-works",
+                                   "http://www.example.com/findings", "http://www.example.com/experiments")
       expect(locations).to all(start_with("http://www.example.com"))
       expect(document.css("url").map { |url| url.at_css("lastmod")&.text }).to all(match(/\A\d{4}-\d{2}-\d{2}\z/))
     end
@@ -44,6 +45,19 @@ RSpec.describe "Sitemap", type: :request do
 
       expect(entry).to be_present
       expect(entry.at_css("lastmod").text).to eq("2026-04-05")
+    end
+
+    it "dates the experiments index as the most recently touched experiment" do
+      create(:experiment, updated_at: Time.zone.local(2026, 2, 1))
+      create(:experiment, updated_at: Time.zone.local(2026, 6, 2))
+
+      get sitemap_path
+
+      entry = Nokogiri::XML(response.body).css("url").find do |url|
+        url.at_css("loc").text.end_with?(experiments_path)
+      end
+
+      expect(entry.at_css("lastmod").text).to eq("2026-06-02")
     end
 
     it "leaves out the pages robots are told not to crawl" do
