@@ -46,6 +46,13 @@
     <% unless survival.empty? %>
       <%= render "experiments/hazard_table", axis: axis, survival: survival %>
     <% end %>
+    <% series = @show.series.fetch(axis) %>
+    <% if series.lineage_charts.any? %>
+      <div class="chart-grid-2"><%= render series.lineage_charts %></div>
+    <% end %>
+    <% if series.complexity_charts.any? %>
+      <div class="chart-grid-2"><%= render series.complexity_charts %></div>
+    <% end %>
   <% end %>
 <% else %>
   <p class="text-muted">This experiment sweeps no parameter, so it has no phase diagram.</p>

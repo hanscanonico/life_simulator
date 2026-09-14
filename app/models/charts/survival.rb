@@ -14,10 +14,6 @@ module Charts
   class Survival
     include Plot
 
-    # One solid line, then dash patterns that stay apart at chart scale and in print. The
-    # widest sweep of DESIGN §1.3 (mutation rate) has ten arms, so there are ten patterns.
-    DASHES = ["none", "7 4", "2 3", "11 4 2 4", "16 5", "4 2 1 2", "1 5", "9 4 4 4", "3 7",
-              "14 4 1 4 1 4"].freeze
     HAZARD_UNIT = 10_000
 
     # One run: `epochs` is the transition epoch when it emerged, and otherwise how long
@@ -113,7 +109,7 @@ module Charts
 
     def lines
       arms.reject { |arm| arm.runs.zero? }.map.with_index do |arm, index|
-        Line.new(label: legend_label(arm), dash: DASHES[index % DASHES.size], path: path_for(arm))
+        Line.new(label: legend_label(arm), dash: dash_for(index), path: path_for(arm))
       end
     end
 

@@ -21,8 +21,14 @@ module Charts
     # inside the left gutter on purpose: derived from the tick labels' own extent it lands
     # outside the viewBox — and is clipped — on a chart whose ticks are one digit wide.
     Y_TITLE_X = 18
+    # One solid line, then dash patterns that stay apart at chart scale and in print. The
+    # widest sweep of DESIGN §1.3 (mutation rate) has ten arms, so there are ten patterns.
+    DASHES = ["none", "7 4", "2 3", "11 4 2 4", "16 5", "4 2 1 2", "1 5", "9 4 4 4", "3 7",
+              "14 4 1 4 1 4"].freeze
 
     Tick = Data.define(:label, :position)
+
+    def dash_for(index) = DASHES[index % DASHES.size]
 
     def width = WIDTH
     def height = HEIGHT

@@ -39,6 +39,11 @@ module Experiments
     # runs included, so the page answers "how long does emergence take" while a sweep runs.
     def survivals = @survivals ||= axes.index_with { |axis| survival_for(axis) }
 
+    # One lineage and complexity series set per axis: what the sweep's parameter did to
+    # descent and to the dominant replicator, arm against arm. A sweep whose runs carry no
+    # such sample shows none of it.
+    def series = @series ||= axes.index_with { |axis| ArmSeries.build(axis: axis, runs: observed_runs) }
+
     # One column per swept axis, headed and filled with the same label the phase diagram
     # and the arm table use, so a row of the runs table can be matched to an arm.
     def arm_columns = @arm_columns ||= axes.map { |axis| axis.name.to_s.humanize }
