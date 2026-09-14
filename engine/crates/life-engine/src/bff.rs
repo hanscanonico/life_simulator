@@ -87,10 +87,14 @@ impl Default for OpSet {
 
 /// Why an execution stopped. Kept because the runner and the tests care about the
 /// difference between "ran out of budget" and "the program ended".
+///
+/// `EnergySpent` is never produced here: the interpreter knows only the cap it was handed,
+/// and it is `world::halt_reason` that tells the two budgets apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Halt {
     EndOfTape,
     StepLimit,
+    EnergySpent,
     UnmatchedBracket,
 }
 

@@ -65,8 +65,10 @@ RSpec.describe Lab do
       let(:definition) { Lab::SWEEPS.fetch("energy_per_epoch") }
 
       it "prices an interaction against the step budget it is cut from" do
-        expect(definition[:param_grid].fetch("energy_per_epoch")).to eq([0, 2**15, 2**13, 2**11])
-        expect(Lab::Schema.defaults.fetch("max_steps")).to eq(2**13)
+        full_interaction = Lab::Schema.defaults.fetch("max_steps")
+
+        expect(definition[:param_grid].fetch("energy_per_epoch"))
+          .to eq([0, 4 * full_interaction, full_interaction, full_interaction / 4])
       end
 
       it "carries the arm where the cost is off, the substrate every other sweep ran" do

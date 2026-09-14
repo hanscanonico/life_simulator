@@ -207,7 +207,7 @@ impl World {
         let max_steps = self.params.max_steps;
         let ops = self.params.op_set();
         let counting = self.counts_copies();
-        let mut energy = self.recharged_energy();
+        let mut energy = EpochEnergy::recharged(&self.params, self.params.cell_count());
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
 
@@ -224,9 +224,9 @@ impl World {
             pair[..stride].copy_from_slice(&self.cells[a * stride..a * stride + stride]);
             pair[stride..].copy_from_slice(&self.cells[b * stride..b * stride + stride]);
             before.copy_from_slice(&pair);
-            let budget = interaction_budget(max_steps, &energy, a, b);
+            let budget = energy.budget(a, b, max_steps);
             let outcome = bff::run_with(&mut pair, budget, ops);
-            spend_energy(&mut energy, a, b, outcome.steps);
+            energy.spend(a, b, outcome.steps);
             if counting {
                 interactions += 1;
                 // Two halves that arrived identical cannot show a copy: they already end
@@ -261,16 +261,6 @@ impl World {
         }
         if inherits_partner(&pair[stride..], &before[stride..], &before[..stride]) {
             self.lineages[b] = was_a;
-        }
-    }
-
-    /// The instruction energy every cell starts the epoch with (`energy_per_epoch`,
-    /// DESIGN §1.3 sweep 6). Empty when the cost is off, which is what the interaction
-    /// loop reads as "no budget to keep": nothing is allocated and nothing is counted.
-    fn recharged_energy(&self) -> Vec<u32> {
-        match self.params.energy_per_epoch {
-            0 => Vec::new(),
-            budget => vec![budget; self.params.cell_count()],
         }
     }
 
@@ -431,25 +421,51 @@ struct ReplicatorCensus {
     complexity: Option<metrics::Complexity>,
 }
 
-/// How many instructions one interaction may execute: the whole `max_steps` when the
-/// instruction cost is off, and otherwise what the poorer of the two cells has left of
-/// its epoch's energy — both of them execute the one concatenated program, so neither can
-/// pay past its own budget and the interaction halts where the poorer one runs dry.
-fn interaction_budget(max_steps: u32, energy: &[u32], a: usize, b: usize) -> u32 {
-    if energy.is_empty() {
-        return max_steps;
-    }
-    max_steps.min(energy[a]).min(energy[b])
+/// What the epoch's cells have left to spend on instructions (`energy_per_epoch`,
+/// DESIGN §1.3 sweep 6). The cost is opt-in, and `Free` is what off means: no per-cell
+/// budget exists, nothing is allocated and an interaction is capped by `max_steps` alone.
+enum EpochEnergy {
+    Free,
+    Budgeted(Vec<u32>),
 }
 
-/// Debits both cells of an interaction with the instructions it executed. A no-op while
-/// the cost is off, when there is no budget to keep.
-fn spend_energy(energy: &mut [u32], a: usize, b: usize, steps: u32) {
-    if energy.is_empty() {
-        return;
+impl EpochEnergy {
+    fn recharged(params: &Params, cell_count: usize) -> Self {
+        match params.energy_per_epoch {
+            0 => Self::Free,
+            budget => Self::Budgeted(vec![budget; cell_count]),
+        }
     }
-    energy[a] -= steps;
-    energy[b] -= steps;
+
+    /// How many instructions one interaction may execute: what the poorer of the two cells
+    /// has left of its epoch's energy, never more than `max_steps`. Both cells execute the
+    /// one concatenated program, so neither can pay past its own budget and the interaction
+    /// halts where the poorer one runs dry.
+    fn budget(&self, a: usize, b: usize, max_steps: u32) -> u32 {
+        match self {
+            Self::Free => max_steps,
+            Self::Budgeted(left) => max_steps.min(left[a]).min(left[b]),
+        }
+    }
+
+    /// Debits both cells of an interaction with the instructions it executed.
+    fn spend(&mut self, a: usize, b: usize, steps: u32) {
+        if let Self::Budgeted(left) = self {
+            left[a] -= steps;
+            left[b] -= steps;
+        }
+    }
+}
+
+/// Why an interaction stopped, as the world reads it. The interpreter only ever knows the
+/// cap it was handed, so a halt at a cap the epoch's energy imposed — rather than
+/// `max_steps` — is renamed here: a soup whose interactions are cut short because its cells
+/// are out of energy is a different reading from one whose programs outrun the step budget.
+pub fn halt_reason(outcome: &bff::Outcome, budget: u32, max_steps: u32) -> bff::Halt {
+    if outcome.halt == bff::Halt::StepLimit && budget < max_steps {
+        return bff::Halt::EnergySpent;
+    }
+    outcome.halt
 }
 
 /// Whether a tape resembles its partner's arriving tape more closely than its own, by
@@ -1035,7 +1051,7 @@ mod tests {
         costly.step();
         let paid = increments(&costly);
         assert!(
-            paid.iter().all(|paid| *paid <= BUDGET),
+            paid.iter().all(|cell| *cell <= BUDGET),
             "a cell paid past its epoch's energy: {paid:?}"
         );
         assert!(
@@ -1071,6 +1087,34 @@ mod tests {
             (0..first.len()).all(|at| second[at] - first[at] <= BUDGET),
             "an epoch paid past its energy: {first:?} then {second:?}"
         );
+    }
+
+    #[test]
+    fn a_halt_at_an_energy_cap_reads_apart_from_one_at_the_step_limit() {
+        const MAX_STEPS: u32 = 64;
+        let capped = bff::Outcome {
+            halt: bff::Halt::StepLimit,
+            steps: 8,
+        };
+        assert_eq!(
+            halt_reason(&capped, 8, MAX_STEPS),
+            bff::Halt::EnergySpent,
+            "an interaction the epoch's energy cut short still read as a step-limit halt"
+        );
+        assert_eq!(
+            halt_reason(&capped, MAX_STEPS, MAX_STEPS),
+            bff::Halt::StepLimit
+        );
+    }
+
+    /// Only a halt is renamed: a program that ended, or ran onto an unmatched bracket,
+    /// stopped for its own reason however little energy was left to pay it.
+    #[test]
+    fn a_program_that_ended_on_its_own_keeps_its_halt_under_an_energy_cap() {
+        for halt in [bff::Halt::EndOfTape, bff::Halt::UnmatchedBracket] {
+            let outcome = bff::Outcome { halt, steps: 4 };
+            assert_eq!(halt_reason(&outcome, 8, 64), halt);
+        }
     }
 
     /// The cost is opt-in: naming it off must leave a run exactly where the parameter's
