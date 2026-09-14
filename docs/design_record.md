@@ -364,15 +364,15 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   that rate with a cell's position, as `structure` and `structure_amplitude`, and §1.3
   gains sweep 7 over it. A cell is **dry** when its effective mutation rate is below
   `mutation_rate` and **wet** when it is above, the driest and wettest cells being the
-  extremes the amplitude reaches; the words carry that meaning and no other wherever the
-  engine, the schema or this site uses them. Its hypothesis is the one the evolution
-  programme names: **environmental structure raises the plateau** the dominant
-  replicator's complexity settles at, refuted if a world whose regions differ plateaus
-  where a uniform world does; the secondary prediction, read off the same runs, is that a
-  heterogeneous world keeps more lineages alive after emergence. Four choices are fixed
-  here. The rate is the **target**, not the step budget: mutation is already the one
-  per-cell probability the epoch applies byte by byte, so varying it changes the odds a
-  byte faces and nothing else — no allocation, no count, no draw that was not already
+  extremes the amplitude reaches; wherever the engine, the schema or this site describes a
+  structured world, the words carry that meaning and no other. Its hypothesis is the one
+  the evolution programme names: **environmental structure raises the plateau** the
+  dominant replicator's complexity settles at, refuted if a world whose regions differ
+  plateaus where a uniform world does; the secondary prediction, read off the same runs,
+  is that a heterogeneous world keeps more lineages alive after emergence. Four choices
+  are fixed here. The rate is the **target**, not the step budget: mutation is already the
+  one per-cell probability the epoch applies byte by byte, so varying it changes the odds
+  a byte faces and nothing else — no allocation, no count, no draw that was not already
   made — where a per-cell step budget would have to be spent against the energy ledger of
   sweep 6 and confound the two bets. The shapes are a **gradient** and a **patchwork**,
   `gradient` a triangle across the columns and `patchwork` four quadrants alternating dry
@@ -390,5 +390,5 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   not move — a test asserts the pinned readings again with the parameter named and the
   world uniform. `structure_amplitude` is read only while a structure is set, which is why
   an amplitude of 0 and a uniform world are the same run, and why its default of 0.5 is
-  not a second off switch: it is the depth a structured run takes when the sweep names no
-  other, and it is never read at all until a structure is named.
+  not a second off switch: it is the amplitude a structured run takes when the sweep names
+  no other, and it is never read at all until a structure is named.
