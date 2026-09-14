@@ -36,11 +36,10 @@ module Sitemaps
 
     def experiments = @experiments ||= Experiment.order(:name).to_a
 
-    def newest_finding_date = @newest_finding_date ||= findings.first&.date || Date.current
+    def newest_finding_date = findings.first&.date
 
     def newest_experiment_date
-      @newest_experiment_date ||= experiments.filter_map { |experiment| experiment.updated_at&.to_date }.max ||
-                                  newest_finding_date
+      experiments.map { |experiment| experiment.updated_at.to_date }.max || newest_finding_date
     end
   end
 end

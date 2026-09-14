@@ -13,6 +13,7 @@ RSpec.describe "Robots", type: :request do
         [
           "User-agent: *",
           "Disallow: /api/",
+          "Disallow: /experiments/*.csv",
           "Disallow: /experiments/*/transitions",
           "Disallow: /experiments/*/rescores",
           "Disallow: /runs/*/samples",
@@ -27,6 +28,14 @@ RSpec.describe "Robots", type: :request do
       get robots_path
 
       expect(response.body).not_to include("Disallow: /\n", "Disallow: /lab\n", "Disallow: /sitemap.xml")
+    end
+
+    it "keeps the experiment pages crawlable while barring their runs export" do
+      get robots_path
+
+      disallowed = response.body.scan(/^Disallow: (.+)$/).flatten
+      expect(disallowed).to include("/experiments/*.csv")
+      expect(disallowed).not_to include("/experiments", "/experiments/", "/experiments/*")
     end
   end
 end

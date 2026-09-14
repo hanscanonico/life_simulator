@@ -60,6 +60,18 @@ RSpec.describe "Sitemap", type: :request do
       expect(entry.at_css("lastmod").text).to eq("2026-06-02")
     end
 
+    context "with no finding published" do
+      before { allow(Findings::Registry).to receive(:all).and_return([]) }
+
+      it "leaves the static pages undated rather than dating them today" do
+        get sitemap_path
+
+        document = Nokogiri::XML(response.body)
+        expect(document.root.name).to eq("urlset")
+        expect(document.css("url").map { |url| url.at_css("lastmod") }).to all(be_nil)
+      end
+    end
+
     it "leaves out the pages robots are told not to crawl" do
       create(:experiment)
 

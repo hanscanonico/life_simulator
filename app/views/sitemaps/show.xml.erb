@@ -3,7 +3,9 @@
 <% @show.entries.each do |entry| %>
   <url>
     <loc><%= "#{request.base_url}#{entry.path}" %></loc>
+    <% if entry.lastmod %>
     <lastmod><%= entry.lastmod.iso8601 %></lastmod>
+    <% end %>
   </url>
 <% end %>
 </urlset>
