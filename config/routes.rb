@@ -44,5 +44,8 @@ Rails.application.routes.draw do
     end
   end
 
+  get "sitemap.xml" => "sitemaps#show", as: :sitemap, format: :xml
+  get "robots.txt" => "robots#show", as: :robots, format: :text
+
   root "home#show"
 end
