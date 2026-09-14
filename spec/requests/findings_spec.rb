@@ -958,6 +958,70 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the complexity write-up" do
+      let(:complexity) { Findings::Registry.find("replicator-complexity-plateau") }
+
+      def run_with_lengths(experiment, seed, lengths)
+        run = create(:run, experiment: experiment, seed: seed, status: "finished", transition_epoch: 1_000)
+        lengths.each_with_index do |length, index|
+          create(:sample, run: run, epoch: 1_000 + (index * 10),
+                          values: { "dominant_compressed_len" => length, "dominant_instruction_count" => 15 })
+        end
+        run
+      end
+
+      it "states what the two readings are and what the count does not claim" do
+        get finding_path(complexity)
+
+        expect(response.body.squish)
+          .to include("Does the replicator keep getting more complicated?",
+                      "36 bytes and 15 instructions",
+                      "Compressed length is size, not ability.",
+                      %("Dominant replicator" is a tape, not a lineage.),
+                      "A plateau here is a plateau at these budgets.",
+                      "This is not the open-endedness sweep.")
+      end
+
+      it "says plainly that no run has recorded a complexity yet" do
+        create(:run, status: "finished", transition_epoch: 900)
+
+        get finding_path(complexity)
+
+        expect(response.body.squish)
+          .to include("No run in this database has recorded the complexity of its dominant replicator yet")
+      end
+
+      context "with recorded complexities in the database" do
+        it "counts the directions and links the sweeps and the runs" do
+          radius = create(:experiment, name: "Radius", slug: "radius")
+          grown = run_with_lengths(radius, 1, [36, 40, 52])
+          shrunk = run_with_lengths(radius, 2, [80, 44])
+
+          get finding_path(complexity)
+
+          expect(response.body.squish)
+            .to include("The lab has 2 terminal runs that crossed, with a complexity reading after " \
+                        "the crossing in 2 of them, across 1 sweep",
+                        "Among the 2 runs with at least two readings, the split is 1 ending above " \
+                        "their first post-transition length, 1 below it and 0 on it")
+          expect(response.body).to include(experiment_path(radius), run_path(grown), run_path(shrunk),
+                                           "more complicated", "simpler")
+        end
+
+        it "names what a capped table leaves out, and says the figures still count it" do
+          stub_const("Findings::ShowPage::MAX_TRANSITIONS", 1)
+          sweep = create(:experiment)
+          2.times { |index| run_with_lengths(sweep, index, [36, 52]) }
+
+          get finding_path(complexity)
+
+          expect(response.body.squish)
+            .to include("The table stops at 1 row and leaves 1 further run out")
+          expect(response.parsed_body.css("#complexity-runs tbody tr").size).to eq(1)
+        end
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

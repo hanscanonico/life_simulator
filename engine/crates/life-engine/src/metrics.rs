@@ -47,6 +47,12 @@ pub struct Metrics {
     /// over the passing trials of the replicator test, read of the most populous tape among
     /// the `top_k` that passes it. `None` when no tested tape replicates.
     pub copy_cost: Option<u32>,
+    /// Bytes of the dominant replicator's tape once zlib has had it — its incompressible
+    /// content, the open-endedness baseline. `None` when no tested tape replicates.
+    pub dominant_compressed_len: Option<u32>,
+    /// How many of the dominant replicator's bytes the run's instruction set executes.
+    /// `None` when no tested tape replicates.
+    pub dominant_instruction_count: Option<u32>,
 }
 
 impl Metrics {
@@ -82,6 +88,26 @@ pub fn compress(bytes: &[u8]) -> Vec<u8> {
         .write_all(bytes)
         .expect("writing to a Vec cannot fail");
     encoder.finish().expect("writing to a Vec cannot fail")
+}
+
+/// How much tape one replicator is, read two ways (`docs/DESIGN.md` §1.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Complexity {
+    pub compressed_len: u32,
+    pub instruction_count: u32,
+}
+
+impl Complexity {
+    /// The length is measured with the very compressor `compress_ratio` uses, so a tape
+    /// and the world it sits in are read on one scale. The instructions are counted
+    /// against the run's own op set rather than all ten, so an ablated byte the
+    /// interpreter skips is not counted as something the tape executes.
+    pub fn of(tape: &[u8], ops: bff::OpSet) -> Self {
+        Self {
+            compressed_len: compress(tape).len() as u32,
+            instruction_count: tape.iter().filter(|byte| ops.enables(**byte)).count() as u32,
+        }
+    }
 }
 
 /// Fraction of bytes that are one of the ten instructions (random bytes ≈ 10/256).
@@ -513,6 +539,50 @@ mod tests {
         }
     }
 
+    /// The hand-written copier is 16 bytes of program — one of them the zero counter, the
+    /// other fifteen instructions — in front of 240 bytes of filler, and zlib squeezes
+    /// that run of filler down to nothing much. Both readings are pinned here: they are
+    /// the yardstick every later substrate's complexity is read against.
+    #[test]
+    fn the_handwritten_replicators_complexity_is_known() {
+        let read = Complexity::of(
+            &crate::replicator::handwritten_replicator(),
+            bff::OpSet::ALL,
+        );
+        assert_eq!(read.compressed_len, 36);
+        assert_eq!(read.instruction_count, 15);
+    }
+
+    #[test]
+    fn an_ablated_op_is_not_an_instruction_the_tape_executes() {
+        let tape = crate::replicator::handwritten_replicator();
+        let without_copy_to_head1 = bff::OpSet::parse("<>{}+-,[]").expect("a legal set");
+        assert_eq!(
+            Complexity::of(&tape, without_copy_to_head1).instruction_count,
+            13,
+            "the tape's two `.` bytes are dead under this set"
+        );
+        assert_eq!(
+            Complexity::of(&tape, without_copy_to_head1).compressed_len,
+            Complexity::of(&tape, bff::OpSet::ALL).compressed_len,
+            "the bytes are the same bytes whatever runs them"
+        );
+    }
+
+    #[test]
+    fn a_random_tape_barely_compresses_and_holds_the_odd_instruction() {
+        let mut rng = crate::rng::seeded(3, 0, 0);
+        let tape: Vec<u8> = (0..256).map(|_| crate::rng::byte(&mut rng)).collect();
+        let read = Complexity::of(&tape, bff::OpSet::ALL);
+        assert!(read.compressed_len > 256, "{read:?}");
+        assert_eq!(
+            f64::from(read.instruction_count) / tape.len() as f64,
+            op_density(&tape),
+            "with every op enabled the count is the density over the tape"
+        );
+        assert!(read.instruction_count < 32, "{read:?}");
+    }
+
     #[test]
     fn the_lineage_census_counts_ids_and_the_largest_share() {
         assert_eq!(lineage_census(&[]), (0, 0.0));
@@ -651,6 +721,8 @@ mod tests {
             top_lineage_share: 0.1,
             lineage_variation: 0.0,
             copy_cost: None,
+            dominant_compressed_len: None,
+            dominant_instruction_count: None,
         }
     }
 

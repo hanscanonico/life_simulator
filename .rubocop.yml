@@ -108,6 +108,11 @@ Metrics/ClassLength:
 
 Metrics/ModuleLength:
   Max: 150
+  Exclude:
+    # Findings::Registry is the published findings as data: one entry of prose per
+    # write-up, and the log only ever grows. Splitting it to fit a length cop would put
+    # the order the index reads in two places.
+    - 'app/models/findings/registry.rb'
 
 Metrics/ParameterLists:
   Max: 10

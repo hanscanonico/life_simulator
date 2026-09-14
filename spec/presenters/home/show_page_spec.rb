@@ -41,6 +41,7 @@ RSpec.describe Home::ShowPage do
     context "with the sweep in the lab" do
       it "hands the row its experiment" do
         finding = Findings::Registry.all.find(&:sweep?)
+        stub_const("Findings::Registry::ALL", [finding])
         experiment = create(:experiment, slug: finding.experiment_slug)
         row = page.latest_findings.find { |candidate| candidate.finding == finding }
 
