@@ -1042,6 +1042,11 @@ mod tests {
             paid.contains(&BUDGET),
             "no interaction reached the budget at all: {paid:?}"
         );
+        assert!(
+            paid.contains(&0),
+            "the energy did not carry across the epoch's interactions: every cell still had \
+             something to spend when its own turn came: {paid:?}"
+        );
     }
 
     #[test]
