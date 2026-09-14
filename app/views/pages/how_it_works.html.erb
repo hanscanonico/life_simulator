@@ -29,8 +29,11 @@
     program <em>is</em> the data.
   </p>
   <p>
-    There is no energy, no fitness function and no reproduction rule. Any copying that
-    happens is done by the programs themselves. After each epoch every byte is replaced by
+    There is no fitness function and no reproduction rule. Any copying that happens is
+    done by the programs themselves. Energy is optional and off by default: set
+    <span class="mono">energy_per_epoch</span> and every cell gets that many instructions
+    to spend each epoch, an interaction halts once its two cells have spent theirs, and
+    the budget refills at the start of the next epoch. After each epoch every byte is replaced by
     a uniformly random one with probability <span class="mono">mutation_rate</span>, and a
     run is fully determined by its parameters and its seed. The substrate is the "BFF" soup
     of Agüera y Arcas et al.,

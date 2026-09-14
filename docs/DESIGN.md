@@ -20,15 +20,20 @@ function or selection pressure* is a soup of tiny programs that execute each oth
 substrate and make it spatial, so it looks and behaves like a cellular automaton:
 
 - **World**: a 2D torus, `width × height` cells. Every cell holds one **tape** of
-  `tape_len` bytes (default 64). Tapes are the only state. There is no energy, no
-  fitness, no reproduction rule: any copying that happens is done by the programs
-  themselves.
+  `tape_len` bytes (default 64). Tapes are the only state. There is no fitness and no
+  reproduction rule: any copying that happens is done by the programs themselves. Energy
+  is off by default and optional (`energy_per_epoch`, sweep 6 below).
 - **Interaction** (one per cell per epoch, cells visited in a random order): the cell
   picks a random neighbour within `radius` (Moore neighbourhood, default 1). The two
   tapes are concatenated (`A ++ B`, 2×`tape_len` bytes) and the concatenation is
   executed as a program for at most `max_steps` instructions (default 2^13). The result
   is split back into the two cells. Execution mutates the tapes in place: the program
   *is* the data.
+- **Instruction cost** (`energy_per_epoch`, default `0` = off): with a budget set, every
+  cell starts each epoch with that many instructions to spend, an interaction may execute
+  no more than what the poorer of its two cells has left — so it halts early once they run
+  dry — and both cells are debited what it executed. At `0` nothing is counted and the
+  soup is exactly the substrate above.
 - **Instruction set** (BFF, 10 ops on the byte value; every other byte is a no-op):
   `<` `>` move head0 −1/+1; `{` `}` move head1 −1/+1; `+` `-` inc/dec byte at head0;
   `.` copy byte at head0 → head1; `,` copy byte at head1 → head0; `[` jump forward past
@@ -139,6 +144,9 @@ holding a tape that passed.
 4. **Max steps per interaction** — `{2^8, 2^10, 2^13, 2^16}`.
 5. **Instruction set ablations** — remove `,`, remove loops, etc. Which ops are
    necessary for abiogenesis?
+6. **Instruction cost** — `energy_per_epoch ∈ {0 (off), 2^15, 2^13, 2^11}`, the arm at 0
+   being the costless substrate every earlier sweep ran. Hypothesis: a cost pressure
+   selects for efficient copiers and opens a second niche.
 
 Every run records its full metric series and periodic snapshots so a claim can be
 re-examined. A finding is published on the site with its phase diagram, the raw runs,

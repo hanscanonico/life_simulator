@@ -103,6 +103,24 @@ module Lab
       seeds: (1..10).to_a,
       epochs: 20_000
     },
+    "energy_per_epoch" => {
+      name: "Instruction cost",
+      description: "Does paying for computation select for efficient copiers? Every " \
+                   "instruction a cell executes draws down an energy budget that refills " \
+                   "each epoch, so an interaction halts once its cells have spent theirs " \
+                   "and a copier that needs fewer steps finishes more often.",
+      # The first arm is 0 — the cost off, the substrate every other sweep ran — so the
+      # priced arms are read against a control inside the same experiment. The budgets
+      # below it are multiples of one full-length interaction (`max_steps` is 2^13).
+      param_grid: {
+        "energy_per_epoch" => [0, 2**15, 2**13, 2**11],
+        "width" => [128],
+        "height" => [128],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE]
+      },
+      seeds: (1..10).to_a,
+      epochs: 20_000
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

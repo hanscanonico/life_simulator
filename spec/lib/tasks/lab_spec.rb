@@ -134,6 +134,29 @@ RSpec.describe "lab:sweep" do
     end
   end
 
+  describe "energy_per_epoch" do
+    it "builds four energy budgets times ten seeds" do
+      build_sweep("energy_per_epoch")
+
+      expect(Experiment.find_by(slug: "energy-per-epoch").runs_count).to eq(40)
+    end
+
+    it "sweeps the budgets the programme names, the cost off among them" do
+      build_sweep("energy_per_epoch")
+
+      expect(Run.distinct.pluck(Arel.sql("params->'energy_per_epoch'")).map(&:to_i).sort)
+        .to eq([0, 2**11, 2**13, 2**15])
+    end
+
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("energy_per_epoch")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("energy_per_epoch" => 0, "width" => 128, "height" => 128,
+                                              "mutation_rate" => 2.0**-13))
+    end
+  end
+
   describe "bff_control" do
     it "builds the two mutation arms times three seeds" do
       build_sweep("bff_control")

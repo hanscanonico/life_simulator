@@ -70,7 +70,7 @@ RSpec.describe Experiments::IndexPage do
       create(:experiment, name: "Mutation rate", slug: "mutation-rate")
 
       expect(page.planned.map(&:slug))
-        .to eq(%w[mutation-rate-long world-size radius max-steps ops bff-control])
+        .to eq(%w[mutation-rate-long world-size radius max-steps ops energy-per-epoch bff-control])
     end
 
     context "with a sweep built by hand under another slug" do

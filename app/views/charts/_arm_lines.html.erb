@@ -1,0 +1,29 @@
+<figure class="chart">
+  <figcaption class="chart-title"><%= arm_lines.title %></figcaption>
+  <% if arm_lines.empty? %>
+    <p class="chart-empty text-muted">No samples recorded yet.</p>
+  <% else %>
+    <svg class="chart-svg" viewBox="0 0 <%= arm_lines.width %> <%= arm_lines.height %>"
+         role="img" aria-label="<%= arm_lines.title %>" preserveAspectRatio="xMidYMid meet">
+      <%= render "charts/axes", chart: arm_lines %>
+      <g class="chart-steps">
+        <% arm_lines.lines.each do |line| %>
+          <path class="chart-line" d="<%= line.path %>" stroke-dasharray="<%= line.dash %>">
+            <title><%= line.label %></title>
+          </path>
+        <% end %>
+      </g>
+    </svg>
+    <%# A figure carries at most one figcaption, and it is the title above the plot. %>
+    <ul class="chart-legend text-sm text-muted">
+      <% arm_lines.lines.each do |line| %>
+        <li>
+          <svg class="chart-swatch" viewBox="0 0 28 8" aria-hidden="true">
+            <path class="chart-line" d="M0,4 L28,4" stroke-dasharray="<%= line.dash %>"></path>
+          </svg>
+          <%= line.label %>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</figure>

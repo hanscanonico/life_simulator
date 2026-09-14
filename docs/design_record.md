@@ -341,3 +341,21 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   determinism hashes and observable strings in `world.rs` do not move. A tape that does not
   replicate reports null, which reaches Rails as a JSON null and draws no point, and no run
   recorded either reading before this change.
+- 2026-09-14 — **Instruction cost is an optional per-cell energy budget, off by default.**
+  §1.1 said the substrate has no energy; it now has one that can be switched on, as
+  `energy_per_epoch`, and §1.3 gains sweep 6 over it with the hypothesis that a cost
+  pressure selects for efficient copiers and opens a second niche. Three choices are fixed
+  here. The budget is **per cell and refilled in full at the start of every epoch**, not
+  carried over: energy is then a function of the epoch alone, so a run resumed from a
+  snapshot recharges exactly as the uninterrupted one did and no snapshot format moves. An
+  interaction runs on **what the poorer of its two cells has left**, not on the sum:
+  the two cells execute one concatenated program together, so neither can be made to pay
+  past its own budget, and an interaction whose cells are spent executes nothing at all —
+  it halts where the energy ran out, which is `copy_rate` reading a failed copy rather
+  than a special case. The cost is **off at 0, which is the default**, so every run the
+  lab has already made is the same run: with no budget nothing is allocated, nothing is
+  counted, no draw leaves the RNG stream in a different place, and the pinned determinism
+  hashes and observable strings in `world.rs` do not move — a test asserts the pinned
+  readings again with the parameter named and set to 0. The replicator test is
+  deliberately **not** priced: it is an assay run beside the world, not an interaction in
+  it, so a tape's `copy_cost` stays comparable across the arms of the sweep.

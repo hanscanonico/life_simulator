@@ -207,6 +207,7 @@ impl World {
         let max_steps = self.params.max_steps;
         let ops = self.params.op_set();
         let counting = self.counts_copies();
+        let mut energy = EpochEnergy::recharged(&self.params, self.params.cell_count());
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
 
@@ -223,7 +224,9 @@ impl World {
             pair[..stride].copy_from_slice(&self.cells[a * stride..a * stride + stride]);
             pair[stride..].copy_from_slice(&self.cells[b * stride..b * stride + stride]);
             before.copy_from_slice(&pair);
-            bff::run_with(&mut pair, max_steps, ops);
+            let budget = energy.budget(a, b, max_steps);
+            let outcome = bff::run_with(&mut pair, budget, ops);
+            energy.spend(a, b, outcome.steps);
             if counting {
                 interactions += 1;
                 // Two halves that arrived identical cannot show a copy: they already end
@@ -418,6 +421,55 @@ struct ReplicatorCensus {
     complexity: Option<metrics::Complexity>,
 }
 
+/// What the epoch's cells have left to spend on instructions (`energy_per_epoch`,
+/// DESIGN §1.3 sweep 6). The cost is opt-in, and `Free` is what off means: no per-cell
+/// budget exists, nothing is allocated and an interaction is capped by `max_steps` alone.
+enum EpochEnergy {
+    Free,
+    Budgeted(Vec<u32>),
+}
+
+impl EpochEnergy {
+    fn recharged(params: &Params, cell_count: usize) -> Self {
+        match params.energy_per_epoch {
+            0 => Self::Free,
+            budget => Self::Budgeted(vec![budget; cell_count]),
+        }
+    }
+
+    /// How many instructions one interaction may execute: what the poorer of the two cells
+    /// has left of its epoch's energy, never more than `max_steps`. Both cells execute the
+    /// one concatenated program, so neither can pay past its own budget and the interaction
+    /// halts where the poorer one runs dry.
+    fn budget(&self, a: usize, b: usize, max_steps: u32) -> u32 {
+        match self {
+            Self::Free => max_steps,
+            Self::Budgeted(left) => max_steps.min(left[a]).min(left[b]),
+        }
+    }
+
+    /// Debits both cells of an interaction with the instructions it executed.
+    fn spend(&mut self, a: usize, b: usize, steps: u32) {
+        if let Self::Budgeted(left) = self {
+            left[a] -= steps;
+            left[b] -= steps;
+        }
+    }
+}
+
+/// Why an interaction stopped, as the world reads it. The interpreter only ever knows the
+/// cap it was handed, so a halt at a cap the epoch's energy imposed — rather than
+/// `max_steps` — reads as `EnergySpent` here: a soup whose interactions are cut short
+/// because its cells are out of energy is a different reading from one whose programs
+/// outrun the step budget. No observable of §1.2 records a halt, so the epoch loop does not
+/// call this: it is the reading a caller that wants the two apart asks the world for.
+pub fn halt_reason(outcome: &bff::Outcome, budget: u32, max_steps: u32) -> bff::Halt {
+    if outcome.halt == bff::Halt::StepLimit && budget < max_steps {
+        return bff::Halt::EnergySpent;
+    }
+    outcome.halt
+}
+
 /// Whether a tape resembles its partner's arriving tape more closely than its own, by
 /// Hamming distance over the tape's bytes — the plainest distance on a fixed-length tape,
 /// and the same byte-by-byte reading `copy_rate` makes of an exact copy. A tie keeps the
@@ -527,6 +579,45 @@ mod tests {
             }
         }
         world
+    }
+
+    /// A soup of nothing but `+`: head0 never moves, so every increment an interaction
+    /// executes lands on the first byte of the cell that opened it, and that byte counts
+    /// the instructions the cell has paid for. One interaction over two 8-byte tapes costs
+    /// 16 instructions, well inside `max_steps`.
+    fn adding_params() -> Params {
+        Params {
+            tape_len: 8,
+            mutation_rate: 0.0,
+            ..soup(8, 8)
+        }
+    }
+
+    /// One interaction over two 8-byte tapes executes 16 instructions. All but at most
+    /// one are increments: the partner's first byte has stopped being a `+` if it opened
+    /// an interaction earlier in the epoch, and a byte that is no longer an op is a no-op
+    /// that still costs its step.
+    const ADDING_INTERACTION_STEPS: u32 = 16;
+
+    fn adding_soup(params: &Params) -> World {
+        let mut world = World::new(params, 11).unwrap();
+        let tape = vec![b'+'; params.stride()];
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world
+    }
+
+    fn increments(world: &World) -> Vec<u32> {
+        let mut counted = Vec::with_capacity(world.params.cell_count());
+        for y in 0..world.height() {
+            for x in 0..world.width() {
+                counted.push(u32::from(world.cell(x, y)[0].wrapping_sub(b'+')));
+            }
+        }
+        counted
     }
 
     fn stepped(params: &Params, seed: u64, epochs: u64) -> World {
@@ -689,6 +780,24 @@ mod tests {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    /// Determinism has to hold under the instruction cost as well: the energy is spent in
+    /// the order the shuffle already fixed, and it is derived from the epoch alone, so a
+    /// run resumed from a snapshot recharges exactly as the uninterrupted one did.
+    #[test]
+    fn determinism_holds_under_an_instruction_cost() {
+        for energy_per_epoch in [64, 4096] {
+            for seed in [1, 2, 3] {
+                assert_deterministic(
+                    &Params {
+                        energy_per_epoch,
+                        ..soup(16, 16)
+                    },
+                    seed,
+                );
             }
         }
     }
@@ -922,6 +1031,133 @@ mod tests {
         assert_eq!(measured.copy_cost, None);
         assert_eq!(measured.dominant_compressed_len, None);
         assert_eq!(measured.dominant_instruction_count, None);
+    }
+
+    #[test]
+    fn an_interaction_halts_when_its_cells_have_spent_their_energy() {
+        const BUDGET: u32 = 5;
+        let mut free = adding_soup(&adding_params());
+        free.step();
+        let unpriced = increments(&free);
+        assert!(
+            unpriced
+                .iter()
+                .all(|paid| *paid >= ADDING_INTERACTION_STEPS - 1),
+            "with the cost off every cell ran its program to the end: {unpriced:?}"
+        );
+
+        let mut costly = adding_soup(&Params {
+            energy_per_epoch: BUDGET,
+            ..adding_params()
+        });
+        costly.step();
+        let paid = increments(&costly);
+        assert!(
+            paid.iter().all(|cell| *cell <= BUDGET),
+            "a cell paid past its epoch's energy: {paid:?}"
+        );
+        assert!(
+            paid.contains(&BUDGET),
+            "no interaction reached the budget at all: {paid:?}"
+        );
+        assert!(
+            paid.contains(&0),
+            "the energy did not carry across the epoch's interactions: every cell still had \
+             something to spend when its own turn came: {paid:?}"
+        );
+    }
+
+    #[test]
+    fn energy_recharges_at_the_start_of_the_next_epoch() {
+        const BUDGET: u32 = 5;
+        let mut world = adding_soup(&Params {
+            energy_per_epoch: BUDGET,
+            ..adding_params()
+        });
+        world.step();
+        let first = increments(&world);
+        world.step();
+        let second = increments(&world);
+
+        let exhausted: Vec<usize> = (0..first.len()).filter(|at| first[*at] == BUDGET).collect();
+        assert!(!exhausted.is_empty());
+        assert!(
+            exhausted.iter().any(|at| second[*at] > first[*at]),
+            "a cell that spent its whole budget never worked again: {first:?} then {second:?}"
+        );
+        assert!(
+            (0..first.len()).all(|at| second[at] - first[at] <= BUDGET),
+            "an epoch paid past its energy: {first:?} then {second:?}"
+        );
+    }
+
+    #[test]
+    fn a_halt_at_an_energy_cap_reads_apart_from_one_at_the_step_limit() {
+        const MAX_STEPS: u32 = 64;
+        let capped = bff::Outcome {
+            halt: bff::Halt::StepLimit,
+            steps: 8,
+        };
+        assert_eq!(
+            halt_reason(&capped, 8, MAX_STEPS),
+            bff::Halt::EnergySpent,
+            "an interaction the epoch's energy cut short still read as a step-limit halt"
+        );
+        assert_eq!(
+            halt_reason(&capped, MAX_STEPS, MAX_STEPS),
+            bff::Halt::StepLimit
+        );
+    }
+
+    /// Only a halt is renamed: a program that ended, or ran onto an unmatched bracket,
+    /// stopped for its own reason however little energy was left to pay it.
+    #[test]
+    fn a_program_that_ended_on_its_own_keeps_its_halt_under_an_energy_cap() {
+        for halt in [bff::Halt::EndOfTape, bff::Halt::UnmatchedBracket] {
+            let outcome = bff::Outcome { halt, steps: 4 };
+            assert_eq!(halt_reason(&outcome, 8, 64), halt);
+        }
+    }
+
+    /// The cost is opt-in: naming it off must leave a run exactly where the parameter's
+    /// absence left it, down to the bytes of the world and every observable of §1.2.
+    #[test]
+    fn the_instruction_cost_switched_off_moves_no_run() {
+        let off = Params {
+            energy_per_epoch: 0,
+            ..soup(32, 32)
+        };
+        let mut world = World::new(&off, 42).unwrap();
+        for _ in 0..50 {
+            world.step();
+        }
+        assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
+
+        let measured = world.metrics();
+        assert_eq!(observable_digest(&measured), PINNED_OBSERVABLES);
+        assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
+    }
+
+    /// A budget no epoch can spend — every cell could pay for a full-length interaction
+    /// many times over — has to read as the soup with the cost off: the accounting itself
+    /// must not move a byte.
+    #[test]
+    fn an_unspendable_energy_budget_runs_the_soup_unchanged() {
+        let params = Params {
+            max_steps: 64,
+            energy_per_epoch: 1_048_576,
+            ..soup(16, 16)
+        };
+        let costly = stepped(&params, 42, 20);
+        let free = stepped(
+            &Params {
+                energy_per_epoch: 0,
+                ..params
+            },
+            42,
+            20,
+        );
+        assert_eq!(costly.world_hash(), free.world_hash());
     }
 
     #[test]
