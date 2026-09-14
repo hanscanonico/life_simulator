@@ -46,6 +46,9 @@ pub struct Params {
     pub width: u32,
     pub height: u32,
     pub tape_len: u32,
+    /// The longest a cell's tape may grow to; `0` (the default) turns growth off and
+    /// every tape stays `tape_len` bytes for the whole run (DESIGN §1.3, sweep 8).
+    pub max_tape_len: u32,
     /// Moore-neighbourhood radius; `0` means well-mixed (any cell in the world).
     pub radius: u32,
     pub max_steps: u32,
@@ -78,6 +81,7 @@ impl Default for Params {
             width: 128,
             height: 128,
             tape_len: 64,
+            max_tape_len: 0,
             radius: 1,
             max_steps: 8192,
             energy_per_epoch: 0,
@@ -144,6 +148,18 @@ const FIELDS: &[Field] = &[
             max: 1024.0,
         },
         doc: "Bytes of tape held by one soup cell. Ignored by the life substrate.",
+    },
+    Field {
+        name: "max_tape_len",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1024.0,
+        },
+        doc: "The longest a soup cell's tape may grow to, through the programs' own \
+              copying: a head stepping right off the end of an interaction appends a byte \
+              instead of wrapping while there is room. 0 turns growth off, which is the \
+              fixed-length substrate of DESIGN 1.1, and so does any value equal to \
+              tape_len; below tape_len it is refused.",
     },
     Field {
         name: "radius",
@@ -253,6 +269,12 @@ pub enum ParamError {
         ops: String,
         reason: &'static str,
     },
+    /// A cap below the length every tape starts at is not a world the engine can build:
+    /// the tapes would have to be born over the cap.
+    MaxTapeLenBelowInitial {
+        max_tape_len: u32,
+        tape_len: u32,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -276,6 +298,14 @@ impl fmt::Display for ParamError {
                 (width.min(height) - 1) / 2
             ),
             Self::InvalidOps { ops, reason } => write!(f, "ops is {ops:?}: {reason}"),
+            Self::MaxTapeLenBelowInitial {
+                max_tape_len,
+                tape_len,
+            } => write!(
+                f,
+                "max_tape_len is {max_tape_len}, below the tape_len of {tape_len}: \
+                 0 turns growth off, and any cap must be at least the initial length"
+            ),
         }
     }
 }
@@ -309,6 +339,12 @@ impl Params {
             ops: self.ops.clone(),
             reason,
         })?;
+        if self.max_tape_len > 0 && self.max_tape_len < self.tape_len {
+            return Err(ParamError::MaxTapeLenBelowInitial {
+                max_tape_len: self.max_tape_len,
+                tape_len: self.tape_len,
+            });
+        }
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
             return Err(ParamError::RadiusTooWide {
                 radius: self.radius,
@@ -391,10 +427,27 @@ impl Params {
         (self.mutation_rate * (1.0 + self.structure_amplitude * lean)).clamp(0.0, 1.0)
     }
 
-    /// Bytes of state one cell holds: a whole tape in the soup, one byte in life.
+    /// The longest a tape may be: `max_tape_len` where a cap is set, and the length every
+    /// tape starts and stays at where none is.
+    pub fn tape_cap(&self) -> u32 {
+        if self.max_tape_len == 0 {
+            self.tape_len
+        } else {
+            self.max_tape_len
+        }
+    }
+
+    /// Whether this run's tapes may lengthen at all. A cap equal to `tape_len` is the
+    /// fixed-length world of DESIGN §1.1, exactly as `max_tape_len` 0 is.
+    pub fn grows(&self) -> bool {
+        self.substrate == Substrate::Soup && self.tape_cap() > self.tape_len
+    }
+
+    /// Bytes of state one cell's slot holds: the tape cap in the soup, one byte in life.
+    /// A soup cell whose tapes can grow fills its slot only up to its live length.
     pub fn stride(&self) -> usize {
         match self.substrate {
-            Substrate::Soup => self.tape_len as usize,
+            Substrate::Soup => self.tape_cap() as usize,
             Substrate::Life => 1,
         }
     }
@@ -564,6 +617,72 @@ mod tests {
     }
 
     #[test]
+    fn tapes_cannot_grow_by_default_and_a_cap_at_the_initial_length_is_the_same_world() {
+        assert_eq!(Params::default().max_tape_len, 0);
+        assert!(!Params::default().grows());
+        assert_eq!(Params::default().tape_cap(), Params::default().tape_len);
+
+        let at_the_initial_length = Params {
+            max_tape_len: Params::default().tape_len,
+            ..Params::default()
+        };
+        assert_eq!(at_the_initial_length.validate(), Ok(()));
+        assert!(!at_the_initial_length.grows());
+        assert_eq!(at_the_initial_length.stride(), Params::default().stride());
+
+        let roomy = Params {
+            max_tape_len: 256,
+            ..Params::default()
+        };
+        assert_eq!(roomy.validate(), Ok(()));
+        assert!(roomy.grows());
+        assert_eq!(roomy.tape_cap(), 256);
+        assert_eq!(roomy.stride(), 256);
+    }
+
+    #[test]
+    fn rejects_a_cap_below_the_length_a_tape_starts_at() {
+        let params = Params {
+            tape_len: 64,
+            max_tape_len: 32,
+            ..Params::default()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::MaxTapeLenBelowInitial {
+                max_tape_len: 32,
+                tape_len: 64
+            })
+        );
+        assert!(params.validate().unwrap_err().to_string().contains("64"));
+
+        let beyond = Params {
+            max_tape_len: 2048,
+            ..Params::default()
+        };
+        assert!(matches!(
+            beyond.validate(),
+            Err(ParamError::OutOfRange {
+                field: "max_tape_len",
+                ..
+            })
+        ));
+    }
+
+    /// Life cells are single bits, and a cap over a tape length the substrate never reads
+    /// must not widen them.
+    #[test]
+    fn a_life_cell_is_one_byte_whatever_the_cap_says() {
+        let params = Params {
+            substrate: Substrate::Life,
+            max_tape_len: 256,
+            ..Params::default()
+        };
+        assert_eq!(params.stride(), 1);
+        assert!(!params.grows());
+    }
+
+    #[test]
     fn the_world_is_uniform_by_default_and_its_amplitude_is_bounded() {
         assert_eq!(Params::default().structure, Structure::Uniform);
 
@@ -684,7 +803,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 15);
+        assert_eq!(fields.len(), 16);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -704,6 +823,12 @@ mod tests {
         assert_eq!(energy["type"], "integer");
         assert_eq!(energy["default"], 0);
         assert_eq!(energy["min"], 0);
+
+        let cap = fields.iter().find(|f| f["name"] == "max_tape_len").unwrap();
+        assert_eq!(cap["type"], "integer");
+        assert_eq!(cap["default"], 0);
+        assert_eq!(cap["min"], 0);
+        assert_eq!(cap["max"], 1024);
 
         let structure = fields.iter().find(|f| f["name"] == "structure").unwrap();
         assert_eq!(structure["type"], "enum");

@@ -585,6 +585,73 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the room-to-grow sweep" do
+      let(:experiment) do
+        create(:experiment, name: "Room to grow", slug: "max-tape-len", epochs: 20_000,
+                            param_grid: Lab::SWEEPS.fetch("max_tape_len")[:param_grid])
+      end
+
+      let!(:fixed_run) do
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 900,
+                     params: Lab::Schema.run_defaults.merge("max_tape_len" => 64))
+      end
+      let!(:roomy_run) do
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000,
+                     params: Lab::Schema.run_defaults.merge("max_tape_len" => 512))
+      end
+
+      it "reads each cap as an arm of its own, the fixed-length one among them" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Transition epoch vs max tape len", "Arms of max tape len")
+      end
+
+      it "draws the survival curves and tabulates the hazard of each cap" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Time to emergence vs max tape len", "P(no emergence)",
+                                         "Emergence hazard per arm of max tape len", "Run-epochs at risk")
+        expect(response.body).not_to include("No run has been observed yet.")
+      end
+
+      it "draws what room to grow did to descent" do
+        create(:sample, run: fixed_run, epoch: 500, values: { "distinct_lineages" => 4, "top_lineage_share" => 0.8 })
+        create(:sample, run: roomy_run, epoch: 500,
+                        values: { "distinct_lineages" => 128, "top_lineage_share" => 0.2 })
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Distinct lineages vs epoch, per arm of max tape len",
+                                         "Share of the largest lineage vs epoch, per arm of max tape len")
+        expect(drawn_arms(response.body)).to include("64", "512")
+      end
+
+      it "draws what room to grow did to the dominant replicator's complexity" do
+        create(:sample, run: fixed_run, epoch: 500,
+                        values: { "dominant_compressed_len" => 30, "dominant_instruction_count" => 120 })
+        create(:sample, run: roomy_run, epoch: 500,
+                        values: { "dominant_compressed_len" => 48, "dominant_instruction_count" => 900 })
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Compressed length of the dominant replicator (bytes) " \
+                                         "vs epoch, per arm of max tape len",
+                                         "Instructions in the dominant replicator vs epoch, " \
+                                         "per arm of max tape len")
+        expect(drawn_arms(response.body)).to include("64", "512")
+      end
+
+      # The chart's title and legend are rendered beside its empty frame too, so only a
+      # path with a plotted `d` says the arm's samples reached the page.
+      def drawn_arms(body)
+        expect(body).not_to include("No samples recorded yet.")
+
+        drawn = Nokogiri::HTML(body).css("g.chart-steps path.chart-line").select { |path| path["d"].present? }
+
+        drawn.filter_map { |path| path.at_css("title")&.text }
+      end
+    end
+
     context "with more runs than a page holds" do
       it "paginates them" do
         create_list(:run, 26, experiment: experiment)

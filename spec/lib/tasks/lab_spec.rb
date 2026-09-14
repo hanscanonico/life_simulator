@@ -181,6 +181,30 @@ RSpec.describe "lab:sweep" do
     end
   end
 
+  describe "max_tape_len" do
+    it "builds four caps times ten seeds" do
+      build_sweep("max_tape_len")
+
+      expect(Experiment.find_by(slug: "max-tape-len").runs_count).to eq(40)
+    end
+
+    it "sweeps the caps the programme names, the fixed-length arm among them" do
+      build_sweep("max_tape_len")
+
+      expect(Run.distinct.pluck(Arel.sql("params->'max_tape_len'")).map(&:to_i).sort)
+        .to eq([64, 128, 256, 512])
+    end
+
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("max_tape_len")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("max_tape_len" => 64, "tape_len" => 64,
+                                              "width" => 128, "height" => 128,
+                                              "mutation_rate" => 2.0**-13))
+    end
+  end
+
   describe "bff_control" do
     it "builds the two mutation arms times three seeds" do
       build_sweep("bff_control")

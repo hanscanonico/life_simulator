@@ -104,18 +104,29 @@ pub struct Outcome {
     pub steps: u32,
 }
 
-/// Executes `tape` in place with every op enabled.
-pub fn run(tape: &mut [u8], max_steps: u32) -> Outcome {
+/// Executes `tape` in place with every op enabled, at its own length.
+pub fn run(tape: &mut Vec<u8>, max_steps: u32) -> Outcome {
     run_with(tape, max_steps, OpSet::ALL)
 }
 
-/// Executes `tape` in place, running only the ops `enabled` names. The instruction
-/// pointer starts at 0 and runs forward; both heads start at 0 and wrap modulo
-/// `tape.len()`. Bracket matches are scanned at execution time, not precomputed, because
-/// the program rewrites itself as it runs.
-pub fn run_with(tape: &mut [u8], max_steps: u32, enabled: OpSet) -> Outcome {
+/// Executes `tape` in place at its own length, running only the ops `enabled` names.
+pub fn run_with(tape: &mut Vec<u8>, max_steps: u32, enabled: OpSet) -> Outcome {
+    let cap = tape.len();
+    run_growing(tape, max_steps, enabled, cap)
+}
+
+/// Executes `tape` in place, running only the ops `enabled` names, and lets it lengthen
+/// up to `cap` bytes. The instruction pointer starts at 0 and runs forward; both heads
+/// start at 0 and wrap modulo the tape's current length. Bracket matches are scanned at
+/// execution time, not precomputed, because the program rewrites itself as it runs.
+///
+/// Growth is the one thing `cap` adds (DESIGN §1.3, sweep 8): a head stepping right off
+/// the last byte appends a zero and moves onto it while there is room, and wraps to the
+/// front once there is not. A `cap` equal to `tape.len()` is the fixed tape of §1.1 —
+/// there is never room, so the loop below executes the identical instruction stream.
+pub fn run_growing(tape: &mut Vec<u8>, max_steps: u32, enabled: OpSet, cap: usize) -> Outcome {
     let enabled = enabled.table();
-    let len = tape.len();
+    let mut len = tape.len();
     if len == 0 {
         return Outcome {
             halt: Halt::EndOfTape,
@@ -140,9 +151,9 @@ pub fn run_with(tape: &mut [u8], max_steps: u32, enabled: OpSet) -> Outcome {
         match tape[ip] {
             byte if !enabled[byte as usize] => {}
             HEAD0_LEFT => head0 = (head0 + len - 1) % len,
-            HEAD0_RIGHT => head0 = (head0 + 1) % len,
+            HEAD0_RIGHT => head0 = step_right(head0, &mut len, cap, tape),
             HEAD1_LEFT => head1 = (head1 + len - 1) % len,
-            HEAD1_RIGHT => head1 = (head1 + 1) % len,
+            HEAD1_RIGHT => head1 = step_right(head1, &mut len, cap, tape),
             INC => tape[head0] = tape[head0].wrapping_add(1),
             DEC => tape[head0] = tape[head0].wrapping_sub(1),
             COPY_TO_HEAD1 => tape[head1] = tape[head0],
@@ -175,6 +186,19 @@ pub fn run_with(tape: &mut [u8], max_steps: u32, enabled: OpSet) -> Outcome {
         halt: Halt::EndOfTape,
         steps,
     }
+}
+
+/// A head one byte to the right: onto a fresh zero byte at the end while the tape may
+/// still lengthen, and round to the front once it may not.
+fn step_right(head: usize, len: &mut usize, cap: usize, tape: &mut Vec<u8>) -> usize {
+    if head + 1 == *len {
+        if *len >= cap {
+            return 0;
+        }
+        tape.push(0);
+        *len += 1;
+    }
+    head + 1
 }
 
 fn match_forward(tape: &[u8], ip: usize) -> Option<usize> {
@@ -362,6 +386,54 @@ mod tests {
             run(&mut by_default, 100)
         );
         assert_eq!(with_all, by_default);
+    }
+
+    /// The growth rule of DESIGN §1.3, sweep 8: a head stepping right off the end claims a
+    /// fresh zero byte while the cap allows it, and wraps once it does not.
+    #[test]
+    fn a_head_stepping_off_the_end_lengthens_the_tape_while_there_is_room() {
+        let mut grown = vec![b'>'; 3];
+        let outcome = run_growing(&mut grown, 100, OpSet::ALL, 4);
+        assert_eq!(grown, vec![b'>', b'>', b'>', 0]);
+        assert_eq!(outcome.steps, 4, "the claimed byte costs its step too");
+
+        let mut head1 = vec![b'}'; 3];
+        run_growing(&mut head1, 100, OpSet::ALL, 4);
+        assert_eq!(head1, vec![b'}', b'}', b'}', 0], "either head claims bytes");
+    }
+
+    #[test]
+    fn a_tape_at_its_cap_wraps_instead_of_growing() {
+        let mut tape = vec![b'>'; 3];
+        let outcome = run_growing(&mut tape, 100, OpSet::ALL, 3);
+        assert_eq!(tape, vec![b'>'; 3]);
+        assert_eq!(outcome.steps, 3);
+    }
+
+    /// The fixed tape of §1.1 is a cap at the tape's own length, and it must execute the
+    /// identical instruction stream: growth is the one thing a wider cap adds.
+    #[test]
+    fn a_cap_at_the_tapes_own_length_runs_it_exactly_as_a_fixed_tape() {
+        let program = vec![3, b'[', b'}', b'-', b']', b'.', b',', b'<', b'>', b'>', 0];
+        let mut fixed = program.clone();
+        let mut capped = program.clone();
+        let len = program.len();
+        assert_eq!(
+            run_with(&mut fixed, 100, OpSet::ALL),
+            run_growing(&mut capped, 100, OpSet::ALL, len)
+        );
+        assert_eq!(fixed, capped);
+    }
+
+    /// Growth is the program's own copying and not a gift: a loop walks head1 off the end,
+    /// claims a byte, and the copy that follows writes into the space it claimed.
+    #[test]
+    fn a_program_copies_into_the_space_it_claimed() {
+        let mut tape = vec![7, b'[', b'}', b'-', b']', b'>', b'.'];
+        let outcome = run_growing(&mut tape, 1_000, OpSet::ALL, 9);
+        assert_eq!(tape.len(), 8);
+        assert_eq!(tape[7], b'[', "the copy landed in the claimed byte");
+        assert_eq!(outcome.halt, Halt::EndOfTape);
     }
 
     #[test]

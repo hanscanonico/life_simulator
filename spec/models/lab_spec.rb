@@ -114,6 +114,29 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the room-to-grow sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("max_tape_len") }
+
+      it "doubles the cap from the length a tape starts at" do
+        expect(definition[:param_grid].fetch("max_tape_len")).to eq([64, 128, 256, 512])
+      end
+
+      it "carries the arm where growth is off, the fixed-tape world every other sweep ran" do
+        tape_len = definition[:param_grid].fetch("tape_len").sole
+
+        expect(tape_len).to eq(Lab::Schema.defaults.fetch("tape_len"))
+        expect(definition[:param_grid].fetch("max_tape_len").first).to eq(tape_len)
+      end
+
+      it "runs every arm at the mutation rate that first produced emergence" do
+        expect(definition[:param_grid].fetch("mutation_rate")).to eq([Lab::EMERGENT_MUTATION_RATE])
+      end
+
+      it "gives ten seeds the sweep epoch budget each" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..10).to_a, 20_000])
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 

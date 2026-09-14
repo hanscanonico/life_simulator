@@ -35,6 +35,14 @@
       "type": "integer"
     },
     {
+      "default": 0,
+      "doc": "The longest a soup cell's tape may grow to, through the programs' own copying: a head stepping right off the end of an interaction appends a byte instead of wrapping while there is room. 0 turns growth off, which is the fixed-length substrate of DESIGN 1.1, and so does any value equal to tape_len; below tape_len it is refused.",
+      "max": 1024,
+      "min": 0,
+      "name": "max_tape_len",
+      "type": "integer"
+    },
+    {
       "default": 1,
       "doc": "Moore-neighbourhood radius an interaction reaches; 0 means well-mixed. A positive radius must fit the torus: 2*radius + 1 <= min(width, height).",
       "max": 64,
