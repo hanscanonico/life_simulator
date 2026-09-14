@@ -18,6 +18,7 @@ RSpec.describe Lab::Schema do
 
   it "exposes an enum's values" do
     expect(described_class.values_for("substrate")).to eq(%w[soup life])
+    expect(described_class.values_for("structure")).to eq(%w[uniform gradient patchwork])
   end
 
   it "has no values for a numeric parameter" do

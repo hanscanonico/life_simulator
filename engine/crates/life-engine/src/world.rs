@@ -341,11 +341,9 @@ impl World {
         std::mem::swap(&mut self.cells, &mut self.scratch);
     }
 
-    /// Every byte in turn, each replaced with the probability its own cell lives under —
-    /// `mutation_rate` everywhere in a uniform world, and the rate the world's structure
-    /// gives that position otherwise. The bytes are visited in the one order either world
-    /// visits them and each is offered exactly one draw, so structure changes the odds a
-    /// byte faces and never where the stream stands.
+    /// A structure changes the probability each byte faces and never where the RNG stream
+    /// stands: the bytes are visited in the one order either world visits them, and each
+    /// is offered exactly one draw.
     fn mutate(&mut self, rng: &mut Rng) {
         if self.params.mutation_rate <= 0.0 {
             return;
@@ -1209,8 +1207,8 @@ mod tests {
         }
     }
 
-    /// The extremes of a gradient at full depth: the first column runs at no rate at all
-    /// and the column half a world east at twice the run's rate, which is every byte.
+    /// The extremes of a gradient at full amplitude: the driest column runs at no rate at
+    /// all and the wettest, half a world east, at twice the run's rate — every byte.
     #[test]
     fn a_gradient_mutates_by_column() {
         let mut world = World::new(&still_soup(Structure::Gradient), 5).unwrap();
@@ -1242,8 +1240,8 @@ mod tests {
     }
 
     /// The structure is opt-in: a uniform world must be the run the parameter's absence
-    /// left, down to the bytes of the world and every observable of §1.2, whatever depth
-    /// it carries unread.
+    /// left, down to the bytes of the world and every observable of §1.2, whatever
+    /// amplitude it carries unread.
     #[test]
     fn a_uniform_world_moves_no_run() {
         let uniform = Params {
@@ -1262,10 +1260,10 @@ mod tests {
         assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
     }
 
-    /// A structure with no depth is a uniform world by another name, and must run as one:
+    /// A structure of no amplitude is a uniform world by another name, and must run as one:
     /// the scaling itself must not move a byte.
     #[test]
-    fn a_structure_of_no_depth_runs_the_soup_unchanged() {
+    fn a_structure_of_no_amplitude_runs_the_soup_unchanged() {
         let params = Params {
             structure: Structure::Gradient,
             structure_amplitude: 0.0,

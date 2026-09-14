@@ -123,16 +123,16 @@ module Lab
     },
     "environmental_structure" => {
       name: "Environmental structure",
-      description: "Does a world whose regions differ raise the complexity plateau the " \
-                   "dominant replicator settles at? A structured world runs its mutation " \
-                   "rate high in one region and low in another, so a strategy that pays " \
-                   "off in one place need not pay off in the next. The secondary " \
+      description: "Does a world that varies from place to place raise the complexity " \
+                   "plateau the dominant replicator settles at? A structured world runs " \
+                   "its mutation rate high in some cells and low in others, so a strategy " \
+                   "that pays off in one place need not pay off in the next. The secondary " \
                    "prediction: a heterogeneous world keeps more lineages alive after " \
                    "emergence than a uniform one.",
       # The first arm is the uniform world every earlier sweep ran, so the two structured
       # arms are read against a control inside the same experiment. At amplitude 0.75 the
-      # dry regions run at 2^-15 and the wet at about 2^-12.2 — both inside the rate window
-      # sweep 1 mapped, so a region is dry or wet without leaving the window altogether.
+      # dry cells run at 2^-15 and the wet at about 2^-12.2 — both inside the rate window
+      # sweep 1 mapped, so a cell is dry or wet without leaving the window altogether.
       param_grid: {
         "structure" => %w[uniform gradient patchwork],
         "structure_amplitude" => [0.75],

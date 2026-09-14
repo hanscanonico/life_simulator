@@ -46,11 +46,10 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
 - **Environmental structure** (`structure`, default `uniform` = off): with a structure
   set, the mutation rate a cell lives under scales with where the cell sits, between
   `1 - structure_amplitude` and `1 + structure_amplitude` times `mutation_rate` (clamped
-  to a probability). `gradient` runs a triangle across the columns — driest at column 0,
-  wettest half a world east, falling back, so the torus has no seam — and `patchwork` runs
-  four quadrants alternating dry and wet. At `uniform` the rate is `mutation_rate`
-  everywhere and the world is exactly the one above: the same bytes are offered the same
-  draws in the same order.
+  to a probability). `gradient` runs a triangle across the columns, driest at column 0 and
+  wettest half a world east; `patchwork` runs four quadrants alternating dry and wet. At
+  `uniform` the rate is `mutation_rate` everywhere and the world is exactly the one above:
+  the same bytes are offered the same draws in the same order.
 - **Initial state**: every byte uniformly random (`init = random`), or every byte zero
   (`init = zero`) — a control that must never produce replicators without mutation.
 - **Determinism**: a run is fully determined by `(params, seed)`. Same inputs, same

@@ -542,7 +542,9 @@ RSpec.describe "Experiments", type: :request do
         get experiment_path(experiment)
 
         expect(response.body).to include("Time to emergence vs structure", "P(no emergence)",
+                                         "uniform — 1 of 1 emerged", "patchwork — 0 of 1 emerged",
                                          "Emergence hazard per arm of structure", "Run-epochs at risk")
+        expect(response.body).not_to include("No run has been observed yet.")
       end
 
       it "draws what each world did to descent" do
@@ -554,6 +556,7 @@ RSpec.describe "Experiments", type: :request do
 
         expect(response.body).to include("Distinct lineages vs epoch, per arm of structure",
                                          "Share of the largest lineage vs epoch, per arm of structure")
+        expect(drawn_arms(response.body)).to include("uniform", "patchwork")
       end
 
       it "draws what each world did to the dominant replicator's complexity" do
@@ -568,6 +571,17 @@ RSpec.describe "Experiments", type: :request do
                                          "vs epoch, per arm of structure",
                                          "Instructions in the dominant replicator vs epoch, " \
                                          "per arm of structure")
+        expect(drawn_arms(response.body)).to include("uniform", "patchwork")
+      end
+
+      # The chart's title and legend are rendered beside its empty frame too, so only a
+      # path with a plotted `d` says the arm's samples reached the page.
+      def drawn_arms(body)
+        expect(body).not_to include("No samples recorded yet.")
+
+        drawn = Nokogiri::HTML(body).css("g.chart-steps path.chart-line").select { |path| path["d"].present? }
+
+        drawn.filter_map { |path| path.at_css("title")&.text }
       end
     end
 

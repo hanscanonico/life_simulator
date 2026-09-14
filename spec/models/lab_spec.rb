@@ -97,7 +97,7 @@ RSpec.describe Lab do
           .to eq(Lab::Schema.defaults.fetch("structure"))
       end
 
-      it "keeps both regions of a structured world inside the rate window sweep 1 mapped" do
+      it "keeps the dry and the wet cells of a structured world inside the rate window sweep 1 mapped" do
         amplitude = definition[:param_grid].fetch("structure_amplitude").sole
         rates = [1 - amplitude, 1 + amplitude].map { |scale| Lab::EMERGENT_MUTATION_RATE * scale }
 
