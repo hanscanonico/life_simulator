@@ -16,6 +16,26 @@ RSpec.describe Findings::Finding do
     expect(finding.body_partial).to eq("findings/bodies/mutation_rate_window")
   end
 
+  it "rests on the one sweep it names" do
+    expect(finding).to have_attributes(experiment_slugs: ["mutation-rate"], related_experiment_slugs: [],
+                                       related_finding_slugs: [])
+    expect(finding.rests_on?("mutation-rate")).to be(true)
+    expect(finding.rests_on?("radius")).to be(false)
+  end
+
+  context "with several sweeps weighed against each other" do
+    subject(:finding) do
+      described_class.new(slug: "spans", title: "Spans", date: Date.new(2026, 9, 14), experiment_slug: nil,
+                          status: :open, summary: "Three sweeps.", related_experiment_slugs: %w[radius world-size],
+                          related_finding_slugs: %w[radius-locality], body_partial: "findings/bodies/radius_locality")
+    end
+
+    it "rests on every one of them and names no single sweep" do
+      expect(finding).to have_attributes(sweep?: false, experiment_slugs: %w[radius world-size])
+      expect(finding.rests_on?("world-size")).to be(true)
+    end
+  end
+
   it "colours the badge by status" do
     expect(finding.badge_class).to eq("badge-info")
   end

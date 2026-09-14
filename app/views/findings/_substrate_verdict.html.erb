@@ -1,0 +1,80 @@
+<%# One hypothesis of the open-endedness finding: the verdict its own sweep supports, then
+    the arm-by-arm counts it was read from. `reading` names the deciding observable and
+    `unit` what it is measured in, so the same table serves a length and a lineage count. %>
+<p>
+  <span class="badge <%= bet.badge_class %>"><%= bet.verdict_label %></span>
+  <strong>
+    <% if bet.verdict == :supported %>
+      <%= safe_join(bet.raising_arms.map { |arm| tag.span(arm.label, class: "mono") }, ", ") %>
+      settles above the control arm in most of its runs.
+    <% elsif bet.verdict == :not_supported %>
+      No arm settles above the control arm in most of its runs — the refutation condition
+      of the hypothesis, at the seeds this sweep has.
+    <% else %>
+      Not enough transitioned seeds to decide it either way.
+    <% end %>
+  </strong>
+  <% if bet.experiment? %>
+    <%= link_to bet.experiment.name, experiment_path(bet.experiment) %> has
+    <%= pluralize bet.transitioned_count, "transitioned run" %>, <%= bet.measured_count %> of
+    them carrying <%= reading %> after the crossing.
+  <% else %>
+    The sweep <span class="mono"><%= bet.slug %></span> is not in this database, so it has
+    no runs behind it here.
+  <% end %>
+  <% if bet.resolved? %>
+    The control arm's median is
+    <%= number_with_precision bet.control_median, precision: 1, strip_insignificant_zeros: true %>
+    <%= unit %>, and every other arm with at least
+    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> is counted
+    against it.
+  <% else %>
+    A verdict needs at least
+    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> in the
+    control arm and in one other arm; until then the hypothesis is untested rather than
+    refuted.
+  <% end %>
+</p>
+
+<div class="table-scroll" tabindex="0" role="region" id="<%= bet.slug %>-<%= bet.decided_by %>-arms"
+     aria-label="Arms of the <%= bet.slug %> sweep, against its control arm">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Arm</th>
+        <th class="numeric">Transitioned runs</th>
+        <th class="numeric">Measured</th>
+        <th class="numeric">Median <%= unit %></th>
+        <th class="numeric">Above control</th>
+        <th class="numeric">Still rising</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% bet.arms.each do |arm| %>
+        <tr>
+          <td>
+            <span class="mono"><%= arm.label %></span>
+            <% if arm.control? %><span class="badge badge-info">control</span><% end %>
+          </td>
+          <td class="numeric mono"><%= arm.transitioned_count %></td>
+          <td class="numeric mono"><%= arm.measured_count(bet.decided_by) %></td>
+          <td class="numeric mono">
+            <% median = arm.median_plateau(bet.decided_by) %>
+            <%= median ? number_with_precision(median, precision: 1, strip_insignificant_zeros: true) : "—" %>
+          </td>
+          <td class="numeric mono">
+            <%= arm.control? ? "—" : arm.above_count(bet.decided_by, bet.control_median) %>
+          </td>
+          <td class="numeric mono"><%= arm.rising_count(bet.decided_by) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p class="text-sm text-muted">
+  One row per arm of the sweep. "Measured" counts the transitioned runs whose samples carry
+  the reading after their own crossing; the median is of each run's highest post-crossing
+  reading, the plateau it settled at. "Above control" counts the runs of the arm whose
+  plateau is strictly above the control arm's median, and "Still rising" the runs whose last
+  reading is above their first.
+</p>

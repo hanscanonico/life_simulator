@@ -17,7 +17,20 @@
     Transition, flagged, census and arm are used here in the senses set out in
     <%= link_to "the glossary", how_it_works_path(anchor: "glossary") %>.
   </p>
-  <% if !@show.finding.sweep? %>
+  <% if @show.finding.related_experiment_slugs.any? %>
+    <% if @show.related_experiments.any? %>
+      <p class="text-sm">
+        Sweeps:
+        <%= safe_join(@show.related_experiments.map { |sweep| link_to sweep.name, experiment_path(sweep) }, " · ") %>
+      </p>
+    <% end %>
+    <p class="text-muted">
+      This finding rests on no single sweep: it weighs
+      <%= pluralize @show.finding.related_experiment_slugs.size, "sweep" %> against each
+      other, and the runs behind each verdict are tabled above by arm. A sweep the lab has
+      not queued yet carries no runs and decides nothing here.
+    </p>
+  <% elsif !@show.finding.sweep? %>
     <p class="text-muted">
       This finding rests on no single sweep: its evidence is every transitioned run in the
       lab, tabled above with the sweep and the seed each one came from.

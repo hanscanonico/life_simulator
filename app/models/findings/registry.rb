@@ -7,6 +7,27 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "complexity-keeps-rising",
+        title: "Does complexity keep rising?",
+        date: Date.new(2026, 9, 14),
+        experiment_slug: nil,
+        related_experiment_slugs: %w[energy-per-epoch environmental-structure max-tape-len],
+        related_finding_slugs: %w[replicator-complexity-plateau],
+        status: :open,
+        summary: "The open-endedness verdict across the three substrate bets of DESIGN " \
+                 "§1.3 — instruction cost, environmental structure and room to grow — " \
+                 "read against the default substrate the complexity-plateau finding " \
+                 "established. Each of those sweeps carries its own control arm: the cost " \
+                 "off, a uniform world, a tape that cannot lengthen, the substrate every " \
+                 "earlier sweep ran. This reads each sweep at render time and asks the " \
+                 "same two questions of every arm — does the dominant replicator settle " \
+                 "at a higher complexity than the control arm settles at, and does the " \
+                 "world keep more lineages alive — by placing each transitioned run above " \
+                 "or below its own control and counting, never fitting a trend. An arm " \
+                 "with too few transitioned seeds decides nothing, and the hypothesis it " \
+                 "belongs to reads unresolved rather than answered."
+      ),
+      Finding.new(
         slug: "copy-cost-adaptation",
         title: "Does copying get cheaper?",
         date: Date.new(2026, 9, 13),
@@ -168,8 +189,9 @@ module Findings
 
     # The write-ups resting on one sweep, newest first: a finding is content in the repo,
     # not a row, so every page that links up to one reads it from here rather than querying.
+    # A finding that weighs several sweeps against each other is listed by each of them.
     def self.for_experiment(experiment_slug)
-      all.select { |finding| finding.experiment_slug == experiment_slug }
+      all.select { |finding| finding.rests_on?(experiment_slug) }
     end
   end
 end
