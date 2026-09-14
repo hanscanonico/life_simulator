@@ -127,8 +127,6 @@ module Findings
 
       def transitioned_count = arms.sum(&:transitioned_count)
 
-      def rising_count = rising_count_of(decided_by)
-
       def rising_count_of(observable) = arms.sum { |arm| arm.rising_count(observable) }
 
       def measured_count_of(observable) = arms.sum { |arm| arm.measured_count(observable) }
