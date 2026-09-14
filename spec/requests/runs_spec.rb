@@ -181,6 +181,28 @@ RSpec.describe "Runs", type: :request do
       expect(response.body.scan("chart-line").size).to eq(Runs::ShowPage::METRICS.size)
     end
 
+    context "with a run of the instruction-cost sweep" do
+      let(:experiment) do
+        create(:experiment, name: "Instruction cost", slug: "energy-per-epoch",
+                            param_grid: Lab::SWEEPS.fetch("energy_per_epoch")[:param_grid])
+      end
+      let(:run) do
+        create(:run, experiment: experiment, epochs: 20_000, epochs_done: 20_000, transition_epoch: 900,
+                     params: Lab::Schema.run_defaults.merge("energy_per_epoch" => 2**11))
+      end
+
+      it "draws the lineage and complexity series of a priced world" do
+        create(:sample, run: run, epoch: 100, values: Runs::ShowPage::METRICS.keys.index_with(0.5))
+
+        get run_path(run)
+
+        expect(response.body).to include("Distinct lineages", "Share of the largest lineage",
+                                         "Copy cost (steps)",
+                                         "Compressed length of the dominant replicator (bytes)",
+                                         "Instructions in the dominant replicator")
+      end
+    end
+
     context "with no sample" do
       it "says the run has not reported yet instead of drawing empty charts" do
         get run_path(run)

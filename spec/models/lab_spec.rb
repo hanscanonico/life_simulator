@@ -61,6 +61,28 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the instruction-cost sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("energy_per_epoch") }
+
+      it "prices an interaction against the step budget it is cut from" do
+        expect(definition[:param_grid].fetch("energy_per_epoch")).to eq([0, 2**15, 2**13, 2**11])
+        expect(Lab::Schema.defaults.fetch("max_steps")).to eq(2**13)
+      end
+
+      it "carries the arm where the cost is off, the substrate every other sweep ran" do
+        expect(definition[:param_grid].fetch("energy_per_epoch").first)
+          .to eq(Lab::Schema.defaults.fetch("energy_per_epoch"))
+      end
+
+      it "runs every arm at the mutation rate that first produced emergence" do
+        expect(definition[:param_grid].fetch("mutation_rate")).to eq([Lab::EMERGENT_MUTATION_RATE])
+      end
+
+      it "gives ten seeds the sweep epoch budget each" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..10).to_a, 20_000])
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 

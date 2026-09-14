@@ -51,6 +51,14 @@
       "type": "integer"
     },
     {
+      "default": 0,
+      "doc": "Instructions one cell may pay for per epoch, refilled at the start of every epoch; an interaction runs on what the poorer of its two cells has left. 0 turns the cost off, which is the substrate of DESIGN 1.1.",
+      "max": 1048576,
+      "min": 0,
+      "name": "energy_per_epoch",
+      "type": "integer"
+    },
+    {
       "default": "<>{}+-.,[]",
       "doc": "The BFF instructions this run executes, as a string of distinct op bytes. A byte whose op is left out is a no-op, like any non-instruction byte.",
       "name": "ops",

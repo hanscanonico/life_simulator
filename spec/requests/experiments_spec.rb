@@ -455,6 +455,33 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the instruction-cost sweep" do
+      let(:experiment) do
+        create(:experiment, name: "Instruction cost", slug: "energy-per-epoch", epochs: 20_000,
+                            param_grid: Lab::SWEEPS.fetch("energy_per_epoch")[:param_grid])
+      end
+
+      before do
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 900,
+                     params: Lab::Schema.run_defaults.merge("energy_per_epoch" => 0))
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000,
+                     params: Lab::Schema.run_defaults.merge("energy_per_epoch" => 2**11))
+      end
+
+      it "reads the budget as an arm of its own, the cost off among them" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Transition epoch vs energy per epoch", "2048", "Arms of energy per epoch")
+      end
+
+      it "draws the survival curves and tabulates the hazard of each budget" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Time to emergence vs energy per epoch", "P(no emergence)",
+                                         "Emergence hazard per arm of energy per epoch", "Run-epochs at risk")
+      end
+    end
+
     context "with more runs than a page holds" do
       it "paginates them" do
         create_list(:run, 26, experiment: experiment)

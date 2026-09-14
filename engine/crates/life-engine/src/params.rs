@@ -35,6 +35,9 @@ pub struct Params {
     /// Moore-neighbourhood radius; `0` means well-mixed (any cell in the world).
     pub radius: u32,
     pub max_steps: u32,
+    /// Instruction energy one cell may spend per epoch; `0` (the default) turns the cost
+    /// off and the soup runs as it always has (DESIGN §1.3, sweep 6).
+    pub energy_per_epoch: u32,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -55,6 +58,7 @@ impl Default for Params {
             tape_len: 64,
             radius: 1,
             max_steps: 8192,
+            energy_per_epoch: 0,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             init: Init::Random,
@@ -133,6 +137,16 @@ const FIELDS: &[Field] = &[
             max: 1_048_576.0,
         },
         doc: "Instruction budget for one interaction between two tapes.",
+    },
+    Field {
+        name: "energy_per_epoch",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "Instructions one cell may pay for per epoch, refilled at the start of every \
+              epoch; an interaction runs on what the poorer of its two cells has left. \
+              0 turns the cost off, which is the substrate of DESIGN 1.1.",
     },
     Field {
         name: "ops",
@@ -453,6 +467,29 @@ mod tests {
     }
 
     #[test]
+    fn the_instruction_cost_is_off_by_default_and_bounded_when_on() {
+        assert_eq!(Params::default().energy_per_epoch, 0);
+
+        let costly = Params {
+            energy_per_epoch: 4096,
+            ..Params::default()
+        };
+        assert_eq!(costly.validate(), Ok(()));
+
+        let beyond = Params {
+            energy_per_epoch: 1_048_577,
+            ..Params::default()
+        };
+        assert!(matches!(
+            beyond.validate(),
+            Err(ParamError::OutOfRange {
+                field: "energy_per_epoch",
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn rejects_non_finite_mutation_rate() {
         let params = Params {
             mutation_rate: f64::NAN,
@@ -470,7 +507,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 12);
+        assert_eq!(fields.len(), 13);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -482,6 +519,14 @@ mod tests {
         assert_eq!(ops["type"], "subset");
         assert_eq!(ops["default"], "<>{}+-.,[]");
         assert_eq!(ops["values"].as_array().unwrap().len(), 10);
+
+        let energy = fields
+            .iter()
+            .find(|f| f["name"] == "energy_per_epoch")
+            .unwrap();
+        assert_eq!(energy["type"], "integer");
+        assert_eq!(energy["default"], 0);
+        assert_eq!(energy["min"], 0);
 
         let substrate = fields.iter().find(|f| f["name"] == "substrate").unwrap();
         assert_eq!(substrate["type"], "enum");
