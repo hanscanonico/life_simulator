@@ -83,7 +83,10 @@ claim rests on it.
 - `copy_rate`: share of the sampled epoch's interactions that ended with one tape copied
   byte-exactly over the other half (either direction), among the pairs whose two halves
   started out different — halves that arrive identical end that way whatever runs, so
-  they are not a copy. Replication caught in situ, so it sees the replicators the
+  they are not a copy. A half counts as copied when it ends holding a byte-exact image of
+  the tape its partner arrived with, read from its first byte: bytes past the image — the
+  room a tape free to grow claimed — do not unmake the copy, and a half too short to hold
+  the whole source is no copy of it. Replication caught in situ, so it sees the replicators the
   replicator test misses — those that only copy with a kin partner or into a particular
   layout. Counted only on the epochs a sample reads; the life substrate reports 0.
 - `distinct_lineages`: how many lineage ids the cells hold. Every cell starts its own at

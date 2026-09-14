@@ -786,6 +786,7 @@ mod tests {
                 width: 8,
                 height: 8,
                 tape_len: 64,
+                tape_cap: 64,
                 epoch: 0,
                 transition: TransitionState::default(),
             },

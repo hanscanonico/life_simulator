@@ -7,10 +7,10 @@
 //! payloads follow back to back, cells first.
 //!
 //! Version 4 is what a world whose tapes can grow (DESIGN §1.3, sweep 8) writes: the same
-//! header with the lineage payload's length after the cell payload's, and a third payload
-//! holding one live tape length per cell. Its cell payload is the ragged live bytes end to
-//! end rather than the padded slots. A world that cannot grow writes version 3, byte for
-//! byte as it always did.
+//! header with the lineage payload's length and the tape cap after the cell payload's
+//! length, and a third payload holding one live tape length per cell. Its cell payload is
+//! the ragged live bytes end to end rather than the padded slots. A world that cannot grow
+//! writes version 3, byte for byte as it always did.
 
 use crate::metrics::{self, TransitionState};
 use crate::params::{Params, Substrate};
@@ -23,7 +23,7 @@ pub const VERSION: u8 = 3;
 /// The version a world whose tapes can grow writes; it carries the lengths.
 pub const VERSION_RAGGED: u8 = 4;
 pub const HEADER_LEN: usize = 62;
-const HEADER_LEN_V4: usize = 70;
+const HEADER_LEN_V4: usize = 74;
 /// Version 2 carried tapes only, version 1 not even the transition tracker; Postgres
 /// still holds both, and every run they belong to must stay resumable.
 const HEADER_LEN_V2: usize = 54;
@@ -60,6 +60,10 @@ pub struct Header {
     pub width: u32,
     pub height: u32,
     pub tape_len: u32,
+    /// The longest a tape of this world may be — `Params::tape_cap`. Only a version 4
+    /// container carries it; the older ones predate growth, so restoring one reads the
+    /// fixed length back as the cap.
+    pub tape_cap: u32,
     pub epoch: u64,
     pub transition: TransitionState,
 }
@@ -115,6 +119,7 @@ pub fn encode_compressed(
     out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
     if ragged {
         out.extend_from_slice(&(tags.len() as u64).to_le_bytes());
+        out.extend_from_slice(&header.tape_cap.to_le_bytes());
     }
     out.extend_from_slice(payload);
     out.extend_from_slice(&tags);
@@ -211,6 +216,11 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
         width: word(6),
         height: word(10),
         tape_len: word(14),
+        tape_cap: if header_len == HEADER_LEN_V4 {
+            word(HEADER_LEN + 8)
+        } else {
+            word(14)
+        },
         epoch: u64::from_le_bytes(bytes[18..26].try_into().expect("eight bytes")),
         transition,
     };
@@ -226,6 +236,13 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
     }
     if header.tape_len != params.tape_len {
         return Err(SnapshotError::Mismatch { field: "tape_len" });
+    }
+    // The lengths alone cannot tell the cap they were written under: every one of them
+    // fitting a narrower slot is no evidence the world had no more room than that.
+    if header_len == HEADER_LEN_V4 && header.tape_cap != params.tape_cap() {
+        return Err(SnapshotError::Mismatch {
+            field: "max_tape_len",
+        });
     }
 
     let payload_at = |at: usize| {
@@ -400,6 +417,7 @@ mod tests {
             width: params.width,
             height: params.height,
             tape_len: params.tape_len,
+            tape_cap: params.tape_cap(),
             epoch,
             transition: TransitionState::default(),
         }
@@ -566,6 +584,33 @@ mod tests {
             assert!(slot[len..].iter().all(|byte| *byte == 0), "cell {cell}");
             at += len;
         }
+    }
+
+    /// The lengths alone cannot tell the cap they were written under: a blob whose tapes
+    /// all happen to fit a narrower world would restore into it silently, and the run
+    /// would carry room it was never given. The version 4 header carries the cap for
+    /// exactly that case.
+    #[test]
+    fn rejects_a_ragged_blob_written_under_another_cap() {
+        let params = Params {
+            max_tape_len: 512,
+            ..params()
+        };
+        let lens = vec![8u32; params.cell_count()];
+        let live = vec![b'a'; lens.len() * 8];
+        let bytes = encode(&header(&params, 4), &live, &lineages(&params), &lens);
+
+        let narrower = Params {
+            max_tape_len: 128,
+            ..params.clone()
+        };
+        assert!(matches!(
+            decode(&narrower, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "max_tape_len"
+            })
+        ));
+        assert!(decode(&params, &bytes).is_ok());
     }
 
     /// A length no slot of this world can hold — a blob written under a wider cap — is

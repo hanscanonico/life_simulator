@@ -205,6 +205,7 @@ impl World {
             width: self.params.width,
             height: self.params.height,
             tape_len: self.params.tape_len,
+            tape_cap: self.params.tape_cap(),
             epoch: self.epoch,
             transition: self.transition.state(),
         }
@@ -296,7 +297,8 @@ impl World {
                 // equal to each other's pre-execution tape whether or not anything ran, and
                 // counting them reads 1.0 on a frozen monoculture.
                 let copied = before[..live_a] != before[live_a..]
-                    && (pair[live_a..] == before[..live_a] || pair[..live_a] == before[live_a..]);
+                    && (copied_onto(&pair[live_a..], &before[..live_a])
+                        || copied_onto(&pair[..live_a], &before[live_a..]));
                 copies += u64::from(copied);
             }
             // The split stays where the pair was joined: the first cell keeps the length it
@@ -548,6 +550,15 @@ pub fn halt_reason(outcome: &bff::Outcome, budget: u32, max_steps: u32) -> bff::
         return bff::Halt::EnergySpent;
     }
     outcome.halt
+}
+
+/// Whether one half of a pair ends holding a byte-exact image of the tape its partner
+/// arrived with, read from byte zero (`copy_rate`, DESIGN §1.2). A half too short to hold
+/// the whole source is no copy of it; bytes past the image — the room a growing tape
+/// claimed and never wrote into — do not unmake one, or an interaction that grew could
+/// never register a copy at all.
+fn copied_onto(result: &[u8], source: &[u8]) -> bool {
+    result.len() >= source.len() && result[..source.len()] == *source
 }
 
 /// Whether a tape resembles its partner's arriving tape more closely than its own, by
@@ -1977,6 +1988,41 @@ mod tests {
         world.step();
         world.step();
         assert!(world.metrics().copy_rate > 0.0, "epoch 3 is");
+    }
+
+    /// A copier writing past the end of a shorter partner lengthens it, so the tape it
+    /// leaves behind is its own image plus the byte the last head step claimed. That is a
+    /// copy: counting only halves that ended exactly as long as their source would read 0
+    /// on every interaction that grew, which is the very arm sweep 8 studies.
+    #[test]
+    fn a_copy_that_lengthened_its_partner_is_still_a_copy() {
+        let params = Params {
+            tape_len: 200,
+            max_tape_len: 512,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            ..soup(4, 4)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let tape = replicator::handwritten_replicator();
+        // An unmatched `]` over a non-zero byte halts a pair at its first instruction, so
+        // the one interaction of the epoch that executes anything is the copier's.
+        let inert: Vec<u8> = [vec![b']'], vec![b'x'; 199]].concat();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &inert);
+            }
+        }
+        world.set_cell(0, 0, &tape);
+
+        world.step();
+
+        let grew_a_copy = (0..params.height)
+            .flat_map(|y| (0..params.width).map(move |x| (x, y)))
+            .map(|(x, y)| world.cell(x, y))
+            .any(|cell| cell.len() > tape.len() && cell[..tape.len()] == tape[..]);
+        assert!(grew_a_copy, "no partner was copied onto and lengthened");
+        assert!(world.metrics().copy_rate > 0.0);
     }
 
     #[test]

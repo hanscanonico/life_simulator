@@ -430,14 +430,25 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   different tapes, so the ranking separates a grown replicator from the shorter one it
   descends from. The replicator test of §1.2 is otherwise unchanged: a candidate is still
   paired with a random tape of its own length, and that pair never grows, so a tape is put
-  to the same test in every arm of the sweep. Hamming distance — which both the lineage rule and `lineage_variation`
-  read — counts a length difference as that many mismatches, so a tape that grew has moved
-  away from its lineage's modal tape by exactly the bytes it gained. No observable is
-  normalised by `tape_len`, so none of them had to be redefined for a mixed-length world.
+  to the same test in every arm of the sweep. Hamming distance — which both the lineage
+  rule and `lineage_variation` read — counts a length difference as that many mismatches,
+  so a tape that grew has moved away from its lineage's modal tape by exactly the bytes it
+  gained. No observable is normalised by `tape_len`, so none of them had to be redefined
+  for a mixed-length world. `copy_rate` is the one that needed a rule for a mixed-length
+  pair: a half counts as copied when it ends holding a byte-exact image of the tape its
+  partner arrived with, read from its first byte. Bytes past the image — the room a
+  copier's last head step claimed — do not unmake the copy, and a half too short to hold
+  the whole source is no copy of it. Read the other way round, an interaction that grew
+  could never register a copy at all and the reading would be biased down in exactly the
+  arms this sweep studies; on a pair whose halves are the same length the rule is the
+  equality it always was, so no fixed-tape run moves.
   **The snapshot** carries the lengths, in a version 4 container: the cell payload is the
-  ragged live bytes end to end, and a third zlib payload holds one length per cell. A world
-  that cannot grow writes the version 3 container it wrote before, byte for byte, and every
-  version 1, 2 and 3 blob Postgres holds still restores.
+  ragged live bytes end to end, a third zlib payload holds one length per cell, and the
+  header carries the cap they were written under, checked against the run's own like every
+  other header field. Without it a blob written under one cap would silently resume under
+  another whenever every length happened to fit the narrower slots, giving the world room
+  it was never granted. A world that cannot grow writes the version 3 container it wrote
+  before, byte for byte, and every version 1, 2 and 3 blob Postgres holds still restores.
   **Rendering** is unchanged in shape — one pixel per cell — and reads the cell's live
   tape, so a grown tape's hue and op density are read off the bytes it actually holds.
   The parameter is **off at `max_tape_len` 0, which is the default**, and a `max_tape_len`
