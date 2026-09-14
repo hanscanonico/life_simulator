@@ -132,6 +132,21 @@ RSpec.describe Findings::OpenEndednessSurvey do
     end
   end
 
+  context "with every treated arm measured against a control arm of one run" do
+    it "leaves the hypothesis unresolved rather than refuting it against one seed" do
+      experiment = sweep("max_tape_len")
+      transitioned_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40])
+      [128, 256, 512].each do |cap|
+        2.times { transitioned_run(experiment, { "max_tape_len" => cap }, lengths: [30, 36]) }
+      end
+
+      bet = described_class.build.bet("max-tape-len")
+
+      expect(bet).to have_attributes(verdict: :unresolved, refutable?: false, control_comparable?: false)
+      expect(bet.untestable_arms).to be_empty
+    end
+  end
+
   context "with a single run in the control arm" do
     it "leaves the hypothesis unresolved rather than deciding it on one seed" do
       experiment = sweep("max_tape_len")
@@ -209,6 +224,15 @@ RSpec.describe Findings::OpenEndednessSurvey do
     run = create(:run, experiment: experiment, status: "finished", transition_epoch: 100,
                        params: Lab::Schema.run_defaults.merge("max_tape_len" => 128))
     create(:sample, run: run, epoch: 100, values: { "dominant_compressed_len" => nil })
+
+    expect(described_class.build.bet("max-tape-len").measured_count_of(:length)).to eq(0)
+  end
+
+  it "reads a value the engine did not write as a number as no reading" do
+    experiment = sweep("max_tape_len")
+    run = create(:run, experiment: experiment, status: "finished", transition_epoch: 100,
+                       params: Lab::Schema.run_defaults.merge("max_tape_len" => 128))
+    create(:sample, run: run, epoch: 100, values: { "dominant_compressed_len" => "44" })
 
     expect(described_class.build.bet("max-tape-len").measured_count_of(:length)).to eq(0)
   end
