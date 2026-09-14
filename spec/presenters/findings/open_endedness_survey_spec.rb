@@ -71,6 +71,37 @@ RSpec.describe Findings::OpenEndednessSurvey do
     end
   end
 
+  context "with half of an arm's runs above the control and half below" do
+    it "needs more than half to read the arm as raising the plateau" do
+      experiment = sweep("max_tape_len")
+      2.times { transitioned_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      transitioned_run(experiment, { "max_tape_len" => 256 }, lengths: [60, 120])
+      transitioned_run(experiment, { "max_tape_len" => 256 }, lengths: [30, 36])
+
+      bet = described_class.build.bet("max-tape-len")
+      arm = bet.arms.find { |candidate| candidate.value == 256 }
+
+      expect(arm.measured_count(:length)).to eq(2)
+      expect(arm.above_count(:length, bet.control_median)).to eq(1)
+      expect(bet).to have_attributes(verdict: :not_supported, raising_arms: [])
+    end
+  end
+
+  context "with a minority of an arm's runs above the control" do
+    it "does not read that arm as raising the plateau" do
+      experiment = sweep("max_tape_len")
+      2.times { transitioned_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      transitioned_run(experiment, { "max_tape_len" => 512 }, lengths: [60, 120])
+      2.times { transitioned_run(experiment, { "max_tape_len" => 512 }, lengths: [30, 36]) }
+
+      bet = described_class.build.bet("max-tape-len")
+      arm = bet.arms.find { |candidate| candidate.value == 512 }
+
+      expect(arm.above_count(:length, bet.control_median)).to eq(1)
+      expect(bet).to have_attributes(verdict: :not_supported, raising_arms: [])
+    end
+  end
+
   context "with a single run in the control arm" do
     it "leaves the hypothesis unresolved rather than deciding it on one seed" do
       experiment = sweep("max_tape_len")

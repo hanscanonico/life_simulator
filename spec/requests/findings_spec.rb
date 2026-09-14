@@ -1065,7 +1065,8 @@ RSpec.describe "Findings", type: :request do
                       "room to grow raises the plateau the dominant replicator's complexity settles at, " \
                       "refuted if tapes free to lengthen plateau where fixed-length tapes do",
                       "A plateau is a plateau at these budgets.",
-                      "Counts, not effect sizes.")
+                      "Counts, not effect sizes.",
+                      "Every run is read from its own crossing.")
       end
 
       it "links the three sweeps it weighs and the baseline finding it is read against" do
@@ -1074,6 +1075,8 @@ RSpec.describe "Findings", type: :request do
         get finding_path(open_endedness)
 
         expect(response.body).to include(finding_path("replicator-complexity-plateau"))
+        expect(response.parsed_body.css("p").map { |paragraph| paragraph.text.squish })
+          .to include("Read against: Does the replicator keep getting more complicated?")
         sweeps.each { |sweep| expect(response.body).to include(experiment_path(sweep)) }
       end
 
@@ -1084,6 +1087,8 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish)
           .to include("Not enough transitioned seeds to decide it either way",
                       "No run of the three substrate sweeps has transitioned in this database yet")
+        treated = response.parsed_body.css("#energy-per-epoch-lineages-arms tbody tr").last
+        expect(treated.css("td").map { |cell| cell.text.squish }).to eq(["2048", "0", "0", "—", "—", "0"])
       end
 
       context "with an arm settling above its control" do
@@ -1113,8 +1118,8 @@ RSpec.describe "Findings", type: :request do
 
           expect(response.body.squish)
             .to include("not supported",
-                        "No arm settles above the control arm in most of its runs — the refutation " \
-                        "condition of the hypothesis")
+                        "No arm with at least 2 measured runs settles above the control arm in most " \
+                        "of them — the refutation condition of the hypothesis")
         end
       end
 

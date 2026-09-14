@@ -8,8 +8,10 @@
       <%= safe_join(bet.raising_arms.map { |arm| tag.span(arm.label, class: "mono") }, ", ") %>
       settles above the control arm in most of its runs.
     <% elsif bet.verdict == :not_supported %>
-      No arm settles above the control arm in most of its runs — the refutation condition
-      of the hypothesis, at the seeds this sweep has.
+      No arm with at least
+      <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> settles
+      above the control arm in most of them — the refutation condition of the hypothesis,
+      at the seeds this sweep has.
     <% else %>
       Not enough transitioned seeds to decide it either way.
     <% end %>
@@ -63,7 +65,11 @@
             <%= median ? number_with_precision(median, precision: 1, strip_insignificant_zeros: true) : "—" %>
           </td>
           <td class="numeric mono">
-            <%= arm.control? ? "—" : arm.above_count(bet.decided_by, bet.control_median) %>
+            <% if arm.control? || bet.control_median.nil? %>
+              —
+            <% else %>
+              <%= arm.above_count(bet.decided_by, bet.control_median) %>
+            <% end %>
           </td>
           <td class="numeric mono"><%= arm.rising_count(bet.decided_by) %></td>
         </tr>
@@ -75,6 +81,7 @@
   One row per arm of the sweep. "Measured" counts the transitioned runs whose samples carry
   the reading after their own crossing; the median is of each run's highest post-crossing
   reading, the plateau it settled at. "Above control" counts the runs of the arm whose
-  plateau is strictly above the control arm's median, and "Still rising" the runs whose last
-  reading is above their first.
+  plateau is strictly above the control arm's median — a dash until the control arm has a
+  median to count against — and "Still rising" the runs whose last reading is above their
+  first.
 </p>
