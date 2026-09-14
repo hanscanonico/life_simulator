@@ -85,6 +85,35 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the environmental-structure sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("environmental_structure") }
+
+      it "sweeps the uniform world against the two structured ones" do
+        expect(definition[:param_grid].fetch("structure")).to eq(%w[uniform gradient patchwork])
+      end
+
+      it "carries the uniform arm the engine defaults to, the world every other sweep ran" do
+        expect(definition[:param_grid].fetch("structure").first)
+          .to eq(Lab::Schema.defaults.fetch("structure"))
+      end
+
+      it "keeps both regions of a structured world inside the rate window sweep 1 mapped" do
+        amplitude = definition[:param_grid].fetch("structure_amplitude").sole
+        rates = [1 - amplitude, 1 + amplitude].map { |scale| Lab::EMERGENT_MUTATION_RATE * scale }
+
+        expect(rates.min).to be >= 2.0**-16
+        expect(rates.max).to be <= 2.0**-8
+      end
+
+      it "runs every arm at the mutation rate that first produced emergence" do
+        expect(definition[:param_grid].fetch("mutation_rate")).to eq([Lab::EMERGENT_MUTATION_RATE])
+      end
+
+      it "gives ten seeds the sweep epoch budget each" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..10).to_a, 20_000])
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 

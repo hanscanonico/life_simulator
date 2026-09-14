@@ -359,3 +359,30 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   readings again with the parameter named and set to 0. The replicator test is
   deliberately **not** priced: it is an assay run beside the world, not an interaction in
   it, so a tape's `copy_cost` stays comparable across the arms of the sweep.
+- 2026-09-14 — **Environmental structure is an optional non-uniform mutation rate, off by
+  default.** §1.1 gave the world one mutation rate everywhere; it can now be told to vary
+  that rate with a cell's position, as `structure` and `structure_amplitude`, and §1.3
+  gains sweep 7 over it. Its hypothesis is the one the evolution programme names:
+  **environmental structure raises the plateau** the dominant replicator's complexity
+  settles at, refuted if a world whose regions differ plateaus where a uniform world does;
+  the secondary prediction, read off the same runs, is that a heterogeneous world keeps
+  more lineages alive after emergence. Four choices are fixed here. The rate is the
+  **target**, not the step budget: mutation is already the one per-cell probability the
+  epoch applies byte by byte, so varying it changes the odds a byte faces and nothing
+  else — no allocation, no count, no draw that was not already made — where a per-cell step
+  budget would have to be spent against the energy ledger of sweep 6 and confound the two
+  bets. The shapes are a **gradient** and a **patchwork**, `gradient` a triangle across the
+  columns and `patchwork` four quadrants alternating dry and wet: a ramp would put the
+  wettest column against the driest across the wrap, which on a torus is a wall and not a
+  gradient, and two patches per axis is the fewest a torus carries without a patch meeting
+  itself. The depth is **relative to `mutation_rate`** — regions run between
+  `1 - amplitude` and `1 + amplitude` times the run's rate, clamped to a probability — so a
+  structured arm is comparable to the uniform arm it is swept against rather than to a
+  different rate window; the sweep runs at amplitude 0.75, which keeps both regions inside
+  the window sweep 1 mapped. The structure is **off at `uniform`, which is the default**,
+  so every run the lab has already made is the same run: the same bytes are offered the
+  same draws in the same order, and the pinned determinism hashes and observable strings in
+  `world.rs` do not move — a test asserts the pinned readings again with the parameter named
+  and the world uniform. `structure_amplitude` is read only while a structure is set, which
+  is why a depth of 0 and a uniform world are the same run and why the default depth is not
+  a second off switch.

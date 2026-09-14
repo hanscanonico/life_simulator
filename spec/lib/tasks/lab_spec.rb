@@ -157,6 +157,30 @@ RSpec.describe "lab:sweep" do
     end
   end
 
+  describe "environmental_structure" do
+    it "builds three worlds times ten seeds" do
+      build_sweep("environmental_structure")
+
+      expect(Experiment.find_by(slug: "environmental-structure").runs_count).to eq(30)
+    end
+
+    it "sweeps the structures the programme names, the uniform world among them" do
+      build_sweep("environmental_structure")
+
+      expect(Run.distinct.pluck(Arel.sql("params->>'structure'")).sort)
+        .to eq(%w[gradient patchwork uniform])
+    end
+
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("environmental_structure")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("structure" => "uniform", "structure_amplitude" => 0.75,
+                                              "width" => 128, "height" => 128,
+                                              "mutation_rate" => 2.0**-13))
+    end
+  end
+
   describe "bff_control" do
     it "builds the two mutation arms times three seeds" do
       build_sweep("bff_control")

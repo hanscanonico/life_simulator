@@ -516,6 +516,61 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the environmental-structure sweep" do
+      let(:experiment) do
+        create(:experiment, name: "Environmental structure", slug: "environmental-structure", epochs: 20_000,
+                            param_grid: Lab::SWEEPS.fetch("environmental_structure")[:param_grid])
+      end
+
+      let!(:uniform_run) do
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 900,
+                     params: Lab::Schema.run_defaults.merge("structure" => "uniform"))
+      end
+      let!(:patchwork_run) do
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000,
+                     params: Lab::Schema.run_defaults.merge("structure" => "patchwork",
+                                                            "structure_amplitude" => 0.75))
+      end
+
+      it "reads each world as an arm of its own, the uniform one among them" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Transition epoch vs structure", "patchwork", "Arms of structure")
+      end
+
+      it "draws the survival curves and tabulates the hazard of each world" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Time to emergence vs structure", "P(no emergence)",
+                                         "Emergence hazard per arm of structure", "Run-epochs at risk")
+      end
+
+      it "draws what each world did to descent" do
+        create(:sample, run: uniform_run, epoch: 500, values: { "distinct_lineages" => 4, "top_lineage_share" => 0.8 })
+        create(:sample, run: patchwork_run, epoch: 500,
+                        values: { "distinct_lineages" => 128, "top_lineage_share" => 0.2 })
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Distinct lineages vs epoch, per arm of structure",
+                                         "Share of the largest lineage vs epoch, per arm of structure")
+      end
+
+      it "draws what each world did to the dominant replicator's complexity" do
+        create(:sample, run: uniform_run, epoch: 500,
+                        values: { "dominant_compressed_len" => 30, "dominant_instruction_count" => 120 })
+        create(:sample, run: patchwork_run, epoch: 500,
+                        values: { "dominant_compressed_len" => 48, "dominant_instruction_count" => 900 })
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Compressed length of the dominant replicator (bytes) " \
+                                         "vs epoch, per arm of structure",
+                                         "Instructions in the dominant replicator vs epoch, " \
+                                         "per arm of structure")
+      end
+    end
+
     context "with more runs than a page holds" do
       it "paginates them" do
         create_list(:run, 26, experiment: experiment)

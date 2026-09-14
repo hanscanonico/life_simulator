@@ -18,6 +18,20 @@ pub enum Substrate {
     Life,
 }
 
+/// How the world varies from place to place (`docs/DESIGN.md` §1.3, sweep 7). `Uniform`
+/// is the default and the world every earlier run lived in: one mutation rate everywhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Structure {
+    /// The same mutation rate in every cell.
+    Uniform,
+    /// A rate rising from the driest column to the wettest one half a world away, and
+    /// falling back — a triangle rather than a ramp, so the torus has no seam.
+    Gradient,
+    /// Four quadrants alternating dry and wet, like a checkerboard of two patches per axis.
+    Patchwork,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Init {
@@ -43,6 +57,13 @@ pub struct Params {
     pub ops: String,
     /// Probability that a given byte is replaced by a random one, per byte per epoch.
     pub mutation_rate: f64,
+    /// How the world varies from place to place; `uniform` (the default) is the world of
+    /// DESIGN §1.1, where `mutation_rate` is the rate everywhere (DESIGN §1.3, sweep 7).
+    pub structure: Structure,
+    /// How deep a structured world's regions differ, as a fraction of `mutation_rate`:
+    /// the driest region runs at `1 - amplitude` times the rate and the wettest at
+    /// `1 + amplitude`. Read only when `structure` is not `uniform`.
+    pub structure_amplitude: f64,
     pub init: Init,
     pub sample_every: u32,
     pub top_k: u32,
@@ -61,6 +82,8 @@ impl Default for Params {
             energy_per_epoch: 0,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
+            structure: Structure::Uniform,
+            structure_amplitude: 0.5,
             init: Init::Random,
             sample_every: 10,
             top_k: 16,
@@ -159,6 +182,21 @@ const FIELDS: &[Field] = &[
         kind: Kind::Float { min: 0.0, max: 1.0 },
         doc: "Probability a byte is replaced by a random byte, per byte per epoch. \
               Applies to every substrate: the ordinary Game of Life needs 0.",
+    },
+    Field {
+        name: "structure",
+        kind: Kind::Choice(&["uniform", "gradient", "patchwork"]),
+        doc: "How the world varies from place to place: uniform runs one mutation rate \
+              everywhere, which is the world of DESIGN 1.1; gradient runs a rate rising \
+              from the driest column to the wettest half a world away and falling back; \
+              patchwork runs four quadrants alternating dry and wet.",
+    },
+    Field {
+        name: "structure_amplitude",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "How deep a structured world's regions differ, as a fraction of \
+              mutation_rate: the driest region runs at 1 - amplitude times the rate and \
+              the wettest at 1 + amplitude. Ignored while structure is uniform.",
     },
     Field {
         name: "init",
@@ -334,6 +372,26 @@ impl Params {
         OpSet::parse(&self.ops).unwrap_or(OpSet::ALL)
     }
 
+    /// The mutation rate the cell at `(x, y)` lives under: `mutation_rate` itself in a
+    /// uniform world, and the rate scaled by where the cell sits in a structured one. A
+    /// pure function of the parameters and the position — it draws nothing — so a run
+    /// stays determined by `(params, seed)`.
+    pub fn mutation_rate_at(&self, x: u32, y: u32) -> f64 {
+        match self.structure {
+            Structure::Uniform => self.mutation_rate,
+            Structure::Gradient => self.scaled_rate(gradient_depth(x, self.width)),
+            Structure::Patchwork => {
+                self.scaled_rate(patchwork_depth(x, y, self.width, self.height))
+            }
+        }
+    }
+
+    /// The rate a region `depth` from the world's mean runs at, `depth` being -1 in the
+    /// driest region and +1 in the wettest.
+    fn scaled_rate(&self, depth: f64) -> f64 {
+        (self.mutation_rate * (1.0 + self.structure_amplitude * depth)).clamp(0.0, 1.0)
+    }
+
     /// Bytes of state one cell holds: a whole tape in the soup, one byte in life.
     pub fn stride(&self) -> usize {
         match self.substrate {
@@ -353,6 +411,24 @@ impl Params {
             Substrate::Soup => self.cell_count(),
             Substrate::Life => 0,
         }
+    }
+}
+
+/// A triangle wave across the columns: -1 at column 0, +1 half a world east, -1 again as
+/// it comes back round. A ramp would put the wettest column next to the driest one, which
+/// on a torus is a wall rather than a gradient.
+fn gradient_depth(x: u32, width: u32) -> f64 {
+    let across = f64::from(x) / f64::from(width);
+    1.0 - 2.0 * (2.0 * across - 1.0).abs()
+}
+
+/// Quadrants alternating dry and wet: two patches per axis, the fewest a torus can carry
+/// without a patch meeting itself across the wrap.
+fn patchwork_depth(x: u32, y: u32, width: u32, height: u32) -> f64 {
+    if (x < width / 2) == (y < height / 2) {
+        -1.0
+    } else {
+        1.0
     }
 }
 
@@ -490,6 +566,94 @@ mod tests {
     }
 
     #[test]
+    fn the_world_is_uniform_by_default_and_its_depth_is_bounded() {
+        assert_eq!(Params::default().structure, Structure::Uniform);
+
+        let structured = Params {
+            structure: Structure::Patchwork,
+            structure_amplitude: 1.0,
+            ..Params::default()
+        };
+        assert_eq!(structured.validate(), Ok(()));
+
+        let beyond = Params {
+            structure_amplitude: 1.5,
+            ..Params::default()
+        };
+        assert!(matches!(
+            beyond.validate(),
+            Err(ParamError::OutOfRange {
+                field: "structure_amplitude",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_uniform_world_runs_one_rate_in_every_cell() {
+        let params = Params {
+            mutation_rate: 0.25,
+            structure_amplitude: 1.0,
+            ..Params::default()
+        };
+        for (x, y) in [(0, 0), (63, 12), (127, 127)] {
+            assert_eq!(params.mutation_rate_at(x, y), 0.25, "at ({x}, {y})");
+        }
+    }
+
+    #[test]
+    fn a_gradient_runs_driest_at_the_first_column_and_wettest_half_a_world_east() {
+        let params = Params {
+            width: 128,
+            height: 128,
+            mutation_rate: 0.2,
+            structure: Structure::Gradient,
+            structure_amplitude: 0.5,
+            ..Params::default()
+        };
+        assert!((params.mutation_rate_at(0, 0) - 0.1).abs() < 1e-12);
+        assert!((params.mutation_rate_at(64, 0) - 0.3).abs() < 1e-12);
+        assert!((params.mutation_rate_at(32, 0) - 0.2).abs() < 1e-12);
+        // The rate depends on the column alone, and the ends meet across the wrap.
+        assert_eq!(
+            params.mutation_rate_at(64, 0),
+            params.mutation_rate_at(64, 99)
+        );
+        assert!((params.mutation_rate_at(127, 0) - params.mutation_rate_at(1, 0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_patchwork_alternates_dry_and_wet_quadrants() {
+        let params = Params {
+            width: 8,
+            height: 8,
+            mutation_rate: 0.2,
+            structure: Structure::Patchwork,
+            structure_amplitude: 0.5,
+            ..Params::default()
+        };
+        assert!((params.mutation_rate_at(1, 1) - 0.1).abs() < 1e-12);
+        assert!((params.mutation_rate_at(5, 5) - 0.1).abs() < 1e-12);
+        assert!((params.mutation_rate_at(5, 1) - 0.3).abs() < 1e-12);
+        assert!((params.mutation_rate_at(1, 5) - 0.3).abs() < 1e-12);
+    }
+
+    /// A structure deep enough to take a region past a probability cannot: a rate is one.
+    #[test]
+    fn a_structured_rate_stays_a_probability() {
+        let params = Params {
+            width: 8,
+            height: 8,
+            mutation_rate: 0.9,
+            structure: Structure::Patchwork,
+            structure_amplitude: 1.0,
+            ..Params::default()
+        };
+        assert_eq!(params.mutation_rate_at(5, 1), 1.0);
+        assert_eq!(params.mutation_rate_at(1, 1), 0.0);
+    }
+
+    #[test]
     fn rejects_non_finite_mutation_rate() {
         let params = Params {
             mutation_rate: f64::NAN,
@@ -507,7 +671,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 13);
+        assert_eq!(fields.len(), 15);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -527,6 +691,14 @@ mod tests {
         assert_eq!(energy["type"], "integer");
         assert_eq!(energy["default"], 0);
         assert_eq!(energy["min"], 0);
+
+        let structure = fields.iter().find(|f| f["name"] == "structure").unwrap();
+        assert_eq!(structure["type"], "enum");
+        assert_eq!(structure["default"], "uniform");
+        assert_eq!(
+            structure["values"],
+            serde_json::json!(["uniform", "gradient", "patchwork"])
+        );
 
         let substrate = fields.iter().find(|f| f["name"] == "substrate").unwrap();
         assert_eq!(substrate["type"], "enum");
