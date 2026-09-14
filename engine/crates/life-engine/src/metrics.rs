@@ -4,6 +4,7 @@ use crate::bff;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -181,13 +182,69 @@ impl ByteHistogram {
     }
 }
 
+/// The cells of a world read as tapes. The cells are one flat array of `stride`-wide
+/// slots; a world whose tapes can grow (DESIGN §1.3, sweep 8) carries a live length per
+/// cell beside it and zeros past each length, and `lens` is what every observable reads
+/// through so none of them ever counts the padding. An empty `lens` is a world where
+/// every tape fills its slot.
+#[derive(Debug, Clone, Copy)]
+pub struct Tapes<'a> {
+    cells: &'a [u8],
+    stride: usize,
+    lens: &'a [u32],
+}
+
+impl<'a> Tapes<'a> {
+    /// A world whose every tape is `stride` bytes long.
+    pub fn uniform(cells: &'a [u8], stride: usize) -> Self {
+        Self {
+            cells,
+            stride,
+            lens: &[],
+        }
+    }
+
+    /// A world whose tapes are as long as `lens` says, each inside a `stride`-wide slot.
+    pub fn ragged(cells: &'a [u8], stride: usize, lens: &'a [u32]) -> Self {
+        Self {
+            cells,
+            stride,
+            lens,
+        }
+    }
+
+    pub fn stride(&self) -> usize {
+        self.stride
+    }
+
+    pub fn iter(self) -> impl Iterator<Item = &'a [u8]> {
+        let (stride, lens) = (self.stride.max(1), self.lens);
+        self.cells
+            .chunks_exact(stride)
+            .enumerate()
+            .map(move |(cell, slot)| match lens.get(cell) {
+                Some(len) => &slot[..*len as usize],
+                None => slot,
+            })
+    }
+
+    /// The live bytes end to end — the cells themselves while every tape fills its slot,
+    /// so a world that cannot grow is compressed and hashed exactly as it always was.
+    pub fn bytes(self) -> Cow<'a, [u8]> {
+        if self.lens.is_empty() {
+            return Cow::Borrowed(self.cells);
+        }
+        Cow::Owned(self.iter().flatten().copied().collect())
+    }
+}
+
 /// Distinct tapes with their populations, ordered by population and ties broken by tape
 /// value, so the ranking is a function of the world alone. Sorting the tapes and
 /// run-length counting them costs a third of what a map keyed by whole tapes costs on a
 /// soup of distinct tapes, and a few microseconds more than it once the soup has
-/// converged on a handful.
-pub fn ranked_tapes(cells: &[u8], stride: usize) -> Vec<(&[u8], u64)> {
-    let mut tapes: Vec<&[u8]> = cells.chunks_exact(stride).collect();
+/// converged on a handful. Tapes of different lengths are different tapes.
+pub fn ranked_tapes<'a>(tapes: Tapes<'a>) -> Vec<(&'a [u8], u64)> {
+    let mut tapes: Vec<&[u8]> = tapes.iter().collect();
     tapes.sort_unstable();
 
     let mut ranked: Vec<(&[u8], u64)> = Vec::new();
@@ -243,11 +300,11 @@ pub const VARIATION_TOP_LINEAGES: usize = 8;
 /// pooled over the members rather than averaged per lineage, so a lineage counts for as
 /// many cells as it holds. 0 for a colony of clones, and it climbs as mutation spreads a
 /// lineage over neighbouring tapes.
-pub fn lineage_variation(cells: &[u8], stride: usize, lineages: &[u64]) -> f64 {
-    if lineages.is_empty() || stride == 0 {
+pub fn lineage_variation(tapes: Tapes<'_>, lineages: &[u64]) -> f64 {
+    if lineages.is_empty() || tapes.stride() == 0 {
         return 0.0;
     }
-    let tagged = || lineages.iter().copied().zip(cells.chunks_exact(stride));
+    let tagged = || lineages.iter().copied().zip(tapes.iter());
 
     let mut sizes: HashMap<u64, usize> = HashMap::new();
     for (id, _) in tagged() {
@@ -305,13 +362,17 @@ impl Lineage<'_> {
     }
 }
 
-/// How many positions two tapes of equal length differ in — the reading both the lineage
-/// rule and `lineage_variation` make of how far one tape is from another.
+/// How many positions two tapes differ in — the reading both the lineage rule and
+/// `lineage_variation` make of how far one tape is from another. Tapes of different
+/// lengths differ in the bytes they share plus every byte only the longer one has, so a
+/// tape that grew has moved away from its lineage by exactly the bytes it gained.
 pub(crate) fn hamming_distance(one: &[u8], other: &[u8]) -> u64 {
-    one.iter()
+    let shared = one
+        .iter()
         .zip(other)
         .filter(|(left, right)| left != right)
-        .count() as u64
+        .count() as u64;
+    shared + one.len().abs_diff(other.len()) as u64
 }
 
 /// The first sampled epoch at which a qualifying sample appears and holds — the primary
@@ -415,17 +476,23 @@ mod tests {
     #[test]
     fn a_clonal_lineage_varies_by_nothing_and_a_drifted_one_by_its_drift() {
         let stride = 4;
-        assert_eq!(lineage_variation(b"", stride, &[]), 0.0);
-        assert_eq!(lineage_variation(b"abcdabcdabcd", stride, &[1, 1, 1]), 0.0);
+        assert_eq!(lineage_variation(Tapes::uniform(b"", stride), &[]), 0.0);
+        assert_eq!(
+            lineage_variation(Tapes::uniform(b"abcdabcdabcd", stride), &[1, 1, 1]),
+            0.0
+        );
         // Two members on the modal tape, one a byte away: one differing byte over three
         // members.
         assert_eq!(
-            lineage_variation(b"abcdabcdabce", stride, &[1, 1, 1]),
+            lineage_variation(Tapes::uniform(b"abcdabcdabce", stride), &[1, 1, 1]),
             1.0 / 3.0
         );
         // Two tapes, neither more common than the other and every byte apart: whichever
         // of them is modal, the other reads the whole tape.
-        assert_eq!(lineage_variation(b"abcdwxyz", stride, &[1, 1]), 2.0);
+        assert_eq!(
+            lineage_variation(Tapes::uniform(b"abcdwxyz", stride), &[1, 1]),
+            2.0
+        );
     }
 
     #[test]
@@ -433,10 +500,16 @@ mod tests {
         // Two members on "bb" and one on "aa": the modal tape is the one most members
         // hold, not the lowest one they hold, so this reads 2 bytes over 3 members and
         // not the 4 it would read from "aa".
-        assert_eq!(lineage_variation(b"bbbbaa", 2, &[1, 1, 1]), 2.0 / 3.0);
+        assert_eq!(
+            lineage_variation(Tapes::uniform(b"bbbbaa", 2), &[1, 1, 1]),
+            2.0 / 3.0
+        );
         // Three tapes, none more common than another: the lowest breaks the tie, so the
         // distances are measured from "aa" and not from "bc", which would read 1.0.
-        assert_eq!(lineage_variation(b"aabbbc", 2, &[1, 1, 1]), 4.0 / 3.0);
+        assert_eq!(
+            lineage_variation(Tapes::uniform(b"aabbbc", 2), &[1, 1, 1]),
+            4.0 / 3.0
+        );
     }
 
     #[test]
@@ -445,7 +518,7 @@ mod tests {
         // clones: four differing bytes over six members, and not the 0.5 a mean of the
         // two lineages' own means would read.
         assert_eq!(
-            lineage_variation(b"aaaabbccdddd", 2, &[1, 1, 1, 1, 2, 2]),
+            lineage_variation(Tapes::uniform(b"aaaabbccdddd", 2), &[1, 1, 1, 1, 2, 2]),
             2.0 / 3.0
         );
     }
@@ -454,12 +527,32 @@ mod tests {
     fn a_lineage_of_one_cell_is_no_lineage_to_read() {
         // A cell alone in its lineage is a clone of itself at distance 0, so reading the
         // singletons would dilute the drifting lineage below towards nothing.
-        assert_eq!(lineage_variation(b"aabbcc", 2, &[1, 2, 3]), 0.0);
+        assert_eq!(
+            lineage_variation(Tapes::uniform(b"aabbcc", 2), &[1, 2, 3]),
+            0.0
+        );
         // Lineage 1 drifted by two bytes over two cells; the six singletons around it do
         // not pull its reading down.
         assert_eq!(
-            lineage_variation(b"aabbccddeeffgg", 2, &[1, 1, 2, 3, 4, 5, 6]),
+            lineage_variation(Tapes::uniform(b"aabbccddeeffgg", 2), &[1, 1, 2, 3, 4, 5, 6]),
             1.0
+        );
+    }
+
+    /// On a world whose tapes can grow, a lineage's members need not be the same length:
+    /// the distance to the modal tape counts the bytes only one of them has.
+    #[test]
+    fn lineage_variation_counts_the_bytes_a_grown_tape_gained() {
+        let cells = b"abcd\0\0abcd\0\0abcdef";
+        let lens = [4u32, 4, 6];
+        assert_eq!(
+            lineage_variation(Tapes::ragged(cells, 6, &lens), &[1, 1, 1]),
+            2.0 / 3.0,
+            "the modal tape is the short one two cells hold"
+        );
+        assert_eq!(
+            ranked_tapes(Tapes::ragged(cells, 6, &lens)),
+            vec![(&b"abcd"[..], 2), (&b"abcdef"[..], 1)]
         );
     }
 
@@ -481,7 +574,10 @@ mod tests {
 
         // The drifted three and seven of the eight clone pairs, the eighth cut by the
         // top-eight rule: two differing bytes over seventeen members, not nineteen.
-        assert_eq!(lineage_variation(&cells, 2, &lineages), 2.0 / 17.0);
+        assert_eq!(
+            lineage_variation(Tapes::uniform(&cells, 2), &lineages),
+            2.0 / 17.0
+        );
     }
 
     /// The definition of `docs/DESIGN.md` §1.2 written out without the counting pass the
@@ -532,7 +628,7 @@ mod tests {
                 .map(|_| crate::rng::byte(&mut rng) as u64 % lineage_count)
                 .collect();
             assert_eq!(
-                lineage_variation(&cells, 8, &lineages),
+                lineage_variation(Tapes::uniform(&cells, 8), &lineages),
                 variation_the_long_way(&cells, 8, &lineages),
                 "{lineage_count} lineages"
             );
@@ -594,7 +690,7 @@ mod tests {
     #[test]
     fn tapes_are_counted_and_ranked_by_population() {
         let cells = [1, 1, 2, 2, 1, 1, 3, 3, 1, 1];
-        let ranked = ranked_tapes(&cells, 2);
+        let ranked = ranked_tapes(Tapes::uniform(&cells, 2));
         assert_eq!(ranked.len(), 3);
         assert_eq!(ranked[0], (&[1u8, 1][..], 3));
         assert_eq!(ranked[1], (&[2u8, 2][..], 1), "ties break by tape value");
@@ -617,7 +713,10 @@ mod tests {
     fn the_ranking_matches_the_map_it_replaces_on_a_random_soup() {
         let mut rng = crate::rng::seeded(7, 0, 0);
         let cells: Vec<u8> = (0..64 * 512).map(|_| crate::rng::byte(&mut rng)).collect();
-        assert_eq!(ranked_tapes(&cells, 64), ranked_through_a_map(&cells, 64));
+        assert_eq!(
+            ranked_tapes(Tapes::uniform(&cells, 64)),
+            ranked_through_a_map(&cells, 64)
+        );
     }
 
     #[test]
@@ -629,7 +728,7 @@ mod tests {
             let tape = cell % 8;
             cells.extend_from_slice(&distinct[tape * 64..tape * 64 + 64]);
         }
-        let ranked = ranked_tapes(&cells, 64);
+        let ranked = ranked_tapes(Tapes::uniform(&cells, 64));
         assert_eq!(
             ranked.len(),
             8,
@@ -691,6 +790,7 @@ mod tests {
                 transition: TransitionState::default(),
             },
             &payload,
+            &[],
             &[],
         );
         assert_eq!(

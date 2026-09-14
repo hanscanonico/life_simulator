@@ -4,7 +4,7 @@
 //! exactly as the uninterrupted run would have.
 
 use crate::bff;
-use crate::hash::fnv1a64;
+use crate::hash::{fnv1a64, fnv1a64_of};
 use crate::metrics::{self, Metrics, TransitionTracker};
 use crate::params::{Init, ParamError, Params, Substrate};
 use crate::render;
@@ -33,6 +33,10 @@ pub struct World {
     /// Empty on the life substrate. A tag is read and written beside the tapes and never
     /// from the RNG stream, so a run's bytes are what they were before lineages existed.
     lineages: Vec<u64>,
+    /// The live length of each cell's tape (DESIGN §1.3, sweep 8). Empty — and every tape
+    /// fills its `stride`-wide slot — unless this run's tapes can grow, so a world that
+    /// cannot allocates nothing and is read exactly as it was before lengths existed.
+    lens: Vec<u32>,
 }
 
 impl World {
@@ -47,12 +51,17 @@ impl World {
             transition: TransitionTracker::default(),
             copy_rate: 0.0,
             lineages: fresh_lineages(params),
+            lens: fresh_lens(params),
         };
         if params.init == Init::Random {
             let mut rng = rng::seeded(seed, STREAM_INIT, 0);
             let alphabet = world.params.substrate;
-            for byte in &mut world.cells {
-                *byte = draw_cell_byte(&mut rng, alphabet);
+            let lens = &world.lens;
+            for (cell, slot) in world.cells.chunks_mut(params.stride()).enumerate() {
+                let live = lens.get(cell).map_or(slot.len(), |len| *len as usize);
+                for byte in &mut slot[..live] {
+                    *byte = draw_cell_byte(&mut rng, alphabet);
+                }
             }
         }
         Ok(world)
@@ -78,11 +87,13 @@ impl World {
         self.params.height
     }
 
-    /// The state of one cell: a whole tape in the soup, one `0`/`1` byte in life.
+    /// The state of one cell: a whole tape in the soup, one `0`/`1` byte in life. On a
+    /// world whose tapes can grow this is the cell's live bytes, not its whole slot.
     pub fn cell(&self, x: u32, y: u32) -> &[u8] {
+        let cell = self.index(x, y);
         let stride = self.params.stride();
-        let at = self.index(x, y) * stride;
-        &self.cells[at..at + stride]
+        let at = cell * stride;
+        &self.cells[at..at + self.live_len(cell)]
     }
 
     /// The lineage id of one cell: the ancestor its tape descends from by copying
@@ -91,12 +102,25 @@ impl World {
         self.lineages.get(self.index(x, y)).copied().unwrap_or(0)
     }
 
-    /// Panics unless `bytes` is exactly one cell wide; callers know the stride.
+    /// Panics unless `bytes` fits one cell: exactly the slot on a world whose tapes cannot
+    /// grow, and anything from one byte up to the cap on one whose tapes can.
     pub fn set_cell(&mut self, x: u32, y: u32, bytes: &[u8]) {
         let stride = self.params.stride();
-        assert_eq!(bytes.len(), stride, "a cell holds {stride} bytes");
-        let at = self.index(x, y) * stride;
-        self.cells[at..at + stride].copy_from_slice(bytes);
+        if self.lens.is_empty() {
+            assert_eq!(bytes.len(), stride, "a cell holds {stride} bytes");
+        } else {
+            assert!(
+                (1..=stride).contains(&bytes.len()),
+                "a cell holds 1 to {stride} bytes"
+            );
+        }
+        let cell = self.index(x, y);
+        let at = cell * stride;
+        self.cells[at..at + stride].fill(0);
+        self.cells[at..at + bytes.len()].copy_from_slice(bytes);
+        if let Some(len) = self.lens.get_mut(cell) {
+            *len = bytes.len() as u32;
+        }
     }
 
     /// One epoch: every cell interacts once, then every byte mutates with probability
@@ -113,7 +137,7 @@ impl World {
 
     /// Every observable of the design, and the transition tracker fed by this sample.
     pub fn metrics(&mut self) -> Metrics {
-        let compressed = metrics::compress_ratio(&self.cells);
+        let compressed = metrics::compress_ratio(&self.tapes().bytes());
         self.sample(compressed)
     }
 
@@ -121,12 +145,21 @@ impl World {
     /// at an epoch whose cadences coincide: `compress_ratio` and the snapshot's payload
     /// are one and the same zlib stream over the cells, so it is produced once.
     pub fn metrics_with_snapshot(&mut self) -> (Metrics, Vec<u8>) {
-        let payload = metrics::compress(&self.cells);
-        let compressed = metrics::compress_ratio_of(payload.len(), self.cells.len());
+        let (payload, compressed) = {
+            let live = self.tapes().bytes();
+            let payload = metrics::compress(&live);
+            let compressed = metrics::compress_ratio_of(payload.len(), live.len());
+            (payload, compressed)
+        };
         let measured = self.sample(compressed);
         (
             measured,
-            snapshot::encode_compressed(&self.snapshot_header(), &payload, &self.lineages),
+            snapshot::encode_compressed(
+                &self.snapshot_header(),
+                &payload,
+                &self.lineages,
+                &self.lens,
+            ),
         )
     }
 
@@ -134,12 +167,36 @@ impl World {
         self.transition.epoch()
     }
 
+    /// The hash of every byte the world holds, padding included — and, where tapes can
+    /// grow, of the lengths after them: the same bytes under two different sets of lengths
+    /// are two different worlds.
     pub fn world_hash(&self) -> u64 {
-        fnv1a64(&self.cells)
+        if self.lens.is_empty() {
+            return fnv1a64(&self.cells);
+        }
+        let lens: Vec<u8> = self.lens.iter().flat_map(|len| len.to_le_bytes()).collect();
+        fnv1a64_of([self.cells.as_slice(), lens.as_slice()])
     }
 
     pub fn snapshot(&self) -> Vec<u8> {
-        snapshot::encode(&self.snapshot_header(), &self.cells, &self.lineages)
+        snapshot::encode(
+            &self.snapshot_header(),
+            &self.tapes().bytes(),
+            &self.lineages,
+            &self.lens,
+        )
+    }
+
+    /// The world's cells read as tapes: the flat array of slots, and the live lengths
+    /// wherever they can differ from it.
+    fn tapes(&self) -> metrics::Tapes<'_> {
+        metrics::Tapes::ragged(&self.cells, self.params.stride(), &self.lens)
+    }
+
+    fn live_len(&self, cell: usize) -> usize {
+        self.lens
+            .get(cell)
+            .map_or(self.params.stride(), |len| *len as usize)
     }
 
     fn snapshot_header(&self) -> snapshot::Header {
@@ -168,6 +225,7 @@ impl World {
             transition: TransitionTracker::from_state(restored.header.transition),
             copy_rate: 0.0,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
+            lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
         })
     }
 
@@ -179,10 +237,9 @@ impl World {
             pixels * render::BYTES_PER_PIXEL,
             "the buffer must hold width × height RGBA pixels"
         );
-        let stride = self.params.stride();
         let soup = self.params.substrate == Substrate::Soup;
         let (pixels, _) = buf.as_chunks_mut::<{ render::BYTES_PER_PIXEL }>();
-        for (cell, pixel) in self.cells.chunks_exact(stride).zip(pixels) {
+        for (cell, pixel) in self.tapes().iter().zip(pixels) {
             let rgba = if soup {
                 render::soup_pixel(cell, metrics::op_density(cell))
             } else {
@@ -204,6 +261,7 @@ impl World {
     /// so it stays off on every other epoch.
     fn step_soup(&mut self, rng: &mut Rng) {
         let stride = self.params.stride();
+        let cap = self.params.tape_cap() as usize;
         let max_steps = self.params.max_steps;
         let ops = self.params.op_set();
         let counting = self.counts_copies();
@@ -211,8 +269,8 @@ impl World {
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
 
-        let mut pair = vec![0u8; stride * 2];
-        let mut before = vec![0u8; stride * 2];
+        let mut pair = Vec::with_capacity(stride * 2);
+        let mut before = Vec::with_capacity(stride * 2);
         let mut interactions: u64 = 0;
         let mut copies: u64 = 0;
         for cell in &order {
@@ -221,24 +279,36 @@ impl World {
             if a == b {
                 continue;
             }
-            pair[..stride].copy_from_slice(&self.cells[a * stride..a * stride + stride]);
-            pair[stride..].copy_from_slice(&self.cells[b * stride..b * stride + stride]);
-            before.copy_from_slice(&pair);
+            let (live_a, live_b) = (self.live_len(a), self.live_len(b));
+            pair.clear();
+            pair.extend_from_slice(&self.cells[a * stride..a * stride + live_a]);
+            pair.extend_from_slice(&self.cells[b * stride..b * stride + live_b]);
+            before.clear();
+            before.extend_from_slice(&pair);
             let budget = energy.budget(a, b, max_steps);
-            let outcome = bff::run_with(&mut pair, budget, ops);
+            // The pair may lengthen to the first tape's length plus a whole second tape at
+            // its cap; with no room to grow that is the length it already has.
+            let outcome = bff::run_growing(&mut pair, budget, ops, live_a + cap);
             energy.spend(a, b, outcome.steps);
             if counting {
                 interactions += 1;
                 // Two halves that arrived identical cannot show a copy: they already end
                 // equal to each other's pre-execution tape whether or not anything ran, and
                 // counting them reads 1.0 on a frozen monoculture.
-                let copied = before[..stride] != before[stride..]
-                    && (pair[stride..] == before[..stride] || pair[..stride] == before[stride..]);
+                let copied = before[..live_a] != before[live_a..]
+                    && (pair[live_a..] == before[..live_a] || pair[..live_a] == before[live_a..]);
                 copies += u64::from(copied);
             }
-            self.cells[a * stride..a * stride + stride].copy_from_slice(&pair[..stride]);
-            self.cells[b * stride..b * stride + stride].copy_from_slice(&pair[stride..]);
-            self.inherit_lineages(a, b, &pair, &before, stride);
+            // The split stays where the pair was joined: the first cell keeps the length it
+            // arrived with, the second keeps the rest — the tail a copier writes into and
+            // the only end of the pair that can have grown.
+            self.cells[a * stride..a * stride + live_a].copy_from_slice(&pair[..live_a]);
+            let grown_b = pair.len() - live_a;
+            self.cells[b * stride..b * stride + grown_b].copy_from_slice(&pair[live_a..]);
+            if let Some(len) = self.lens.get_mut(b) {
+                *len = grown_b as u32;
+            }
+            self.inherit_lineages(a, b, &pair, &before, live_a);
         }
         if counting {
             self.copy_rate = if interactions == 0 {
@@ -254,12 +324,12 @@ impl World {
     /// with than to the tape it arrived with itself, and keeps its own on a tie. Both
     /// cells are judged against the pair as it arrived, so an exchange swaps the two tags
     /// rather than collapsing them onto one.
-    fn inherit_lineages(&mut self, a: usize, b: usize, pair: &[u8], before: &[u8], stride: usize) {
+    fn inherit_lineages(&mut self, a: usize, b: usize, pair: &[u8], before: &[u8], split: usize) {
         let (was_a, was_b) = (self.lineages[a], self.lineages[b]);
-        if inherits_partner(&pair[..stride], &before[..stride], &before[stride..]) {
+        if inherits_partner(&pair[..split], &before[..split], &before[split..]) {
             self.lineages[a] = was_b;
         }
-        if inherits_partner(&pair[stride..], &before[stride..], &before[..stride]) {
+        if inherits_partner(&pair[split..], &before[split..], &before[..split]) {
             self.lineages[b] = was_a;
         }
     }
@@ -351,11 +421,13 @@ impl World {
         let substrate = self.params.substrate;
         let width = self.params.width;
         let stride = self.params.stride();
+        let lens = &self.lens;
         for (cell, state) in self.cells.chunks_mut(stride).enumerate() {
             let rate = self
                 .params
                 .mutation_rate_at(cell as u32 % width, cell as u32 / width);
-            for byte in state {
+            let live = lens.get(cell).map_or(state.len(), |len| *len as usize);
+            for byte in &mut state[..live] {
                 if rng::chance(rng, rate) {
                     *byte = draw_cell_byte(rng, substrate);
                 }
@@ -370,11 +442,10 @@ impl World {
     }
 
     fn measure(&self, compress_ratio: f64) -> Metrics {
-        let stride = self.params.stride();
         let cells = self.params.cell_count() as f64;
-        let ranked = metrics::ranked_tapes(&self.cells, stride);
+        let ranked = metrics::ranked_tapes(self.tapes());
         let top_share = ranked.first().map_or(0.0, |(_, n)| *n as f64 / cells);
-        let histogram = metrics::ByteHistogram::of(&self.cells);
+        let histogram = metrics::ByteHistogram::of(&self.tapes().bytes());
         let (distinct_lineages, top_lineage_share) = metrics::lineage_census(&self.lineages);
         let census = self.replicator_census(&ranked);
 
@@ -389,7 +460,7 @@ impl World {
             copy_rate: self.copy_rate,
             distinct_lineages,
             top_lineage_share,
-            lineage_variation: metrics::lineage_variation(&self.cells, stride, &self.lineages),
+            lineage_variation: metrics::lineage_variation(self.tapes(), &self.lineages),
             copy_cost: census.copy_cost,
             dominant_compressed_len: census.complexity.map(|read| read.compressed_len),
             dominant_instruction_count: census.complexity.map(|read| read.instruction_count),
@@ -491,6 +562,15 @@ fn inherits_partner(result: &[u8], own: &[u8], partner: &[u8]) -> bool {
 /// epoch 0 reads one cell per lineage without drawing anything.
 fn fresh_lineages(params: &Params) -> Vec<u64> {
     (0..params.lineage_count() as u64).collect()
+}
+
+/// One live length per cell, every tape at the length a run starts at — empty, and never
+/// read, on a world whose tapes cannot grow.
+fn fresh_lens(params: &Params) -> Vec<u32> {
+    match params.grows() {
+        true => vec![params.tape_len; params.cell_count()],
+        false => Vec::new(),
+    }
 }
 
 fn life_scratch(params: &Params) -> Vec<u8> {
@@ -804,6 +884,26 @@ mod tests {
                 assert_deterministic(
                     &Params {
                         energy_per_epoch,
+                        ..soup(16, 16)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// And with room to grow: a tape's length is written by the interaction that grew it
+    /// and never drawn, so a run resumed from a snapshot lengthens exactly as the
+    /// uninterrupted one did.
+    #[test]
+    fn determinism_holds_with_room_to_grow() {
+        for max_tape_len in [64, 96, 256] {
+            for seed in [1, 2, 3] {
+                assert_deterministic(
+                    &Params {
+                        tape_len: 64,
+                        max_tape_len,
+                        mutation_rate: 1.0 / 256.0,
                         ..soup(16, 16)
                     },
                     seed,
@@ -1279,6 +1379,196 @@ mod tests {
             20,
         );
         assert_eq!(structured.world_hash(), flat.world_hash());
+    }
+
+    fn tape_lengths(world: &World) -> Vec<usize> {
+        (0..world.height())
+            .flat_map(|y| (0..world.width()).map(move |x| (x, y)))
+            .map(|(x, y)| world.cell(x, y).len())
+            .collect()
+    }
+
+    fn roomy_soup(max_tape_len: u32) -> Params {
+        Params {
+            tape_len: 64,
+            max_tape_len,
+            ..soup(32, 32)
+        }
+    }
+
+    /// The claim of DESIGN §1.3 sweep 8: with a cap above `tape_len` the soup's own
+    /// programs lengthen their tapes, and none of them passes the cap.
+    #[test]
+    fn a_soup_with_room_to_grow_lengthens_its_tapes() {
+        let params = roomy_soup(256);
+        let world = stepped(&params, 42, 50);
+        let lengths = tape_lengths(&world);
+
+        assert!(
+            lengths.iter().any(|len| *len > 64),
+            "no tape grew: {lengths:?}"
+        );
+        assert!(lengths.iter().all(|len| (64..=256).contains(len)));
+
+        // A tape that only claimed bytes would be zero past its initial length; one whose
+        // programs wrote into the space they claimed is not.
+        let wrote_into_the_room = (0..world.height())
+            .flat_map(|y| (0..world.width()).map(move |x| (x, y)))
+            .any(|(x, y)| world.cell(x, y)[64..].iter().any(|byte| *byte != 0));
+        assert!(wrote_into_the_room, "nothing was written past tape_len");
+    }
+
+    #[test]
+    fn a_tape_never_shortens() {
+        let mut world = World::new(&roomy_soup(128), 7).unwrap();
+        let mut lengths = tape_lengths(&world);
+        for _ in 0..20 {
+            world.step();
+            let now = tape_lengths(&world);
+            assert!(
+                now.iter().zip(&lengths).all(|(now, was)| now >= was),
+                "a tape shortened: {lengths:?} then {now:?}"
+            );
+            lengths = now;
+        }
+        assert!(lengths.iter().any(|len| *len > 64));
+    }
+
+    /// Off is off twice over: `max_tape_len` 0 and a cap at the length every tape already
+    /// has are the same run as the soup of §1.1, digit for digit.
+    #[test]
+    fn room_to_grow_switched_off_moves_no_run() {
+        for max_tape_len in [0, 64] {
+            let params = Params {
+                max_tape_len,
+                ..soup(32, 32)
+            };
+            let mut world = World::new(&params, 42).unwrap();
+            for _ in 0..50 {
+                world.step();
+            }
+            assert_eq!(world.world_hash(), PINNED_SOUP_HASH, "cap {max_tape_len}");
+
+            let measured = world.metrics();
+            assert_eq!(observable_digest(&measured), PINNED_OBSERVABLES);
+            assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
+        }
+    }
+
+    /// A world that cannot grow writes the snapshot it always wrote, byte for byte, so a
+    /// blob the lab already holds and one written today are the same bytes.
+    #[test]
+    fn a_world_that_cannot_grow_writes_the_snapshot_it_always_wrote() {
+        let fixed = stepped(&soup(8, 8), 9, 4).snapshot();
+        let capped = stepped(
+            &Params {
+                max_tape_len: 64,
+                ..soup(8, 8)
+            },
+            9,
+            4,
+        )
+        .snapshot();
+        assert_eq!(fixed[4], snapshot::VERSION);
+        assert_eq!(fixed, capped);
+    }
+
+    #[test]
+    fn a_snapshot_of_a_grown_world_round_trips_and_the_run_continues_identically() {
+        let params = roomy_soup(128);
+        let mut world = World::new(&params, 5).unwrap();
+        for _ in 0..30 {
+            world.step();
+        }
+        assert!(tape_lengths(&world).iter().any(|len| *len > 64));
+
+        let bytes = world.snapshot();
+        assert_eq!(bytes[4], snapshot::VERSION_RAGGED);
+        let mut restored = World::from_snapshot(&params, 5, &bytes).unwrap();
+        assert_eq!(tape_lengths(&restored), tape_lengths(&world));
+        assert_eq!(restored.world_hash(), world.world_hash());
+        assert_eq!(restored.metrics(), world.metrics());
+
+        world.step();
+        restored.step();
+        assert_eq!(restored.world_hash(), world.world_hash());
+    }
+
+    /// The same bytes under two different sets of lengths are two different worlds, and a
+    /// hash that read the slots alone would call them one.
+    #[test]
+    fn the_world_hash_reads_the_lengths_as_well_as_the_bytes() {
+        let params = roomy_soup(128);
+        let mut shorter = World::new(&params, 5).unwrap();
+        let mut longer = World::new(&params, 5).unwrap();
+        let tape = [7u8; 64];
+        shorter.set_cell(0, 0, &tape[..32]);
+        longer.set_cell(0, 0, &tape[..64]);
+        assert_ne!(shorter.world_hash(), longer.world_hash());
+    }
+
+    /// A mixed-length world is read on its live bytes alone: the zeros a slot holds past a
+    /// tape are not a byte of the world, and an observable that counted them would read a
+    /// short tape as a long one padded with zeros.
+    #[test]
+    fn the_observables_read_the_live_bytes_of_a_mixed_length_world() {
+        let params = Params {
+            tape_len: 8,
+            max_tape_len: 32,
+            mutation_rate: 0.0,
+            ..soup(4, 4)
+        };
+        let mut mixed = World::new(&params, 1).unwrap();
+        let mut short = World::new(
+            &Params {
+                max_tape_len: 0,
+                ..params.clone()
+            },
+            1,
+        )
+        .unwrap();
+        let tape: Vec<u8> = (1..=8).collect();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                mixed.set_cell(x, y, &tape);
+                short.set_cell(x, y, &tape);
+            }
+        }
+        mixed.set_cell(0, 0, &(1..=24).collect::<Vec<u8>>());
+
+        let measured = mixed.metrics();
+        assert_eq!(measured.alphabet_size, 24, "no padding zero was counted");
+        assert_eq!(
+            measured.distinct_tapes, 2,
+            "a grown tape is not the tape it grew from"
+        );
+        assert_eq!(measured.top_share, 15.0 / 16.0);
+        assert_eq!(short.metrics().alphabet_size, 8);
+    }
+
+    #[test]
+    fn rendering_reads_the_live_tape_of_a_grown_cell() {
+        let params = Params {
+            tape_len: 8,
+            max_tape_len: 32,
+            ..soup(4, 4)
+        };
+        let mut world = World::new(&params, 1).unwrap();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &[b'+'; 8]);
+            }
+        }
+        world.set_cell(1, 0, &[b'+'; 24]);
+        let mut buf = vec![0u8; params.cell_count() * render::BYTES_PER_PIXEL];
+        world.render_rgba(&mut buf);
+
+        let grown = [b'+'; 24];
+        assert_eq!(
+            buf[render::BYTES_PER_PIXEL..2 * render::BYTES_PER_PIXEL],
+            render::soup_pixel(&grown, metrics::op_density(&grown)),
+            "the pixel is read off the live tape, not the zero-padded slot"
+        );
     }
 
     #[test]

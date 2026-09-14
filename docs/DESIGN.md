@@ -34,13 +34,19 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   no more than what the poorer of its two cells has left — so it halts early once they run
   dry — and both cells are debited what it executed. At `0` nothing is counted and the
   soup is exactly the substrate above.
+- **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
+  a head that steps right off the end of the concatenation claims a fresh zero byte and
+  moves onto it instead of wrapping, while the second tape is shorter than the cap. The
+  split back into the two cells keeps the first tape's length, so the tape that lengthens
+  is the one a copier writes into; a tape never shortens. At `0` — and at a cap equal to
+  `tape_len` — no head ever claims a byte and the soup is exactly the substrate above.
 - **Instruction set** (BFF, 10 ops on the byte value; every other byte is a no-op):
   `<` `>` move head0 −1/+1; `{` `}` move head1 −1/+1; `+` `-` inc/dec byte at head0;
   `.` copy byte at head0 → head1; `,` copy byte at head1 → head0; `[` jump forward past
   matching `]` if byte at head0 is 0; `]` jump back to matching `[` if byte at head0 is
   non-zero. Both heads start at 0; the instruction pointer starts at 0 and stops at end of
-  tape, at `max_steps`, or on an unmatched bracket. Heads wrap modulo the 2×`tape_len`
-  concatenation.
+  tape, at `max_steps`, or on an unmatched bracket. Heads wrap modulo the concatenation's
+  current length — 2×`tape_len` unless the tapes have room to grow.
 - **Mutation**: after every epoch each byte is replaced by a uniformly random byte with
   probability `mutation_rate` (default 1/4096 per byte per epoch... tune by measurement).
 - **Environmental structure** (`structure`, default `uniform` = off): with a structure
@@ -160,6 +166,11 @@ holding a tape that passed.
    complexity settles at, refuted if a world whose regions differ plateaus where a uniform
    world does. Secondary prediction: a heterogeneous world keeps more lineages alive after
    emergence.
+8. **Room to grow** — `max_tape_len ∈ {64 (= tape_len, off), 128, 256, 512}`, the arm at
+   the initial length being the fixed-tape world every earlier sweep ran. Hypothesis:
+   room to grow raises the plateau the dominant replicator's complexity settles at,
+   refuted if tapes free to lengthen plateau where fixed-length tapes do — which would
+   say the 64-byte ceiling was never the binding constraint.
 
 Every run records its full metric series and periodic snapshots so a claim can be
 re-examined. A finding is published on the site with its phase diagram, the raw runs,

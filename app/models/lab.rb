@@ -143,6 +143,26 @@ module Lab
       seeds: (1..10).to_a,
       epochs: 20_000
     },
+    "max_tape_len" => {
+      name: "Room to grow",
+      description: "Is the fixed tape length what makes complexity plateau? With a cap " \
+                   "above the length a tape starts at, a head that steps off the end of " \
+                   "an interaction claims a fresh byte instead of wrapping, so a tape " \
+                   "lengthens through the programs' own copying and the 64-byte ceiling " \
+                   "no longer bounds the dominant replicator by construction.",
+      # The first arm is the tape length itself — growth off, the fixed-tape world every
+      # earlier sweep ran — so the roomy arms are read against a control inside the same
+      # experiment. The engine's default tape is 64 bytes; the arms double from it.
+      param_grid: {
+        "max_tape_len" => [64, 128, 256, 512],
+        "tape_len" => [64],
+        "width" => [128],
+        "height" => [128],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE]
+      },
+      seeds: (1..10).to_a,
+      epochs: 20_000
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

@@ -392,3 +392,57 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   an amplitude of 0 and a uniform world are the same run, and why its default of 0.5 is
   not a second off switch: it is the amplitude a structured run takes when the sweep names
   no other, and it is never read at all until a structure is named.
+- 2026-09-14 — **Room to grow is an optional maximum tape length, off by default.** §1.1
+  gave every cell a tape of exactly `tape_len` bytes for the whole of a run, so the
+  complexity of the dominant replicator was bounded by construction; a run can now be told
+  that a tape may lengthen up to `max_tape_len`, and §1.3 gains sweep 8 over it. A tape's
+  **cap** is `max_tape_len` where one is set and `tape_len` where it is not; a tape is
+  **grown** when it is longer than `tape_len`, and a world whose cap is its initial length
+  is the fixed-tape world of every earlier sweep. Its hypothesis is the one the evolution
+  programme names: **room to grow raises the plateau** the dominant replicator's complexity
+  settles at, refuted if tapes free to lengthen plateau where fixed-length tapes do.
+  Six choices are fixed here, one per part of the engine the change reaches.
+  **The interpreter** grows the tape and nothing else does: a head that steps right off the
+  last byte of the concatenation appends a zero byte and moves onto it instead of wrapping
+  to the front, while the concatenation is shorter than the cap allows. Nothing else
+  changes — the ops, the heads, the brackets and the halts are §1.1's — so growth is the
+  programs' own work: a copy loop that walks past the end of its partner writes into new
+  bytes rather than over its own start. At the cap the head wraps exactly as it always did,
+  which is why a run whose cap is its initial length executes the identical instruction
+  stream.
+  **The pair** grows at its tail, so the tape that lengthens is the second of `A ++ B` —
+  the one a copier writes into. The split back into the two cells stays at `A`'s length:
+  the first cell keeps the length it arrived with and the second keeps the rest. A cell is
+  the first of its own interaction once an epoch and the second of a partner's about as
+  often, so no cell is barred from growing; and a tape never shrinks, because a length that
+  could fall would let the world lose bytes no program wrote.
+  **Storage** stays one flat array of cap-wide slots plus a live length per cell, rather
+  than a vector per cell: a soup is millions of tapes and the slot a tape grows into must
+  already be there. The bytes past a tape's length are zero and only ever become live by
+  growing, so they can never go stale. A world that cannot grow keeps no lengths at all —
+  the vector is empty, as the energy ledger and the life scratch buffer are when they are
+  off — and `world_hash` stays the hash of the array alone; a world that can grow hashes
+  its lengths after its bytes, since the same bytes under two different lengths are two
+  different worlds.
+  **The observables** read live bytes only, never the padding: `compress_ratio`, the byte
+  histogram behind `op_density`, `entropy_bits` and `alphabet_size`, the tape ranking, and
+  the replicator test all see the ragged concatenation. Two tapes of different lengths are
+  different tapes, so the ranking separates a grown replicator from the shorter one it
+  descends from. Hamming distance — which both the lineage rule and `lineage_variation`
+  read — counts a length difference as that many mismatches, so a tape that grew has moved
+  away from its lineage's modal tape by exactly the bytes it gained. No observable is
+  normalised by `tape_len`, so none of them had to be redefined for a mixed-length world.
+  **The snapshot** carries the lengths, in a version 4 container: the cell payload is the
+  ragged live bytes end to end, and a third zlib payload holds one length per cell. A world
+  that cannot grow writes the version 3 container it wrote before, byte for byte, and every
+  version 1, 2 and 3 blob Postgres holds still restores.
+  **Rendering** is unchanged in shape — one pixel per cell — and reads the cell's live
+  tape, so a grown tape's hue and op density are read off the bytes it actually holds.
+  The parameter is **off at `max_tape_len` 0, which is the default**, and a `max_tape_len`
+  equal to `tape_len` is the same run as 0 rather than an error: the sweep's control arm
+  names the fixed length it holds the other arms against. Below `tape_len` it is refused,
+  because a cap under the length a run starts at is not a world the engine can build. With
+  the cap at the initial length nothing is allocated, no head ever appends, no draw leaves
+  the RNG stream anywhere new and no snapshot changes version — the pinned determinism
+  hashes and observable strings in `world.rs` do not move, and a test asserts the pinned
+  readings again with the parameter named and set both ways.

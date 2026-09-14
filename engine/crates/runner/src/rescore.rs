@@ -8,6 +8,7 @@
 use crate::api::{CorpusRun, LabClient, StoredWorld};
 use anyhow::{anyhow, bail, Context, Result};
 use life_engine::metrics;
+use life_engine::snapshot::Restored;
 use life_engine::{Metrics, Params, World};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -246,10 +247,12 @@ fn measure(stored: &StoredWorld, run: Option<i64>, top_k: &[u32]) -> Result<Repo
         measured.insert(top_k, at_top_k(stored, top_k)?);
     }
 
+    let tapes = tapes_of(stored, &restored);
     let census = restored.lineages.as_deref().map(metrics::lineage_census);
-    let variation = restored.lineages.as_deref().map(|lineages| {
-        metrics::lineage_variation(&restored.cells, stored.params.stride(), lineages)
-    });
+    let variation = restored
+        .lineages
+        .as_deref()
+        .map(|lineages| metrics::lineage_variation(tapes, lineages));
     Ok(Report {
         run,
         epoch: restored.header.epoch,
@@ -263,7 +266,7 @@ fn measure(stored: &StoredWorld, run: Option<i64>, top_k: &[u32]) -> Result<Repo
             .iter()
             .map(|top_k| setting(*top_k, &measured[top_k]))
             .collect(),
-        top_tapes: top_tapes(stored, &restored.cells, &measured),
+        top_tapes: top_tapes(tapes, stored, &measured),
     })
 }
 
@@ -281,12 +284,21 @@ fn at_top_k(stored: &StoredWorld, top_k: u32) -> Result<Metrics> {
 /// stream, so `replicator_count` at `top_k = r` differs from the count at `r - 1` exactly
 /// when rank `r` passed the test — which is how a per-tape verdict is read off the sweep
 /// rather than by re-running the test here with a stream of our own.
+/// The restored cells read as tapes: ragged wherever the blob carried live lengths.
+fn tapes_of<'a>(stored: &StoredWorld, restored: &'a Restored) -> metrics::Tapes<'a> {
+    metrics::Tapes::ragged(
+        &restored.cells,
+        stored.params.stride(),
+        restored.lens.as_deref().unwrap_or_default(),
+    )
+}
+
 fn top_tapes(
+    tapes: metrics::Tapes<'_>,
     stored: &StoredWorld,
-    cells: &[u8],
     measured: &BTreeMap<u32, Metrics>,
 ) -> Vec<TapeReading> {
-    let ranked = metrics::ranked_tapes(cells, stored.params.stride());
+    let ranked = metrics::ranked_tapes(tapes);
     let cell_count = stored.params.cell_count() as f64;
 
     let mut readings = Vec::new();
@@ -566,7 +578,7 @@ mod tests {
             .unwrap()
             .cells;
         let zero_tape = vec![0u8; stored.params.stride()];
-        metrics::ranked_tapes(&cells, stored.params.stride())
+        metrics::ranked_tapes(metrics::Tapes::uniform(&cells, stored.params.stride()))
             .iter()
             .take(64)
             .skip(16)

@@ -71,7 +71,7 @@ RSpec.describe Experiments::IndexPage do
 
       expect(page.planned.map(&:slug))
         .to eq(%w[mutation-rate-long world-size radius max-steps ops energy-per-epoch environmental-structure
-                  bff-control])
+                  max-tape-len bff-control])
     end
 
     context "with a sweep built by hand under another slug" do
