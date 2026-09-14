@@ -85,6 +85,25 @@
       "type": "float"
     },
     {
+      "default": "uniform",
+      "doc": "How the world varies from place to place: uniform runs one mutation rate everywhere, which is the world of DESIGN 1.1; gradient runs a triangle across the columns, driest at column 0 and wettest half a world east; patchwork runs four quadrants alternating dry and wet.",
+      "name": "structure",
+      "type": "enum",
+      "values": [
+        "uniform",
+        "gradient",
+        "patchwork"
+      ]
+    },
+    {
+      "default": 0.5,
+      "doc": "How far a structured world's cells lean from mutation_rate, as a fraction of it: the driest cell runs at 1 - amplitude times the rate and the wettest at 1 + amplitude.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "structure_amplitude",
+      "type": "float"
+    },
+    {
       "default": "random",
       "doc": "Initial world state: uniformly random bytes, or all zero (the control).",
       "name": "init",

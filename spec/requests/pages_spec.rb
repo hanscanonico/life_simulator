@@ -77,7 +77,7 @@ RSpec.describe "Pages", type: :request do
       expect(nav[1]).to eq(["How it works", how_it_works_path])
     end
 
-    it "lists the programme's five sweeps in declaration order, the control and the re-runs apart" do
+    it "lists the programme's sweeps in declaration order, the control and the re-runs apart" do
       get how_it_works_path
 
       items = response.parsed_body.css("ol li strong").map { |item| item.text.squish }

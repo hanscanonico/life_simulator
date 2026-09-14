@@ -341,15 +341,24 @@ impl World {
         std::mem::swap(&mut self.cells, &mut self.scratch);
     }
 
+    /// A structure changes the probability each byte faces and never where the RNG stream
+    /// stands: the bytes are visited in the one order either world visits them, and each
+    /// is offered exactly one draw.
     fn mutate(&mut self, rng: &mut Rng) {
-        let rate = self.params.mutation_rate;
-        if rate <= 0.0 {
+        if self.params.mutation_rate <= 0.0 {
             return;
         }
         let substrate = self.params.substrate;
-        for byte in &mut self.cells {
-            if rng::chance(rng, rate) {
-                *byte = draw_cell_byte(rng, substrate);
+        let width = self.params.width;
+        let stride = self.params.stride();
+        for (cell, state) in self.cells.chunks_mut(stride).enumerate() {
+            let rate = self
+                .params
+                .mutation_rate_at(cell as u32 % width, cell as u32 / width);
+            for byte in state {
+                if rng::chance(rng, rate) {
+                    *byte = draw_cell_byte(rng, substrate);
+                }
             }
         }
     }
@@ -502,6 +511,7 @@ fn draw_cell_byte(rng: &mut Rng, substrate: Substrate) -> u8 {
 mod tests {
     use super::*;
     use crate::metrics::TransitionState;
+    use crate::params::Structure;
 
     /// Pinned so a change in the rules, the RNG or the visiting order cannot pass unseen:
     /// `Params::default()` at 32×32, seed 42, after 50 epochs.
@@ -794,6 +804,25 @@ mod tests {
                 assert_deterministic(
                     &Params {
                         energy_per_epoch,
+                        ..soup(16, 16)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// And under a structured world: the rate a byte faces comes from its position alone,
+    /// so a run resumed from a snapshot mutates exactly as the uninterrupted one did.
+    #[test]
+    fn determinism_holds_under_environmental_structure() {
+        for structure in [Structure::Gradient, Structure::Patchwork] {
+            for seed in [1, 2, 3] {
+                assert_deterministic(
+                    &Params {
+                        structure,
+                        structure_amplitude: 0.75,
+                        mutation_rate: 1.0 / 256.0,
                         ..soup(16, 16)
                     },
                     seed,
@@ -1158,6 +1187,98 @@ mod tests {
             20,
         );
         assert_eq!(costly.world_hash(), free.world_hash());
+    }
+
+    /// A world of zero tapes executes nothing — every byte is a no-op — so after one epoch
+    /// the only bytes that moved are the ones mutation drew, and a cell's non-zero bytes
+    /// count the mutations it was offered.
+    fn mutated_bytes(world: &World, x: u32, y: u32) -> usize {
+        world.cell(x, y).iter().filter(|byte| **byte != 0).count()
+    }
+
+    fn still_soup(structure: Structure) -> Params {
+        Params {
+            tape_len: 16,
+            init: Init::Zero,
+            mutation_rate: 0.5,
+            structure,
+            structure_amplitude: 1.0,
+            ..soup(16, 16)
+        }
+    }
+
+    /// The extremes of a gradient at full amplitude: the driest column runs at no rate at
+    /// all and the wettest, half a world east, at twice the run's rate — every byte.
+    #[test]
+    fn a_gradient_mutates_by_column() {
+        let mut world = World::new(&still_soup(Structure::Gradient), 5).unwrap();
+        world.step();
+
+        for y in 0..16 {
+            assert_eq!(mutated_bytes(&world, 0, y), 0, "the driest column mutated");
+            assert!(
+                mutated_bytes(&world, 8, y) > 8,
+                "the wettest column barely mutated"
+            );
+        }
+    }
+
+    #[test]
+    fn a_patchwork_mutates_by_quadrant() {
+        let mut world = World::new(&still_soup(Structure::Patchwork), 5).unwrap();
+        world.step();
+
+        for (x, y) in [(2, 2), (10, 10)] {
+            assert_eq!(mutated_bytes(&world, x, y), 0, "a dry patch mutated");
+        }
+        for (x, y) in [(10, 2), (2, 10)] {
+            assert!(
+                mutated_bytes(&world, x, y) > 8,
+                "a wet patch barely mutated"
+            );
+        }
+    }
+
+    /// The structure is opt-in: a uniform world must be the run the parameter's absence
+    /// left, down to the bytes of the world and every observable of §1.2, whatever
+    /// amplitude it carries unread.
+    #[test]
+    fn a_uniform_world_moves_no_run() {
+        let uniform = Params {
+            structure: Structure::Uniform,
+            structure_amplitude: 1.0,
+            ..soup(32, 32)
+        };
+        let mut world = World::new(&uniform, 42).unwrap();
+        for _ in 0..50 {
+            world.step();
+        }
+        assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
+
+        let measured = world.metrics();
+        assert_eq!(observable_digest(&measured), PINNED_OBSERVABLES);
+        assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
+    }
+
+    /// A structure of no amplitude is a uniform world by another name, and must run as one:
+    /// the scaling itself must not move a byte.
+    #[test]
+    fn a_structure_of_no_amplitude_runs_the_soup_unchanged() {
+        let params = Params {
+            structure: Structure::Gradient,
+            structure_amplitude: 0.0,
+            ..soup(16, 16)
+        };
+        let structured = stepped(&params, 42, 20);
+        let flat = stepped(
+            &Params {
+                structure: Structure::Uniform,
+                ..params
+            },
+            42,
+            20,
+        );
+        assert_eq!(structured.world_hash(), flat.world_hash());
     }
 
     #[test]

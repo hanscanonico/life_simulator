@@ -43,6 +43,13 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   concatenation.
 - **Mutation**: after every epoch each byte is replaced by a uniformly random byte with
   probability `mutation_rate` (default 1/4096 per byte per epoch... tune by measurement).
+- **Environmental structure** (`structure`, default `uniform` = off): with a structure
+  set, the mutation rate a cell lives under scales with where the cell sits, between
+  `1 - structure_amplitude` and `1 + structure_amplitude` times `mutation_rate` (clamped
+  to a probability). `gradient` runs a triangle across the columns, driest at column 0 and
+  wettest half a world east; `patchwork` runs four quadrants alternating dry and wet. At
+  `uniform` the rate is `mutation_rate` everywhere and the world is exactly the one above:
+  the same bytes are offered the same draws in the same order.
 - **Initial state**: every byte uniformly random (`init = random`), or every byte zero
   (`init = zero`) — a control that must never produce replicators without mutation.
 - **Determinism**: a run is fully determined by `(params, seed)`. Same inputs, same
@@ -147,6 +154,12 @@ holding a tape that passed.
 6. **Instruction cost** — `energy_per_epoch ∈ {0 (off), 2^15, 2^13, 2^11}`, the arm at 0
    being the costless substrate every earlier sweep ran. Hypothesis: a cost pressure
    selects for efficient copiers and opens a second niche.
+7. **Environmental structure** — `structure ∈ {uniform (off), gradient, patchwork}` at
+   `structure_amplitude` 0.75, the uniform arm being the world every earlier sweep ran.
+   Hypothesis: environmental structure raises the plateau the dominant replicator's
+   complexity settles at, refuted if a world whose regions differ plateaus where a uniform
+   world does. Secondary prediction: a heterogeneous world keeps more lineages alive after
+   emergence.
 
 Every run records its full metric series and periodic snapshots so a claim can be
 re-examined. A finding is published on the site with its phase diagram, the raw runs,
