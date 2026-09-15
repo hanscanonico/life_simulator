@@ -20,7 +20,9 @@ them is an engineering task, not a seeding.
 `lab:requeue_failed[<slug>]` sends every failed run of an experiment back to pending with
 its runner columns cleared, for failures caused by a since-fixed bug rather than by the
 run's parameters. `lab:prioritise[<slug>,<priority>]` sets an experiment's priority and
-that of its pending runs, so the next claims serve them first.
+that of its unfinished runs — pending, claimed and running alike, so a run whose runner
+dies comes back to the queue at the priority you asked for — and the next claims serve
+them first.
 `lab:sweep` is idempotent on (experiment, canonical params, seed), so re-running it after a
 grid gained an arm seeds that arm only. When a grid *loses* an arm, its queued runs stay
 behind: `"lab:discard_pending[<slug>,<param>,<value>]"` deletes the pending runs of the

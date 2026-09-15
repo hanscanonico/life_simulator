@@ -50,18 +50,26 @@ RSpec.describe "the lab queue tasks" do
       expect([experiment.reload.priority, run.reload.priority]).to eq([9, 9])
     end
 
-    it "leaves a claimed run's priority alone" do
+    it "raises the priority of a claimed run, which keeps it if its runner dies" do
       run = create(:run, :claimed, experiment: experiment, priority: 1)
+
+      invoke("lab:prioritise", "bff-control", "9")
+
+      expect(run.reload.priority).to eq(9)
+    end
+
+    it "leaves a finished run's priority alone" do
+      run = create(:run, experiment: experiment, status: "finished", priority: 1)
 
       invoke("lab:prioritise", "bff-control", "9")
 
       expect(run.reload.priority).to eq(1)
     end
 
-    it "prints the priority and the number of pending runs it moved" do
+    it "prints the priority and the number of unfinished runs it moved" do
       create(:run, experiment: experiment)
 
-      expect(invoke("lab:prioritise", "bff-control", "9")).to include("priority 9, 1 pending runs")
+      expect(invoke("lab:prioritise", "bff-control", "9")).to include("priority 9, 1 unfinished runs")
     end
 
     it "refuses an experiment it does not know" do

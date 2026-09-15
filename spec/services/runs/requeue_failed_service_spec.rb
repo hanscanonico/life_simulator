@@ -24,6 +24,14 @@ RSpec.describe Runs::RequeueFailedService do
                                           error: nil, epochs_done: 0)
   end
 
+  it "keeps the priority of the run it requeues, so it returns to the queue where it was" do
+    run = failed_run(priority: 30)
+
+    described_class.call(experiment: experiment)
+
+    expect(run.reload).to have_attributes(status: "pending", priority: 30)
+  end
+
   it "drops the results the failed attempt reported, so the run reads as never claimed" do
     run = failed_run
 

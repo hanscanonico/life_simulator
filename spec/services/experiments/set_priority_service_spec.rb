@@ -19,20 +19,31 @@ RSpec.describe Experiments::SetPriorityService do
     expect(runs.map { |run| run.reload.priority }).to eq([7, 7])
   end
 
-  it "returns the number of pending runs it moved" do
-    create_list(:run, 2, experiment: experiment)
-
-    expect(described_class.call(experiment: experiment, priority: 7)).to eq(2)
-  end
-
-  it "leaves the claimed, running and terminal runs alone" do
-    untouched = %w[claimed running finished failed].map do |status|
+  it "sets the priority of the claimed and running runs, which they keep once released" do
+    moved = %w[claimed running].map do |status|
       create(:run, :claimed, experiment: experiment, status: status, priority: 1)
     end
 
     described_class.call(experiment: experiment, priority: 7)
 
-    expect(untouched.map { |run| run.reload.priority }).to eq([1, 1, 1, 1])
+    expect(moved.map { |run| run.reload.priority }).to eq([7, 7])
+  end
+
+  it "returns the number of unfinished runs it moved" do
+    create_list(:run, 2, experiment: experiment)
+    create(:run, :claimed, experiment: experiment)
+
+    expect(described_class.call(experiment: experiment, priority: 7)).to eq(3)
+  end
+
+  it "leaves the terminal runs alone" do
+    untouched = %w[finished failed].map do |status|
+      create(:run, :claimed, experiment: experiment, status: status, priority: 1)
+    end
+
+    described_class.call(experiment: experiment, priority: 7)
+
+    expect(untouched.map { |run| run.reload.priority }).to eq([1, 1])
   end
 
   it "leaves the pending runs of another experiment alone" do
