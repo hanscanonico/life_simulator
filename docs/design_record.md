@@ -515,3 +515,26 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   all came up empty reads **not supported**. If the control arm itself never emerged the sweep is
   unresolved and the page says so: there is no default substrate to read anything against.
   `supported` is unchanged — some measured arm reads above the control in most of its runs.
+- 2026-09-15 — **The dominant tape's complexity is read whether or not it replicates.**
+  §1.2 defined `dominant_compressed_len` / `dominant_instruction_count` as readings of the
+  dominant replicator, null when no tested tape passes the replicator test, and the engine
+  emitted them only on a positive census. Since emergence is confirmed by the copy rate as
+  well as by the census (entry above), that left a whole class of emerged run structurally
+  unmeasurable: run 500 (`max-tape-len`, arm 128, seed 14) crossed at epoch 4 170 on
+  `copy_rate`, reports 1 584 samples after its crossing, and carries `replicator_count` 0 —
+  and therefore not one complexity reading — in every one of them, so the 128 arm reads
+  "2 emerged, 1 measured" on `complexity-keeps-rising` and the plateau cannot be decided.
+  **The two readings are now taken of the most populous tape when no tested tape passes**,
+  with a new boolean observable `dominant_replicates` saying which of the two tapes was
+  read. After a crossing the copy rate confirmed, the tape most cells hold is the thing
+  that is copying, so its size is the reading the finding wants; and a sample that says
+  false is not silently mixed with one that says true. Where a tested tape does pass, the
+  numbers are read off it exactly as before — the most populous passing tape among the
+  `top_k`, the tape `copy_cost` is priced on — so **every reading that existed is
+  byte-identical**: a 20 000-epoch 128² run at the defaults (seed 14) reproduces its 2 001
+  samples digit for digit outside the three dominant fields. Nothing else moves: no RNG
+  stream is touched, no tape is read that the census did not already rank, and exactly one
+  tape is compressed per sample, so the same run took 410.7 s before and 406.5 s after. The
+  life substrate still reads null, having no tapes. **Runs already finished keep their
+  nulls** — no backfill is possible, the tapes those samples described are gone — so an old
+  run stays measurable only where its census was positive.

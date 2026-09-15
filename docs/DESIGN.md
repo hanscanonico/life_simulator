@@ -122,15 +122,23 @@ claim rests on it.
   It is read off the runs the test performs — same order, same stream, no trial re-run —
   so it moves no tape byte and draws nothing. The hand-written replicator of the engine's
   test suite costs 1 794 steps.
-- `dominant_compressed_len` / `dominant_instruction_count`: how much tape the **dominant
-  replicator** is, read two ways — the length in bytes of its tape under the same zlib
-  compressor `compress_ratio` uses, and how many of its bytes the run's own instruction set
-  executes (all ten unless `ops` ablates some). Read off the very tape `copy_cost` is priced
-  on, so the three observables describe one tape; null when no tested tape replicates, and on
-  the life substrate. Together they are the open-endedness baseline every later substrate is
-  measured against: a world whose replicator keeps getting more complicated after emergence
-  reads a rising length, a world that found one recipe and stopped reads a flat one. The
-  hand-written replicator of the engine's test suite reads 36 bytes and 15 instructions.
+- `dominant_compressed_len` / `dominant_instruction_count` / `dominant_replicates`: how much
+  tape the **dominant tape** is, read two ways — the length in bytes of its tape under the
+  same zlib compressor `compress_ratio` uses, and how many of its bytes the run's own
+  instruction set executes (all ten unless `ops` ablates some) — with the boolean saying
+  whether that tape passed the replicator test. The dominant tape is the most populous tape
+  among the `top_k` tested that passes the test, which is the very tape `copy_cost` is priced
+  on, so wherever something replicates the three readings describe one tape and
+  `dominant_replicates` is true. Where nothing among the tested tapes passes, the reading is
+  of the most populous tape of the world and `dominant_replicates` is false: an emergence
+  confirmed by `copy_rate` alone would otherwise be unmeasurable, and after such a crossing
+  the tape most cells hold is the thing that is copying (`docs/design_record.md`,
+  2026-09-15). Exactly one tape is compressed per sample either way. Null only on the life
+  substrate, which has no tapes. Together the lengths are the open-endedness baseline every
+  later substrate is measured against — read after a confirmed emergence: a world whose
+  dominant tape keeps getting more complicated reads a rising length, a world that found one
+  recipe and stopped reads a flat one. The hand-written replicator of the engine's test suite
+  reads 36 bytes and 15 instructions.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard
