@@ -124,7 +124,8 @@ RSpec.describe "Experiments", type: :request do
 
       get experiment_path(experiment)
 
-      expect(response.body).to include("1 of 2 finished runs transitioned", "50%",
+      expect(response.body).to include("1 of 2 finished runs flagged", "50%",
+                                       "0 confirmed by a replicator",
                                        "+1 run still under way already transitioned")
     end
 
@@ -157,6 +158,19 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to include("Priority", %(<td class="numeric">5</td>))
     end
 
+    it "counts the crossings a replicator confirmed beside the ones the detector flagged" do
+      create(:run, :emerged, experiment: experiment, transition_epoch: 900,
+                             params: Lab::Schema.run_defaults.merge("radius" => 2))
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 600,
+                   params: Lab::Schema.run_defaults.merge("radius" => 4))
+
+      get experiment_path(experiment)
+
+      expect(response.body).to include("2 of 2 finished runs flagged", "1 confirmed by a replicator")
+      expect(response.body).to match(%r{900\s*<span class="badge badge-success">confirmed</span>})
+      expect(response.body).to match(%r{600\s*<span class="badge badge-info">flagged</span>})
+    end
+
     it "delimits each run's transition epoch and dashes the runs without one" do
       create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 12_345,
                    params: Lab::Schema.run_defaults.merge("radius" => 1))
@@ -165,8 +179,8 @@ RSpec.describe "Experiments", type: :request do
 
       get experiment_path(experiment)
 
-      expect(response.body).to include(%(<td class="numeric">12,345</td>))
-      expect(response.body).to match(%r{<td class="numeric">20,000</td>\s*<td class="numeric">—</td>})
+      expect(response.body).to match(%r{<td class="numeric">\s*12,345\s*<span class="badge badge-info">flagged</span>})
+      expect(response.body).to match(%r{<td class="numeric">20,000</td>\s*<td class="numeric">\s*—\s*</td>})
     end
 
     context "with a run the detector flagged and a run only the census counted" do
@@ -234,7 +248,7 @@ RSpec.describe "Experiments", type: :request do
         get experiment_path(experiment)
 
         expect(response.body).to include("Census")
-        expect(response.body).to match(%r{<td class="numeric">—</td>\s*<td class="numeric">\s*</td>})
+        expect(response.body).to match(%r{<td class="numeric">\s*—\s*</td>\s*<td class="numeric">\s*</td>})
       end
     end
 

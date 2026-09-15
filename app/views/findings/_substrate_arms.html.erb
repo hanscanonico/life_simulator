@@ -7,7 +7,7 @@
     <thead>
       <tr>
         <th>Arm</th>
-        <th class="numeric">Transitioned runs</th>
+        <th class="numeric">Emerged runs</th>
         <th class="numeric">Measured</th>
         <th class="numeric">Median peak <%= unit %></th>
         <th class="numeric">Above control</th>
@@ -21,7 +21,7 @@
             <span class="mono"><%= arm.label %></span>
             <% if arm.control? %><span class="badge badge-info">control</span><% end %>
           </td>
-          <td class="numeric mono"><%= arm.transitioned_count %></td>
+          <td class="numeric mono"><%= arm.emerged_count %></td>
           <td class="numeric mono"><%= arm.measured_count(bet.decided_by) %></td>
           <td class="numeric mono">
             <% median = arm.median_peak(bet.decided_by) %>
@@ -41,7 +41,8 @@
   </table>
 </div>
 <p class="text-sm text-muted">
-  One row per arm of the sweep. "Measured" counts the transitioned runs whose samples carry
+  One row per arm of the sweep. "Emerged runs" counts the arm's confirmed crossings, not
+  every crossing the detector flagged, and "Measured" the emerged runs whose samples carry
   the reading after their own crossing; the median is of each run's peak, the highest
   post-crossing reading it recorded. "Above control" counts the runs of the arm whose peak
   is strictly above the control arm's median peak — a dash until the control arm has a

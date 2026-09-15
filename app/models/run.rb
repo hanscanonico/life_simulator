@@ -22,6 +22,9 @@ class Run < ApplicationRecord
   # A run the detector flagged and that will not run again — failures included, since a
   # world that crossed before its runner died still crossed.
   scope :transitioned, -> { terminal.where.not(transition_epoch: nil) }
+  # A run whose crossing a witness backs (docs/design_record.md, 2026-09-15): the detector
+  # flags a candidate, and only these emerged.
+  scope :emerged, -> { terminal.where.not(emergence_epoch: nil) }
   scope :stale, -> { where(status: %w[claimed running]).where(heartbeat_at: ...STALE_AFTER.ago) }
 
   def terminal? = TERMINAL_STATUSES.include?(status)
@@ -29,6 +32,10 @@ class Run < ApplicationRecord
   # The read-side derivation of Runs::PersistenceSummaryService, stored with the run so a
   # sweep page can read a whole arm's persistence without reading a sample.
   def persistence_summary = Runs::Persistence.from(persistence)
+
+  def emergence = Runs::Emergence.new(epoch: emergence_epoch, witness: emergence_witness)
+
+  def emerged? = emergence_epoch.present?
 
   def claimed_by?(other_runner_id) = runner_id.present? && runner_id == other_runner_id
 

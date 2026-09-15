@@ -69,6 +69,11 @@ module Experiments
 
     def transitioned_finished = finished_runs.count { |run| run.transition_epoch.present? }
 
+    # The detector flags a candidate crossing on `compress_ratio` alone; a run emerged when
+    # the census or the copy rate backed it (docs/design_record.md, 2026-09-15). The page
+    # prints both counts, never the flagged one alone.
+    def emerged_finished = finished_runs.count(&:emerged?)
+
     # Runs still under way can already carry a transition epoch, and they are not in the
     # rate's denominator: the page reports them separately rather than diluting the share.
     def transitioned_running
@@ -166,7 +171,8 @@ module Experiments
     def page = @page ||= @paginate.call(experiment.runs.order(:id))
 
     def finished_runs
-      @finished_runs ||= experiment.runs.where(status: "finished").select(:id, :params, :transition_epoch).to_a
+      @finished_runs ||= experiment.runs.where(status: "finished")
+                                   .select(:id, :params, :transition_epoch, :emergence_epoch).to_a
     end
 
     def groups_for(axis)

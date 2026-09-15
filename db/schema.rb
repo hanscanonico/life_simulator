@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_11_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -51,6 +51,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_11_180000) do
     t.datetime "claimed_at"
     t.float "compute_seconds", default: 0.0, null: false
     t.datetime "created_at", null: false
+    t.integer "emergence_epoch"
+    t.string "emergence_witness"
     t.integer "epochs", null: false
     t.integer "epochs_done", default: 0, null: false
     t.datetime "epochs_done_at"

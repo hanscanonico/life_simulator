@@ -4,7 +4,7 @@
 <p>
   <%= link_to "On the substrate the programme already had", finding_path("replicator-complexity-plateau") %>,
   the dominant replicator's complexity is counted after emergence and the count is of
-  directions: how many transitioned worlds end more complicated than they started. That is
+  directions: how many emerged worlds end more complicated than they started. That is
   the baseline. The open question it leaves is whether the substrate was what was limiting —
   whether a world that has to pay for computation, a world whose regions differ, or a world
   whose tapes are free to lengthen goes somewhere the default substrate never went. This
@@ -22,8 +22,13 @@
   runs from another sweep.
 </p>
 <p>
-  For every transitioned run of those sweeps this reads two series off the stored samples at
-  or after that run's own crossing epoch: <span class="mono">dominant_compressed_len</span>,
+  For every <strong>emerged</strong> run of those sweeps this reads two series off the
+  stored samples at or after that run's own emergence epoch. Emerged is narrower than
+  flagged: the detector reads <span class="mono">compress_ratio</span> alone, so a crossing
+  counts here only when the replicator census or the copy rate backs it within ten samples
+  of it (<span class="mono">docs/design_record.md</span>, 2026-09-15) — the flagged runs of
+  the 512 arm whose census never left zero are not worlds that emerged. The two series
+  are: <span class="mono">dominant_compressed_len</span>,
   the compressed length of the most populous tape that passes the replicator test, and
   <span class="mono">distinct_lineages</span>, how many lineage ids the cells hold. A run's
   <strong>peak</strong> is the highest reading its samples record after the crossing — a
@@ -40,7 +45,7 @@
   arm of the sweep carry at least that many measured runs and none of the treated arms
   raises it — the refutation DESIGN states, with nothing left unseeded. Anything between the
   two reads <strong>unresolved</strong>, and the arms that were untestable are named: an arm
-  nothing transitioned in refutes nothing.
+  nothing emerged in refutes nothing.
 </p>
 <p>
   Each sweep is decided on the one observable its DESIGN hypothesis names. The other
@@ -92,9 +97,10 @@
 <% if survey.any? %>
   <p>
     Across the three sweeps the lab holds
-    <%= pluralize survey.transitioned_count, "transitioned run" %>.
-    <%= survey.measured_count(:length) %> of them carry a complexity reading after their
-    crossing and <%= survey.rising_count(:length) %> end above the middle of their own
+    <%= pluralize survey.flagged_count, "run" %> flagged by the detector and
+    <%= survey.emerged_count %> confirmed by a replicator.
+    <%= survey.measured_count(:length) %> of the confirmed ones carry a complexity reading
+    after their crossing and <%= survey.rising_count(:length) %> end above the middle of their own
     post-crossing readings; <%= survey.measured_count(:lineages) %> carry a lineage count and
     <%= survey.rising_count(:lineages) %> end above the middle of theirs. That is a
     description of where each run ended, not a trend, and it is censored at both ends by that
@@ -102,8 +108,9 @@
   </p>
 <% else %>
   <p class="text-muted">
-    No run of the three substrate sweeps has transitioned in this database yet, so all three
-    hypotheses are unresolved and nothing above is a result. The sweeps are queued; this page
+    No run of the three substrate sweeps has emerged in this database yet — a crossing the
+    census or the copy rate confirms — so all three hypotheses are unresolved and nothing
+    above is a result. The sweeps are queued; this page
     reads them at render time and fills in as their runs cross.
   </p>
 <% end %>

@@ -462,3 +462,33 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   the RNG stream anywhere new and no snapshot changes version — the pinned determinism
   hashes and observable strings in `world.rs` do not move, and a test asserts the pinned
   readings again with the parameter named and set both ways.
+- 2026-09-15 — **A crossing is a candidate; a run emerged only when a witness confirms
+  it.** The `max-tape-len` sweep's 512 arm made the case: all ten runs carry a
+  `transition_epoch` between 600 and 670 with a peak `replicator_count` of 0, a peak
+  `copy_rate` at or below 6.1e-05 and 16 384 of 16 384 distinct tapes at the last sample —
+  the detector firing on the random fill settling into a compressible soup, not on
+  replication. Of the sweep's 14 flagged runs only 4 (367, 371, 384, 389) ever held a
+  replicator, and those same 4 are the only ones carrying a `dominant_compressed_len`
+  reading. `transition_epoch` (DESIGN §1.2) is **unchanged**: it stays the detector's first
+  qualifying, held crossing, and it stays the primary dependent variable of every sweep.
+  What is added is a second, narrower reading beside it. A run **emerged** when that
+  crossing is confirmed by the replicator census or the copy rate within
+  `Runs::EmergenceEpochService::CONFIRM_WINDOW` samples of it — the window the transition
+  report already reconciled the two observables over — and the confirmed epoch and its
+  witness (`census` or `copy_rate`) are stored on the run as `emergence_epoch` /
+  `emergence_witness`. The rule is spelled out in exactly one place,
+  `Runs::EmergenceEpochService`, which `Experiments::TransitionReportService` reads, a
+  finished run records through `Runs::FinishService`, and `lab:backfill_emergence[<slug>]`
+  rewrites over stored samples. This is what the 2026 BFF paper reports as emergence
+  (arXiv:2607.01483), so the programme's published claims now read the same way its prior
+  art does.
+  **Scope, deliberately narrow.** Only the two open-endedness findings change reader:
+  `replicator-complexity-plateau` and `complexity-keeps-rising` read emerged runs and read
+  their series at or after `emergence_epoch`, and where either printed one count it now
+  prints both — how many runs the detector flagged, how many a replicator confirmed. The
+  experiment pages print both counts too and mark a confirmed run distinctly from a bare
+  flagged one. The other findings — the mutation-rate window, world size, radius,
+  persistence and the bff-control positive control — keep reading `transition_epoch`: they
+  are claims about how often and how fast the detector's crossing appears, the sweeps were
+  read and published that way, and re-reading them on a narrower definition is a separate
+  piece of work with its own evidence.

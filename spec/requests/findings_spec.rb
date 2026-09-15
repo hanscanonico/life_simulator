@@ -1005,7 +1005,7 @@ RSpec.describe "Findings", type: :request do
       let(:complexity) { Findings::Registry.find("replicator-complexity-plateau") }
 
       def run_with_lengths(experiment, seed, lengths)
-        run = create(:run, experiment: experiment, seed: seed, status: "finished", transition_epoch: 1_000)
+        run = create(:run, :emerged, experiment: experiment, seed: seed, transition_epoch: 1_000)
         lengths.each_with_index do |length, index|
           create(:sample, run: run, epoch: 1_000 + (index * 10),
                           values: { "dominant_compressed_len" => length, "dominant_instruction_count" => 15 })
@@ -1043,10 +1043,11 @@ RSpec.describe "Findings", type: :request do
           get finding_path(complexity)
 
           expect(response.body.squish)
-            .to include("The lab has 2 terminal runs that crossed, with a complexity reading after " \
-                        "the crossing in 2 of them, across 1 sweep",
+            .to include("The lab has 2 terminal runs flagged by the detector and 2 confirmed by a " \
+                        "replicator, with a complexity reading after the crossing in 2 of the confirmed " \
+                        "ones, across 1 sweep",
                         "Among the 2 runs with at least two readings, the split is 1 ending above " \
-                        "their first post-transition length, 1 below it and 0 on it")
+                        "their first post-emergence length, 1 below it and 0 on it")
           expect(response.body).to include(experiment_path(radius), run_path(grown), run_path(shrunk),
                                            "more complicated", "simpler")
         end
@@ -1074,8 +1075,8 @@ RSpec.describe "Findings", type: :request do
       end
 
       def arm_run(experiment, arm, lengths)
-        run = create(:run, experiment: experiment, status: "finished", transition_epoch: 1_000,
-                           params: Lab::Schema.run_defaults.merge(arm))
+        run = create(:run, :emerged, experiment: experiment, transition_epoch: 1_000,
+                                     params: Lab::Schema.run_defaults.merge(arm))
         lengths.each_with_index do |length, index|
           create(:sample, run: run, epoch: 1_000 + (index * 10),
                           values: { "dominant_compressed_len" => length, "distinct_lineages" => length * 2 })
@@ -1129,8 +1130,8 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.parsed_body.css(".badge-info").map(&:text)).to include("unresolved")
         expect(response.body.squish)
-          .to include("Not enough transitioned seeds to decide it either way",
-                      "No run of the three substrate sweeps has transitioned in this database yet")
+          .to include("Not enough emerged seeds to decide it either way",
+                      "No run of the three substrate sweeps has emerged in this database yet")
         treated = response.parsed_body.css("#energy-per-epoch-lineages-arms tbody tr").last
         expect(treated.css("td").map { |cell| cell.text.squish }).to eq(["2048", "0", "0", "—", "—", "0"])
       end
@@ -1145,7 +1146,7 @@ RSpec.describe "Findings", type: :request do
 
           expect(response.body.squish)
             .to include("supported", "reads above the control arm in most of its runs",
-                        "has 4 transitioned runs, 4 of them carrying a complexity in bytes after the crossing",
+                        "has 4 emerged runs, 4 of them carrying a complexity in bytes after the crossing",
                         "The control arm's median peak is 40 bytes")
           expect(response.parsed_body.css("#max-tape-len-length-arms tbody tr").size).to eq(4)
         end
@@ -1177,7 +1178,7 @@ RSpec.describe "Findings", type: :request do
 
           paragraphs = response.parsed_body.css("p").map { |paragraph| paragraph.text.squish }
 
-          expect(response.body.squish).to include("Not enough transitioned seeds to decide it either way")
+          expect(response.body.squish).to include("Not enough emerged seeds to decide it either way")
           expect(paragraphs)
             .to include(a_string_including("Untestable here: patchwork carries fewer than 2 measured runs, " \
                                            "so the sweep cannot read as not supported until it is seeded — " \
@@ -1185,7 +1186,22 @@ RSpec.describe "Findings", type: :request do
         end
       end
 
-      context "with one transitioned seed in the control arm" do
+      context "with a crossing no replicator confirmed" do
+        it "counts the flagged runs beside the confirmed ones and reads only the confirmed" do
+          sweep = substrate_sweep("max_tape_len")
+          arm_run(sweep, { "max_tape_len" => 128 }, [36, 40])
+          create(:run, experiment: sweep, status: "finished", transition_epoch: 600,
+                       params: Lab::Schema.run_defaults.merge("max_tape_len" => 512))
+
+          get finding_path(open_endedness)
+
+          expect(response.body.squish)
+            .to include("Across the three sweeps the lab holds 2 runs flagged by the detector and " \
+                        "1 confirmed by a replicator. 1 of the confirmed ones carry a complexity reading")
+        end
+      end
+
+      context "with one emerged seed in the control arm" do
         it "keeps the hypothesis unresolved and states the counts behind that" do
           sweep = substrate_sweep("energy_per_epoch")
           arm_run(sweep, { "energy_per_epoch" => 0 }, [36, 40])
@@ -1194,8 +1210,8 @@ RSpec.describe "Findings", type: :request do
           get finding_path(open_endedness)
 
           expect(response.body.squish)
-            .to include("Not enough transitioned seeds to decide it either way",
-                        "has 3 transitioned runs, 3 of them carrying a lineage count after the crossing",
+            .to include("Not enough emerged seeds to decide it either way",
+                        "has 3 emerged runs, 3 of them carrying a lineage count after the crossing",
                         "The control arm carries fewer than 2 measured runs, so there is nothing to count " \
                         "the other arms against yet")
         end

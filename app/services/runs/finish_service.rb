@@ -16,6 +16,7 @@ module Runs
       Run.transaction do
         @run.assign_attributes(run_attributes)
         @run.persistence = persistence_summary
+        @run.assign_attributes(emergence.attributes)
         @run.save!
         finish_experiment
       end
@@ -51,6 +52,10 @@ module Runs
     # just settled — the run page and the sweep page read the stored value, never the
     # series.
     def persistence_summary = PersistenceSummaryService.call(run: @run).to_h
+
+    # Against the same settled transition epoch: the crossing this finish recorded is the
+    # candidate, and the run carries whether a witness backed it.
+    def emergence = EmergenceEpochService.call(run: @run)
 
     def finish_experiment
       return if experiment.runs.where.not(status: Run::TERMINAL_STATUSES).exists?

@@ -45,6 +45,32 @@ RSpec.describe Run, type: :model do
     end
   end
 
+  describe ".emerged" do
+    it "includes a terminal run whose crossing a witness confirmed" do
+      emerged = create(:run, :emerged)
+
+      expect(described_class.emerged).to contain_exactly(emerged)
+    end
+
+    it "excludes a run the detector flagged with no witness behind it" do
+      create(:run, status: "finished", transition_epoch: 600)
+
+      expect(described_class.emerged).to be_empty
+    end
+
+    it "excludes a run still under way, confirmed or not" do
+      create(:run, :emerged, status: "running")
+
+      expect(described_class.emerged).to be_empty
+    end
+
+    it "includes a failed run that emerged before its runner died" do
+      failed = create(:run, :emerged, status: "failed")
+
+      expect(described_class.emerged).to contain_exactly(failed)
+    end
+  end
+
   describe "#claimed_by?" do
     it "is true for the runner holding the run" do
       expect(build(:run, :claimed, runner_id: "runner-7").claimed_by?("runner-7")).to be(true)
