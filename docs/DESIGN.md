@@ -186,6 +186,9 @@ holding a tape that passed.
    complexity settles at, refuted if a world whose regions differ plateaus where a uniform
    world does. Secondary prediction: a heterogeneous world keeps more lineages alive after
    emergence. 30 seeds per arm rather than the usual 10, for the same reason as sweep 6.
+   The gradient and patchwork arms run 90 seeds and the uniform control 30: after 30 seeds
+   gradient has one emerged run carrying a complexity reading and patchwork none, short of
+   the two the finding reads an arm on, while the control already has both.
 8. **Room to grow** — `max_tape_len ∈ {64 (= tape_len, off), 128, 256, 512}`, the arm at
    the initial length being the fixed-tape world every earlier sweep ran. Hypothesis:
    room to grow raises the plateau the dominant replicator's complexity settles at,

@@ -112,6 +112,11 @@ RSpec.describe Lab do
       it "gives thirty seeds the sweep epoch budget each, enough for two emergences per arm" do
         expect(definition.values_at(:seeds, :epochs)).to eq([(1..30).to_a, 20_000])
       end
+
+      it "gives the two structured arms ninety seeds and the uniform control thirty" do
+        expect(definition.fetch(:seeds_by_arm))
+          .to eq("structure" => { "gradient" => (1..90).to_a, "patchwork" => (1..90).to_a })
+      end
     end
 
     describe "the room-to-grow sweep" do

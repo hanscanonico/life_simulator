@@ -113,6 +113,10 @@ Metrics/ModuleLength:
     # write-up, and the log only ever grows. Splitting it to fit a length cop would put
     # the order the index reads in two places.
     - 'app/models/findings/registry.rb'
+    # Lab::SWEEPS is the programme's sweeps as data: one entry per sweep of DESIGN §1.3,
+    # each carrying the prose that says why it runs the grid and the seeds it does. The
+    # list only grows, and splitting it would separate a sweep from its neighbours.
+    - 'app/models/lab.rb'
 
 Metrics/ParameterLists:
   Max: 10
