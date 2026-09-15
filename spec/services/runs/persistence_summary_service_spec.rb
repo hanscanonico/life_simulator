@@ -41,6 +41,30 @@ RSpec.describe Runs::PersistenceSummaryService do
     expect(summary).not_to be_relapsed
   end
 
+  it "stops the count at the last sample the rule accepted, not at the series' end" do
+    record([0.5, 0.4, 0.3, 0.94, 0.94])
+    run.update!(transition_epoch: 0)
+
+    summary = described_class.call(run: run)
+
+    expect(summary.epochs_persisted).to eq(20)
+    expect(summary).not_to be_relapsed
+  end
+
+  # docs/design_record.md (2026-09-12): a series with no room for an exit to be confirmed in
+  # reads as persisted, which is a limit of the record rather than a reading of the world.
+  context "with fewer samples from the crossing than an exit takes" do
+    it "cannot flag a relapse" do
+      record([0.5] + ([0.94] * (Runs::Persistence::EXIT_SAMPLES - 2)))
+      run.update!(transition_epoch: 0)
+
+      summary = described_class.call(run: run)
+
+      expect(summary).not_to be_relapsed
+      expect(summary.epochs_persisted).to eq(0)
+    end
+  end
+
   context "with a world back above the threshold for exactly the tracker's hold" do
     it "waits for one sample more than the hold before calling a relapse" do
       hold = Lab::TransitionRule::HOLD_SAMPLES

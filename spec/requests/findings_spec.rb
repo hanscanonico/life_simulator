@@ -831,6 +831,36 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish).to include("No terminal run in this database has a transition epoch yet")
       end
 
+      context "with as many worlds having left the state as held it" do
+        it "claims neither side of the split" do
+          sweep = create(:experiment)
+          transitioned_run(sweep, 1, { "census_peak" => 7, "peak_epoch" => 1_020,
+                                       "epochs_persisted" => 400, "relapsed" => false })
+          transitioned_run(sweep, 2, { "census_peak" => 7, "peak_epoch" => 1_020,
+                                       "epochs_persisted" => 80, "relapsed" => true })
+
+          get finding_path(persistence)
+
+          expect(response.body.squish)
+            .to include("as many worlds have left it as have held it")
+          expect(response.body.squish).not_to include("more worlds leave it than hold it")
+        end
+      end
+
+      context "with more worlds having left the state than held it" do
+        it "says so" do
+          sweep = create(:experiment)
+          transitioned_run(sweep, 1, { "census_peak" => 7, "peak_epoch" => 1_020,
+                                       "epochs_persisted" => 400, "relapsed" => true })
+          transitioned_run(sweep, 2, { "census_peak" => 7, "peak_epoch" => 1_020,
+                                       "epochs_persisted" => 80, "relapsed" => true })
+
+          get finding_path(persistence)
+
+          expect(response.body.squish).to include("more worlds leave it than hold it")
+        end
+      end
+
       context "with transitioned runs in the database" do
         it "counts the persisters and the relapsers and links the sweeps and the runs" do
           radius = create(:experiment, name: "Radius", slug: "radius")

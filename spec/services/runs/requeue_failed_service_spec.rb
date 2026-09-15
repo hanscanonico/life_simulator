@@ -9,6 +9,8 @@ RSpec.describe Runs::RequeueFailedService do
     create(:run, :claimed, experiment: experiment, status: "failed", started_at: 1.hour.ago,
                            finished_at: 2.minutes.ago, error: "answer body over the limit",
                            epochs_done: 1_200, summary: { "replicators" => 3 }, transition_epoch: 900,
+                           persistence: { "census_peak" => 5, "peak_epoch" => 940,
+                                          "epochs_persisted" => 300, "relapsed" => false },
                            **attributes)
   end
 
@@ -27,7 +29,7 @@ RSpec.describe Runs::RequeueFailedService do
 
     described_class.call(experiment: experiment)
 
-    expect(run.reload).to have_attributes(summary: {}, transition_epoch: nil)
+    expect(run.reload).to have_attributes(summary: {}, transition_epoch: nil, persistence: {})
   end
 
   it "returns the number of runs it requeued" do
