@@ -1,0 +1,46 @@
+<%# One hypothesis of the open-endedness finding: the verdict its own sweep supports, then
+    the arm-by-arm counts it was read from. `reading` names the deciding observable and
+    `unit` what it is measured in. %>
+<p>
+  <span class="badge <%= bet.badge_class %>"><%= bet.verdict_label %></span>
+  <strong>
+    <% if bet.verdict == :supported %>
+      <%= safe_join(bet.raising_arms.map { |arm| tag.span(arm.label, class: "mono") }, ", ") %>
+      reads above the control arm in most of its runs.
+    <% elsif bet.verdict == :not_supported %>
+      No arm of the sweep reads above the control arm in most of its runs, and every arm has
+      at least <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> —
+      the refutation condition of the hypothesis, at the seeds this sweep has.
+    <% else %>
+      Not enough transitioned seeds to decide it either way.
+    <% end %>
+  </strong>
+  <% if bet.experiment? %>
+    <%= link_to bet.experiment.name, experiment_path(bet.experiment) %> has
+    <%= pluralize bet.transitioned_count, "transitioned run" %>, <%= bet.measured_count %> of
+    them carrying <%= reading %> after the crossing.
+  <% else %>
+    The sweep <span class="mono"><%= bet.slug %></span> is not in this database, so it has
+    no runs behind it here.
+  <% end %>
+  <% if bet.control_comparable? %>
+    The control arm's median peak is
+    <%= number_with_precision bet.control_median_peak, precision: 1, strip_insignificant_zeros: true %>
+    <%= unit %>, and every other arm with at least
+    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> is counted
+    against it.
+  <% else %>
+    The control arm carries fewer than
+    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %>, so there is
+    nothing to count the other arms against yet.
+  <% end %>
+  <% if bet.untestable_arms.any? %>
+    Untestable here:
+    <%= safe_join(bet.untestable_arms.map { |arm| tag.span(arm.label, class: "mono") }, ", ") %>
+    <%= bet.untestable_arms.one? ? "carries" : "carry" %> fewer than
+    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %>, so the
+    sweep cannot read as not supported until <%= bet.untestable_arms.one? ? "it is" : "they are" %>
+    seeded — one arm nobody has run refutes nothing.
+  <% end %>
+</p>
+<%= render "findings/substrate_arms", bet: bet, unit: unit %>

@@ -78,6 +78,19 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with a finding weighing several sweeps" do
+      it "links each of them on the row" do
+        sweeps = %w[energy_per_epoch environmental_structure max_tape_len].map do |key|
+          create(:experiment, name: Lab::SWEEPS.fetch(key).fetch(:name), slug: Lab.slug_for(key))
+        end
+
+        get findings_path
+
+        expect(response.body.squish).to include("Weighed against each other, and against the substrate they vary")
+        sweeps.each { |sweep| expect(response.body).to include(experiment_path(sweep)) }
+      end
+    end
+
     context "with the sweep missing" do
       it "says so instead of stating progress" do
         get findings_path
@@ -1018,6 +1031,143 @@ RSpec.describe "Findings", type: :request do
           expect(response.body.squish)
             .to include("The table stops at 1 row and leaves 1 further run out")
           expect(response.parsed_body.css("#complexity-runs tbody tr").size).to eq(1)
+        end
+      end
+    end
+
+    context "with the open-endedness verdict" do
+      let(:open_endedness) { Findings::Registry.find("complexity-keeps-rising") }
+
+      def substrate_sweep(key)
+        create(:experiment, name: Lab::SWEEPS.fetch(key).fetch(:name), slug: Lab.slug_for(key),
+                            param_grid: Lab::SWEEPS.fetch(key).fetch(:param_grid))
+      end
+
+      def arm_run(experiment, arm, lengths)
+        run = create(:run, experiment: experiment, status: "finished", transition_epoch: 1_000,
+                           params: Lab::Schema.run_defaults.merge(arm))
+        lengths.each_with_index do |length, index|
+          create(:sample, run: run, epoch: 1_000 + (index * 10),
+                          values: { "dominant_compressed_len" => length, "distinct_lineages" => length * 2 })
+        end
+        run
+      end
+
+      it "states each hypothesis in the words of the design and what the counts do not claim" do
+        get finding_path(open_endedness)
+
+        expect(response.body.squish)
+          .to include("Does complexity keep rising?",
+                      "a cost pressure selects for efficient copiers and opens a second niche",
+                      "environmental structure raises the plateau the dominant replicator's complexity settles at, " \
+                      "refuted if a world whose regions differ plateaus where a uniform world does",
+                      "a heterogeneous world keeps more lineages alive after emergence",
+                      "room to grow raises the plateau the dominant replicator's complexity settles at, " \
+                      "refuted if tapes free to lengthen plateau where fixed-length tapes do",
+                      "A peak is a peak at these budgets.",
+                      "\"Still rising\" is a description, not a verdict.",
+                      "Counts, not effect sizes.",
+                      "Every run is read from its own crossing.")
+      end
+
+      it "reads every sweep on both observables and decides it on only one" do
+        get finding_path(open_endedness)
+
+        tables = response.parsed_body.css(".table-scroll").pluck("id")
+
+        expect(tables).to include("energy-per-epoch-lineages-arms", "energy-per-epoch-length-arms",
+                                  "environmental-structure-length-arms", "environmental-structure-lineages-arms",
+                                  "max-tape-len-length-arms", "max-tape-len-lineages-arms")
+        expect(response.body.squish)
+          .to include("Read but not the hypothesis under test.",
+                      "neither support nor refute the hypothesis above")
+      end
+
+      it "links the three sweeps it weighs and the baseline finding it is read against" do
+        sweeps = %w[energy_per_epoch environmental_structure max_tape_len].map { |key| substrate_sweep(key) }
+
+        get finding_path(open_endedness)
+
+        expect(response.body).to include(finding_path("replicator-complexity-plateau"))
+        expect(response.parsed_body.css("p").map { |paragraph| paragraph.text.squish })
+          .to include("Read against: Does the replicator keep getting more complicated?")
+        sweeps.each { |sweep| expect(response.body).to include(experiment_path(sweep)) }
+      end
+
+      it "reads every hypothesis as unresolved with nothing in the database" do
+        get finding_path(open_endedness)
+
+        expect(response.parsed_body.css(".badge-info").map(&:text)).to include("unresolved")
+        expect(response.body.squish)
+          .to include("Not enough transitioned seeds to decide it either way",
+                      "No run of the three substrate sweeps has transitioned in this database yet")
+        treated = response.parsed_body.css("#energy-per-epoch-lineages-arms tbody tr").last
+        expect(treated.css("td").map { |cell| cell.text.squish }).to eq(["2048", "0", "0", "—", "—", "0"])
+      end
+
+      context "with an arm reading above its control" do
+        it "reads the hypothesis as supported and names the arm" do
+          sweep = substrate_sweep("max_tape_len")
+          2.times { arm_run(sweep, { "max_tape_len" => 64 }, [36, 40]) }
+          2.times { arm_run(sweep, { "max_tape_len" => 256 }, [60, 120]) }
+
+          get finding_path(open_endedness)
+
+          expect(response.body.squish)
+            .to include("supported", "reads above the control arm in most of its runs",
+                        "has 4 transitioned runs, 4 of them carrying a complexity in bytes after the crossing",
+                        "The control arm's median peak is 40 bytes")
+          expect(response.parsed_body.css("#max-tape-len-length-arms tbody tr").size).to eq(4)
+        end
+      end
+
+      context "with every arm measured and reading where its control does" do
+        it "reads the hypothesis as not supported, which is the refutation the design states" do
+          sweep = substrate_sweep("environmental_structure")
+          2.times { arm_run(sweep, { "structure" => "uniform" }, [36, 44]) }
+          2.times { arm_run(sweep, { "structure" => "gradient" }, [36, 44]) }
+          2.times { arm_run(sweep, { "structure" => "patchwork" }, [40, 40]) }
+
+          get finding_path(open_endedness)
+
+          expect(response.body.squish)
+            .to include("not supported",
+                        "No arm of the sweep reads above the control arm in most of its runs, and every arm " \
+                        "has at least 2 measured runs — the refutation condition of the hypothesis")
+        end
+      end
+
+      context "with an arm nothing has been seeded in" do
+        it "stays unresolved and names the arm that could not be tested" do
+          sweep = substrate_sweep("environmental_structure")
+          2.times { arm_run(sweep, { "structure" => "uniform" }, [36, 44]) }
+          2.times { arm_run(sweep, { "structure" => "gradient" }, [36, 40]) }
+
+          get finding_path(open_endedness)
+
+          paragraphs = response.parsed_body.css("p").map { |paragraph| paragraph.text.squish }
+
+          expect(response.body.squish).to include("Not enough transitioned seeds to decide it either way")
+          expect(paragraphs)
+            .to include(a_string_including("Untestable here: patchwork carries fewer than 2 measured runs, " \
+                                           "so the sweep cannot read as not supported until it is seeded — " \
+                                           "one arm nobody has run refutes nothing"))
+        end
+      end
+
+      context "with one transitioned seed in the control arm" do
+        it "keeps the hypothesis unresolved and states the counts behind that" do
+          sweep = substrate_sweep("energy_per_epoch")
+          arm_run(sweep, { "energy_per_epoch" => 0 }, [36, 40])
+          2.times { arm_run(sweep, { "energy_per_epoch" => 2**13 }, [60, 120]) }
+
+          get finding_path(open_endedness)
+
+          expect(response.body.squish)
+            .to include("Not enough transitioned seeds to decide it either way",
+                        "has 3 transitioned runs, 3 of them carrying a lineage count after the crossing",
+                        "The control arm carries fewer than 2 measured runs, so there is nothing to count " \
+                        "the other arms against yet")
         end
       end
     end

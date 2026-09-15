@@ -38,6 +38,18 @@ module Findings
 
     def complexity_survey = @complexity_survey ||= ComplexitySurvey.build
 
+    def open_endedness_survey = @open_endedness_survey ||= OpenEndednessSurvey.build
+
+    # The sweeps a finding weighs against each other, in the order it names them, and only
+    # those the lab has actually queued.
+    def related_experiments
+      @related_experiments ||= Experiment.where(slug: finding.related_experiment_slugs)
+                                         .index_by(&:slug)
+                                         .values_at(*finding.related_experiment_slugs).compact
+    end
+
+    def related_findings = finding.related_finding_slugs.filter_map { |slug| Registry.find(slug) }
+
     # The evidence is read through the experiment's own presenter: a finding never
     # re-derives a diagram of its own.
     def evidence

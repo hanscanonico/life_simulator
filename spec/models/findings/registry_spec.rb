@@ -22,9 +22,9 @@ RSpec.describe Findings::Registry do
   it "leads a shared date with the strongest current result" do
     slugs = described_class.all.map(&:slug)
 
-    expect(slugs.first(4))
-      .to eq(%w[copy-cost-adaptation replicator-complexity-plateau emergence-can-be-left
-                mutation-rate-long-horizon])
+    expect(slugs.first(5))
+      .to eq(%w[complexity-keeps-rising copy-cost-adaptation replicator-complexity-plateau
+                emergence-can-be-left mutation-rate-long-horizon])
   end
 
   it "keeps the order of findings sharing a date fixed across calls" do
@@ -41,9 +41,39 @@ RSpec.describe Findings::Registry do
 
   it "names a sweep the lab knows how to build" do
     known = Lab::SWEEPS.keys.map { |sweep| Lab.slug_for(sweep) }
-    named = described_class.all.select(&:sweep?).map(&:experiment_slug)
+    named = described_class.all.flat_map(&:experiment_slugs)
 
     expect(named).to all(be_in(known))
+  end
+
+  it "names a finding the registry publishes as related" do
+    slugs = described_class.all.map(&:slug)
+    related = described_class.all.flat_map(&:related_finding_slugs)
+
+    expect(related).to all(be_in(slugs))
+  end
+
+  it "lets the open-endedness verdict rest on the three substrate sweeps at once" do
+    finding = described_class.find("complexity-keeps-rising")
+
+    expect(finding).to have_attributes(
+      experiment_slug: nil, status: :open,
+      related_experiment_slugs: %w[energy-per-epoch environmental-structure max-tape-len],
+      related_finding_slugs: %w[replicator-complexity-plateau]
+    )
+  end
+
+  it "lists the open-endedness verdict on each of the sweeps it weighs" do
+    %w[energy-per-epoch environmental-structure max-tape-len].each do |slug|
+      expect(described_class.for_experiment(slug).map(&:slug)).to include("complexity-keeps-rising")
+    end
+  end
+
+  it "keeps the numbers only the database knows out of the open-endedness summary" do
+    summary = described_class.find("complexity-keeps-rising").summary
+
+    expect(summary).to include("reads each sweep at render time", "reads unresolved rather than answered")
+    expect(summary).not_to match(/\d{2,}/)
   end
 
   it "lets a finding that spans the whole programme name no sweep" do

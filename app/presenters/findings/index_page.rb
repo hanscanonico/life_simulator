@@ -4,8 +4,10 @@ module Findings
   # The findings log: every published claim, newest first, with the sweep it rests on and
   # how far that sweep has got, so a reader can see whether the claim is still moving.
   class IndexPage
-    Row = Data.define(:finding, :experiment, :runs_done, :transitioned) do
+    Row = Data.define(:finding, :experiment, :related_experiments, :runs_done, :transitioned) do
       def experiment? = experiment.present?
+
+      def related? = related_experiments.present?
 
       def runs_total = experiment.runs_count
 
@@ -19,6 +21,7 @@ module Findings
         experiment = experiments[finding.experiment_slug]
 
         Row.new(finding: finding, experiment: experiment,
+                related_experiments: experiments.values_at(*finding.related_experiment_slugs).compact,
                 runs_done: finished_counts[experiment&.id].to_i,
                 transitioned: transitioned_counts[experiment&.id].to_i)
       end
@@ -45,7 +48,7 @@ module Findings
     # An experiment named by a finding may not exist yet (the sweep is queued by hand),
     # and that must not take the page down.
     def experiments
-      @experiments ||= Experiment.where(slug: findings.map(&:experiment_slug)).index_by(&:slug)
+      @experiments ||= Experiment.where(slug: findings.flat_map(&:experiment_slugs)).index_by(&:slug)
     end
 
     def finished_counts
