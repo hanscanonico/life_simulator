@@ -44,9 +44,53 @@ RSpec.describe "lab:backfill_emergence" do
   it "clears an emergence the run's samples no longer confirm" do
     run = sampled_run([0, 0], emergence_epoch: 100, emergence_witness: "census")
 
-    invoke("lab:backfill_emergence")
+    output = invoke("lab:backfill_emergence")
 
     expect(run.reload.emergence_epoch).to be_nil
+    expect(output).to include("run #{run.id}: WARNING clearing emergence 100 by census")
+  end
+
+  it "leaves an emergence its own crossing still confirms exactly where it was" do
+    run = sampled_run([0, 7], emergence_epoch: 100, emergence_witness: "census")
+
+    output = invoke("lab:backfill_emergence")
+
+    expect(run.reload).to have_attributes(emergence_epoch: 100, emergence_witness: "census")
+    expect(output).not_to include("WARNING")
+  end
+
+  # Run 543's shape: the detector's crossing is the initial-condition false positive and
+  # the world comes alive ten thousand epochs later (docs/design_record.md, 2026-09-15).
+  context "with a run confirmed on a later crossing than the one the detector stored" do
+    let!(:run) do
+      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 600)
+      (0..20_000).step(100) do |epoch|
+        create(:sample, run: run, epoch: epoch, values: values_at(epoch))
+      end
+      run
+    end
+
+    it "stores the confirmed crossing over the nil the first crossing left" do
+      output = invoke("lab:backfill_emergence")
+
+      expect(run.reload).to have_attributes(emergence_epoch: 12_500, emergence_witness: "census")
+      expect(output).to include("run #{run.id}: crossing 600 → emerged at 12500 by census")
+    end
+
+    it "leaves the detector's crossing alone" do
+      invoke("lab:backfill_emergence")
+
+      expect(run.reload.transition_epoch).to eq(600)
+    end
+
+    def values_at(epoch)
+      ratio = if epoch.between?(600, 900) then 0.45
+              elsif epoch >= 12_500 then 0.22
+              else 0.96
+              end
+      { "compress_ratio" => ratio, "op_density" => 0.1, "alphabet_size" => 200,
+        "replicator_count" => epoch >= 12_700 ? 12 : 0, "copy_rate" => epoch >= 12_700 ? 0.01 : 0.0 }
+    end
   end
 
   it "reads terminal runs alone" do

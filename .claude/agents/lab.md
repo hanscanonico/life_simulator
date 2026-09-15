@@ -37,10 +37,12 @@ removed; quote the whole task name in zsh, brackets and commas included.
 tracker survived a snapshot resume. `"lab:backfill_emergence[<slug>]"` (or with no slug,
 every experiment) confirms those crossings: it stores `emergence_epoch` /
 `emergence_witness` on every terminal run whose crossing the replicator census or the copy
-rate backs within the confirmation window, and prints per flagged run whether it emerged
-and by which witness. Run it after `lab:backfill_transitions`, since a crossing that moved
-is a different candidate; the open-endedness findings read only the confirmed ones
-(`docs/design_record.md`, 2026-09-15). `"lab:transition_report[<slug>]"` reads the detector
+rate backs within the confirmation window — the detector's stored crossing or any later one
+its samples hold, so a run whose first crossing was a false positive is still confirmed on
+its second (`docs/design_record.md`, 2026-09-15) — and prints per flagged run whether it
+emerged and by which witness, shouting when it clears a stored emergence. Run it after
+`lab:backfill_transitions`, since a crossing that moved is a different candidate; the
+open-endedness findings read only the confirmed ones. `"lab:transition_report[<slug>]"` reads the detector
 and the replicator census side by side over the stored samples — per run the flagged
 epoch, the bare threshold crossing, the entropy minimum, the replicator and copy-rate
 peaks and the final observables, then a per-arm count of the runs the two observables
