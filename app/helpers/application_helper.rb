@@ -18,9 +18,21 @@ module ApplicationHelper
   end
 
   # Truncation happens before the escaping, so an entity is never cut in half and handed
-  # to the head as markup.
+  # to the head as markup. The unescaped description is returned so a page can restate it
+  # in its structured data rather than truncate it a second time.
   def describe_page(text)
-    content_for(:description, h(text.to_s.squish.truncate(DESCRIPTION_LIMIT)), flush: true)
+    text.to_s.squish.truncate(DESCRIPTION_LIMIT).tap do |description|
+      content_for(:description, h(description), flush: true)
+    end
+  end
+
+  # A schema.org payload for the crawlers. json_escape leaves no markup character in the
+  # JSON, so the element can carry it unescaped and a title spelling "</script>" cannot
+  # close the block early.
+  def structure_page(payload)
+    content_for(:structured_data,
+                tag.script(json_escape(payload.to_json), type: "application/ld+json", escape: false),
+                flush: true)
   end
 
   # Colour is a redundant cue on a badge that already spells the status out, so an

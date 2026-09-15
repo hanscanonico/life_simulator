@@ -1,5 +1,8 @@
 <% content_for :title, @show.finding.title %>
-<% describe_page @show.finding.summary %>
+<% description = describe_page @show.finding.summary %>
+<% structure_page StructuredData.scholarly_article(finding: @show.finding, url: canonical_url,
+                                                   site_url: root_url, description: description,
+                                                   image: og_image_url) %>
 
 <div class="container-narrow">
   <p class="finding-meta text-sm text-muted">

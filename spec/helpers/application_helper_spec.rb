@@ -52,6 +52,32 @@ RSpec.describe ApplicationHelper, type: :helper do
     end
   end
 
+  describe "#describe_page's return value" do
+    it "is the description unescaped, for a page that restates it" do
+      expect(helper.describe_page(%(Radius 1 & 2))).to eq(%(Radius 1 & 2))
+    end
+  end
+
+  describe "#structure_page" do
+    it "renders the payload as a JSON-LD script the head yields" do
+      helper.structure_page({ "@type" => "WebSite", "name" => "Life Simulator" })
+
+      block = Nokogiri::HTML5.fragment(helper.content_for(:structured_data)).css("script").first
+      expect(block["type"]).to eq("application/ld+json")
+      expect(JSON.parse(block.text)).to eq({ "@type" => "WebSite", "name" => "Life Simulator" })
+    end
+
+    it "keeps a payload spelling </script> from closing the block early" do
+      helper.structure_page({ "headline" => "A tag that says </script><script>alert(1)</script>" })
+
+      rendered = helper.content_for(:structured_data)
+      expect(rendered).not_to include("</script><script>")
+      expect(Nokogiri::HTML5.fragment(rendered).css("script").size).to eq(1)
+      expect(JSON.parse(Nokogiri::HTML5.fragment(rendered).css("script").first.text)["headline"])
+        .to eq("A tag that says </script><script>alert(1)</script>")
+    end
+  end
+
   describe "#status_badge_class" do
     it "reads a finished run as success" do
       expect(helper.status_badge_class("finished")).to eq("badge-success")
