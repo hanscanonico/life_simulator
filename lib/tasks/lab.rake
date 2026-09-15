@@ -82,6 +82,33 @@ namespace :lab do
     puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
   end
 
+  desc "Confirm the crossing of every terminal run against its stored census and copy rate (one experiment, or all)"
+  task :backfill_emergence, [:slug] => :environment do |_task, args|
+    runs = Run.terminal.order(:id)
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+      runs = runs.where(experiment: experiment)
+    end
+
+    terminal = runs.to_a
+    flagged = 0
+    confirmed = 0
+    terminal.each do |run|
+      emergence = Runs::EmergenceEpochService.call(run: run)
+      run.update!(emergence.attributes) unless emergence == run.emergence
+      next if run.transition_epoch.nil?
+
+      flagged += 1
+      confirmed += 1 if emergence.confirmed?
+      outcome = emergence.confirmed? ? "emerged at #{emergence.epoch} by #{emergence.witness}" : "unconfirmed"
+      puts "run #{run.id}: crossing #{run.transition_epoch} → #{outcome}"
+    end
+
+    puts "confirmed #{confirmed} of #{flagged} flagged runs, over #{terminal.size} terminal runs"
+  end
+
   desc "Derive the persistence summary of every terminal run from its stored samples (one experiment, or all)"
   task :backfill_persistence, [:slug] => :environment do |_task, args|
     runs = Run.terminal.order(:id)

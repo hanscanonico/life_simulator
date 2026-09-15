@@ -6,6 +6,10 @@ module Findings
   # after emergence, does the dominant replicator's complexity, or the number of lineages
   # a world keeps, go anywhere the default substrate did not take it?
   #
+  # Emergence here is the confirmed crossing (`docs/design_record.md`, 2026-09-15): a run
+  # the detector flagged but no replicator or copy backed is not one of these worlds, and
+  # every reading below is taken at or after `emergence_epoch`.
+  #
   # Each sweep carries its own control: the first arm of its grid is the substrate every
   # earlier sweep ran — the cost off, a uniform world, a tape that cannot lengthen — so a
   # treated arm is read against the default substrate inside the same experiment and never
@@ -43,7 +47,8 @@ module Findings
       { sweep: "max_tape_len", decided_by: :length }
     ].freeze
 
-    # One transitioned run, as the two series its samples carry at or after its crossing.
+    # One emerged run, as the two series its samples carry at or after its confirmed
+    # crossing.
     Reading = Data.define(:series) do
       def measured?(observable) = points(observable).any?
 
@@ -65,7 +70,7 @@ module Findings
       def points(observable) = series.fetch(observable, [])
     end
 
-    # One arm of a sweep: the runs of that grid value that transitioned and were measured.
+    # One arm of a sweep: the runs of that grid value that emerged and were measured.
     Arm = Data.define(:value, :label, :control, :readings) do
       def control? = control
 
@@ -87,7 +92,7 @@ module Findings
 
       def comparable?(observable) = measured_count(observable) >= MIN_ARM_RUNS
 
-      def transitioned_count = readings.size
+      def emerged_count = readings.size
     end
 
     # One hypothesis: a sweep, its arms and the verdict its own runs support. The same
@@ -131,7 +136,7 @@ module Findings
 
       def measured_count = measured_count_of(decided_by)
 
-      def transitioned_count = arms.sum(&:transitioned_count)
+      def emerged_count = arms.sum(&:emerged_count)
 
       def rising_count_of(observable) = arms.sum { |arm| arm.rising_count(observable) }
 
@@ -156,9 +161,16 @@ module Findings
 
     def room_to_grow_lineages = room_to_grow.with(decided_by: :lineages)
 
-    def any? = bets.any? { |bet| bet.transitioned_count.positive? }
+    def any? = bets.any? { |bet| bet.emerged_count.positive? }
 
-    def transitioned_count = bets.sum(&:transitioned_count)
+    def emerged_count = bets.sum(&:emerged_count)
+
+    # What the detector flagged over the same three sweeps, against what a replicator
+    # confirmed: the page prints both, because most of the difference is the detector
+    # firing on a random fill settling (`docs/design_record.md`, 2026-09-15).
+    def flagged_count
+      @flagged_count ||= Run.transitioned.where(experiment_id: experiments_by_slug.values.map(&:id)).count
+    end
 
     def rising_count(observable) = bets.sum { |bet| bet.rising_count_of(observable) }
 
@@ -193,19 +205,19 @@ module Findings
     end
 
     def runs_by_experiment
-      @runs_by_experiment ||= Run.transitioned.where(experiment_id: experiments_by_slug.values.map(&:id))
-                                 .order(:transition_epoch, :id).to_a.group_by(&:experiment_id)
+      @runs_by_experiment ||= Run.emerged.where(experiment_id: experiments_by_slug.values.map(&:id))
+                                 .order(:emergence_epoch, :id).to_a.group_by(&:experiment_id)
     end
 
-    def transitioned_runs = runs_by_experiment.values.flatten
+    def emerged_runs = runs_by_experiment.values.flatten
 
     # One query for the whole page, both observables at once: the two readings are written
     # into the same sample, and a sample the engine reported a null for — no tested tape
     # replicated — drops out of that observable's series while staying in the other's.
     def series_by_run
       @series_by_run ||=
-        Sample.joins(:run).where(run_id: transitioned_runs.map(&:id))
-              .where("samples.epoch >= runs.transition_epoch")
+        Sample.joins(:run).where(run_id: emerged_runs.map(&:id))
+              .where("samples.epoch >= runs.emergence_epoch")
               .order(:run_id, :epoch)
               .pluck(:run_id, :epoch, LENGTH_READING, LINEAGE_READING)
               .group_by(&:first)

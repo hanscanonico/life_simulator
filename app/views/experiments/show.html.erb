@@ -12,8 +12,9 @@
   <dt>Transition rate</dt>
   <dd>
     <% if @show.transition_rate.fraction %>
-      <%= @show.transitioned_finished %> of <%= @show.finished_count %> finished runs transitioned
-      (<%= percent_value @show.transition_rate.fraction %>)
+      <%= @show.transitioned_finished %> of <%= @show.finished_count %> finished runs flagged
+      by the detector (<%= percent_value @show.transition_rate.fraction %>),
+      <%= @show.emerged_finished %> confirmed by a replicator
     <% else %>
       no finished run yet
     <% end %>

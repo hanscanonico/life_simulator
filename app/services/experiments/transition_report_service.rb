@@ -14,9 +14,7 @@ module Experiments
     include Callable
 
     THRESHOLD = Lab::Schema.transition.fetch("threshold")
-    # Chosen as 10 samples on either side of the crossing; re-measure it over the corpus if
-    # the sampling interval or the detector's hold changes.
-    CONFIRM_WINDOW = 10
+    CONFIRM_WINDOW = Runs::EmergenceEpochService::CONFIRM_WINDOW
 
     RUN_COLUMNS = %w[run_id seed status].freeze
     ARM_COLUMNS = %w[arm n n_terminal flagged replicators both either_but_not_both].freeze
@@ -156,26 +154,13 @@ module Experiments
         min_entropy_bits: value_of(entropy, "entropy_bits"), min_entropy_epoch: entropy&.first }
     end
 
-    # The crossing reads `compress_ratio` and nothing else; a confirmed epoch is one the
-    # census or the copy rate backs within CONFIRM_WINDOW samples of it, so that a flagged
-    # run with no replicator anywhere near the crossing stays unconfirmed.
+    # The confirmation rule lives in Runs::EmergenceEpochService, which is also what a
+    # finished run and the backfill store: the report reads the same rule the run carries,
+    # off the samples it has already loaded.
     def confirmation_of(transition_epoch, samples)
-      witness = transition_epoch && confirming_observable(window_around(transition_epoch, samples))
+      emergence = Runs::EmergenceEpochService.call(transition_epoch: transition_epoch, samples: samples)
 
-      { confirmed_epoch: witness && transition_epoch, confirmed_by: witness }
-    end
-
-    def window_around(epoch, samples)
-      index = samples.index { |(sample_epoch, _)| sample_epoch >= epoch }
-      return [] if index.nil?
-
-      samples[[index - CONFIRM_WINDOW, 0].max..(index + CONFIRM_WINDOW)]
-    end
-
-    def confirming_observable(window)
-      return "census" if window.any? { |(_, values)| values["replicator_count"].to_f.positive? }
-
-      "copy_rate" if window.any? { |(_, values)| values["copy_rate"].to_f.positive? }
+      { confirmed_epoch: emergence.epoch, confirmed_by: emergence.witness }
     end
 
     def census_of(samples)

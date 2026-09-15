@@ -46,6 +46,38 @@ RSpec.describe Runs::FinishService do
     expect(run.reload.persistence).to eq({})
   end
 
+  it "confirms the crossing against the census a finished run's samples carry" do
+    [0.9, 0.4, 0.3].each_with_index do |ratio, index|
+      create(:sample, run: run, epoch: index * 100,
+                      values: { "compress_ratio" => ratio, "replicator_count" => index })
+    end
+
+    described_class.call(run: run, transition_epoch: 100)
+
+    expect(run.reload).to have_attributes(emergence_epoch: 100, emergence_witness: "census")
+  end
+
+  it "leaves a crossing no witness backs unconfirmed" do
+    [0.9, 0.4, 0.3].each_with_index do |ratio, index|
+      create(:sample, run: run, epoch: index * 100,
+                      values: { "compress_ratio" => ratio, "replicator_count" => 0, "copy_rate" => 0.0 })
+    end
+
+    described_class.call(run: run, transition_epoch: 100)
+
+    expect(run.reload).to have_attributes(emergence_epoch: nil, emergence_witness: nil)
+  end
+
+  it "confirms against the transition epoch the finish settled on, not the one reported" do
+    run.update!(transition_epoch: 100)
+    create(:sample, run: run, epoch: 100, values: { "replicator_count" => 4 })
+    create(:sample, run: run, epoch: 100_000, values: { "replicator_count" => 0 })
+
+    described_class.call(run: run, transition_epoch: 100_000)
+
+    expect(run.reload.emergence_epoch).to eq(100)
+  end
+
   it "keeps the earlier transition epoch a sample batch already reported" do
     run.update!(transition_epoch: 300)
 

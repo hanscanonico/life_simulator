@@ -27,11 +27,15 @@
   test suite reads <strong>36 bytes and 15 instructions</strong>, which is what pins them.
 </p>
 <p>
-  This page then reads the series back out of the lab: every transitioned run, whichever
-  sweep queued it, its samples at or after its own crossing epoch, in epoch order. A run is
-  counted as growing when its last recorded length is above its first post-transition one,
-  shrinking when it is below, flat when the two are equal. Counts of directions, nothing
-  fitted.
+  This page then reads the series back out of the lab: every <strong>emerged</strong> run,
+  whichever sweep queued it, its samples at or after its own emergence epoch, in epoch
+  order. Emerged is narrower than flagged: the detector reads
+  <span class="mono">compress_ratio</span> alone, so a crossing counts here only when the
+  replicator census or the copy rate backs it within ten samples of it, which keeps out the
+  worlds whose random fill merely settled into a compressible soup
+  (<span class="mono">docs/design_record.md</span>, 2026-09-15). A run is counted as growing
+  when its last recorded length is above its first post-emergence one, shrinking when it is
+  below, flat when the two are equal. Counts of directions, nothing fitted.
 </p>
 
 <h2>Result</h2>
@@ -41,34 +45,35 @@
       <% if survey.compared_count.zero? %>
         No run has two readings of the length yet, so nothing can be compared.
       <% elsif survey.grew_count > survey.shrank_count + survey.flat_count %>
-        More transitioned worlds end with a more complicated replicator than end with a
+        More emerged worlds end with a more complicated replicator than end with a
         simpler or an unchanged one.
       <% elsif survey.grew_count.zero? %>
-        No transitioned world in the lab ends with a more complicated replicator than it
+        No emerged world in the lab ends with a more complicated replicator than it
         started with: on this substrate, complexity plateaus after emergence.
       <% else %>
-        Growth is the exception rather than the rule: most transitioned worlds end no more
+        Growth is the exception rather than the rule: most emerged worlds end no more
         complicated than they started.
       <% end %>
     </strong>
-    The lab has <%= pluralize survey.transitioned_count, "terminal run" %> that crossed, with
-    a complexity reading after the crossing in <%= survey.measured_count %> of them, across
+    The lab has <%= pluralize survey.flagged_count, "terminal run" %> flagged by the
+    detector and <%= survey.emerged_count %> confirmed by a replicator, with a complexity
+    reading after the crossing in <%= survey.measured_count %> of the confirmed ones, across
     <%= pluralize survey.sweeps.size, "sweep" %>.
     <% if survey.compared_count.positive? %>
       Among the <%= pluralize survey.compared_count, "run" %> with at least two readings, the
-      split is <%= survey.grew_count %> ending above their first post-transition length,
+      split is <%= survey.grew_count %> ending above their first post-emergence length,
       <%= survey.shrank_count %> below it and <%= survey.flat_count %> on it.
     <% end %>
   </p>
 
   <div id="complexity-runs" class="table-scroll" tabindex="0" role="region"
-       aria-label="Complexity of the dominant replicator in every transitioned run that recorded one">
+       aria-label="Complexity of the dominant replicator in every emerged run that recorded one">
     <table class="data-table">
       <thead>
         <tr>
           <th>Sweep</th>
           <th>Run</th>
-          <th class="numeric">Transition epoch</th>
+          <th class="numeric">Emergence epoch</th>
           <th class="numeric">Readings</th>
           <th class="numeric">First length (epoch)</th>
           <th class="numeric">Last length (epoch)</th>
@@ -82,7 +87,7 @@
           <tr>
             <td><%= link_to row.experiment.name, experiment_path(row.experiment) %></td>
             <td><%= link_to "seed #{row.seed}", run_path(row.run) %></td>
-            <td class="numeric mono"><%= number_with_delimiter row.transition_epoch %></td>
+            <td class="numeric mono"><%= number_with_delimiter row.emergence_epoch %></td>
             <td class="numeric mono"><%= number_with_delimiter row.readings %></td>
             <td class="numeric mono">
               <%= number_with_delimiter row.first_length %>
@@ -114,8 +119,8 @@
     </table>
   </div>
   <p class="text-sm text-muted">
-    One row per transitioned run whose samples carry a complexity reading at or after its
-    crossing, grouped by sweep. Lengths are bytes of the run's dominant replicator after
+    One row per emerged run whose samples carry a complexity reading at or after its
+    confirmed crossing, grouped by sweep. Lengths are bytes of the run's dominant replicator after
     zlib at that sample; "Largest" is the biggest the run ever recorded.
     <% if survey.capped? %>
       The table stops at <%= pluralize Findings::ShowPage::MAX_TRANSITIONS, "row" %> and
@@ -156,7 +161,7 @@
   was stopped at 60 000 reads flat.
 </p>
 <p>
-  <strong>This is not the open-endedness sweep.</strong> The runs above transitioned in
+  <strong>This is not the open-endedness sweep.</strong> The runs above emerged in
   sweeps built to answer other questions — mutation rate, world size, locality, interaction
   budget — none of them designed or funded to watch a replicator grow. A count of directions
   over such a set describes the set.

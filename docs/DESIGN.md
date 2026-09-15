@@ -142,7 +142,12 @@ claim rests on it.
   the epoch of a run measured before the tracker survived a resume
   (`Runs::TransitionEpochService`) and to read what became of the world after that epoch
   (`Runs::PersistenceSummaryService`). Samples recorded before `alphabet_size` existed
-  are read by the `op_density` half of the guard alone.
+  are read by the `op_density` half of the guard alone. The crossing is a *candidate*: it
+  reads `compress_ratio` and its two guards, never a copier, so a world whose random fill
+  merely settled can carry one. `emergence_epoch` is the crossing a witness confirms — the
+  replicator census or `copy_rate` positive within the confirmation window
+  (`Runs::EmergenceEpochService`, docs/design_record.md 2026-09-15) — and it, not
+  `transition_epoch`, is what the open-endedness findings read.
 
 **Replicator test**: a tape `T` is a replicator if executing `T ++ R` for a random tape
 `R` (fresh, seeded) yields `T` in the second half for at least 3 of 4 trials. Run on the

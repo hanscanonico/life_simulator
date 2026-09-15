@@ -21,6 +21,14 @@ FactoryBot.define do
       error { "runner exited with status 101" }
     end
 
+    # A run whose crossing a witness confirmed: what the open-endedness findings read.
+    trait :emerged do
+      status { "finished" }
+      transition_epoch { 100 }
+      emergence_epoch { transition_epoch }
+      emergence_witness { Runs::Emergence::CENSUS }
+    end
+
     trait :stale do
       claimed
       heartbeat_at { 10.minutes.ago }

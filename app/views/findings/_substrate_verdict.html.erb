@@ -12,12 +12,12 @@
       at least <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> —
       the refutation condition of the hypothesis, at the seeds this sweep has.
     <% else %>
-      Not enough transitioned seeds to decide it either way.
+      Not enough emerged seeds to decide it either way.
     <% end %>
   </strong>
   <% if bet.experiment? %>
     <%= link_to bet.experiment.name, experiment_path(bet.experiment) %> has
-    <%= pluralize bet.transitioned_count, "transitioned run" %>, <%= bet.measured_count %> of
+    <%= pluralize bet.emerged_count, "emerged run" %>, <%= bet.measured_count %> of
     them carrying <%= reading %> after the crossing.
   <% else %>
     The sweep <span class="mono"><%= bet.slug %></span> is not in this database, so it has
