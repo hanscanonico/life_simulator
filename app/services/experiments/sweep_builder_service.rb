@@ -9,7 +9,8 @@ module Experiments
   #
   # An arm can run more seeds than the rest of its sweep: `seeds_by_arm` names a parameter
   # and, under it, the values whose grid points replace the sweep's `seeds` with a list of
-  # their own.
+  # their own. jsonb hands those values back as strings, so an arm is recognised by the
+  # same canonical comparison a rake argument gets and never by `==`.
   #
   # Seeding is idempotent: a run is identified by (canonical params, seed), so re-running a
   # sweep whose grid gained an arm creates that arm's runs and nothing else. See
@@ -35,8 +36,8 @@ module Experiments
 
     def seeds_for(params)
       @experiment.seeds_by_arm.each do |name, seeds_by_value|
-        arm = seeds_by_value.find { |value, _| Lab::CanonicalParams.same_value?(params[name], value) }
-        return arm.last if arm
+        _, seeds = seeds_by_value.find { |value, _| Lab::CanonicalParams.same_value?(params[name], value) }
+        return seeds if seeds
       end
 
       @experiment.seeds

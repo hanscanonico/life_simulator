@@ -136,7 +136,7 @@ RSpec.describe Lab do
         expect(definition.values_at(:seeds, :epochs)).to eq([(1..30).to_a, 20_000])
       end
 
-      it "gives the two arms that emerged once ninety seeds, the control and the empty arm thirty" do
+      it "gives the two arms with one measured emergence ninety seeds, the control and the empty arm thirty" do
         expect(definition.fetch(:seeds_by_arm))
           .to eq("max_tape_len" => { 128 => (1..90).to_a, 256 => (1..90).to_a })
       end
