@@ -39,7 +39,7 @@ RSpec.describe Runs::SetPriorityService do
     run = create(:run, experiment: experiment, status: "finished", priority: 1)
 
     expect { described_class.call(run: run, priority: 9) }
-      .to raise_error(/Run #{run.id} is finished/)
+      .to raise_error(ArgumentError, /Run #{run.id} is finished/)
     expect(run.reload.priority).to eq(1)
   end
 
@@ -47,7 +47,7 @@ RSpec.describe Runs::SetPriorityService do
     run = create(:run, :just_failed, experiment: experiment, priority: 1)
 
     expect { described_class.call(run: run, priority: 9) }
-      .to raise_error(/Run #{run.id} is failed/)
+      .to raise_error(ArgumentError, /Run #{run.id} is failed/)
     expect(run.reload.priority).to eq(1)
   end
 end

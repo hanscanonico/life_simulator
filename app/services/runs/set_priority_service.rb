@@ -15,7 +15,8 @@ module Runs
 
     def call
       if @run.terminal?
-        raise "Run #{@run.id} is #{@run.status}; only a pending, claimed or running run can be reprioritised."
+        raise ArgumentError,
+              "Run #{@run.id} is #{@run.status}; only a pending, claimed or running run can be reprioritised."
       end
 
       previous = @run.priority
