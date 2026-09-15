@@ -14,6 +14,13 @@
           </circle>
         <% end %>
       </g>
+      <g class="chart-dots-flagged">
+        <% phase_diagram.flagged_dots.each do |dot| %>
+          <circle cx="<%= dot[:x].round(2) %>" cy="<%= dot[:y].round(2) %>" r="4">
+            <title><%= dot[:label] %></title>
+          </circle>
+        <% end %>
+      </g>
       <g class="chart-censored">
         <% phase_diagram.censored_marks.each do |mark| %>
           <circle cx="<%= mark[:x].round(2) %>" cy="<%= mark[:y].round(2) %>" r="5">
@@ -25,8 +32,10 @@
     </svg>
     <%# A figure carries at most one figcaption, and it is the title above the plot. %>
     <p class="chart-legend text-sm text-muted">
-      Filled dots are runs that transitioned; the line joins the median per value. Hollow
-      markers at the top are runs with no emergence in <%= phase_diagram.epochs %> epochs.
+      Filled dots are runs a replicator confirmed emerged in; the line joins the median per
+      value. Hollow dots are crossings the detector flagged that nothing confirmed. Hollow
+      markers at the top count the runs with no emergence in <%= phase_diagram.epochs %>
+      epochs, the flagged-only ones among them.
     </p>
   <% end %>
 </figure>

@@ -113,15 +113,16 @@ module Experiments
       Charts::Survival.new(arms: arms, title: "Time to emergence vs #{axis.name.to_s.humanize.downcase}")
     end
 
-    # A run that emerged was watched up to its transition; one that did not is censored at
-    # the last epoch it is known to have reached — the whole budget for a terminal run, the
-    # latest sample for a run still under way. A run nothing is known about yet is no
-    # observation at all.
+    # A run that emerged was watched up to its confirmed crossing; one that did not is
+    # censored at the last epoch it is known to have reached — the whole budget for a
+    # terminal run, the latest sample for a run still under way. A crossing the detector
+    # flagged and nothing confirmed is no event, so such a run is censored like any other.
+    # A run nothing is known about yet is no observation at all.
     def observation(run)
-      epochs = run.transition_epoch || observed_epochs(run)
+      epochs = run.emergence_epoch || observed_epochs(run)
       return nil unless epochs.to_i.positive?
 
-      Charts::Survival::Observation.new(epochs: epochs.to_i, event: run.transition_epoch.present?,
+      Charts::Survival::Observation.new(epochs: epochs.to_i, event: run.emerged?,
                                         persistence: run.persistence_summary)
     end
 
@@ -133,7 +134,7 @@ module Experiments
 
     def observed_runs
       @observed_runs ||= experiment.runs.where.not(status: "pending")
-                                   .select(:id, :params, :status, :epochs_done, :transition_epoch, :persistence).to_a
+                                   .select(:id, :params, :status, :epochs_done, :emergence_epoch, :persistence).to_a
     end
 
     # One grouped query for the whole page, never one per row, served by
@@ -162,9 +163,10 @@ module Experiments
     def arms_for(axis)
       axis.values.map do |value|
         runs = finished_runs.select { |run| axis.matches?(run.params, value) }
-        epochs, censored = runs.partition { |run| run.transition_epoch.present? }
-        ArmSummary.new(label: axis.label_of(value), transition_epochs: epochs.map(&:transition_epoch),
-                       censored: censored.size)
+        emerged, rest = runs.partition(&:emerged?)
+        flagged_only, unflagged = rest.partition { |run| run.transition_epoch.present? }
+        ArmSummary.new(label: axis.label_of(value), emergence_epochs: emerged.map(&:emergence_epoch),
+                       flagged_only_epochs: flagged_only.map(&:transition_epoch), unflagged: unflagged.size)
       end
     end
 
@@ -178,7 +180,8 @@ module Experiments
     def groups_for(axis)
       axis.values.zip(arms[axis]).map do |value, arm|
         Charts::PhaseDiagram::Group.new(value: axis.position_of(value), label: arm.label,
-                                        transition_epochs: arm.transition_epochs, censored: arm.censored)
+                                        emergence_epochs: arm.emergence_epochs,
+                                        flagged_only_epochs: arm.flagged_only_epochs, censored: arm.censored)
       end
     end
   end

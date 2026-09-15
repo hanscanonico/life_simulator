@@ -10,8 +10,12 @@ RSpec.describe Experiments::ShowPage do
     create(:experiment, epochs: 20_000, param_grid: { "radius" => [1, 2, 4], "width" => [128] })
   end
 
-  def finished_run(radius:, transition_epoch: nil)
+  # A finished run the detector flagged and a replicator confirmed, unless the caller asks
+  # for a crossing nothing backed.
+  def finished_run(radius:, transition_epoch: nil, confirmed: true)
     create(:run, experiment: experiment, status: "finished", transition_epoch: transition_epoch,
+                 emergence_epoch: (transition_epoch if confirmed),
+                 emergence_witness: (Runs::Emergence::CENSUS if confirmed && transition_epoch),
                  params: Lab::Schema.run_defaults.merge("radius" => radius))
   end
 
@@ -45,12 +49,12 @@ RSpec.describe Experiments::ShowPage do
       end
 
       it "matches a run through the paired parameters" do
-        run = create(:run, experiment: experiment, status: "finished", transition_epoch: 700,
-                           params: Lab::Schema.run_defaults.merge("width" => 64, "height" => 64))
+        run = create(:run, :emerged, experiment: experiment, transition_epoch: 700,
+                                     params: Lab::Schema.run_defaults.merge("width" => 64, "height" => 64))
 
         group = page.diagrams.sole.groups.find { |candidate| candidate.label == "64" }
 
-        expect(group.transition_epochs).to eq([run.transition_epoch])
+        expect(group.emergence_epochs).to eq([run.transition_epoch])
       end
     end
   end
@@ -69,12 +73,12 @@ RSpec.describe Experiments::ShowPage do
 
         group = page.diagrams.sole.groups.first
 
-        expect(group).to have_attributes(censored: 2, transition_epochs: [])
+        expect(group).to have_attributes(censored: 2, emergence_epochs: [])
       end
     end
 
-    context "with a mix of transitions and censored runs" do
-      it "groups the transition epochs by parameter value" do
+    context "with a mix of emergences and censored runs" do
+      it "groups the emergence epochs by parameter value" do
         finished_run(radius: 1, transition_epoch: 100)
         finished_run(radius: 1, transition_epoch: 300)
         finished_run(radius: 2)
@@ -82,7 +86,7 @@ RSpec.describe Experiments::ShowPage do
 
         groups = page.diagrams.sole.groups
 
-        expect(groups.map(&:transition_epochs)).to eq([[100, 300], [], []])
+        expect(groups.map(&:emergence_epochs)).to eq([[100, 300], [], []])
         expect(groups.map(&:censored)).to eq([0, 1, 0])
       end
     end
@@ -124,20 +128,43 @@ RSpec.describe Experiments::ShowPage do
         finished_run(radius: 2)
       end
 
-      it "summarises the arm that transitioned, quartiles interpolated" do
+      it "summarises the arm that emerged, quartiles interpolated" do
         arm = page.arms.values.sole.first
 
-        expect(arm).to have_attributes(label: "1", runs_finished: 3, transitioned: 3, censored: 0,
-                                       transition_rate: have_attributes(fraction: 1.0),
+        expect(arm).to have_attributes(label: "1", runs_finished: 3, flagged: 3, emerged: 3, censored: 0,
+                                       emergence_rate: have_attributes(fraction: 1.0),
                                        median_epoch: 300.0, q1_epoch: 200.0, q3_epoch: 550.0)
       end
 
       it "has no epoch for the arm in which nothing emerged" do
         arm = page.arms.values.sole.last
 
-        expect(arm).to have_attributes(label: "2", runs_finished: 2, transitioned: 0, censored: 2,
-                                       transition_rate: have_attributes(fraction: 0.0),
+        expect(arm).to have_attributes(label: "2", runs_finished: 2, flagged: 0, emerged: 0, censored: 2,
+                                       emergence_rate: have_attributes(fraction: 0.0),
                                        median_epoch: nil, q1_epoch: nil, q3_epoch: nil)
+      end
+    end
+
+    context "with a crossing no replicator confirmed among the arm's runs" do
+      before do
+        finished_run(radius: 1, transition_epoch: 200)
+        finished_run(radius: 1, transition_epoch: 800, confirmed: false)
+        finished_run(radius: 1)
+      end
+
+      it "counts it as flagged, censors it, and keeps it out of the median" do
+        arm = page.arms.values.sole.first
+
+        expect(arm).to have_attributes(runs_finished: 3, flagged: 2, emerged: 1, censored: 2,
+                                       flagged_rate: have_attributes(fraction: 2.0 / 3),
+                                       emergence_rate: have_attributes(fraction: 1.0 / 3),
+                                       median_epoch: 200.0, flagged_median_epoch: 500.0)
+      end
+
+      it "draws it apart from the confirmed crossings" do
+        group = page.diagrams.sole.groups.first
+
+        expect(group).to have_attributes(emergence_epochs: [200], flagged_only_epochs: [800], censored: 2)
       end
     end
   end
@@ -147,7 +174,7 @@ RSpec.describe Experiments::ShowPage do
       expect(page.survivals.keys.map(&:name)).to eq(["radius"])
     end
 
-    it "observes a finished run that emerged up to its transition epoch" do
+    it "observes a finished run that emerged up to its confirmed epoch" do
       finished_run(radius: 1, transition_epoch: 900)
 
       arm = page.survivals.values.sole.arms.first
@@ -173,6 +200,15 @@ RSpec.describe Experiments::ShowPage do
       arm = page.survivals.values.sole.arms.last
 
       expect(arm.observations.map { |observation| [observation.epochs, observation.event] }).to eq([[1_200, false]])
+    end
+
+    it "censors a run the detector flagged and nothing confirmed" do
+      run = finished_run(radius: 2, transition_epoch: 900, confirmed: false)
+      run.update!(epochs_done: 20_000)
+
+      arm = page.survivals.values.sole.arms[1]
+
+      expect(arm.observations.map { |observation| [observation.epochs, observation.event] }).to eq([[20_000, false]])
     end
 
     it "ignores a run nothing is known about yet" do
