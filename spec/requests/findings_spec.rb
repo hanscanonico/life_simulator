@@ -1260,6 +1260,77 @@ RSpec.describe "Findings", type: :request do
                         "the other arms against yet")
         end
       end
+
+      context "with the emergence rates of each sweep" do
+        it "prints a rate table per hypothesis, with the arm's counts and its p-value" do
+          sweep = substrate_sweep("max_tape_len")
+          3.times { arm_run(sweep, { "max_tape_len" => 64 }, [36, 40]) }
+          7.times { blank_run(sweep, { "max_tape_len" => 64 }) }
+          10.times { blank_run(sweep, { "max_tape_len" => 512 }) }
+
+          get finding_path(open_endedness)
+
+          tables = response.parsed_body.css(".table-scroll").pluck("id")
+          rows = response.parsed_body.css("#max-tape-len-emergence-rates tbody tr")
+
+          expect(tables).to include("energy-per-epoch-emergence-rates", "environmental-structure-emergence-rates",
+                                    "max-tape-len-emergence-rates")
+          expect(response.body.squish).to include("How often life emerged")
+          expect(rows.first.css("td").map { |cell| cell.text.squish })
+            .to eq(["64 control", "10", "3", "3 of 10 (30%)", "—"])
+          expect(rows.last.css("td").map { |cell| cell.text.squish })
+            .to eq(["512", "10", "0", "0 of 10 (0%)", "p = 0.21"])
+        end
+
+        it "reads the rates in one sentence built from the counts" do
+          sweep = substrate_sweep("max_tape_len")
+          3.times { arm_run(sweep, { "max_tape_len" => 64 }, [36, 40]) }
+          7.times { blank_run(sweep, { "max_tape_len" => 64 }) }
+          10.times { blank_run(sweep, { "max_tape_len" => 512 }) }
+
+          get finding_path(open_endedness)
+
+          expect(response.parsed_body.css("p").map { |paragraph| paragraph.text.squish })
+            .to include("Every treated arm emerged less often than the control arm (0 of 10 against " \
+                        "3 of 10); none of the differences reaches p < 0.05.")
+        end
+
+        it "badges a difference the test puts below the threshold" do
+          sweep = substrate_sweep("max_tape_len")
+          10.times { arm_run(sweep, { "max_tape_len" => 64 }, [36, 40]) }
+          10.times { blank_run(sweep, { "max_tape_len" => 512 }) }
+
+          get finding_path(open_endedness)
+
+          row = response.parsed_body.css("#max-tape-len-emergence-rates tbody tr").last
+
+          expect(row.css(".badge-warning").map { |badge| badge.text.squish }).to eq(["p < 0.05"])
+          expect(response.parsed_body.css("p").map { |paragraph| paragraph.text.squish })
+            .to include(a_string_including("the difference at 512 reaches p < 0.05"))
+        end
+
+        it "pools the three controls against every treated arm at the bottom" do
+          sweep = substrate_sweep("max_tape_len")
+          3.times { arm_run(sweep, { "max_tape_len" => 64 }, [36, 40]) }
+          7.times { blank_run(sweep, { "max_tape_len" => 64 }) }
+          10.times { blank_run(sweep, { "max_tape_len" => 512 }) }
+
+          get finding_path(open_endedness)
+
+          expect(response.body.squish)
+            .to include("the three control arms emerged in 3 of their 10 terminal runs and every treated " \
+                        "arm together in 0 of 10 terminal runs")
+        end
+
+        it "says the rate table decides nothing and that a lower rate may be slowness" do
+          get finding_path(open_endedness)
+
+          expect(response.body.squish)
+            .to include("That table is descriptive. It decides nothing about the plateau",
+                        "A lower rate at 20 000 epochs is not an impossibility.")
+          expect(response.body).to include(finding_path("mutation-rate-long-horizon"))
+        end
+      end
     end
 
     context "with an unknown slug" do

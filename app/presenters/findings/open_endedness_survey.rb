@@ -41,6 +41,10 @@ module Findings
     LENGTH_READING = numeric_reading("dominant_compressed_len")
     LINEAGE_READING = numeric_reading("distinct_lineages")
 
+    # The conventional threshold, and the only place this page uses one: it marks a
+    # difference in how often life emerged and never a verdict.
+    SIGNIFICANCE = 0.05
+
     VERDICT_BADGES = { supported: "badge-success", not_supported: "badge-error",
                        unresolved: "badge-info" }.freeze
 
@@ -106,6 +110,16 @@ module Findings
       def barren? = emerged_count.zero? && terminal_count >= MIN_BARREN_RUNS
 
       def emerged_count = readings.size
+
+      def tested? = terminal_count.positive?
+
+      # An emerged run reached an end and reported the sample its crossing was read from,
+      # so the two counts nest; the floor guards a database read mid-write, not a table.
+      def unemerged_count = [terminal_count - emerged_count, 0].max
+
+      def emergence_rate = tested? ? emerged_count.fdiv(terminal_count) : nil
+
+      def emergence_fraction = "#{emerged_count} of #{terminal_count}"
     end
 
     # One hypothesis: a sweep, its arms and the verdict its own runs support. The same
@@ -163,6 +177,36 @@ module Findings
       def rising_count_of(observable) = arms.sum { |arm| arm.rising_count(observable) }
 
       def measured_count_of(observable) = arms.sum { |arm| arm.measured_count(observable) }
+
+      def control_tested? = control_arm&.tested? || false
+
+      def tested_treated_arms = treated_arms.select(&:tested?)
+
+      # How often life emerged in an arm against how often it emerged in the control arm,
+      # as the two-sided exact test on the 2×2 table of emerged and unemerged runs. It is
+      # descriptive: no verdict on this page turns on it.
+      def emergence_p_value(arm)
+        return nil if arm.control? || !arm.tested? || !control_tested?
+
+        Stats::FisherExact.two_sided([[arm.emerged_count, arm.unemerged_count],
+                                      [control_arm.emerged_count, control_arm.unemerged_count]])
+      end
+
+      def emergence_significant?(arm)
+        p_value = emergence_p_value(arm)
+
+        p_value.present? && p_value < SIGNIFICANCE
+      end
+
+      def control_emerged_count = control_arm&.emerged_count.to_i
+
+      def control_terminal_count = control_arm&.terminal_count.to_i
+
+      def treated_emerged_count = treated_arms.sum(&:emerged_count)
+
+      def treated_terminal_count = treated_arms.sum(&:terminal_count)
+
+      def emergence_reading = EmergenceReading.new(bet: self).sentence
     end
 
     def self.build = new
@@ -186,6 +230,18 @@ module Findings
     def any? = bets.any? { |bet| bet.emerged_count.positive? }
 
     def emerged_count = bets.sum(&:emerged_count)
+
+    # The three sweeps read as one table: what the default substrate emerged, against what
+    # every substrate the programme bet on emerged. Descriptive, like the per-sweep rates.
+    def control_emerged_count = bets.sum(&:control_emerged_count)
+
+    def control_terminal_count = bets.sum(&:control_terminal_count)
+
+    def treated_emerged_count = bets.sum(&:treated_emerged_count)
+
+    def treated_terminal_count = bets.sum(&:treated_terminal_count)
+
+    def rates_comparable? = control_terminal_count.positive? && treated_terminal_count.positive?
 
     # What the detector flagged over the same three sweeps, against what a replicator
     # confirmed: the page prints both, because most of the difference is the detector
