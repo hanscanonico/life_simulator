@@ -174,10 +174,12 @@ RSpec.describe "lab:sweep" do
   end
 
   describe "environmental_structure" do
-    it "builds three worlds times thirty seeds" do
+    it "builds the two structured arms at ninety seeds and the uniform control at thirty" do
       build_sweep("environmental_structure")
 
-      expect(Experiment.find_by(slug: "environmental-structure").runs_count).to eq(90)
+      expect(Experiment.find_by(slug: "environmental-structure").runs_count).to eq(210)
+      expect(Run.group("params->>'structure'").count)
+        .to eq("uniform" => 30, "gradient" => 90, "patchwork" => 90)
     end
 
     it "sweeps the structures the programme names, the uniform world among them" do
@@ -199,8 +201,24 @@ RSpec.describe "lab:sweep" do
     context "with the sweep already seeded at the ten seeds it first ran" do
       before { seed_ten_seed_sweep("environmental_structure") }
 
-      it "queues only the twenty new seeds of each of the three arms" do
-        expect { build_sweep("environmental_structure") }.to change(Run, :count).by(60)
+      it "queues the twenty new seeds of the uniform arm and the eighty of each structured one" do
+        expect { build_sweep("environmental_structure") }.to change(Run, :count).by(180)
+      end
+
+      it "leaves no two runs sharing a (params, seed)" do
+        build_sweep("environmental_structure")
+
+        experiment = Experiment.find_by(slug: "environmental-structure")
+
+        expect(Runs::DiscardDuplicatesService.call(experiment: experiment)).to be_empty
+      end
+    end
+
+    context "with the sweep already seeded at the thirty seeds every arm first ran" do
+      before { seed_sweep_at("environmental_structure", (1..30).to_a) }
+
+      it "queues only the sixty new seeds of each of the two structured arms" do
+        expect { build_sweep("environmental_structure") }.to change(Run, :count).by(120)
       end
 
       it "leaves no two runs sharing a (params, seed)" do

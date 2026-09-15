@@ -147,6 +147,9 @@ module Lab
       # about one run in ten, and the open-endedness findings read an arm only once two of
       # its runs have emerged.
       seeds: (1..30).to_a,
+      # Ninety for the two structured arms: thirty seeds left each with one emerged run
+      # carrying a complexity reading, and the finding reads an arm on two. The control has two.
+      seeds_by_arm: { "structure" => { "gradient" => (1..90).to_a, "patchwork" => (1..90).to_a } },
       epochs: 20_000
     },
     "max_tape_len" => {
