@@ -7,6 +7,10 @@ module Experiments
   # keys at once, which is how paired parameters (a square world's width and height) stay
   # paired instead of multiplying against each other.
   #
+  # An arm can run more seeds than the rest of its sweep: `seeds_by_arm` names a parameter
+  # and, under it, the values whose grid points replace the sweep's `seeds` with a list of
+  # their own.
+  #
   # Seeding is idempotent: a run is identified by (canonical params, seed), so re-running a
   # sweep whose grid gained an arm creates that arm's runs and nothing else. See
   # Lab::CanonicalParams for why the comparison cannot be a plain hash equality.
@@ -20,7 +24,7 @@ module Experiments
     def call
       Experiment.transaction do
         param_sets.each do |params|
-          @experiment.seeds.each { |seed| build_run(params, seed) }
+          seeds_for(params).each { |seed| build_run(params, seed) }
         end
         @experiment.queued!
       end
@@ -28,6 +32,15 @@ module Experiments
     end
 
     private
+
+    def seeds_for(params)
+      @experiment.seeds_by_arm.each do |name, seeds_by_value|
+        arm = seeds_by_value.find { |value, _| Lab::CanonicalParams.same_value?(params[name], value) }
+        return arm.last if arm
+      end
+
+      @experiment.seeds
+    end
 
     def build_run(params, seed)
       key = [Lab::CanonicalParams.for(params), seed]

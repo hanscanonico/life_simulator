@@ -184,7 +184,10 @@ holding a tape that passed.
    refuted if tapes free to lengthen plateau where fixed-length tapes do — which would
    say the 64-byte ceiling was never the binding constraint. 30 seeds per arm rather than
    the usual 10: emergence at 128×128 runs about 1 in 10 and the complexity finding needs
-   two emerged runs in an arm before it reads that arm.
+   two emerged runs in an arm before it reads that arm. The 128 and 256 arms run 90 seeds
+   and the control and 512 arms 30: only those two have an emerged run whose plateau is
+   measured and need a second one, the control is already comparable, and 512 emerged in
+   none of a full seed-block.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
