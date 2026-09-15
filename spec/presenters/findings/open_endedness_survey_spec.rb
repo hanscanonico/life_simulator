@@ -369,6 +369,126 @@ RSpec.describe Findings::OpenEndednessSurvey do
     end
   end
 
+  describe "how often life emerged" do
+    def arm_of(bet, label) = bet.arms.find { |arm| arm.label == label }
+
+    it "reads each arm's emerged runs over its terminal runs" do
+      experiment = sweep("max_tape_len")
+      3.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      7.times { blank_run(experiment, { "max_tape_len" => 64 }) }
+      10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
+
+      bet = described_class.build.bet("max-tape-len")
+
+      expect(arm_of(bet, "64")).to have_attributes(terminal_count: 10, emerged_count: 3,
+                                                   unemerged_count: 7, emergence_rate: 0.3,
+                                                   emergence_fraction: "3 of 10", tested?: true)
+      expect(arm_of(bet, "512")).to have_attributes(emergence_rate: 0.0, emergence_fraction: "0 of 10")
+      expect(arm_of(bet, "128")).to have_attributes(tested?: false, emergence_rate: nil)
+    end
+
+    it "tests each treated arm against the control arm with Fisher's exact test" do
+      experiment = sweep("max_tape_len")
+      emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40])
+      9.times { blank_run(experiment, { "max_tape_len" => 64 }) }
+      3.times { emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [36, 40]) }
+      7.times { blank_run(experiment, { "max_tape_len" => 128 }) }
+
+      bet = described_class.build.bet("max-tape-len")
+
+      expect(bet.emergence_p_value(arm_of(bet, "128")))
+        .to eq(Stats::FisherExact.two_sided([[3, 7], [1, 9]]))
+      expect(bet.emergence_p_value(bet.control_arm)).to be_nil
+      expect(bet.emergence_p_value(arm_of(bet, "256"))).to be_nil
+      expect(bet.emergence_significant?(arm_of(bet, "128"))).to be(false)
+    end
+
+    it "marks a difference below the threshold as significant" do
+      experiment = sweep("max_tape_len")
+      10.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
+
+      bet = described_class.build.bet("max-tape-len")
+
+      expect(bet.emergence_p_value(arm_of(bet, "512"))).to be < described_class::SIGNIFICANCE
+      expect(bet.emergence_significant?(arm_of(bet, "512"))).to be(true)
+    end
+
+    it "reads every treated arm emerging less often than its control" do
+      experiment = sweep("max_tape_len")
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      8.times { blank_run(experiment, { "max_tape_len" => 64 }) }
+      %w[128 256 512].each do |cap|
+        10.times { blank_run(experiment, { "max_tape_len" => cap.to_i }) }
+      end
+
+      expect(described_class.build.bet("max-tape-len").emergence_reading)
+        .to eq("Every treated arm emerged less often than the control arm (0 of 10, 0 of 10 and " \
+               "0 of 10 against 2 of 10); none of the differences reaches p < 0.05.")
+    end
+
+    it "names the arms that emerged more often than their control" do
+      experiment = sweep("max_tape_len")
+      emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40])
+      9.times { blank_run(experiment, { "max_tape_len" => 64 }) }
+      3.times { emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [36, 40]) }
+      7.times { blank_run(experiment, { "max_tape_len" => 128 }) }
+      10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
+
+      expect(described_class.build.bet("max-tape-len").emergence_reading)
+        .to eq("128 emerged more often than the control arm (3 of 10 against 1 of 10), and 512 " \
+               "no more often (0 of 10); none of the differences reaches p < 0.05.")
+    end
+
+    it "says a significant difference only where the p-value carries it" do
+      experiment = sweep("max_tape_len")
+      10.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
+
+      expect(described_class.build.bet("max-tape-len").emergence_reading)
+        .to eq("Every treated arm emerged less often than the control arm (0 of 10 against " \
+               "10 of 10); the difference at 512 reaches p < 0.05.")
+    end
+
+    context "with no terminal run in the control arm" do
+      it "compares nothing" do
+        experiment = sweep("max_tape_len")
+        10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
+
+        expect(described_class.build.bet("max-tape-len").emergence_reading)
+          .to eq("No run of the control arm has reached its last epoch, so how often life " \
+                 "emerged under this substrate cannot be compared yet.")
+      end
+    end
+
+    context "with no terminal run in any treated arm" do
+      it "leaves the control arm standing alone" do
+        experiment = sweep("max_tape_len")
+        10.times { blank_run(experiment, { "max_tape_len" => 64 }) }
+
+        expect(described_class.build.bet("max-tape-len").emergence_reading)
+          .to eq("No treated arm has a run that reached its last epoch, so the control arm's " \
+                 "0 of 10 stands alone and nothing can be compared yet.")
+      end
+    end
+
+    it "pools the three controls against every treated arm" do
+      experiment = sweep("max_tape_len")
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      8.times { blank_run(experiment, { "max_tape_len" => 64 }) }
+      emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [36, 40])
+      9.times { blank_run(experiment, { "max_tape_len" => 128 }) }
+      structure = sweep("environmental_structure")
+      5.times { blank_run(structure, { "structure" => "uniform" }) }
+
+      survey = described_class.build
+
+      expect(survey).to have_attributes(control_emerged_count: 2, control_terminal_count: 15,
+                                        treated_emerged_count: 1, treated_terminal_count: 10,
+                                        rates_comparable?: true)
+    end
+  end
+
   it "badges each verdict" do
     expect(described_class::VERDICT_BADGES.keys).to eq(%i[supported not_supported unresolved])
     expect(described_class.build.bets.map(&:badge_class)).to all(eq("badge-info"))

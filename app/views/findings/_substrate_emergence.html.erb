@@ -1,0 +1,60 @@
+<%# How often life emerged in each arm of one sweep, against the same sweep's control arm.
+    This is the sweep's own outcome and not the plateau the hypothesis above turns on: no
+    verdict on this page reads it, and it is printed once per sweep rather than once per
+    observable. %>
+<h3>How often life emerged</h3>
+<div class="table-scroll" tabindex="0" role="region" id="<%= bet.slug %>-emergence-rates"
+     aria-label="How often life emerged in each arm of the <%= bet.slug %> sweep">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Arm</th>
+        <th class="numeric">Terminal runs</th>
+        <th class="numeric">Emerged</th>
+        <th class="numeric">Rate</th>
+        <th class="numeric">Against the control</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% bet.arms.each do |arm| %>
+        <tr>
+          <td>
+            <span class="mono"><%= arm.label %></span>
+            <% if arm.control? %><span class="badge badge-info">control</span><% end %>
+          </td>
+          <td class="numeric mono"><%= arm.terminal_count %></td>
+          <td class="numeric mono"><%= arm.emerged_count %></td>
+          <td class="numeric mono">
+            <% if arm.tested? %>
+              <%= arm.emergence_fraction %>
+              (<%= number_to_percentage(arm.emergence_rate * 100, precision: 0) %>)
+            <% else %>
+              —
+            <% end %>
+          </td>
+          <td class="numeric mono">
+            <% p_value = bet.emergence_p_value(arm) %>
+            <% if p_value.nil? %>
+              —
+            <% else %>
+              p = <%= number_with_precision(p_value, precision: 2, significant: true,
+                                            strip_insignificant_zeros: true) %>
+              <% if bet.emergence_significant?(arm) %>
+                <span class="badge badge-warning">p &lt; 0.05</span>
+              <% end %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p><strong><%= bet.emergence_reading %></strong></p>
+<p class="text-sm text-muted">
+  One row per arm of the same sweep. "Terminal runs" counts the runs of the arm that reached
+  an end with at least one sample, "Emerged" the confirmed crossings among them, and "Rate"
+  the second over the first. "Against the control" is a two-sided Fisher exact test of the
+  arm's emerged and unemerged runs against the control arm's — a dash for the control arm
+  itself and for an arm with nothing terminal to test. The test describes how often life
+  emerged under each substrate and decides nothing about the plateau above.
+</p>
