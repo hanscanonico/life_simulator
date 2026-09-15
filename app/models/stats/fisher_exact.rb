@@ -6,13 +6,9 @@ module Stats
   # that is no more likely than the observed one. The arms these findings compare are ten
   # seeds wide with none or one emergence in most of them, which is exactly where a
   # chi-square approximation stops being one, so the sum is taken in exact rationals and
-  # converted only at the end.
+  # converted only at the end: a table as likely as the observed one is then recognised by
+  # an exact equality, where floats would need the relative slack R's `fisher.test` carries.
   class FisherExact
-    # A table whose probability equals the observed one is only recognisable up to the
-    # rounding a conversion would introduce, so the comparison is made with the relative
-    # slack R's `fisher.test` uses rather than with strict equality.
-    SLACK = Rational((10**7) + 1, 10**7)
-
     def self.two_sided(table) = new(table).two_sided
 
     def initialize(table)
@@ -42,7 +38,7 @@ module Stats
 
     def support = ([column_one - row_two, 0].max..[row_one, column_one].min)
 
-    def threshold = @threshold ||= probability(observed) * SLACK
+    def threshold = @threshold ||= probability(observed)
 
     def probability(count)
       Rational(choose(row_one, count) * choose(row_two, column_one - count), choose(total, column_one))
