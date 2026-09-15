@@ -175,7 +175,9 @@ holding a tape that passed.
    the initial length being the fixed-tape world every earlier sweep ran. Hypothesis:
    room to grow raises the plateau the dominant replicator's complexity settles at,
    refuted if tapes free to lengthen plateau where fixed-length tapes do — which would
-   say the 64-byte ceiling was never the binding constraint.
+   say the 64-byte ceiling was never the binding constraint. 30 seeds per arm rather than
+   the usual 10: emergence at 128×128 runs about 1 in 10 and the complexity finding needs
+   two emerged runs in an arm before it reads that arm.
 
 Every run records its full metric series and periodic snapshots so a claim can be
 re-examined. A finding is published on the site with its phase diagram, the raw runs,
