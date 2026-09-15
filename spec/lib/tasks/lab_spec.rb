@@ -182,10 +182,10 @@ RSpec.describe "lab:sweep" do
   end
 
   describe "max_tape_len" do
-    it "builds four caps times ten seeds" do
+    it "builds four caps times thirty seeds" do
       build_sweep("max_tape_len")
 
-      expect(Experiment.find_by(slug: "max-tape-len").runs_count).to eq(40)
+      expect(Experiment.find_by(slug: "max-tape-len").runs_count).to eq(120)
     end
 
     it "sweeps the caps the programme names, the fixed-length arm among them" do
@@ -202,6 +202,32 @@ RSpec.describe "lab:sweep" do
         .to eq(Lab::Schema.run_defaults.merge("max_tape_len" => 64, "tape_len" => 64,
                                               "width" => 128, "height" => 128,
                                               "mutation_rate" => 2.0**-13))
+    end
+
+    context "with the sweep already seeded at the ten seeds it first ran" do
+      before { seed_ten_seed_sweep }
+
+      it "queues only the twenty new seeds of each of the four arms" do
+        expect { build_sweep("max_tape_len") }.to change(Run, :count).by(80)
+      end
+
+      it "leaves no two runs sharing a (params, seed)" do
+        build_sweep("max_tape_len")
+
+        experiment = Experiment.find_by(slug: "max-tape-len")
+
+        expect(Runs::DiscardDuplicatesService.call(experiment: experiment)).to be_empty
+      end
+    end
+
+    # The sweep as it stood before it grew to thirty seeds, so re-running the task is read
+    # against the forty runs the lab already holds.
+    def seed_ten_seed_sweep
+      definition = Lab::SWEEPS.fetch("max_tape_len")
+      experiment = create(:experiment, **definition, slug: Lab.slug_for("max_tape_len"),
+                                                     substrate: "soup", seeds: (1..10).to_a)
+
+      Experiments::SweepBuilderService.call(experiment)
     end
   end
 
