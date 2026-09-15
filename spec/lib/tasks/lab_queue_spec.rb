@@ -84,6 +84,53 @@ RSpec.describe "the lab queue tasks" do
     end
   end
 
+  describe "lab:prioritise_run" do
+    let(:experiment) { create(:experiment, slug: "bff-control", priority: 0) }
+
+    it "raises the priority of the run alone" do
+      run = create(:run, experiment: experiment, priority: 0)
+      sibling = create(:run, experiment: experiment, priority: 0)
+
+      invoke("lab:prioritise_run", run.id.to_s, "9")
+
+      expect([run.reload.priority, sibling.reload.priority, experiment.reload.priority]).to eq([9, 0, 0])
+    end
+
+    it "raises the priority of a running run, which keeps it if its runner dies" do
+      run = create(:run, :claimed, experiment: experiment, status: "running", priority: 1)
+
+      invoke("lab:prioritise_run", run.id.to_s, "9")
+
+      expect(run.reload.priority).to eq(9)
+    end
+
+    it "prints the run, its arm and the move" do
+      run = create(:run, experiment: experiment, seed: 5, priority: 2)
+
+      expect(invoke("lab:prioritise_run", run.id.to_s, "9"))
+        .to include("run #{run.id} (bff-control, seed 5): priority 2 → 9")
+    end
+
+    it "refuses a finished run and leaves its priority alone" do
+      run = create(:run, experiment: experiment, status: "finished", priority: 1)
+
+      expect { invoke("lab:prioritise_run", run.id.to_s, "9") }
+        .to raise_error(/Run #{run.id} is finished/)
+      expect(run.reload.priority).to eq(1)
+    end
+
+    it "refuses a run it does not know" do
+      expect { invoke("lab:prioritise_run", "404", "9") }.to raise_error(/Unknown run "404"/)
+    end
+
+    it "refuses a priority that is not an integer" do
+      run = create(:run, experiment: experiment)
+
+      expect { invoke("lab:prioritise_run", run.id.to_s, "urgent") }
+        .to raise_error(/Priority "urgent" is not an integer/)
+    end
+  end
+
   describe "lab:backfill_transitions" do
     let(:experiment) { create(:experiment, slug: "bff-control", status: "finished") }
 

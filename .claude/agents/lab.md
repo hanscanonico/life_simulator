@@ -22,7 +22,8 @@ its runner columns cleared, for failures caused by a since-fixed bug rather than
 run's parameters. `lab:prioritise[<slug>,<priority>]` sets an experiment's priority and
 that of its unfinished runs — pending, claimed and running alike, so a run whose runner
 dies comes back to the queue at the priority you asked for — and the next claims serve
-them first.
+them first; `lab:prioritise_run[<run_id>,<priority>]` moves one unfinished run and not its
+experiment, for the single seed an arm is waiting on.
 `lab:sweep` is idempotent on (experiment, canonical params, seed), so re-running it after a
 grid gained an arm seeds that arm only. When a grid *loses* an arm, its queued runs stay
 behind: `"lab:discard_pending[<slug>,<param>,<value>]"` deletes the pending runs of the
