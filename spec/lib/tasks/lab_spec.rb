@@ -224,8 +224,8 @@ RSpec.describe "lab:sweep" do
     # against the forty runs the lab already holds.
     def seed_ten_seed_sweep
       definition = Lab::SWEEPS.fetch("max_tape_len")
-      experiment = create(:experiment, **definition, slug: "max-tape-len", substrate: "soup",
-                                                     seeds: (1..10).to_a)
+      experiment = create(:experiment, **definition, slug: Lab.slug_for("max_tape_len"),
+                                                     substrate: "soup", seeds: (1..10).to_a)
 
       Experiments::SweepBuilderService.call(experiment)
     end
