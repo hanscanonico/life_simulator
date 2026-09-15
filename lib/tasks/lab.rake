@@ -58,6 +58,18 @@ namespace :lab do
     puts "#{experiment.name}: priority #{priority}, #{moved} unfinished runs"
   end
 
+  desc "Set the queue priority of a single unfinished run, without moving its experiment"
+  task :prioritise_run, [:run_id, :priority] => :environment do |_task, args|
+    run = Run.find_by(id: args[:run_id])
+    raise "Unknown run #{args[:run_id].inspect}." if run.nil?
+    raise "Priority #{args[:priority].inspect} is not an integer." unless /\A-?\d+\z/.match?(args[:priority].to_s)
+
+    priority = args[:priority].to_i
+    previous = Runs::SetPriorityService.call(run: run, priority: priority)
+
+    puts "run #{run.id} (#{run.experiment.slug}, seed #{run.seed}): priority #{previous} → #{priority}"
+  end
+
   desc "Recompute transition_epoch from the stored samples of terminal runs (one experiment, or all)"
   task :backfill_transitions, [:slug] => :environment do |_task, args|
     runs = Run.terminal.order(:id)
