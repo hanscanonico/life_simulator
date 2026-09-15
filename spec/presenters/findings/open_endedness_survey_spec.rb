@@ -19,6 +19,13 @@ RSpec.describe Findings::OpenEndednessSurvey do
     run
   end
 
+  def blank_run(experiment, arm)
+    run = create(:run, experiment: experiment, status: "finished", transition_epoch: nil,
+                       params: Lab::Schema.run_defaults.merge(arm))
+    create(:sample, run: run, epoch: 1_000, values: { "compress_ratio" => 0.9 })
+    run
+  end
+
   it "reads the three substrate sweeps of DESIGN 1.3 in order" do
     expect(described_class.build.bets.map(&:slug))
       .to eq(%w[energy-per-epoch environmental-structure max-tape-len])
@@ -167,6 +174,107 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
       expect(described_class.build.bet("max-tape-len").verdict).to eq(:unresolved)
     end
+  end
+
+  context "with a treated arm run to a whole seed-block and nothing emerged" do
+    it "reads the hypothesis as not supported with no other arm raising the peak" do
+      experiment = sweep("max_tape_len")
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 44]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [30, 36]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, lengths: [30, 40]) }
+      10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
+
+      bet = described_class.build.bet("max-tape-len")
+
+      expect(bet).to have_attributes(verdict: :not_supported, refutable?: true)
+      expect(bet.barren_arms.map(&:label)).to eq(["512"])
+      expect(bet.untestable_arms).to be_empty
+    end
+
+    it "reads the hypothesis as supported once another arm raises the peak" do
+      experiment = sweep("max_tape_len")
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [60, 120]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, lengths: [30, 36]) }
+      10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
+
+      bet = described_class.build.bet("max-tape-len")
+
+      expect(bet).to have_attributes(verdict: :supported)
+      expect(bet.raising_arms.map(&:label)).to eq(["128"])
+      expect(bet.barren_arms.map(&:label)).to eq(["512"])
+    end
+
+    it "counts every arm of the sweep that drew a blank block, not only the last" do
+      experiment = sweep("energy_per_epoch")
+      2.times { emerged_run(experiment, { "energy_per_epoch" => 0 }, lineages: [40, 44]) }
+      [2**15, 2**13, 2**11].each do |cost|
+        10.times { blank_run(experiment, { "energy_per_epoch" => cost }) }
+      end
+
+      bet = described_class.build.bet("energy-per-epoch")
+
+      expect(bet).to have_attributes(verdict: :not_supported, refutable?: true)
+      expect(bet.barren_arms.map(&:label)).to eq(%w[32768 8192 2048])
+    end
+  end
+
+  context "with a control arm run to a whole seed-block and nothing emerged" do
+    it "leaves the hypothesis unresolved, with nothing to measure the treated arms against" do
+      experiment = sweep("max_tape_len")
+      10.times { blank_run(experiment, { "max_tape_len" => 64 }) }
+      [128, 256, 512].each { |cap| 10.times { blank_run(experiment, { "max_tape_len" => cap }) } }
+
+      bet = described_class.build.bet("max-tape-len")
+
+      expect(bet).to have_attributes(verdict: :unresolved, refutable?: false,
+                                     control_barren?: true, control_comparable?: false)
+      expect(bet.control_arm.terminal_count).to eq(10)
+    end
+  end
+
+  context "with a treated arm one run short of a whole seed-block" do
+    it "leaves the arm untestable and the hypothesis unresolved" do
+      experiment = sweep("max_tape_len")
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 44]) }
+      [128, 256].each { |cap| 2.times { emerged_run(experiment, { "max_tape_len" => cap }, lengths: [30, 36]) } }
+      9.times { blank_run(experiment, { "max_tape_len" => 512 }) }
+
+      bet = described_class.build.bet("max-tape-len")
+
+      expect(bet).to have_attributes(verdict: :unresolved, refutable?: false)
+      expect(bet.barren_arms).to be_empty
+      expect(bet.untestable_arms.map(&:label)).to eq(["512"])
+    end
+  end
+
+  context "with a treated arm of ten runs one of which emerged" do
+    it "leaves the arm untestable rather than reading it as never emerged" do
+      experiment = sweep("max_tape_len")
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 44]) }
+      [128, 256].each { |cap| 2.times { emerged_run(experiment, { "max_tape_len" => cap }, lengths: [30, 36]) } }
+      emerged_run(experiment, { "max_tape_len" => 512 }, lengths: [30, 36])
+      9.times { blank_run(experiment, { "max_tape_len" => 512 }) }
+
+      bet = described_class.build.bet("max-tape-len")
+      arm = bet.arms.find { |candidate| candidate.value == 512 }
+
+      expect(arm).to have_attributes(terminal_count: 10, emerged_count: 1, barren?: false)
+      expect(bet).to have_attributes(verdict: :unresolved, refutable?: false)
+      expect(bet.untestable_arms.map(&:label)).to eq(["512"])
+    end
+  end
+
+  it "counts no terminal run that never reported a sample towards a blank seed-block" do
+    experiment = sweep("max_tape_len")
+    10.times do
+      create(:run, experiment: experiment, status: "failed", transition_epoch: nil,
+                   params: Lab::Schema.run_defaults.merge("max_tape_len" => 512))
+    end
+
+    arm = described_class.build.bet("max-tape-len").arms.find { |candidate| candidate.value == 512 }
+
+    expect(arm).to have_attributes(terminal_count: 0, barren?: false)
   end
 
   it "counts a run as rising on its last reading against the middle of its own readings" do

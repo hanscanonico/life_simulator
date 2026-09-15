@@ -184,6 +184,10 @@ holding a tape that passed.
    the usual 10: emergence at 128×128 runs about 1 in 10 and the complexity finding needs
    two emerged runs in an arm before it reads that arm.
 
+An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
+arm that did not raise the plateau, not as an arm still to be tested: it holds no
+replicator to read (`docs/design_record.md`, 2026-09-15).
+
 Every run records its full metric series and periodic snapshots so a claim can be
 re-examined. A finding is published on the site with its phase diagram, the raw runs,
 and the seed of every run.

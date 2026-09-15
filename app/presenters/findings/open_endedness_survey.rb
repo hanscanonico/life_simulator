@@ -20,6 +20,12 @@ module Findings
     # to reads unresolved rather than resting on a single seed.
     MIN_ARM_RUNS = 2
 
+    # An arm nobody ran and an arm that was run to the end and stayed empty are not the
+    # same silence. At or above this many terminal runs with nothing emerged in any of them
+    # the arm has drawn a whole seed-block blank — the block DESIGN §1.3 budgets per arm —
+    # and it is read rather than unseeded (`docs/design_record.md`, 2026-09-15).
+    MIN_BARREN_RUNS = 10
+
     # Both observables are read out of the same jsonb column with the same guard, so the
     # expression is written once and bound to the key rather than spelled out twice.
     def self.numeric_reading(key)
@@ -70,8 +76,9 @@ module Findings
       def points(observable) = series.fetch(observable, [])
     end
 
-    # One arm of a sweep: the runs of that grid value that emerged and were measured.
-    Arm = Data.define(:value, :label, :control, :readings) do
+    # One arm of a sweep: the runs of that grid value that emerged and were measured, over
+    # the runs of that grid value that reached an end at all.
+    Arm = Data.define(:value, :label, :control, :terminal_count, :readings) do
       def control? = control
 
       def measured(observable) = readings.select { |reading| reading.measured?(observable) }
@@ -92,6 +99,12 @@ module Findings
 
       def comparable?(observable) = measured_count(observable) >= MIN_ARM_RUNS
 
+      # A whole seed-block run to its end with nothing emerged. Such an arm carries no
+      # reading on either observable, so it can never raise the plateau — a world with no
+      # replicator has no replicator complexity — and the sweep has tested it as hard as it
+      # tested the arms that did emerge.
+      def barren? = emerged_count.zero? && terminal_count >= MIN_BARREN_RUNS
+
       def emerged_count = readings.size
     end
 
@@ -107,9 +120,13 @@ module Findings
 
       def comparable_arms = treated_arms.select { |arm| arm.comparable?(decided_by) }
 
-      def untestable_arms = treated_arms.reject { |arm| arm.comparable?(decided_by) }
+      def barren_arms = treated_arms.select(&:barren?)
+
+      def untestable_arms = treated_arms.reject { |arm| arm.comparable?(decided_by) || arm.barren? }
 
       def control_comparable? = control_arm&.comparable?(decided_by).present?
+
+      def control_barren? = control_arm&.barren?.present?
 
       def control_median_peak = control_arm&.median_peak(decided_by)
 
@@ -120,9 +137,14 @@ module Findings
       def raising_arms = control_comparable? ? comparable_arms.select { |arm| raises?(arm) } : []
 
       # The refutation DESIGN states is "every treated substrate reads where the default
-      # one does", so it needs every treated arm to have been run: an arm nothing has
-      # transitioned in leaves the hypothesis untested, however many the others carry.
-      def refutable? = control_comparable? && comparable_arms.any? && untestable_arms.empty?
+      # one does", so it needs every treated arm to have been read: an arm nobody seeded
+      # leaves the hypothesis untested, however many the others carry. A barren arm has
+      # been read — a seed-block of that substrate produced nothing to plateau at, which is
+      # as far from raising the plateau as an arm can be — so it counts towards refutation
+      # even though it carries no measurement.
+      def refutable?
+        control_comparable? && (comparable_arms.any? || barren_arms.any?) && untestable_arms.empty?
+      end
 
       def verdict
         return :supported if raising_arms.any?
@@ -184,17 +206,19 @@ module Findings
       experiment = experiments_by_slug[slug]
 
       Bet.new(slug: slug, experiment: experiment, decided_by: decided_by,
-              arms: arms_of(axis, runs_by_experiment.fetch(experiment&.id, [])))
+              arms: arms_of(axis, runs_by_experiment.fetch(experiment&.id, []),
+                            terminal_params_by_experiment.fetch(experiment&.id, [])))
     end
 
     # The control is the first value of the grid — the substrate every earlier sweep ran,
     # as `Lab::SWEEPS` states for each of the three — so the sweep table stays the one
     # place that says which arm is off.
-    def arms_of(axis, runs)
+    def arms_of(axis, runs, terminal_params)
       axis.values.map do |value|
         arm_runs = runs.select { |run| axis.matches?(run.params, value) }
 
         Arm.new(value: value, label: axis.label_of(value), control: value == axis.values.first,
+                terminal_count: terminal_params.count { |params| axis.matches?(params, value) },
                 readings: arm_runs.map { |run| Reading.new(series: series_by_run.fetch(run.id, {})) })
       end
     end
@@ -207,6 +231,17 @@ module Findings
     def runs_by_experiment
       @runs_by_experiment ||= Run.emerged.where(experiment_id: experiments_by_slug.values.map(&:id))
                                  .order(:emergence_epoch, :id).to_a.group_by(&:experiment_id)
+    end
+
+    # How many runs of each arm reached an end, emerged or not: the readings above hold
+    # only emerged runs, and an arm that drew its whole seed-block blank is read off the
+    # runs it finished. A run that reported no sample never ran a world anyone can read, so
+    # a runner that died on its first epoch does not count as a seed spent on that arm.
+    def terminal_params_by_experiment
+      @terminal_params_by_experiment ||=
+        Run.terminal.where(experiment_id: experiments_by_slug.values.map(&:id), id: Sample.select(:run_id))
+           .pluck(:experiment_id, :params)
+           .group_by(&:first).transform_values { |rows| rows.map(&:last) }
     end
 
     def emerged_runs = runs_by_experiment.values.flatten

@@ -41,11 +41,23 @@
 <p>
   A hypothesis reads <strong>supported</strong> as soon as one arm with at least
   <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> raises the
-  peak. It reads <strong>not supported</strong> only when the control arm and every treated
-  arm of the sweep carry at least that many measured runs and none of the treated arms
-  raises it — the refutation DESIGN states, with nothing left unseeded. Anything between the
-  two reads <strong>unresolved</strong>, and the arms that were untestable are named: an arm
-  nothing emerged in refutes nothing.
+  peak. It reads <strong>not supported</strong> only when the control arm carries at least
+  that many measured runs, no treated arm raises the peak, and every treated arm has been
+  read — the refutation DESIGN states, with nothing left unseeded. Anything between the two
+  reads <strong>unresolved</strong>, and the arms that were untestable are named.
+</p>
+<p>
+  An arm is read either by being measured or by coming up empty. An arm whose runs all
+  reached their last epoch —
+  <%= pluralize Findings::OpenEndednessSurvey::MIN_BARREN_RUNS, "terminal run" %> or more,
+  a whole seed-block of the grid — with no crossing confirmed in any of them
+  <strong>never emerged</strong>, and such an arm counts against the hypothesis rather than
+  leaving it untested: it holds no replicator whose complexity could stand above the control
+  arm's, so it cannot be a substrate that raised the plateau. An arm with one emerged run,
+  or with fewer terminal runs than that, is still untestable — one seed decides nothing in
+  either direction. If the <em>control</em> arm never emerged the sweep reads unresolved
+  whatever the other arms did, because there is no default substrate left to read them
+  against.
 </p>
 <p>
   Each sweep is decided on the one observable its DESIGN hypothesis names. The other
