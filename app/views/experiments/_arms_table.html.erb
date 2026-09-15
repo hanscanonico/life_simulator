@@ -1,5 +1,6 @@
 <%# The per-arm numbers behind one phase diagram: how often a self-replicator emerged at
-    each grid value, and how quickly. `arms` is a list of Experiments::ArmSummary. %>
+    each grid value, and how quickly. Flagged is the detector's candidate crossings, emerged
+    the ones a replicator confirmed. `arms` is a list of Experiments::ArmSummary. %>
 <figure class="table-figure mt-4">
   <%# The caption sits outside .table-scroll: inside it, it is laid out at the table's width
       and clipped mid-word on a phone. %>
@@ -12,7 +13,8 @@
         <tr>
           <th><%= axis.name.to_s.humanize %></th>
           <th class="numeric">n</th>
-          <th class="numeric">Transitioned</th>
+          <th class="numeric">Flagged</th>
+          <th class="numeric">Emerged</th>
           <th class="numeric">Median epoch</th>
           <th class="numeric">IQR</th>
           <th class="numeric">Censored</th>
@@ -24,12 +26,25 @@
             <td class="mono"><%= arm.label %></td>
             <td class="numeric"><%= arm.runs_finished %></td>
             <td class="numeric">
-              <span class="mono"><%= arm.transitioned %>/<%= arm.runs_finished %></span>
+              <span class="mono"><%= arm.flagged %>/<%= arm.runs_finished %></span>
               <span class="text-muted">
-                <%= percent_value arm.transition_rate.fraction %>
+                <%= percent_value arm.flagged_rate.fraction %>
               </span>
             </td>
-            <td class="numeric mono"><%= epoch_value(arm.median_epoch) %></td>
+            <td class="numeric">
+              <span class="mono"><%= arm.emerged %>/<%= arm.runs_finished %></span>
+              <span class="text-muted">
+                <%= percent_value arm.emergence_rate.fraction %>
+              </span>
+            </td>
+            <td class="numeric mono">
+              <%= epoch_value(arm.median_epoch) %>
+              <% if arm.flagged > arm.emerged %>
+                <span class="text-muted" title="Median epoch over every flagged crossing, confirmed or not">
+                  flagged <%= epoch_value(arm.flagged_median_epoch) %>
+                </span>
+              <% end %>
+            </td>
             <td class="numeric mono"><%= epoch_value(arm.q1_epoch, arm.q3_epoch) %></td>
             <td class="numeric"><%= arm.censored %></td>
           </tr>
@@ -37,4 +52,10 @@
       </tbody>
     </table>
   </div>
+  <p class="text-sm text-muted mt-2">
+    Flagged counts the crossings the transition detector reported; emerged counts the ones the
+    replicator census or the copy rate confirmed. The median epoch and the IQR are of the
+    confirmed emergences, the flagged median beside them in grey; a flagged crossing nothing
+    confirmed is censored like a run that was never flagged.
+  </p>
 </figure>

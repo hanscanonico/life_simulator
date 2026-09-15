@@ -307,6 +307,15 @@
   fill-opacity: 0.65;
 }
 
+/* A crossing the detector flagged that no replicator confirmed: the same position, drawn
+   hollow, so it is never read as an emergence. */
+.chart-dots-flagged circle {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-opacity: 0.55;
+}
+
 .chart-censored circle {
   fill: none;
   stroke: var(--ink-muted);

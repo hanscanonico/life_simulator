@@ -265,6 +265,59 @@ RSpec.describe "Experiments", type: :request do
       expect(response.body).to match(%r{<span class="mono">0/0</span>\s*<span class="text-muted">\s*—})
     end
 
+    context "with an arm holding an emerged run, a flagged-only run and a run never flagged" do
+      before do
+        create(:run, :emerged, experiment: experiment, epochs_done: 20_000, transition_epoch: 200,
+                               params: Lab::Schema.run_defaults.merge("radius" => 2))
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 800,
+                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000,
+                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+      end
+
+      it "counts the flagged crossings and the confirmed ones apart" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Flagged", "Emerged")
+        expect(response.body).to match(%r{<span class="mono">2/3</span>\s*<span class="text-muted">\s*67%})
+        expect(response.body).to match(%r{<span class="mono">1/3</span>\s*<span class="text-muted">\s*33%})
+      end
+
+      it "takes the median and the IQR from the confirmed crossing alone" do
+        get experiment_path(experiment)
+
+        arm = response.parsed_body.css("table.data-table tr").find do |row|
+          row.at_css("td.mono")&.text == "2"
+        end
+
+        expect(arm.css("td").map { |cell| cell.text.squish })
+          .to eq(["2", "3", "2/3 67%", "1/3 33%", "200 flagged 500", "200", "2"])
+      end
+
+      it "reads the survival curve over the confirmed crossing alone" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("2 — 1 of 3 emerged")
+      end
+
+      it "draws the unconfirmed crossing apart from the confirmed one" do
+        get experiment_path(experiment)
+
+        diagram = response.parsed_body.at_css("svg")
+
+        expect(diagram.css("g.chart-dots circle title").map(&:text)).to eq(["2: emerged at epoch 200"])
+        expect(diagram.css("g.chart-dots-flagged circle title").map(&:text))
+          .to eq(["2: flagged at epoch 800, unconfirmed"])
+      end
+
+      it "says what the two kinds of marker mean" do
+        get experiment_path(experiment)
+
+        expect(response.body.squish)
+          .to include("Hollow dots are crossings the detector flagged that nothing confirmed")
+      end
+    end
+
     context "with samples behind the finished runs" do
       let!(:flagged) do
         create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
@@ -393,8 +446,8 @@ RSpec.describe "Experiments", type: :request do
 
     context "with censored runs alongside runs that emerged" do
       before do
-        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 900,
-                     params: Lab::Schema.run_defaults.merge("radius" => 2))
+        create(:run, :emerged, experiment: experiment, epochs_done: 20_000, transition_epoch: 900,
+                               params: Lab::Schema.run_defaults.merge("radius" => 2))
         create(:run, experiment: experiment, status: "finished", epochs_done: 20_000,
                      params: Lab::Schema.run_defaults.merge("radius" => 2))
         live = create(:run, :claimed, experiment: experiment, epochs_done: 0,
@@ -410,18 +463,18 @@ RSpec.describe "Experiments", type: :request do
       end
 
       it "counts the emergences the world stayed in, arm by arm" do
-        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 400,
-                     params: Lab::Schema.run_defaults.merge("radius" => 1),
-                     persistence: { "census_peak" => 867, "peak_epoch" => 500, "epochs_persisted" => 19_600,
-                                    "relapsed" => false })
-        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 600,
-                     params: Lab::Schema.run_defaults.merge("radius" => 1),
-                     persistence: { "census_peak" => 42, "peak_epoch" => 900, "epochs_persisted" => 19_400,
-                                    "relapsed" => false })
-        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 800,
-                     params: Lab::Schema.run_defaults.merge("radius" => 1),
-                     persistence: { "census_peak" => 0, "peak_epoch" => nil, "epochs_persisted" => 200,
-                                    "relapsed" => true })
+        create(:run, :emerged, experiment: experiment, epochs_done: 20_000, transition_epoch: 400,
+                               params: Lab::Schema.run_defaults.merge("radius" => 1),
+                               persistence: { "census_peak" => 867, "peak_epoch" => 500, "epochs_persisted" => 19_600,
+                                              "relapsed" => false })
+        create(:run, :emerged, experiment: experiment, epochs_done: 20_000, transition_epoch: 600,
+                               params: Lab::Schema.run_defaults.merge("radius" => 1),
+                               persistence: { "census_peak" => 42, "peak_epoch" => 900, "epochs_persisted" => 19_400,
+                                              "relapsed" => false })
+        create(:run, :emerged, experiment: experiment, epochs_done: 20_000, transition_epoch: 800,
+                               params: Lab::Schema.run_defaults.merge("radius" => 1),
+                               persistence: { "census_peak" => 0, "peak_epoch" => nil, "epochs_persisted" => 200,
+                                              "relapsed" => true })
 
         get experiment_path(experiment)
 
@@ -537,8 +590,8 @@ RSpec.describe "Experiments", type: :request do
       end
 
       let!(:uniform_run) do
-        create(:run, experiment: experiment, status: "finished", epochs_done: 20_000, transition_epoch: 900,
-                     params: Lab::Schema.run_defaults.merge("structure" => "uniform"))
+        create(:run, :emerged, experiment: experiment, epochs_done: 20_000, transition_epoch: 900,
+                               params: Lab::Schema.run_defaults.merge("structure" => "uniform"))
       end
       let!(:patchwork_run) do
         create(:run, experiment: experiment, status: "finished", epochs_done: 20_000,
@@ -689,7 +742,8 @@ RSpec.describe "Experiments", type: :request do
         lines = response.body.lines.map(&:chomp)
         expect(response.media_type).to eq("text/csv")
         expect(response.headers["Content-Disposition"]).to include("attachment", "radius-runs.csv")
-        expect(lines.first).to eq("run_id,seed,status,epochs,epochs_done,transition_epoch,radius,#{Sample::OBSERVABLES.join(',')}")
+        expect(lines.first).to eq("run_id,seed,status,epochs,epochs_done,transition_epoch,radius," \
+                                  "#{Sample::OBSERVABLES.join(',')},emergence_epoch,emergence_witness")
         expect(lines.size).to eq(3)
         expect(lines.second).to include(",7,finished,20000,20000,900,2,0.42")
         expect(lines.third).to include(",8,finished,20000,20000,,4,")

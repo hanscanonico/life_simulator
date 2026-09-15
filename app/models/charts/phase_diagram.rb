@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
 module Charts
-  # Transition epoch against one swept parameter: every finished run is a dot, the median
-  # per parameter value is the line, and runs that never transitioned are hollow markers
-  # along the top of the plot (they have no y value — only a lower bound).
+  # Transition epoch against one swept parameter: a run whose crossing a replicator
+  # confirmed is a filled dot, a crossing the detector flagged and nothing confirmed is a
+  # hollow dot at the epoch it was flagged, and the median per parameter value is the line
+  # through the confirmed ones. Runs with no confirmed emergence — the flagged-only ones
+  # among them — are counted along the top of the plot (they have no y value, only a lower
+  # bound), so the top row and the arm table's censored column are the same runs.
   class PhaseDiagram
     include Plot
 
@@ -12,11 +15,11 @@ module Charts
     # columns unevenly, so past six values not all of them can be named.
     MAX_LABELLED_VALUES = 6
 
-    Group = Data.define(:value, :label, :transition_epochs, :censored) do
+    Group = Data.define(:value, :label, :emergence_epochs, :flagged_only_epochs, :censored) do
       def median
-        return nil if transition_epochs.empty?
+        return nil if emergence_epochs.empty?
 
-        sorted = transition_epochs.sort
+        sorted = emergence_epochs.sort
         middle = sorted.size / 2
         sorted.size.odd? ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2.0
       end
@@ -36,14 +39,20 @@ module Charts
 
     def y_label = "Transition epoch"
 
-    def empty? = @groups.all? { |group| group.transition_epochs.empty? && group.censored.zero? }
+    def empty?
+      @groups.all? do |group|
+        group.emergence_epochs.empty? && group.flagged_only_epochs.empty? && group.censored.zero?
+      end
+    end
 
     def dots
-      @groups.flat_map do |group|
-        group.transition_epochs.map do |epoch|
-          { x: x_pixel(group.value), y: y_pixel(epoch), label: dot_label(group, epoch) }
-        end
-      end
+      marks(:emergence_epochs) { |group, epoch| "#{group.label}: emerged at epoch #{epoch}" }
+    end
+
+    # The crossings the detector flagged that no replicator confirmed: still drawn, since
+    # the sweep was run to find them, but never filled and never in the median.
+    def flagged_dots
+      marks(:flagged_only_epochs) { |group, epoch| "#{group.label}: flagged at epoch #{epoch}, unconfirmed" }
     end
 
     # A sweep has a handful of grid values, so every one of them is its own tick: nice
@@ -69,7 +78,7 @@ module Charts
     end
 
     def censored_label(group)
-      runs = group.transition_epochs.size + group.censored
+      runs = group.emergence_epochs.size + group.censored
       "#{group.label}: no emergence in #{epochs} epochs (#{group.censored} of #{runs} runs)"
     end
 
@@ -85,11 +94,17 @@ module Charts
 
     private
 
-    def transition_epochs_or_span
-      epochs = @groups.flat_map(&:transition_epochs)
-      epochs.presence || [@epochs.to_f]
+    def marks(field)
+      @groups.flat_map do |group|
+        group.public_send(field).map do |epoch|
+          { x: x_pixel(group.value), y: y_pixel(epoch), label: yield(group, epoch) }
+        end
+      end
     end
 
-    def dot_label(group, epoch) = "#{group.label}: transition at epoch #{epoch}"
+    def transition_epochs_or_span
+      epochs = @groups.flat_map { |group| group.emergence_epochs + group.flagged_only_epochs }
+      epochs.presence || [@epochs.to_f]
+    end
   end
 end

@@ -11,8 +11,25 @@ RSpec.describe Experiments::RunsCsvService do
 
   it "heads the columns with the run, the swept parameters and the observables" do
     expect(rows.first).to eq(
-      %w[run_id seed status epochs epochs_done transition_epoch radius] + Sample::OBSERVABLES
+      %w[run_id seed status epochs epochs_done transition_epoch radius] + Sample::OBSERVABLES +
+      %w[emergence_epoch emergence_witness]
     )
+  end
+
+  it "writes the confirmed crossing and its witness beside the flagged one" do
+    create(:run, :emerged, experiment: experiment, transition_epoch: 900,
+                           params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+    expect(rows.last.last(2)).to eq(["900", Runs::Emergence::CENSUS])
+  end
+
+  context "with a crossing no replicator confirmed" do
+    it "leaves both emergence columns empty" do
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
+                   params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+      expect(rows.last.last(2)).to eq([nil, nil])
+    end
   end
 
   it "writes one row per run, in id order" do

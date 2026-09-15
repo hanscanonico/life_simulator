@@ -10,6 +10,9 @@ module Experiments
     include Callable
 
     COLUMNS = %w[run_id seed status epochs epochs_done transition_epoch].freeze
+    # Appended rather than set beside `transition_epoch` so an analysis pinned to the old
+    # column positions still reads.
+    EMERGENCE_COLUMNS = %w[emergence_epoch emergence_witness].freeze
 
     def initialize(experiment:)
       @experiment = experiment
@@ -17,7 +20,7 @@ module Experiments
 
     def call
       Enumerator.new do |lines|
-        lines << CSV.generate_line(COLUMNS + param_keys + Sample::OBSERVABLES)
+        lines << CSV.generate_line(COLUMNS + param_keys + Sample::OBSERVABLES + EMERGENCE_COLUMNS)
         @experiment.runs.find_each { |run| lines << CSV.generate_line(row(run)) }
       end
     end
@@ -29,7 +32,8 @@ module Experiments
     def row(run)
       [run.id, run.seed, run.status, run.epochs, run.epochs_done, run.transition_epoch] +
         param_keys.map { |key| run.params[key] } +
-        Sample::OBSERVABLES.map { |observable| run.summary[observable] }
+        Sample::OBSERVABLES.map { |observable| run.summary[observable] } +
+        [run.emergence_epoch, run.emergence_witness]
     end
   end
 end
