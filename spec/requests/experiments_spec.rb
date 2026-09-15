@@ -167,8 +167,8 @@ RSpec.describe "Experiments", type: :request do
       get experiment_path(experiment)
 
       expect(response.body).to include("2 of 2 finished runs flagged", "1 confirmed by a replicator")
-      expect(response.body).to include(%(<span class="badge badge-success">confirmed</span>),
-                                       %(<span class="badge badge-info">flagged</span>))
+      expect(response.body).to match(%r{900\s*<span class="badge badge-success">confirmed</span>})
+      expect(response.body).to match(%r{600\s*<span class="badge badge-info">flagged</span>})
     end
 
     it "delimits each run's transition epoch and dashes the runs without one" do
@@ -179,7 +179,7 @@ RSpec.describe "Experiments", type: :request do
 
       get experiment_path(experiment)
 
-      expect(response.body).to include("12,345")
+      expect(response.body).to match(%r{<td class="numeric">\s*12,345\s*<span class="badge badge-info">flagged</span>})
       expect(response.body).to match(%r{<td class="numeric">20,000</td>\s*<td class="numeric">\s*—\s*</td>})
     end
 
