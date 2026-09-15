@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_15_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_15_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -23,6 +23,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_120000) do
     t.integer "priority", default: 0, null: false
     t.integer "runs_count", default: 0, null: false
     t.jsonb "seeds", default: [], null: false
+    t.jsonb "seeds_by_arm", default: {}, null: false
     t.string "slug", null: false
     t.string "status", default: "draft", null: false
     t.string "substrate", default: "soup", null: false

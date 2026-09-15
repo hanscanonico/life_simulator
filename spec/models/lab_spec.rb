@@ -135,6 +135,11 @@ RSpec.describe Lab do
       it "gives thirty seeds the sweep epoch budget each, enough for two emergences per arm" do
         expect(definition.values_at(:seeds, :epochs)).to eq([(1..30).to_a, 20_000])
       end
+
+      it "gives the two arms with one measured emergence ninety seeds, the control and the empty arm thirty" do
+        expect(definition.fetch(:seeds_by_arm))
+          .to eq("max_tape_len" => { 128 => (1..90).to_a, 256 => (1..90).to_a })
+      end
     end
 
     describe "the bff_control positive control" do
@@ -158,6 +163,14 @@ RSpec.describe Lab do
         expect(definition[:param_grid].values_at("sample_every", "snapshot_every").flatten)
           .to eq([50, 2_000])
         expect(Lab::Schema.defaults.values_at("sample_every", "snapshot_every")).to eq([10, 100])
+      end
+    end
+
+    it "overrides the seeds of arms its own grid carries" do
+      Lab::SWEEPS.each_value do |definition|
+        definition.fetch(:seeds_by_arm, {}).each do |name, seeds_by_value|
+          expect(definition.fetch(:param_grid).fetch(name)).to include(*seeds_by_value.keys)
+        end
       end
     end
 

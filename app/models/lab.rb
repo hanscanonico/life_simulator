@@ -170,6 +170,10 @@ module Lab
       # about one run in ten, and the complexity-keeps-rising finding reads an arm only
       # once two of its runs have emerged.
       seeds: (1..30).to_a,
+      # Ninety for the two arms whose one measured emerged run plateaued above the
+      # control's: they need about sixty seeds more each for the second reading the finding
+      # reads an arm on, while the control already has two and 512 never emerged.
+      seeds_by_arm: { "max_tape_len" => { 128 => (1..90).to_a, 256 => (1..90).to_a } },
       epochs: 20_000
     },
     "bff_control" => {

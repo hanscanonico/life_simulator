@@ -214,10 +214,12 @@ RSpec.describe "lab:sweep" do
   end
 
   describe "max_tape_len" do
-    it "builds four caps times thirty seeds" do
+    it "builds the two roomy arms at ninety seeds and the control and the widest at thirty" do
       build_sweep("max_tape_len")
 
-      expect(Experiment.find_by(slug: "max-tape-len").runs_count).to eq(120)
+      expect(Experiment.find_by(slug: "max-tape-len").runs_count).to eq(240)
+      expect(Run.group("params->>'max_tape_len'").count)
+        .to eq("64" => 30, "128" => 90, "256" => 90, "512" => 30)
     end
 
     it "sweeps the caps the programme names, the fixed-length arm among them" do
@@ -239,8 +241,24 @@ RSpec.describe "lab:sweep" do
     context "with the sweep already seeded at the ten seeds it first ran" do
       before { seed_ten_seed_sweep("max_tape_len") }
 
-      it "queues only the twenty new seeds of each of the four arms" do
-        expect { build_sweep("max_tape_len") }.to change(Run, :count).by(80)
+      it "queues the twenty new seeds of the thirty-seed arms and the eighty of the roomy ones" do
+        expect { build_sweep("max_tape_len") }.to change(Run, :count).by(200)
+      end
+
+      it "leaves no two runs sharing a (params, seed)" do
+        build_sweep("max_tape_len")
+
+        experiment = Experiment.find_by(slug: "max-tape-len")
+
+        expect(Runs::DiscardDuplicatesService.call(experiment: experiment)).to be_empty
+      end
+    end
+
+    context "with the sweep already seeded at the thirty seeds every arm first ran" do
+      before { seed_sweep_at("max_tape_len", (1..30).to_a) }
+
+      it "queues only the sixty new seeds of each of the two roomy arms" do
+        expect { build_sweep("max_tape_len") }.to change(Run, :count).by(120)
       end
 
       it "leaves no two runs sharing a (params, seed)" do
@@ -328,10 +346,14 @@ RSpec.describe "lab:sweep" do
 
   # A sweep as it stood before it grew to thirty seeds, so re-running the task is read
   # against the runs the lab already holds.
-  def seed_ten_seed_sweep(name)
+  def seed_ten_seed_sweep(name) = seed_sweep_at(name, (1..10).to_a)
+
+  # The same sweep at an earlier seed count, every arm alike: the per-arm overrides are
+  # dropped so the runs are the ones the lab already holds.
+  def seed_sweep_at(name, seeds)
     definition = Lab::SWEEPS.fetch(name)
-    experiment = create(:experiment, **definition, slug: Lab.slug_for(name),
-                                                   substrate: "soup", seeds: (1..10).to_a)
+    experiment = create(:experiment, **definition, slug: Lab.slug_for(name), substrate: "soup",
+                                                   seeds: seeds, seeds_by_arm: {})
 
     Experiments::SweepBuilderService.call(experiment)
   end

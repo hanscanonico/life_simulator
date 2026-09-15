@@ -93,6 +93,28 @@ RSpec.describe Experiments::SweepBuilderService do
     end
   end
 
+  context "with an arm given seeds of its own" do
+    let(:experiment) do
+      create(:experiment, param_grid: { "radius" => [1, 2, 4] }, seeds: [1, 2],
+                          seeds_by_arm: { "radius" => { 2 => [1, 2, 3, 4] } })
+    end
+
+    it "runs that arm at its own seeds and the others at the sweep's" do
+      build_sweep
+
+      expect(experiment.runs.group("params->>'radius'").count).to eq("1" => 2, "2" => 4, "4" => 2)
+    end
+
+    context "with the override widened" do
+      it "adds only the arm's missing seeds" do
+        build_sweep
+        experiment.update!(seeds_by_arm: { "radius" => { 2 => [1, 2, 3, 4, 5, 6] } })
+
+        expect { described_class.call(experiment) }.to change(Run, :count).by(2)
+      end
+    end
+  end
+
   context "with an axis whose values are parameter bundles" do
     let(:experiment) do
       create(:experiment, param_grid: { "world_size" => [{ "width" => 32, "height" => 32 },
