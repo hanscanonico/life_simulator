@@ -1,6 +1,7 @@
 <% content_for :title, "Watching self-replicators emerge on their own" %>
-<% describe_page "A live soup of programs that execute and overwrite each other, seeded with no " \
-                 "replicator and no fitness function, until self-replication appears." %>
+<% description = describe_page "A live soup of programs that execute and overwrite each other, seeded with no " \
+                               "replicator and no fitness function, until self-replication appears." %>
+<% structure_page StructuredData.website(url: root_url, description: description) %>
 
 <div class="container-narrow">
   <h1 class="viewer-title">A world that programs itself</h1>
