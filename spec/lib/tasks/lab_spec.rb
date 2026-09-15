@@ -135,10 +135,10 @@ RSpec.describe "lab:sweep" do
   end
 
   describe "energy_per_epoch" do
-    it "builds four energy budgets times ten seeds" do
+    it "builds four energy budgets times thirty seeds" do
       build_sweep("energy_per_epoch")
 
-      expect(Experiment.find_by(slug: "energy-per-epoch").runs_count).to eq(40)
+      expect(Experiment.find_by(slug: "energy-per-epoch").runs_count).to eq(120)
     end
 
     it "sweeps the budgets the programme names, the cost off among them" do
@@ -155,13 +155,29 @@ RSpec.describe "lab:sweep" do
         .to eq(Lab::Schema.run_defaults.merge("energy_per_epoch" => 0, "width" => 128, "height" => 128,
                                               "mutation_rate" => 2.0**-13))
     end
+
+    context "with the sweep already seeded at the ten seeds it first ran" do
+      before { seed_ten_seed_sweep("energy_per_epoch") }
+
+      it "queues only the twenty new seeds of each of the four arms" do
+        expect { build_sweep("energy_per_epoch") }.to change(Run, :count).by(80)
+      end
+
+      it "leaves no two runs sharing a (params, seed)" do
+        build_sweep("energy_per_epoch")
+
+        experiment = Experiment.find_by(slug: "energy-per-epoch")
+
+        expect(Runs::DiscardDuplicatesService.call(experiment: experiment)).to be_empty
+      end
+    end
   end
 
   describe "environmental_structure" do
-    it "builds three worlds times ten seeds" do
+    it "builds three worlds times thirty seeds" do
       build_sweep("environmental_structure")
 
-      expect(Experiment.find_by(slug: "environmental-structure").runs_count).to eq(30)
+      expect(Experiment.find_by(slug: "environmental-structure").runs_count).to eq(90)
     end
 
     it "sweeps the structures the programme names, the uniform world among them" do
@@ -178,6 +194,22 @@ RSpec.describe "lab:sweep" do
         .to eq(Lab::Schema.run_defaults.merge("structure" => "uniform", "structure_amplitude" => 0.75,
                                               "width" => 128, "height" => 128,
                                               "mutation_rate" => 2.0**-13))
+    end
+
+    context "with the sweep already seeded at the ten seeds it first ran" do
+      before { seed_ten_seed_sweep("environmental_structure") }
+
+      it "queues only the twenty new seeds of each of the three arms" do
+        expect { build_sweep("environmental_structure") }.to change(Run, :count).by(60)
+      end
+
+      it "leaves no two runs sharing a (params, seed)" do
+        build_sweep("environmental_structure")
+
+        experiment = Experiment.find_by(slug: "environmental-structure")
+
+        expect(Runs::DiscardDuplicatesService.call(experiment: experiment)).to be_empty
+      end
     end
   end
 
@@ -205,7 +237,7 @@ RSpec.describe "lab:sweep" do
     end
 
     context "with the sweep already seeded at the ten seeds it first ran" do
-      before { seed_ten_seed_sweep }
+      before { seed_ten_seed_sweep("max_tape_len") }
 
       it "queues only the twenty new seeds of each of the four arms" do
         expect { build_sweep("max_tape_len") }.to change(Run, :count).by(80)
@@ -218,16 +250,6 @@ RSpec.describe "lab:sweep" do
 
         expect(Runs::DiscardDuplicatesService.call(experiment: experiment)).to be_empty
       end
-    end
-
-    # The sweep as it stood before it grew to thirty seeds, so re-running the task is read
-    # against the forty runs the lab already holds.
-    def seed_ten_seed_sweep
-      definition = Lab::SWEEPS.fetch("max_tape_len")
-      experiment = create(:experiment, **definition, slug: Lab.slug_for("max_tape_len"),
-                                                     substrate: "soup", seeds: (1..10).to_a)
-
-      Experiments::SweepBuilderService.call(experiment)
     end
   end
 
@@ -302,6 +324,16 @@ RSpec.describe "lab:sweep" do
 
   it "refuses a sweep it does not know" do
     expect { build_sweep("colour") }.to raise_error(/Unknown sweep/)
+  end
+
+  # A sweep as it stood before it grew to thirty seeds, so re-running the task is read
+  # against the runs the lab already holds.
+  def seed_ten_seed_sweep(name)
+    definition = Lab::SWEEPS.fetch(name)
+    experiment = create(:experiment, **definition, slug: Lab.slug_for(name),
+                                                   substrate: "soup", seeds: (1..10).to_a)
+
+    Experiments::SweepBuilderService.call(experiment)
   end
 
   def build_sweep(name)

@@ -80,8 +80,8 @@ RSpec.describe Lab do
         expect(definition[:param_grid].fetch("mutation_rate")).to eq([Lab::EMERGENT_MUTATION_RATE])
       end
 
-      it "gives ten seeds the sweep epoch budget each" do
-        expect(definition.values_at(:seeds, :epochs)).to eq([(1..10).to_a, 20_000])
+      it "gives thirty seeds the sweep epoch budget each, enough for two emergences per arm" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..30).to_a, 20_000])
       end
     end
 
@@ -109,8 +109,8 @@ RSpec.describe Lab do
         expect(definition[:param_grid].fetch("mutation_rate")).to eq([Lab::EMERGENT_MUTATION_RATE])
       end
 
-      it "gives ten seeds the sweep epoch budget each" do
-        expect(definition.values_at(:seeds, :epochs)).to eq([(1..10).to_a, 20_000])
+      it "gives thirty seeds the sweep epoch budget each, enough for two emergences per arm" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..30).to_a, 20_000])
       end
     end
 
