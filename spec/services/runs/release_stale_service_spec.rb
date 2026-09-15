@@ -19,6 +19,14 @@ RSpec.describe Runs::ReleaseStaleService do
     expect(run.reload.epochs_done).to eq(1_200)
   end
 
+  it "keeps the priority the run was carrying, so it does not fall behind the queue" do
+    run = create(:run, :stale, priority: 30)
+
+    described_class.call
+
+    expect(run.reload).to have_attributes(status: "pending", priority: 30)
+  end
+
   it "leaves a run that is still heartbeating alone" do
     run = create(:run, :claimed)
 

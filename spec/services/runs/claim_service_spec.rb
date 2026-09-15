@@ -74,6 +74,29 @@ RSpec.describe Runs::ClaimService do
     expect(Rails.logger).to have_received(:info).with(/event=run_claimed run_id=#{run.id} runner_id="runner-1"/)
   end
 
+  context "with a run the lab prioritised while its runner held it" do
+    let(:experiment) { create(:experiment, priority: 0) }
+    let(:run) { create(:run, :claimed, experiment: experiment, epochs_done: 10_322) }
+
+    before do
+      run
+      Experiments::SetPriorityService.call(experiment: experiment, priority: 30)
+      run.update!(heartbeat_at: 10.minutes.ago)
+    end
+
+    it "returns it to the queue at that priority, with the progress it reported" do
+      claim
+
+      expect(run.reload).to have_attributes(priority: 30, epochs_done: 10_322)
+    end
+
+    it "hands it out before a pending run of a lower priority" do
+      create(:run, priority: 20)
+
+      expect(claim).to eq(run)
+    end
+  end
+
   context "with an empty queue" do
     it "returns nothing" do
       create(:run, :claimed)

@@ -46,16 +46,16 @@ namespace :lab do
     puts "#{experiment.name}: discarded #{discarded.size} duplicate pending runs #{discarded.join(', ')}"
   end
 
-  desc "Set the queue priority of an experiment and of its pending runs"
+  desc "Set the queue priority of an experiment and of its unfinished runs"
   task :prioritise, [:slug, :priority] => :environment do |_task, args|
     experiment = Experiment.find_by(slug: args[:slug])
     raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
     raise "Priority #{args[:priority].inspect} is not an integer." unless /\A-?\d+\z/.match?(args[:priority].to_s)
 
     priority = args[:priority].to_i
-    pending = Experiments::SetPriorityService.call(experiment: experiment, priority: priority)
+    moved = Experiments::SetPriorityService.call(experiment: experiment, priority: priority)
 
-    puts "#{experiment.name}: priority #{priority}, #{pending} pending runs"
+    puts "#{experiment.name}: priority #{priority}, #{moved} unfinished runs"
   end
 
   desc "Recompute transition_epoch from the stored samples of terminal runs (one experiment, or all)"

@@ -86,4 +86,11 @@ RSpec.describe Runs::RequeueFailedService do
       expect(experiment.reload.status).to eq("finished")
     end
   end
+  it "keeps the priority of the run it requeues" do
+    run = create(:run, :just_failed, experiment: experiment, priority: 30)
+
+    described_class.call(experiment: experiment)
+
+    expect(run.reload).to have_attributes(status: "pending", priority: 30)
+  end
 end
