@@ -169,13 +169,15 @@ holding a tape that passed.
    necessary for abiogenesis?
 6. **Instruction cost** — `energy_per_epoch ∈ {0 (off), 2^15, 2^13, 2^11}`, the arm at 0
    being the costless substrate every earlier sweep ran. Hypothesis: a cost pressure
-   selects for efficient copiers and opens a second niche.
+   selects for efficient copiers and opens a second niche. 30 seeds per arm rather than
+   the usual 10: emergence at 128×128 runs about 1 in 10 and the open-endedness findings
+   need two emerged runs in an arm before they read that arm.
 7. **Environmental structure** — `structure ∈ {uniform (off), gradient, patchwork}` at
    `structure_amplitude` 0.75, the uniform arm being the world every earlier sweep ran.
    Hypothesis: environmental structure raises the plateau the dominant replicator's
    complexity settles at, refuted if a world whose regions differ plateaus where a uniform
    world does. Secondary prediction: a heterogeneous world keeps more lineages alive after
-   emergence.
+   emergence. 30 seeds per arm rather than the usual 10, for the same reason as sweep 6.
 8. **Room to grow** — `max_tape_len ∈ {64 (= tape_len, off), 128, 256, 512}`, the arm at
    the initial length being the fixed-tape world every earlier sweep ran. Hypothesis:
    room to grow raises the plateau the dominant replicator's complexity settles at,
