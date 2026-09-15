@@ -22,9 +22,9 @@ module Experiments
 
     COMPLEXITY = [
       Series.new(metric: "dominant_compressed_len",
-                 title: "Compressed length of the dominant replicator (bytes)",
+                 title: "Compressed length of the dominant tape (bytes)",
                  average: "AVG((values ->> 'dominant_compressed_len')::numeric)"),
-      Series.new(metric: "dominant_instruction_count", title: "Instructions in the dominant replicator",
+      Series.new(metric: "dominant_instruction_count", title: "Instructions in the dominant tape",
                  average: "AVG((values ->> 'dominant_instruction_count')::numeric)")
     ].freeze
 

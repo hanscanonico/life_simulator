@@ -568,9 +568,9 @@ RSpec.describe "Experiments", type: :request do
 
         get experiment_path(experiment)
 
-        expect(response.body).to include("Compressed length of the dominant replicator (bytes) " \
+        expect(response.body).to include("Compressed length of the dominant tape (bytes) " \
                                          "vs epoch, per arm of energy per epoch",
-                                         "Instructions in the dominant replicator vs epoch, " \
+                                         "Instructions in the dominant tape vs epoch, " \
                                          "per arm of energy per epoch")
       end
 
@@ -634,9 +634,9 @@ RSpec.describe "Experiments", type: :request do
 
         get experiment_path(experiment)
 
-        expect(response.body).to include("Compressed length of the dominant replicator (bytes) " \
+        expect(response.body).to include("Compressed length of the dominant tape (bytes) " \
                                          "vs epoch, per arm of structure",
-                                         "Instructions in the dominant replicator vs epoch, " \
+                                         "Instructions in the dominant tape vs epoch, " \
                                          "per arm of structure")
         expect(drawn_arms(response.body)).to include("uniform", "patchwork")
       end
@@ -701,9 +701,9 @@ RSpec.describe "Experiments", type: :request do
 
         get experiment_path(experiment)
 
-        expect(response.body).to include("Compressed length of the dominant replicator (bytes) " \
+        expect(response.body).to include("Compressed length of the dominant tape (bytes) " \
                                          "vs epoch, per arm of max tape len",
-                                         "Instructions in the dominant replicator vs epoch, " \
+                                         "Instructions in the dominant tape vs epoch, " \
                                          "per arm of max tape len")
         expect(drawn_arms(response.body)).to include("64", "512")
       end
