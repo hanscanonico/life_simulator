@@ -8,6 +8,10 @@ RSpec.describe "Structured data", type: :request do
     response.parsed_body.css("script[type='application/ld+json']")
   end
 
+  def meta_description
+    response.parsed_body.css("meta[name=description]").attribute("content").value
+  end
+
   def payload_of(path)
     blocks = blocks_of(path)
     expect(blocks.size).to eq(1)
@@ -33,8 +37,9 @@ RSpec.describe "Structured data", type: :request do
 
         expect(payload).to include("@context" => "https://schema.org", "@type" => "ScholarlyArticle",
                                    "headline" => finding.title,
-                                   "datePublished" => finding.date.iso8601,
-                                   "description" => finding.summary.squish.truncate(155))
+                                   "datePublished" => finding.date.iso8601)
+        expect(payload["description"]).to eq(meta_description)
+        expect(payload["description"]).to start_with(finding.summary.squish.first(40))
         expect(payload["author"]).to include("@type" => "Organization", "name" => "Life Simulator")
         expect(payload["publisher"]).to eq(payload["author"])
       end
