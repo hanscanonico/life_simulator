@@ -7,7 +7,8 @@
     <thead>
       <tr>
         <th>Arm</th>
-        <th class="numeric">Emerged runs</th>
+        <th class="numeric">Terminal runs</th>
+        <th class="numeric">Emerged</th>
         <th class="numeric">Measured</th>
         <th class="numeric">Median peak <%= unit %></th>
         <th class="numeric">Above control</th>
@@ -20,7 +21,9 @@
           <td>
             <span class="mono"><%= arm.label %></span>
             <% if arm.control? %><span class="badge badge-info">control</span><% end %>
+            <% if arm.barren? %><span class="badge badge-warning">never emerged</span><% end %>
           </td>
+          <td class="numeric mono"><%= arm.terminal_count %></td>
           <td class="numeric mono"><%= arm.emerged_count %></td>
           <td class="numeric mono"><%= arm.measured_count(bet.decided_by) %></td>
           <td class="numeric mono">
@@ -41,11 +44,16 @@
   </table>
 </div>
 <p class="text-sm text-muted">
-  One row per arm of the sweep. "Emerged runs" counts the arm's confirmed crossings, not
-  every crossing the detector flagged, and "Measured" the emerged runs whose samples carry
-  the reading after their own crossing; the median is of each run's peak, the highest
+  One row per arm of the sweep. "Terminal runs" counts the runs of the arm that reached an
+  end — finished or failed with at least one sample — whether or not anything emerged in
+  them, "Emerged" counts the arm's confirmed crossings, not every crossing the detector
+  flagged, and "Measured" the emerged runs whose samples carry the reading after their own
+  crossing; the median is of each run's peak, the highest
   post-crossing reading it recorded. "Above control" counts the runs of the arm whose peak
   is strictly above the control arm's median peak — a dash until the control arm has a
   median to count against — and "Still rising" the runs whose last reading is above the
-  median of their own post-crossing readings.
+  median of their own post-crossing readings. An arm badged "never emerged" has run a whole
+  seed-block of <%= Findings::OpenEndednessSurvey::MIN_BARREN_RUNS %> terminal runs with no
+  crossing confirmed in any of them, which reads as an arm that raised no plateau rather
+  than as an arm nobody tested.
 </p>

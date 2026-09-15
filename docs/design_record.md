@@ -492,3 +492,25 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   are claims about how often and how fast the detector's crossing appears, the sweeps were
   read and published that way, and re-reading them on a narrower definition is a separate
   piece of work with its own evidence.
+- 2026-09-15 — **An arm run to ten seeds with nothing emerged is evidence, not an untested
+  arm.** The three substrate bets of §1.3 (sweeps 6, 7 and 8) are read on
+  `complexity-keeps-rising` by counting each treated arm's emerged runs against its
+  sweep's control arm, and the rule refused to refute a hypothesis while any treated arm
+  carried fewer than two measured runs. That could not tell an arm nobody seeded from an
+  arm run to its end in which nothing ever emerged, so the `max-tape-len` sweep's 512 arm —
+  10 of 10 terminal, every one of its ten detector crossings a false positive with a peak
+  `replicator_count` of 0 (entry above) — left room to grow unresolved forever, however
+  many seeds were added. Sweep 6's three priced arms are heading the same way against a
+  costless control that has emerged. **The rule adds a third arm state.** An arm is
+  *measured* at two or more measured runs, unchanged; an arm is read as **never emerged**
+  at **10 or more terminal runs** (finished or failed with at least one sample) with
+  `emergence_epoch` null on every one; anything else — unseeded, still running, or one
+  emerged run of ten — stays untestable. Ten is one seed-block: ten seeds per arm is what
+  every §1.3 sweep runs, so an arm that drew its whole first block blank has been tested as
+  hard as any arm that emerged. A hypothesis is refutable when the control arm is
+  comparable, at least one treated arm is measured or never emerged, and no treated arm is
+  untestable; an arm that never emerged holds no replicator whose complexity could stand
+  above the control's, so it raises no plateau and a sweep whose treated arms all came up
+  empty reads **not supported**. If the control arm itself never emerged the sweep is
+  unresolved and the page says so: there is no default substrate to read anything against.
+  `supported` is unchanged — some measured arm reads above the control in most of its runs.

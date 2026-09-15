@@ -9,8 +9,17 @@
       reads above the control arm in most of its runs.
     <% elsif bet.verdict == :not_supported %>
       No arm of the sweep reads above the control arm in most of its runs, and every arm has
-      at least <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> —
-      the refutation condition of the hypothesis, at the seeds this sweep has.
+      either been measured or run to
+      <%= pluralize Findings::OpenEndednessSurvey::MIN_BARREN_RUNS, "seed" %> with nothing
+      emerging — the refutation condition of the hypothesis, at the seeds this sweep has.
+      <% if bet.barren_arms.any? %>
+        It rests on
+        <%= safe_join(bet.barren_arms.map { |arm| tag.span(arm.label, class: "mono") }, ", ") %>,
+        where nothing emerged at all.
+      <% end %>
+    <% elsif bet.control_barren? %>
+      The control arm never emerged, so there is no default substrate to read the other arms
+      against and the hypothesis cannot be decided here either way.
     <% else %>
       Not enough emerged seeds to decide it either way.
     <% end %>
@@ -29,18 +38,31 @@
     <%= unit %>, and every other arm with at least
     <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> is counted
     against it.
+  <% elsif bet.control_barren? %>
+    The control arm never emerged: <%= bet.control_arm.terminal_count %> of its runs reached
+    their last epoch and none of them crossed, so the default substrate has no median peak
+    here and nothing can be measured against it.
   <% else %>
     The control arm carries fewer than
     <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %>, so there is
     nothing to count the other arms against yet.
   <% end %>
+  <% if bet.barren_arms.any? %>
+    Arms that never emerged:
+    <%= safe_join(bet.barren_arms.map { |arm| tag.span("#{arm.label} (0 of #{arm.terminal_count} runs)",
+                                                       class: "mono") }, ", ") %>.
+    <%= bet.barren_arms.one? ? "That arm holds" : "Those arms hold" %> no replicator to read,
+    so nothing there stands above the control arm and the sweep counts
+    <%= bet.barren_arms.one? ? "it" : "them" %> as read rather than as unseeded.
+  <% end %>
   <% if bet.untestable_arms.any? %>
     Untestable here:
     <%= safe_join(bet.untestable_arms.map { |arm| tag.span(arm.label, class: "mono") }, ", ") %>
     <%= bet.untestable_arms.one? ? "carries" : "carry" %> fewer than
-    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %>, so the
-    sweep cannot read as not supported until <%= bet.untestable_arms.one? ? "it is" : "they are" %>
-    seeded — one arm nobody has run refutes nothing.
+    <%= pluralize Findings::OpenEndednessSurvey::MIN_ARM_RUNS, "measured run" %> without
+    having drawn a blank seed-block either, so the sweep cannot read as not supported until
+    <%= bet.untestable_arms.one? ? "it is" : "they are" %> seeded further — an arm that has
+    emerged once refutes nothing, and neither does one nobody has run.
   <% end %>
 </p>
 <%= render "findings/substrate_arms", bet: bet, unit: unit %>

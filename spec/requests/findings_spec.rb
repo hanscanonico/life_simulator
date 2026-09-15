@@ -1074,6 +1074,13 @@ RSpec.describe "Findings", type: :request do
                             param_grid: Lab::SWEEPS.fetch(key).fetch(:param_grid))
       end
 
+      def blank_run(experiment, arm)
+        run = create(:run, experiment: experiment, status: "finished", transition_epoch: nil,
+                           params: Lab::Schema.run_defaults.merge(arm))
+        create(:sample, run: run, epoch: 1_000, values: { "compress_ratio" => 0.9 })
+        run
+      end
+
       def arm_run(experiment, arm, lengths)
         run = create(:run, :emerged, experiment: experiment, transition_epoch: 1_000,
                                      params: Lab::Schema.run_defaults.merge(arm))
@@ -1133,7 +1140,7 @@ RSpec.describe "Findings", type: :request do
           .to include("Not enough emerged seeds to decide it either way",
                       "No run of the three substrate sweeps has emerged in this database yet")
         treated = response.parsed_body.css("#energy-per-epoch-lineages-arms tbody tr").last
-        expect(treated.css("td").map { |cell| cell.text.squish }).to eq(["2048", "0", "0", "—", "—", "0"])
+        expect(treated.css("td").map { |cell| cell.text.squish }).to eq(["2048", "0", "0", "0", "—", "—", "0"])
       end
 
       context "with an arm reading above its control" do
@@ -1164,7 +1171,8 @@ RSpec.describe "Findings", type: :request do
           expect(response.body.squish)
             .to include("not supported",
                         "No arm of the sweep reads above the control arm in most of its runs, and every arm " \
-                        "has at least 2 measured runs — the refutation condition of the hypothesis")
+                        "has either been measured or run to 10 seeds with nothing emerging — the refutation " \
+                        "condition of the hypothesis")
         end
       end
 
@@ -1180,9 +1188,45 @@ RSpec.describe "Findings", type: :request do
 
           expect(response.body.squish).to include("Not enough emerged seeds to decide it either way")
           expect(paragraphs)
-            .to include(a_string_including("Untestable here: patchwork carries fewer than 2 measured runs, " \
-                                           "so the sweep cannot read as not supported until it is seeded — " \
-                                           "one arm nobody has run refutes nothing"))
+            .to include(a_string_including("Untestable here: patchwork carries fewer than 2 measured runs " \
+                                           "without having drawn a blank seed-block either, so the sweep " \
+                                           "cannot read as not supported until it is seeded further"))
+        end
+      end
+
+      context "with a treated arm run to a whole seed-block and nothing emerged" do
+        it "names the arm that never emerged and prints its terminal count" do
+          sweep = substrate_sweep("environmental_structure")
+          2.times { arm_run(sweep, { "structure" => "uniform" }, [36, 44]) }
+          2.times { arm_run(sweep, { "structure" => "gradient" }, [36, 40]) }
+          10.times { blank_run(sweep, { "structure" => "patchwork" }) }
+
+          get finding_path(open_endedness)
+
+          paragraphs = response.parsed_body.css("p").map { |paragraph| paragraph.text.squish }
+          row = response.parsed_body.css("#environmental-structure-length-arms tbody tr").last
+
+          expect(paragraphs).to include(a_string_including("Arms that never emerged: patchwork (0 of 10 runs)"))
+          expect(response.body.squish).to include("not supported")
+          expect(row.css("td").map { |cell| cell.text.squish })
+            .to eq(["patchwork never emerged", "10", "0", "0", "—", "0", "0"])
+        end
+      end
+
+      context "with a control arm run to a whole seed-block and nothing emerged" do
+        it "leaves the hypothesis unresolved and says the control never emerged" do
+          sweep = substrate_sweep("environmental_structure")
+          10.times { blank_run(sweep, { "structure" => "uniform" }) }
+          2.times { arm_run(sweep, { "structure" => "gradient" }, [60, 120]) }
+          10.times { blank_run(sweep, { "structure" => "patchwork" }) }
+
+          get finding_path(open_endedness)
+
+          expect(response.body.squish)
+            .to include("The control arm never emerged, so there is no default substrate to read the other " \
+                        "arms against",
+                        "The control arm never emerged: 10 of its runs reached their last epoch and none of " \
+                        "them crossed")
         end
       end
 
