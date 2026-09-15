@@ -36,6 +36,36 @@ RSpec.describe Experiments::TransitionReportService do
     expect(row_for(true_positive)).to have_attributes(transition_epoch: 200, collapse_epoch: 200)
   end
 
+  context "with a run whose samples hold a second crossing" do
+    let!(:two_crossings) do
+      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 600,
+                         params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
+      (0..20_000).step(100) do |epoch|
+        create(:sample, run: run, epoch: epoch, values: late_emergence_values(epoch))
+      end
+      run
+    end
+
+    it "counts the crossings its samples hold beside the one the detector stored" do
+      expect(row_for(two_crossings)).to have_attributes(transition_epoch: 600, crossings: 2,
+                                                        confirmed_epoch: 12_500, confirmed_by: "census")
+    end
+
+    it "prints the count under a crossings column" do
+      expect(report.to_text.lines.first).to match(/collapse_epoch\s+crossings\s+confirmed_epoch/)
+    end
+
+    def late_emergence_values(epoch)
+      ratio = if epoch.between?(600, 900) then 0.45
+              elsif epoch >= 12_500 then 0.22
+              else 0.96
+              end
+      { "compress_ratio" => ratio, "op_density" => 0.1, "alphabet_size" => 200, "entropy_bits" => 4.0,
+        "distinct_tapes" => 900, "top_share" => 0.02,
+        "replicator_count" => epoch >= 12_700 ? 12 : 0, "copy_rate" => epoch >= 12_700 ? 0.01 : 0.0 }
+    end
+  end
+
   it "confirms the crossing of a true positive against the census" do
     expect(row_for(true_positive)).to have_attributes(confirmed_epoch: 200, confirmed_by: "census")
   end
@@ -210,7 +240,7 @@ RSpec.describe Experiments::TransitionReportService do
       lines = report.to_text.lines.map(&:strip)
 
       expect(lines.first).to match(
-        /\Arun_id\s+seed\s+status\s+mutation_rate\s+transition_epoch\s+collapse_epoch\s+confirmed_epoch\s+confirmed_by/
+        /\Arun_id\s+seed\s+status\s+mutation_rate\s+transition_epoch\s+collapse_epoch\s+crossings\s+confirmed_epoch/
       )
     end
 

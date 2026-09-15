@@ -19,12 +19,12 @@ module Experiments
     RUN_COLUMNS = %w[run_id seed status].freeze
     ARM_COLUMNS = %w[arm n n_terminal flagged replicators both either_but_not_both].freeze
     SAMPLE_COLUMNS = %w[
-      transition_epoch collapse_epoch confirmed_epoch confirmed_by min_entropy_bits
+      transition_epoch collapse_epoch crossings confirmed_epoch confirmed_by min_entropy_bits
       min_entropy_epoch peak_replicator_count peak_replicator_epoch first_replicator_epoch
       peak_copy_rate peak_copy_rate_epoch final_compress_ratio final_distinct_tapes final_top_share
     ].freeze
 
-    Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :collapse_epoch,
+    Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :collapse_epoch, :crossings,
                       :confirmed_epoch, :confirmed_by, :min_entropy_bits, :min_entropy_epoch, :peak_replicator_count,
                       :peak_replicator_epoch, :first_replicator_epoch, :peak_copy_rate,
                       :peak_copy_rate_epoch, :final_compress_ratio, :final_distinct_tapes,
@@ -144,12 +144,14 @@ module Experiments
 
     # `collapse_epoch` is the bare first crossing of the threshold, where
     # `transition_epoch` also demands the hold: the gap between them is a candidate that
-    # never settled.
+    # never settled. `crossings` counts every crossing that did settle, the detector having
+    # stored only the first — a run with two of them can be confirmed on the second.
     def detector_of(run, samples)
       entropy = extreme(samples, "entropy_bits", :min_by)
 
       { transition_epoch: run.transition_epoch,
         collapse_epoch: samples.find { |(_, values)| below_threshold?(values) }&.first,
+        crossings: Runs::CrossingsService.call(samples: samples).size,
         **confirmation_of(run.transition_epoch, samples),
         min_entropy_bits: value_of(entropy, "entropy_bits"), min_entropy_epoch: entropy&.first }
     end

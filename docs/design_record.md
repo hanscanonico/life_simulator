@@ -538,3 +538,30 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   life substrate still reads null, having no tapes. **Runs already finished keep their
   nulls** — no backfill is possible, the tapes those samples described are gone — so an old
   run stays measurable only where its census was positive.
+- 2026-09-15 — **Emergence is confirmed against every crossing a run holds, not only the
+  detector's first.** The engine's tracker keeps one crossing per run — the first
+  qualifying, held drop of `compress_ratio` — and confirmation read that one alone, so a
+  false positive early in a run hid whatever came after it. Run 543 (`max-tape-len`, arm
+  512, seed 17) is the case: `transition_epoch` 630 is the initial-condition crossing every
+  512-arm run trips (entry above, #174), no witness stands within the confirmation window
+  of it, and the run was recorded as never emerged — while from epoch ~12 700 it is alive.
+  `replicator_count` is above zero in 66 samples between 12 700 and 19 990 (peak 53 at
+  16 940), `copy_rate` is positive throughout, `compress_ratio` sits at 0.20–0.25 from
+  14 000 to 20 000 against 0.96 for every other run of the arm, and distinct tapes fall
+  from 16 384 to about 7 400. The 512 arm is 1 of 30 emerged, not 0 of 30. **The rule now
+  reads every crossing**: `Runs::CrossingsService` derives them from the stored samples by
+  the same predicate Rails already spells out (`Lab::TransitionRule` — a crossing is the
+  first sample of a qualifying stretch that holds for `hold_samples` more, entered from a
+  stretch that does not qualify), `Runs::EmergenceEpochService` reads the stored crossing
+  first and then the later ones, and `emergence_epoch` / `emergence_witness` are the
+  earliest crossing a witness backs. A world can leave the transitioned state and enter it
+  again — the radius sweep recorded one that did (2026-09-11) — so which crossing carries
+  the copier is an empirical matter, not the detector's to decide. **`transition_epoch` is
+  untouched**: it stays the detector's first crossing and the primary dependent variable of
+  every sweep (§1.2), and only the confirmation beside it moves. **Every epoch already
+  confirmed is unchanged** — the stored crossing is still read first, and a crossing
+  earlier than it is never considered — which the service and backfill specs pin on runs
+  shaped like the confirmed ones. `lab:backfill_emergence[<slug>]` rewrites the whole
+  corpus by the new rule and shouts when it would clear a stored emergence; the transition
+  report gains a `crossings` column, so run 543 reads `crossings 2, transition_epoch 630,
+  emergence_epoch 12 7xx`.

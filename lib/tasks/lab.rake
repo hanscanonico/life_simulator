@@ -108,8 +108,12 @@ namespace :lab do
     flagged = 0
     confirmed = 0
     terminal.each do |run|
+      stored = run.emergence
       emergence = Runs::EmergenceEpochService.call(run: run)
-      run.update!(emergence.attributes) unless emergence == run.emergence
+      if stored.confirmed? && !emergence.confirmed?
+        puts "run #{run.id}: WARNING clearing emergence #{stored.epoch} by #{stored.witness} — no crossing confirms"
+      end
+      run.update!(emergence.attributes) unless emergence == stored
       next if run.transition_epoch.nil?
 
       flagged += 1
