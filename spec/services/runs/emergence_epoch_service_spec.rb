@@ -96,6 +96,21 @@ RSpec.describe Runs::EmergenceEpochService do
     end
   end
 
+  # What keeps every epoch already confirmed where it is: a crossing the samples hold
+  # before the one the detector stored is never a candidate.
+  context "with a witness at a crossing earlier than the one the detector stored" do
+    it "confirms nothing, the earlier crossing being none of its candidates" do
+      series = (0..3_000).step(100).map do |epoch|
+        ratio = epoch <= 300 || epoch >= 2_000 ? 0.45 : 0.96
+        [epoch, { "compress_ratio" => ratio, "op_density" => 0.1, "alphabet_size" => 200,
+                  "replicator_count" => epoch <= 300 ? 9 : 0, "copy_rate" => 0.0 }]
+      end
+
+      expect(described_class.call(transition_epoch: 2_000, samples: series))
+        .to have_attributes(epoch: nil, witness: nil)
+    end
+  end
+
   context "with a witness at both crossings" do
     it "confirms the crossing the detector stored, as it did before later crossings were read" do
       series = (0..3_000).step(100).map do |epoch|
