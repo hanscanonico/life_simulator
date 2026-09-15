@@ -118,7 +118,7 @@ module Lab
         "height" => [128],
         "mutation_rate" => [EMERGENT_MUTATION_RATE]
       },
-      # Thirty seeds, not the ten every other sweep runs: emergence at 128×128 happens in
+      # Thirty seeds, not the ten most sweeps run: emergence at 128×128 happens in
       # about one run in ten, and the open-endedness findings read an arm only once two of
       # its runs have emerged.
       seeds: (1..30).to_a,
@@ -143,7 +143,7 @@ module Lab
         "height" => [128],
         "mutation_rate" => [EMERGENT_MUTATION_RATE]
       },
-      # Thirty seeds, not the ten every other sweep runs: emergence at 128×128 happens in
+      # Thirty seeds, not the ten most sweeps run: emergence at 128×128 happens in
       # about one run in ten, and the open-endedness findings read an arm only once two of
       # its runs have emerged.
       seeds: (1..30).to_a,
@@ -166,7 +166,7 @@ module Lab
         "height" => [128],
         "mutation_rate" => [EMERGENT_MUTATION_RATE]
       },
-      # Thirty seeds, not the ten every other sweep runs: emergence at 128×128 happens in
+      # Thirty seeds, not the ten most sweeps run: emergence at 128×128 happens in
       # about one run in ten, and the complexity-keeps-rising finding reads an arm only
       # once two of its runs have emerged.
       seeds: (1..30).to_a,
