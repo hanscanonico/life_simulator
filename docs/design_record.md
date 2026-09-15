@@ -505,12 +505,13 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   *measured* at two or more measured runs, unchanged; an arm is read as **never emerged**
   at **10 or more terminal runs** (finished or failed with at least one sample) with
   `emergence_epoch` null on every one; anything else — unseeded, still running, or one
-  emerged run of ten — stays untestable. Ten is one seed-block: ten seeds per arm is what
-  every §1.3 sweep runs, so an arm that drew its whole first block blank has been tested as
-  hard as any arm that emerged. A hypothesis is refutable when the control arm is
-  comparable, at least one treated arm is measured or never emerged, and no treated arm is
-  untestable; an arm that never emerged holds no replicator whose complexity could stand
-  above the control's, so it raises no plateau and a sweep whose treated arms all came up
-  empty reads **not supported**. If the control arm itself never emerged the sweep is
+  emerged run of ten — stays untestable. Ten is one seed-block: ten seeds per arm is the
+  block §1.3 budgets a sweep, and where it budgets more it budgets whole blocks of ten
+  (sweep 8 runs three, emergence at 128×128 being about 1 in 10), so an arm that drew a
+  whole block blank has been seeded, not skipped. A hypothesis is refutable when the
+  control arm is comparable, at least one treated arm is measured or never emerged, and no
+  treated arm is untestable; an arm that never emerged holds no replicator whose complexity
+  could stand above the control's, so it raises no plateau and a sweep whose treated arms
+  all came up empty reads **not supported**. If the control arm itself never emerged the sweep is
   unresolved and the page says so: there is no default substrate to read anything against.
   `supported` is unchanged — some measured arm reads above the control in most of its runs.

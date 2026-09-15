@@ -22,8 +22,8 @@ module Findings
 
     # An arm nobody ran and an arm that was run to the end and stayed empty are not the
     # same silence. At or above this many terminal runs with nothing emerged in any of them
-    # the arm has drawn a whole seed-block blank — the block every DESIGN §1.3 sweep runs
-    # per arm — and it is read rather than unseeded (`docs/design_record.md`, 2026-09-15).
+    # the arm has drawn a whole seed-block blank — the block DESIGN §1.3 budgets per arm —
+    # and it is read rather than unseeded (`docs/design_record.md`, 2026-09-15).
     MIN_BARREN_RUNS = 10
 
     # Both observables are read out of the same jsonb column with the same guard, so the
