@@ -48,12 +48,17 @@ pub struct Metrics {
     /// over the passing trials of the replicator test, read of the most populous tape among
     /// the `top_k` that passes it. `None` when no tested tape replicates.
     pub copy_cost: Option<u32>,
-    /// Bytes of the dominant replicator's tape once zlib has had it — its incompressible
-    /// content, the open-endedness baseline. `None` when no tested tape replicates.
+    /// Bytes of the dominant tape once zlib has had it — its incompressible content, the
+    /// open-endedness baseline. The tape is the most populous one among the `top_k` that
+    /// passes the replicator test, or the most populous tape of all when none passes, so a
+    /// world whose emergence only `copy_rate` confirmed still reads a length. `None` only
+    /// where there is no tape to read: the life substrate.
     pub dominant_compressed_len: Option<u32>,
-    /// How many of the dominant replicator's bytes the run's instruction set executes.
-    /// `None` when no tested tape replicates.
+    /// How many of that same tape's bytes the run's instruction set executes.
     pub dominant_instruction_count: Option<u32>,
+    /// Whether the tape the two readings above describe passed the replicator test. False
+    /// on the life substrate, which has no tapes.
+    pub dominant_replicates: bool,
 }
 
 impl Metrics {
@@ -824,6 +829,7 @@ mod tests {
             copy_cost: None,
             dominant_compressed_len: None,
             dominant_instruction_count: None,
+            dominant_replicates: false,
         }
     }
 

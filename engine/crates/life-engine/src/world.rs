@@ -471,13 +471,18 @@ impl World {
             copy_cost: census.copy_cost,
             dominant_compressed_len: census.complexity.map(|read| read.compressed_len),
             dominant_instruction_count: census.complexity.map(|read| read.instruction_count),
+            dominant_replicates: census.dominant_replicates,
         }
     }
 
     /// Cells holding one of the `top_k` most common tapes that passes the replicator test,
-    /// and what the dominant one — the first tape to pass, `ranked` being in population
-    /// order — costs and carries. Life cells are single bits and have no replicator
-    /// reading.
+    /// and what the dominant tape costs and carries. The dominant tape is the first tape to
+    /// pass — `ranked` being in population order — and, when none of the tested tapes
+    /// passes, the most populous tape of the world: after an emergence the copy rate alone
+    /// confirmed, the tape most cells hold is the thing that is copying, and a census that
+    /// read nothing there left such a run unmeasurable (`docs/design_record.md`,
+    /// 2026-09-15). Exactly one tape is compressed per sample, whichever it is. Life cells
+    /// are single bits and have no tape to read at all.
     fn replicator_census(&self, ranked: &[(&[u8], u64)]) -> ReplicatorCensus {
         if self.params.substrate != Substrate::Soup {
             return ReplicatorCensus::default();
@@ -485,27 +490,32 @@ impl World {
         let mut rng = rng::seeded(self.seed, STREAM_REPLICATOR, self.epoch);
         let ops = self.params.op_set();
         let mut census = ReplicatorCensus::default();
+        let mut dominant = ranked.first().map(|(tape, _)| *tape);
         for (tape, cells) in ranked.iter().take(self.params.top_k as usize) {
             let read = replicator::assay(tape, self.params.max_steps, ops, &mut rng);
             if read.replicates() {
                 census.count += cells;
-                if census.complexity.is_none() {
-                    census.complexity = Some(metrics::Complexity::of(tape, ops));
+                if !census.dominant_replicates {
+                    census.dominant_replicates = true;
+                    dominant = Some(*tape);
                 }
                 census.copy_cost = census.copy_cost.or(read.copy_cost);
             }
         }
+        census.complexity = dominant.map(|tape| metrics::Complexity::of(tape, ops));
         census
     }
 }
 
 /// What one sample's run of the replicator test read: how many cells hold a tape that
-/// passed, and the dominant passing tape's own observables.
+/// passed, and the dominant tape's own observables — with whether that tape is one of the
+/// passing ones.
 #[derive(Default)]
 struct ReplicatorCensus {
     count: u64,
     copy_cost: Option<u32>,
     complexity: Option<metrics::Complexity>,
+    dominant_replicates: bool,
 }
 
 /// What the epoch's cells have left to spend on instructions (`energy_per_epoch`,
@@ -1177,6 +1187,7 @@ mod tests {
         assert_eq!(measured.copy_cost, None);
         assert_eq!(measured.dominant_compressed_len, None);
         assert_eq!(measured.dominant_instruction_count, None);
+        assert!(!measured.dominant_replicates);
     }
 
     #[test]
@@ -1807,10 +1818,75 @@ mod tests {
             measured.copy_cost, None,
             "nothing replicates to cost anything"
         );
-        assert_eq!(measured.dominant_compressed_len, None);
-        assert_eq!(measured.dominant_instruction_count, None);
+        assert!(
+            !measured.dominant_replicates,
+            "no tape passed the replicator test"
+        );
+        assert_eq!(
+            (
+                measured.dominant_compressed_len,
+                measured.dominant_instruction_count
+            ),
+            most_populous_complexity(&world),
+            "the dominant reading is of the most populous tape all the same"
+        );
         assert_eq!(measured.copy_rate, 0.0, "nothing has interacted yet");
         assert!((measured.top_share - 1.0 / 256.0).abs() < 1e-9);
+    }
+
+    /// The complexity of the tape the most cells hold, read outside the sample's own census.
+    fn most_populous_complexity(world: &World) -> (Option<u32>, Option<u32>) {
+        let ranked = metrics::ranked_tapes(world.tapes());
+        let read = metrics::Complexity::of(ranked[0].0, world.params.op_set());
+        (Some(read.compressed_len), Some(read.instruction_count))
+    }
+
+    /// A run can cross into life on `copy_rate` alone, with nothing among the `top_k`
+    /// passing the replicator test at the samples that follow. The dominant tape is a tape
+    /// either way, and its size is the reading the open-endedness finding needs.
+    #[test]
+    fn the_dominant_tape_is_read_whether_or_not_it_replicates() {
+        let params = Params {
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(4, 4)
+        };
+        // An unmatched `]` over non-zero bytes halts a pair at its first instruction, so
+        // this is a tape no trial of the replicator test can copy.
+        let inert: Vec<u8> = [vec![b']'], vec![b'x'; 255]].concat();
+        let mut barren = World::new(&params, 3).unwrap();
+        let mut alive = World::new(&params, 3).unwrap();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                barren.set_cell(x, y, &inert);
+                alive.set_cell(x, y, &replicator::handwritten_replicator());
+            }
+        }
+
+        let measured = barren.metrics();
+        assert_eq!(measured.replicator_count, 0);
+        assert!(!measured.dominant_replicates);
+        let read = metrics::Complexity::of(&inert, params.op_set());
+        assert_eq!(
+            (
+                measured.dominant_compressed_len,
+                measured.dominant_instruction_count
+            ),
+            (Some(read.compressed_len), Some(read.instruction_count)),
+            "the most populous tape is measured even though nothing replicates"
+        );
+
+        let measured = alive.metrics();
+        assert!(measured.dominant_replicates);
+        assert_eq!(
+            (
+                measured.dominant_compressed_len,
+                measured.dominant_instruction_count
+            ),
+            (Some(36), Some(15)),
+            "and a world of replicators reads its replicator, as it always did"
+        );
     }
 
     #[test]

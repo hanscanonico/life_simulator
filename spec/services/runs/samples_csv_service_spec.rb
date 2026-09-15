@@ -44,6 +44,17 @@ RSpec.describe Runs::SamplesCsvService do
     expect(rows.last.values_at(*columns)).to eq(%w[36 15])
   end
 
+  it "exports whether the dominant tape replicates beside its complexity" do
+    create(:sample, run: run, epoch: 100,
+                    values: { "dominant_compressed_len" => 75, "dominant_replicates" => false })
+    create(:sample, run: run, epoch: 200,
+                    values: { "dominant_compressed_len" => 36, "dominant_replicates" => true })
+
+    column = Sample::OBSERVABLES.index("dominant_replicates") + 1
+
+    expect(rows.pluck(column)).to eq(%w[dominant_replicates false true])
+  end
+
   it "reads no sample before the reader pulls the first row" do
     create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
 

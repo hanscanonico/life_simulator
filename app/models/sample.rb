@@ -7,8 +7,13 @@ class Sample < ApplicationRecord
   OBSERVABLES = %w[
     compress_ratio distinct_tapes top_share op_density replicator_count entropy_bits alphabet_size copy_rate
     distinct_lineages top_lineage_share lineage_variation copy_cost dominant_compressed_len
-    dominant_instruction_count
+    dominant_instruction_count dominant_replicates
   ].freeze
+
+  # The observables that are not numbers: exported like the rest, but there is no series a
+  # chart could draw of them.
+  FLAGS = %w[dominant_replicates].freeze
+  PLOTTABLE = (OBSERVABLES - FLAGS).freeze
 
   belongs_to :run
 

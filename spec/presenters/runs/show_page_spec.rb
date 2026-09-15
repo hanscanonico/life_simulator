@@ -16,12 +16,12 @@ RSpec.describe Runs::ShowPage do
 
     def chart_for(metric) = page.charts[described_class::METRICS.keys.index(metric)]
 
-    it "draws one chart per DESIGN observable" do
+    it "draws one chart per plottable DESIGN observable" do
       expect(described_class::METRICS.keys)
         .to eq(%w[compress_ratio distinct_tapes top_share replicator_count op_density entropy_bits alphabet_size
                   copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost
                   dominant_compressed_len dominant_instruction_count])
-      expect(described_class::METRICS.keys).to match_array(Sample::OBSERVABLES)
+      expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
       expect(page.charts.map(&:title)).to eq(described_class::METRICS.values)
     end
 

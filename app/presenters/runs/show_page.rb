@@ -17,8 +17,8 @@ module Runs
       "top_lineage_share" => "Share of the largest lineage",
       "lineage_variation" => "Variation within a lineage",
       "copy_cost" => "Copy cost (steps)",
-      "dominant_compressed_len" => "Compressed length of the dominant replicator (bytes)",
-      "dominant_instruction_count" => "Instructions in the dominant replicator"
+      "dominant_compressed_len" => "Compressed length of the dominant tape (bytes)",
+      "dominant_instruction_count" => "Instructions in the dominant tape"
     }.freeze
 
     SAMPLE_CLOCK = "COUNT(*), MIN(epoch), MAX(epoch), MIN(created_at), MAX(created_at)"

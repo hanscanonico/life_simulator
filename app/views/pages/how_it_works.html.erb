@@ -159,14 +159,25 @@
 
     <dt class="mono">dominant_compressed_len</dt>
     <dd>
-      How much tape the dominant replicator is, in bytes, once zlib has squeezed it — the
+      How much tape the dominant tape is, in bytes, once zlib has squeezed it — the
       same compressor the compression ratio uses, so a tape and the world it sits in are
       read on one scale. Beside it <span class="mono">dominant_instruction_count</span>
       counts how many of that tape's bytes the run's instruction set executes. They are the
-      baseline for open-endedness: a world whose replicator keeps getting more complicated
-      after emergence reads a rising length, one that found a recipe and stopped reads a
-      flat one. The hand-written replicator reads 36 bytes and 15 instructions. Null when no
-      tested tape replicates.
+      baseline for open-endedness: a world whose dominant tape keeps getting more
+      complicated after emergence reads a rising length, one that found a recipe and stopped
+      reads a flat one. The hand-written replicator reads 36 bytes and 15 instructions.
+      The tape read is the most populous one that passes the replicator test, and the most
+      populous tape of the world when none does — after a crossing the copy rate confirmed,
+      the tape most cells hold is the thing that is copying. Null only on the Life
+      substrate, which has no tapes.
+    </dd>
+
+    <dt class="mono">dominant_replicates</dt>
+    <dd>
+      Whether the tape those two readings describe passed the replicator test. True and they
+      are the complexity of a confirmed copier, the very tape
+      <span class="mono">copy_cost</span> is priced on; false and they are the complexity of
+      the tape the most cells hold, whatever it does.
     </dd>
 
     <dt class="mono">transition_epoch</dt>

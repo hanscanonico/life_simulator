@@ -159,6 +159,7 @@ mod tests {
             copy_cost: None,
             dominant_compressed_len: None,
             dominant_instruction_count: None,
+            dominant_replicates: false,
         }
     }
 
