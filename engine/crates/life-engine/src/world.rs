@@ -472,6 +472,8 @@ impl World {
             dominant_compressed_len: census.complexity.map(|read| read.compressed_len),
             dominant_instruction_count: census.complexity.map(|read| read.instruction_count),
             dominant_replicates: census.dominant_replicates,
+            dominant_raw_len: census.complexity.map(|read| read.raw_len),
+            dominant_tape_hash: census.complexity.map(|read| read.tape_hash_hex()),
         }
     }
 
@@ -639,6 +641,18 @@ mod tests {
     /// them — a within-lineage reading must not move a lineage.
     const PINNED_LINEAGES: &str = "distinct_lineages=1022 top_lineage_share=0.001953125";
     const PINNED_SEEDED_LINEAGES: &str = "distinct_lineages=51 top_lineage_share=0.09375";
+    /// The replicator readings of those same two worlds, as they read before #192 added a
+    /// raw length and a tape hash beside them: the new fields are additive, so every field
+    /// a sample already carried has to print the same digits it printed before.
+    const PINNED_DOMINANT: &str = "copy_cost=None dominant_compressed_len=Some(75) \
+         dominant_instruction_count=Some(3) dominant_replicates=false";
+    const PINNED_SEEDED_DOMINANT: &str = "copy_cost=Some(1794) dominant_compressed_len=Some(36) \
+         dominant_instruction_count=Some(15) dominant_replicates=true";
+    /// And the two fields #192 added, pinned apart from them.
+    const PINNED_DOMINANT_TAPE: &str = "dominant_raw_len=Some(64) \
+         dominant_tape_hash=Some(\"fdc479506869ad61\")";
+    const PINNED_SEEDED_DOMINANT_TAPE: &str = "dominant_raw_len=Some(256) \
+         dominant_tape_hash=Some(\"1d895db59f8130fa\")";
 
     fn observable_digest(measured: &Metrics) -> String {
         format!(
@@ -661,6 +675,27 @@ mod tests {
         format!(
             "distinct_lineages={} top_lineage_share={:?}",
             measured.distinct_lineages, measured.top_lineage_share,
+        )
+    }
+
+    /// The replicator readings of a sample as they were before #192, read apart from the
+    /// digests above for the same reason those two are apart: each was pinned in its own
+    /// era and cannot carry the fields of a later one.
+    fn dominant_digest(measured: &Metrics) -> String {
+        format!(
+            "copy_cost={:?} dominant_compressed_len={:?} dominant_instruction_count={:?} \
+             dominant_replicates={}",
+            measured.copy_cost,
+            measured.dominant_compressed_len,
+            measured.dominant_instruction_count,
+            measured.dominant_replicates,
+        )
+    }
+
+    fn dominant_tape_digest(measured: &Metrics) -> String {
+        format!(
+            "dominant_raw_len={:?} dominant_tape_hash={:?}",
+            measured.dominant_raw_len, measured.dominant_tape_hash,
         )
     }
 
@@ -971,6 +1006,8 @@ mod tests {
         let measured = world.metrics();
         assert_eq!(observable_digest(&measured), PINNED_OBSERVABLES);
         assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
+        assert_eq!(dominant_digest(&measured), PINNED_DOMINANT);
+        assert_eq!(dominant_tape_digest(&measured), PINNED_DOMINANT_TAPE);
     }
 
     #[test]
@@ -992,6 +1029,8 @@ mod tests {
         let measured = world.metrics();
         assert_eq!(observable_digest(&measured), PINNED_SEEDED_OBSERVABLES);
         assert_eq!(lineage_digest(&measured), PINNED_SEEDED_LINEAGES);
+        assert_eq!(dominant_digest(&measured), PINNED_SEEDED_DOMINANT);
+        assert_eq!(dominant_tape_digest(&measured), PINNED_SEEDED_DOMINANT_TAPE);
     }
 
     /// A colony of the handwritten replicator is one lineage spreading: each cell it
@@ -1187,6 +1226,8 @@ mod tests {
         assert_eq!(measured.copy_cost, None);
         assert_eq!(measured.dominant_compressed_len, None);
         assert_eq!(measured.dominant_instruction_count, None);
+        assert_eq!(measured.dominant_raw_len, None);
+        assert_eq!(measured.dominant_tape_hash, None);
         assert!(!measured.dominant_replicates);
     }
 
@@ -1886,6 +1927,55 @@ mod tests {
             ),
             (Some(36), Some(15)),
             "and a world of replicators reads its replicator, as it always did"
+        );
+    }
+
+    /// A compressed length alone cannot be told from a cap: a tape free to lengthen reads
+    /// its live length here, so the run page can say what fraction of the tape the
+    /// compressed reading is. And the hash is an identity for the tape, so two samples can
+    /// be asked whether the dominant tape is still the same one.
+    #[test]
+    fn the_dominant_reading_carries_the_length_and_the_identity_of_its_own_tape() {
+        let params = Params {
+            tape_len: 8,
+            max_tape_len: 64,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(4, 4)
+        };
+        let grown: Vec<u8> = (1..=40).collect();
+        let mut world = World::new(&params, 3).unwrap();
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &grown);
+            }
+        }
+
+        let measured = world.metrics();
+        let read = metrics::Complexity::of(&grown, params.op_set());
+        assert_eq!(
+            measured.dominant_raw_len,
+            Some(40),
+            "the live tape, not the slot it started in"
+        );
+        assert_eq!(measured.dominant_tape_hash, Some(read.tape_hash_hex()));
+
+        world.set_cell(0, 0, &(2..=41).collect::<Vec<u8>>());
+        assert_eq!(
+            world.metrics().dominant_tape_hash,
+            measured.dominant_tape_hash,
+            "one cell of fifteen does not move the dominant tape"
+        );
+
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &(2..=41).collect::<Vec<u8>>());
+            }
+        }
+        assert_ne!(
+            world.metrics().dominant_tape_hash,
+            measured.dominant_tape_hash,
+            "a world that turned over reads a different tape"
         );
     }
 

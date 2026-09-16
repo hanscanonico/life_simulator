@@ -91,6 +91,16 @@ mod tests {
             metrics["copy_rate"].is_f64(),
             "the readout formats the engine's own copy_rate: {metrics}"
         );
+        assert_eq!(
+            metrics["dominant_raw_len"].as_u64(),
+            Some(64),
+            "the dominant tape's own length rides along: {metrics}"
+        );
+        assert_eq!(
+            metrics["dominant_tape_hash"].as_str().map(str::len),
+            Some(16),
+            "and its hash, as sixteen hex digits: {metrics}"
+        );
     }
 
     #[test]

@@ -173,12 +173,16 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
-    it "draws one chart per observable of a run that reported samples" do
-      create(:sample, run: run, epoch: 100, values: Runs::ShowPage::METRICS.keys.index_with(0.5))
+    it "draws one chart per observable of a run that reported samples, and the two derived ones" do
+      [100, 200].each do |epoch|
+        create(:sample, run: run, epoch: epoch,
+                        values: Runs::ShowPage::METRICS.keys.index_with(0.5)
+                                                       .merge("dominant_tape_hash" => "hash#{epoch}"))
+      end
 
       get run_path(run)
 
-      expect(response.body.scan("chart-line").size).to eq(Runs::ShowPage::METRICS.size)
+      expect(response.body.scan("chart-line").size).to eq(Runs::ShowPage::METRICS.size + 2)
     end
 
     context "with a run of the instruction-cost sweep" do

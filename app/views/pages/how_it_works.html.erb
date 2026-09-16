@@ -164,12 +164,26 @@
       read on one scale. Beside it <span class="mono">dominant_instruction_count</span>
       counts how many of that tape's bytes the run's instruction set executes. They are the
       baseline for open-endedness: a world whose dominant tape keeps getting more
-      complicated after emergence reads a rising length, one that found a recipe and stopped
-      reads a flat one. The hand-written replicator reads 36 bytes and 15 instructions.
+      complicated after emergence carries more instructions, one that found a recipe and
+      stopped reads a flat count. The compressed length is read against the tape's own
+      length and never alone — zlib wraps an incompressible tape in 11 bytes, so a tape of
+      junk reads its cap plus 11 whatever the cap is. The hand-written replicator reads 36
+      bytes and 15 instructions.
       The tape read is the most populous one that passes the replicator test, and the most
       populous tape of the world when none does — after a crossing the copy rate confirmed,
       the tape most cells hold is the thing that is copying. Null only on the Life
       substrate, which has no tapes.
+    </dd>
+
+    <dt class="mono">dominant_raw_len</dt>
+    <dd>
+      The same tape's own length in bytes, before zlib. It is what makes the compressed
+      reading readable: compressed over raw near 1 is an incompressible tape — junk — and
+      well under 1 is a tape with structure in it. Beside it
+      <span class="mono">dominant_tape_hash</span> is a digest of those very bytes (FNV-1a
+      64, sixteen hex digits), an identity rather than a magnitude: two consecutive samples
+      with different hashes are two different dominant tapes. Null on the Life substrate,
+      and on every sample recorded before they existed.
     </dd>
 
     <dt class="mono">dominant_replicates</dt>

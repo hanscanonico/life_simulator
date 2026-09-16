@@ -20,9 +20,41 @@ RSpec.describe Runs::ShowPage do
       expect(described_class::METRICS.keys)
         .to eq(%w[compress_ratio distinct_tapes top_share replicator_count op_density entropy_bits alphabet_size
                   copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost
-                  dominant_compressed_len dominant_instruction_count])
+                  dominant_compressed_len dominant_instruction_count dominant_raw_len])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
-      expect(page.charts.map(&:title)).to eq(described_class::METRICS.values)
+      expect(page.charts.map(&:title))
+        .to eq(described_class::METRICS.values +
+               [described_class::COMPRESSIBILITY_TITLE, described_class::TURNOVER_TITLE])
+    end
+
+    it "reads the compressed length against the tape's own length" do
+      create(:sample, run: run, epoch: 100,
+                      values: { "dominant_compressed_len" => 523, "dominant_raw_len" => 512 })
+      create(:sample, run: run, epoch: 200,
+                      values: { "dominant_compressed_len" => 128, "dominant_raw_len" => 512 })
+
+      expect(page.compressibility_points).to eq([[100, 523 / 512.0], [200, 0.25]])
+    end
+
+    it "reads no ratio off a sample an older engine left without a raw length" do
+      create(:sample, run: run, epoch: 100, values: { "dominant_compressed_len" => 523 })
+
+      expect(page.compressibility_points).to be_empty
+    end
+
+    it "counts the dominant tape as turned over whenever its hash changed" do
+      %w[aa aa bb].each_with_index do |hash, index|
+        create(:sample, run: run, epoch: 100 + (index * 10), values: { "dominant_tape_hash" => hash })
+      end
+
+      expect(page.turnover_points).to eq([[110, 0], [120, 1]])
+    end
+
+    it "reads no turnover off samples an older engine left without a hash" do
+      create(:sample, run: run, epoch: 100, values: { "dominant_compressed_len" => 523 })
+      create(:sample, run: run, epoch: 110, values: { "dominant_compressed_len" => 523 })
+
+      expect(page.turnover_points).to be_empty
     end
 
     it "plots the samples of a metric in epoch order" do

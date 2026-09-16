@@ -28,8 +28,9 @@
   counts here only when the replicator census or the copy rate backs it within ten samples
   of it (<span class="mono">docs/design_record.md</span>, 2026-09-15) — the flagged runs of
   the 512 arm whose census never left zero are not worlds that emerged. The two series
-  are: <span class="mono">dominant_compressed_len</span>,
-  the compressed length of the most populous tape that passes the replicator test, and
+  are: <span class="mono">dominant_instruction_count</span>,
+  how many bytes of the most populous tape that passes the replicator test the run's own
+  instruction set executes, and
   <span class="mono">distinct_lineages</span>, how many lineage ids the cells hold. A run's
   <strong>peak</strong> is the highest reading its samples record after the crossing — a
   ceiling the run touched, not a level it settled at and not a fitted trend — and a run is
@@ -75,6 +76,26 @@
   verdict on this page moves with it.
 </p>
 
+<h2>Why complexity is read in instructions and not in bytes</h2>
+<p>
+  The obvious reading — <span class="mono">dominant_compressed_len</span>, the dominant tape
+  under zlib — is unusable on the sweeps this page decides. zlib wraps an incompressible
+  stream in an 11-byte envelope, so a tape of junk compresses to its own length plus 11, and
+  on every arm of the room-to-grow sweep that is exactly what 92–99.8% of post-crossing
+  samples read: 75, 139, 267 and 523 bytes at caps of 64, 128, 256 and 512. The reading is
+  the cap, not the replicator, and "523 bytes" cannot be told apart from 512 random bytes.
+</p>
+<p>
+  <span class="mono">dominant_instruction_count</span> is not capped that way. Post-crossing
+  it reads 9–17 ops at cap 64, 20–26 at 128, 17–28 at 256 and 37–52 at 512 — 14–26% of the
+  tape at the smallest cap and 7–10% at the largest. Quadrupling the byte budget does not
+  quadruple the op content; the added bytes are junk. So every verdict below is read off the
+  instruction count, which is the pre-registered reading for "complexity keeps rising"
+  (<span class="mono">docs/design_record.md</span>, 2026-09-16), and the compressed length is
+  kept only as a length. Each run page now prints compressed length over the tape's own raw
+  length beside it, so the saturation is visible rather than inferred.
+</p>
+
 <h2>Hypothesis 1 — instruction cost</h2>
 <p>
   DESIGN §1.3 sweep 6: <em>a cost pressure selects for efficient copiers and opens a second
@@ -85,7 +106,7 @@
 <%= render "findings/substrate_verdict", bet: survey.instruction_cost,
            reading: "a lineage count", unit: "lineages" %>
 <%= render "findings/substrate_reading", bet: survey.instruction_cost_complexity,
-           reading: "complexity in bytes", unit: "bytes", decided_on: "lineages" %>
+           reading: "complexity in instructions", unit: "instructions", decided_on: "lineages" %>
 <%= render "findings/substrate_emergence", bet: survey.instruction_cost %>
 
 <h2>Hypothesis 2 — environmental structure</h2>
@@ -95,7 +116,7 @@
   a uniform world does.</em>
 </p>
 <%= render "findings/substrate_verdict", bet: survey.environmental_structure,
-           reading: "a complexity in bytes", unit: "bytes" %>
+           reading: "a complexity in instructions", unit: "instructions" %>
 <p>
   Its secondary prediction — <em>a heterogeneous world keeps more lineages alive after
   emergence</em> — is the same arms read on <span class="mono">distinct_lineages</span>, and
@@ -112,7 +133,7 @@
   do</em> — which would say the 64-byte ceiling was never the binding constraint.
 </p>
 <%= render "findings/substrate_verdict", bet: survey.room_to_grow,
-           reading: "a complexity in bytes", unit: "bytes" %>
+           reading: "a complexity in instructions", unit: "instructions" %>
 <%= render "findings/substrate_reading", bet: survey.room_to_grow_lineages,
            reading: "lineage count", unit: "lineages", decided_on: "complexity" %>
 <%= render "findings/substrate_emergence", bet: survey.room_to_grow %>
@@ -123,8 +144,8 @@
     Across the three sweeps the lab holds
     <%= pluralize survey.flagged_count, "run" %> flagged by the detector and
     <%= survey.emerged_count %> confirmed by a replicator.
-    <%= survey.measured_count(:length) %> of the confirmed ones carry a complexity reading
-    after their crossing and <%= survey.rising_count(:length) %> end above the middle of their own
+    <%= survey.measured_count(:instructions) %> of the confirmed ones carry a complexity reading
+    after their crossing and <%= survey.rising_count(:instructions) %> end above the middle of their own
     post-crossing readings; <%= survey.measured_count(:lineages) %> carry a lineage count and
     <%= survey.rising_count(:lineages) %> end above the middle of theirs. That is a
     description of where each run ended, not a trend, and it is censored at both ends by that
@@ -182,8 +203,9 @@
   verdicts is a significance test.
 </p>
 <p>
-  <strong>Complexity is size and lineages are descent.</strong> Compressed length bounds the
-  recipe rather than describing it, and
+  <strong>Complexity is a count of instructions and lineages are descent.</strong> An
+  instruction count bounds the program rather than describing it — a tape can carry fifty
+  ops that do nothing useful — and
   <span class="mono">distinct_lineages</span> counts descent rather than shape — two
   lineages that drifted onto the same tape still count twice. Neither reading opens a tape
   and says what it does, so "a second niche" is inferred from a count of lineages rather

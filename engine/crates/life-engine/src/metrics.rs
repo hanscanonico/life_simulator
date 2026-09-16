@@ -1,6 +1,7 @@
 //! The observables of `docs/DESIGN.md` §1.2 and the transition tracker built on them.
 
 use crate::bff;
+use crate::hash;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,12 @@ pub struct Metrics {
     /// Whether the tape the two readings above describe passed the replicator test. False
     /// on the life substrate, which has no tapes.
     pub dominant_replicates: bool,
+    /// Bytes of that same tape before zlib: what `dominant_compressed_len` is a reading
+    /// of, so the two together say how much of the tape is content and how much is length.
+    pub dominant_raw_len: Option<u32>,
+    /// FNV-1a 64 of that same tape's bytes, as sixteen lowercase hex digits: an identity
+    /// for the dominant tape that two samples can be compared on, and nothing else.
+    pub dominant_tape_hash: Option<String>,
 }
 
 impl Metrics {
@@ -96,23 +103,38 @@ pub fn compress(bytes: &[u8]) -> Vec<u8> {
     encoder.finish().expect("writing to a Vec cannot fail")
 }
 
-/// How much tape one replicator is, read two ways (`docs/DESIGN.md` §1.2).
+/// How much tape one replicator is, read two ways, with the length it was read off and
+/// the identity of the bytes read (`docs/DESIGN.md` §1.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Complexity {
     pub compressed_len: u32,
     pub instruction_count: u32,
+    pub raw_len: u32,
+    pub tape_hash: u64,
 }
 
 impl Complexity {
     /// The length is measured with the very compressor `compress_ratio` uses, so a tape
     /// and the world it sits in are read on one scale. The instructions are counted
     /// against the run's own op set rather than all ten, so an ablated byte the
-    /// interpreter skips is not counted as something the tape executes.
+    /// interpreter skips is not counted as something the tape executes. The hash is the
+    /// engine's own FNV-1a 64 over the same bytes — a fixed function of the tape, equal on
+    /// every platform and every build, so two samples can be asked whether they read the
+    /// same tape.
     pub fn of(tape: &[u8], ops: bff::OpSet) -> Self {
         Self {
             compressed_len: compress(tape).len() as u32,
             instruction_count: tape.iter().filter(|byte| ops.enables(**byte)).count() as u32,
+            raw_len: tape.len() as u32,
+            tape_hash: hash::fnv1a64(tape),
         }
+    }
+
+    /// The hash as the sixteen lowercase hex digits every consumer stores it as: a 64-bit
+    /// integer does not survive a JSON reader that parses numbers as doubles, and nothing
+    /// downstream does arithmetic on it.
+    pub fn tape_hash_hex(&self) -> String {
+        format!("{:016x}", self.tape_hash)
     }
 }
 
@@ -654,6 +676,48 @@ mod tests {
         assert_eq!(read.instruction_count, 15);
     }
 
+    /// The raw length and the hash are of the very bytes the other two readings are taken
+    /// off, so a compressed length can be read as a fraction of a tape rather than as a
+    /// number that saturates at the cap.
+    #[test]
+    fn the_dominant_tape_is_measured_and_identified_by_its_own_bytes() {
+        let tape = crate::replicator::handwritten_replicator();
+        let read = Complexity::of(&tape, bff::OpSet::ALL);
+        assert_eq!(read.raw_len, tape.len() as u32);
+        assert_eq!(read.tape_hash, hash::fnv1a64(&tape));
+        assert_eq!(read.tape_hash_hex().len(), 16);
+        assert_eq!(read.tape_hash_hex(), format!("{:016x}", read.tape_hash));
+    }
+
+    #[test]
+    fn a_tape_that_changed_by_one_byte_is_a_different_tape() {
+        let tape = crate::replicator::handwritten_replicator();
+        let mut moved = tape.clone();
+        moved[3] = moved[3].wrapping_add(1);
+        assert_ne!(
+            Complexity::of(&tape, bff::OpSet::ALL).tape_hash,
+            Complexity::of(&moved, bff::OpSet::ALL).tape_hash
+        );
+    }
+
+    /// The op set decides what counts as an instruction and nothing else: the bytes are
+    /// the bytes whatever runs them.
+    #[test]
+    fn the_op_set_moves_neither_the_raw_length_nor_the_hash() {
+        let tape = crate::replicator::handwritten_replicator();
+        let ablated = bff::OpSet::parse("<>{}+-,[]").expect("a legal set");
+        assert_eq!(
+            (
+                Complexity::of(&tape, ablated).raw_len,
+                Complexity::of(&tape, ablated).tape_hash
+            ),
+            (
+                Complexity::of(&tape, bff::OpSet::ALL).raw_len,
+                Complexity::of(&tape, bff::OpSet::ALL).tape_hash
+            )
+        );
+    }
+
     #[test]
     fn an_ablated_op_is_not_an_instruction_the_tape_executes() {
         let tape = crate::replicator::handwritten_replicator();
@@ -830,6 +894,8 @@ mod tests {
             dominant_compressed_len: None,
             dominant_instruction_count: None,
             dominant_replicates: false,
+            dominant_raw_len: None,
+            dominant_tape_hash: None,
         }
     }
 

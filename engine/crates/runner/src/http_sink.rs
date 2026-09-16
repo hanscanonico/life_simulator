@@ -160,6 +160,8 @@ mod tests {
             dominant_compressed_len: None,
             dominant_instruction_count: None,
             dominant_replicates: false,
+            dominant_raw_len: None,
+            dominant_tape_hash: None,
         }
     }
 

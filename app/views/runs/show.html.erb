@@ -54,6 +54,12 @@
 
 <h2>Metrics</h2>
 <p><%= link_to "Download CSV", samples_run_path(@show.run, format: :csv), class: "btn btn-sm btn-outline" %></p>
+<p class="text-muted text-sm">
+  Compressed length saturates: zlib wraps an incompressible tape in 11 bytes, so a tape of
+  junk reads its cap plus 11 whatever the cap is. Read it against the tape's own length —
+  the ratio below is near 1 for junk and well under 1 for a tape with structure in it — and
+  read complexity off <span class="mono">dominant_instruction_count</span>.
+</p>
 <% if @show.charts_empty? %>
   <p class="text-muted">This run has not reported a sample yet.</p>
 <% else %>

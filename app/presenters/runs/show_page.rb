@@ -18,8 +18,12 @@ module Runs
       "lineage_variation" => "Variation within a lineage",
       "copy_cost" => "Copy cost (steps)",
       "dominant_compressed_len" => "Compressed length of the dominant tape (bytes)",
-      "dominant_instruction_count" => "Instructions in the dominant tape"
+      "dominant_instruction_count" => "Instructions in the dominant tape",
+      "dominant_raw_len" => "Length of the dominant tape (bytes)"
     }.freeze
+
+    COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
+    TURNOVER_TITLE = "Dominant tape turnover (1 = a different tape than the sample before)"
 
     SAMPLE_CLOCK = "COUNT(*), MIN(epoch), MAX(epoch), MIN(created_at), MAX(created_at)"
     # The rows of one batch (50 samples, `http_sink::BATCH_SIZE`) share a wall-clock instant
@@ -37,10 +41,27 @@ module Runs
     attr_reader :run
 
     def charts
-      @charts ||= METRICS.map do |metric, title|
-        Charts::LineChart.new(points: MetricSeriesService.call(run: run, metric: metric), title: title,
-                              x_label: "Epoch", y_label: title, marker: run.transition_epoch)
+      @charts ||= METRICS.map { |metric, title| chart_of(MetricSeriesService.call(run: run, metric: metric), title) } +
+                  [chart_of(compressibility_points, COMPRESSIBILITY_TITLE),
+                   chart_of(turnover_points, TURNOVER_TITLE)]
+    end
+
+    # zlib wraps an incompressible tape in 11 bytes, so a tape of junk compresses to a
+    # little more than its own length and the compressed reading alone cannot be told from
+    # the tape cap (DESIGN §1.2). Read against the raw length it can: near 1 is junk.
+    def compressibility_points
+      @compressibility_points ||= dominant_readings.filter_map do |epoch, values|
+        compressed = values["dominant_compressed_len"]
+        raw = values["dominant_raw_len"]
+        [epoch, compressed / raw.to_f] if compressed.is_a?(Numeric) && raw.is_a?(Numeric) && raw.positive?
       end
+    end
+
+    # Whether the dominant tape kept its identity from one sample to the next, read off the
+    # engine's hash of its bytes. The first sample of a run has nothing to differ from.
+    def turnover_points
+      @turnover_points ||= tape_hashes.each_cons(2)
+                                      .map { |(_, before), (epoch, after)| [epoch, after == before ? 0 : 1] }
     end
 
     def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)
@@ -115,6 +136,22 @@ module Runs
     end
 
     private
+
+    def tape_hashes
+      dominant_readings.filter_map do |epoch, values|
+        hash = values["dominant_tape_hash"]
+        [epoch, hash] if hash.is_a?(String)
+      end
+    end
+
+    def chart_of(points, title)
+      Charts::LineChart.new(points: points, title: title, x_label: "Epoch", y_label: title,
+                            marker: run.transition_epoch)
+    end
+
+    # The same rows every series is read from: identical SQL inside one request is served
+    # by the query cache.
+    def dominant_readings = @dominant_readings ||= run.samples.order(:epoch).pluck(:epoch, :values)
 
     def emergence_label
       return transition_label unless run.transition_epoch

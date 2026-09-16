@@ -565,3 +565,31 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   corpus by the new rule and shouts when it would clear a stored emergence; the transition
   report gains a `crossings` column, so run 543 reads `crossings 2, transition_epoch 630,
   emergence_epoch 12 7xx`.
+- 2026-09-16 — **Complexity is read off the instruction count, not the compressed length.**
+  `dominant_compressed_len` saturates: zlib's envelope on an incompressible stream is 11
+  bytes, so a tape of junk compresses to its own length plus 11, and that is exactly what
+  92–99.8% of the post-crossing samples of every room-to-grow arm read — 75 / 139 / 267 /
+  523 bytes at caps 64 / 128 / 256 / 512. "523 bytes" at cap 512 cannot be told apart from
+  512 random bytes, so the reading measures the cap rather than the replicator, and a
+  finding that decided the room-to-grow plateau on it would be reporting the parameter it
+  swept. `dominant_instruction_count` is not capped that way: post-crossing it reads 9–17
+  ops at cap 64, 20–26 at 128, 17–28 at 256 and 37–52 at 512, which is 14–26% of the tape
+  at the smallest cap and 7–10% at the largest — quadrupling the byte budget does not
+  quadruple the op content. **The pre-registered reading for "complexity keeps rising" is
+  the instruction count** (and later a conserved core), never the compressed length alone:
+  `Findings::OpenEndednessSurvey` now decides sweeps 7 and 8 on
+  `dominant_instruction_count`, and the finding page states this caveat in the words above.
+  The compressed length is kept as a length and nothing else. **Two per-sample observables
+  are added so it can be read as one**: `dominant_raw_len`, the dominant tape's own length
+  in bytes, and `dominant_tape_hash`, FNV-1a 64 of its bytes as sixteen lowercase hex
+  digits — the engine's own `hash::fnv1a64`, a fixed function of the bytes on every
+  platform and every build, never a platform hasher, and never compared for anything but
+  equality. The run page reads compressed over raw off them (near 1 is junk, well under 1
+  is a tape with structure) and counts how often the dominant tape's identity changes
+  between consecutive samples; both are derived on the read side for display and neither is
+  a new metric — the engine stays the authority. **Every reading that existed is unchanged**:
+  the new fields are appended to `Metrics`, nothing draws from an RNG stream, no extra tape
+  is compressed, and the engine's pinned observable digests are split so the fields that
+  existed stay pinned to the digits they were pinned to. **Runs already finished keep nulls**
+  on both new fields — the tapes those samples described are gone, so no backfill is
+  possible — and every reader tolerates a null.
