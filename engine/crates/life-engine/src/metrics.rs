@@ -66,6 +66,16 @@ pub struct Metrics {
     /// FNV-1a 64 of that same tape's bytes, as sixteen lowercase hex digits: an identity
     /// for the dominant tape that two samples can be compared on, and nothing else.
     pub dominant_tape_hash: Option<String>,
+    /// Byte positions the largest lineage holds invariant: the positions at least
+    /// `CONSERVED_CORE_SHARE_NUMERATOR` members in `CONSERVED_CORE_SHARE_DENOMINATOR` give
+    /// the same byte value, counted over the largest lineage that holds more than one cell.
+    /// `lineage_variation` says how far the cloud has spread; this says how much of it is a
+    /// core that survived the spreading. `None` where there is no such lineage, and on the
+    /// life substrate.
+    pub conserved_core_bytes: Option<u32>,
+    /// How many of those conserved positions hold a byte the run's instruction set
+    /// executes: the part of the core that is program rather than junk held still.
+    pub conserved_core_ops: Option<u32>,
 }
 
 impl Metrics {
@@ -333,14 +343,7 @@ pub fn lineage_variation(tapes: Tapes<'_>, lineages: &[u64]) -> f64 {
     }
     let tagged = || lineages.iter().copied().zip(tapes.iter());
 
-    let mut sizes: HashMap<u64, usize> = HashMap::new();
-    for (id, _) in tagged() {
-        *sizes.entry(id).or_insert(0) += 1;
-    }
-    let mut read: Vec<(u64, usize)> = sizes.into_iter().filter(|(_, held)| *held > 1).collect();
-    // Largest first, and the lowest id of any that tie, so the reading is a function of
-    // the world alone however the ids arrived from the map.
-    read.sort_unstable_by_key(|(id, held)| (std::cmp::Reverse(*held), *id));
+    let mut read = ranked_lineages(lineages);
     read.truncate(VARIATION_TOP_LINEAGES);
     if read.is_empty() {
         return 0.0;
@@ -358,6 +361,89 @@ pub fn lineage_variation(tapes: Tapes<'_>, lineages: &[u64]) -> f64 {
         .map(|members| Lineage { members }.distance_to_modal_tape())
         .sum();
     distance as f64 / members.len() as f64
+}
+
+/// The lineages that hold more than one cell, largest first and the lowest id of any that
+/// tie — the ranking `lineage_variation` and `conserved_core` both read, a function of the
+/// world alone however the ids arrived from the map. A lineage of one is left out: it sits
+/// at distance 0 from itself and agrees with itself at every byte, so a young soup's crowd
+/// of singletons would answer both readings before a colony ever formed.
+fn ranked_lineages(lineages: &[u64]) -> Vec<(u64, usize)> {
+    let mut sizes: HashMap<u64, usize> = HashMap::new();
+    for id in lineages {
+        *sizes.entry(*id).or_insert(0) += 1;
+    }
+    let mut ranked: Vec<(u64, usize)> = sizes.into_iter().filter(|(_, held)| *held > 1).collect();
+    ranked.sort_unstable_by_key(|(id, held)| (std::cmp::Reverse(*held), *id));
+    ranked
+}
+
+/// Share of a lineage's members that must give a byte position the same value for that
+/// position to count as conserved: nine in ten (`docs/DESIGN.md` §1.2). It is a ratio of
+/// two integers rather than 0.9 so the edge — exactly nine members in ten — is decided by
+/// integer arithmetic and not by what a binary float rounds 0.9 to.
+pub const CONSERVED_CORE_SHARE_NUMERATOR: u64 = 9;
+pub const CONSERVED_CORE_SHARE_DENOMINATOR: u64 = 10;
+
+/// What one lineage holds invariant across its members: the positions they agree on, and
+/// how many of those hold an instruction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConservedCore {
+    pub bytes: u32,
+    pub ops: u32,
+}
+
+/// The conserved core of the largest lineage that holds more than one cell: the byte
+/// positions `CONSERVED_CORE_SHARE_NUMERATOR` members in `CONSERVED_CORE_SHARE_DENOMINATOR`
+/// give one and the same value, with the count of those positions whose conserved value is
+/// an instruction of the run's own op set. `lineage_variation` reads how far the cloud has
+/// spread from its modal tape; this reads whether a functional core survived the spreading.
+/// A member shorter than a position holds nothing there and so agrees with nobody, the same
+/// reading `hamming_distance` makes of a tape that grew. The share is above a half, so at
+/// most one byte value per position can carry a position. `None` where no lineage holds two
+/// cells, and on a world with no tapes.
+pub fn conserved_core(
+    tapes: Tapes<'_>,
+    lineages: &[u64],
+    ops: bff::OpSet,
+) -> Option<ConservedCore> {
+    if lineages.is_empty() || tapes.stride() == 0 {
+        return None;
+    }
+    let (top, _) = *ranked_lineages(lineages).first()?;
+    let members: Vec<&[u8]> = lineages
+        .iter()
+        .copied()
+        .zip(tapes.iter())
+        .filter(|(id, _)| *id == top)
+        .map(|(_, tape)| tape)
+        .collect();
+
+    let width = members.iter().map(|tape| tape.len()).max().unwrap_or(0);
+    // The 256 counts of every position, laid out flat so each member's tape is read in one
+    // sequential pass: the whole reading costs members × tape length.
+    let mut counts = vec![0u32; width * 256];
+    for tape in &members {
+        for (position, byte) in tape.iter().enumerate() {
+            counts[position * 256 + *byte as usize] += 1;
+        }
+    }
+
+    let mut core = ConservedCore { bytes: 0, ops: 0 };
+    for position in counts.as_chunks::<256>().0 {
+        let agreed = position
+            .iter()
+            .position(|count| conserved(u64::from(*count), members.len() as u64));
+        if let Some(byte) = agreed {
+            core.bytes += 1;
+            core.ops += u32::from(ops.enables(byte as u8));
+        }
+    }
+    Some(core)
+}
+
+fn conserved(agreeing: u64, members: u64) -> bool {
+    agreeing * CONSERVED_CORE_SHARE_DENOMINATOR >= members * CONSERVED_CORE_SHARE_NUMERATOR
 }
 
 /// One lineage's cells, ordered by tape: the grouping `lineage_variation` reads.
@@ -581,6 +667,108 @@ mod tests {
             ranked_tapes(Tapes::ragged(cells, 6, &lens)),
             vec![(&b"abcd"[..], 2), (&b"abcdef"[..], 1)]
         );
+    }
+
+    #[test]
+    fn a_lineage_of_clones_conserves_every_byte_of_its_tape() {
+        let core = conserved_core(
+            Tapes::uniform(b"+a[b+a[b+a[b", 4),
+            &[1, 1, 1],
+            bff::OpSet::ALL,
+        )
+        .expect("a lineage of three");
+        assert_eq!(core.bytes, 4, "every position agrees");
+        assert_eq!(core.ops, 2, "two of the four bytes are instructions");
+    }
+
+    #[test]
+    fn a_position_is_conserved_at_nine_members_in_ten_and_not_at_eight() {
+        let mut cells = b"ab".repeat(9);
+        cells.extend_from_slice(b"az");
+        let ten = [1u64; 10];
+        assert_eq!(
+            conserved_core(Tapes::uniform(&cells, 2), &ten, bff::OpSet::ALL)
+                .expect("a lineage of ten")
+                .bytes,
+            2,
+            "exactly nine members in ten agreeing is the threshold, not past it"
+        );
+
+        let mut cells = b"ab".repeat(8);
+        cells.extend_from_slice(b"azay");
+        assert_eq!(
+            conserved_core(Tapes::uniform(&cells, 2), &ten, bff::OpSet::ALL)
+                .expect("a lineage of ten")
+                .bytes,
+            1,
+            "a position two members in ten dissent on is out of the core"
+        );
+    }
+
+    #[test]
+    fn conserved_ops_are_counted_against_the_run_own_instruction_set() {
+        let ablated = bff::OpSet::parse("<>{}+-.,[").expect("a legal set");
+        let cells = b"+]+]+]";
+        assert_eq!(
+            conserved_core(Tapes::uniform(cells, 2), &[1, 1, 1], bff::OpSet::ALL)
+                .expect("a lineage of three")
+                .ops,
+            2
+        );
+        assert_eq!(
+            conserved_core(Tapes::uniform(cells, 2), &[1, 1, 1], ablated)
+                .expect("a lineage of three")
+                .ops,
+            1,
+            "the byte whose op the run ablated is not an instruction the tape executes"
+        );
+    }
+
+    #[test]
+    fn a_member_too_short_to_reach_a_position_agrees_with_nobody_there() {
+        let cells = b"abcd\0\0abcd\0\0abcdef";
+        let lens = [4u32, 4, 6];
+        let core = conserved_core(Tapes::ragged(cells, 6, &lens), &[1, 1, 1], bff::OpSet::ALL)
+            .expect("a lineage of three");
+        assert_eq!(
+            core.bytes, 4,
+            "the two bytes only the grown tape holds are held by one member in three"
+        );
+    }
+
+    #[test]
+    fn the_conserved_core_reads_the_largest_lineage_alone() {
+        let cells = b"abababzz";
+        assert_eq!(
+            conserved_core(Tapes::uniform(cells, 2), &[1, 1, 1, 2], bff::OpSet::ALL)
+                .expect("a lineage of three")
+                .bytes,
+            2,
+            "the singleton second lineage is not what is read"
+        );
+
+        let cells = b"aaabacbbbb";
+        assert_eq!(
+            conserved_core(Tapes::uniform(cells, 5), &[1, 2], bff::OpSet::ALL),
+            None,
+            "no lineage holds two cells"
+        );
+        assert_eq!(
+            conserved_core(Tapes::uniform(b"", 0), &[], bff::OpSet::ALL),
+            None
+        );
+    }
+
+    #[test]
+    fn a_lineage_that_drifted_apart_keeps_only_the_bytes_it_held_still() {
+        let mut cells: Vec<u8> = Vec::new();
+        for member in 0..10u8 {
+            cells.extend_from_slice(&[b'+', b'a' + member, b'[']);
+        }
+        let core = conserved_core(Tapes::uniform(&cells, 3), &[1u64; 10], bff::OpSet::ALL)
+            .expect("a lineage of ten");
+        assert_eq!(core.bytes, 2, "the drifting middle byte is out of the core");
+        assert_eq!(core.ops, 2, "and both survivors are instructions");
     }
 
     #[test]
@@ -896,6 +1084,8 @@ mod tests {
             dominant_replicates: false,
             dominant_raw_len: None,
             dominant_tape_hash: None,
+            conserved_core_bytes: None,
+            conserved_core_ops: None,
         }
     }
 

@@ -593,3 +593,26 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   existed stay pinned to the digits they were pinned to. **Runs already finished keep nulls**
   on both new fields — the tapes those samples described are gone, so no backfill is
   possible — and every reader tolerates a null.
+- 2026-09-16 — **The conserved core: two per-sample observables that read what a lineage
+  holds still.** At the plateau one lineage holds 97–100% of the world while its members
+  diverge across 83–93% of their bytes, and `lineage_variation` cannot say whether a
+  working copy loop survives inside that cloud or whether the cloud is turnover at a flat
+  tape size. `conserved_core_bytes` counts the byte positions the largest lineage holds
+  invariant — the positions at least **nine of every ten** of its members give one and the
+  same value — and `conserved_core_ops` counts how many of those hold a byte the run's own
+  instruction set executes. The threshold is a ratio of two integers
+  (`metrics::CONSERVED_CORE_SHARE_NUMERATOR` over `_DENOMINATOR`), so exactly nine members
+  in ten is inside the core and eight is not, and the edge never depends on what a binary
+  float rounds 0.9 to; it is a constant of the engine, not a parameter. The lineage read is
+  the one `lineage_variation` already ranks by — the largest that holds at least two cells,
+  ties by lowest id — and a member too short to reach a position agrees with nobody there,
+  the reading `lineage_variation` already makes of a tape that grew. Both are null where no
+  lineage holds two cells, on the life substrate, and on every sample recorded before they
+  existed; runs already finished keep nulls, since the tapes are gone. **This is the
+  pre-registered secondary reading of every substrate sweep that follows**, beside
+  `dominant_instruction_count`. **Every reading that existed is unchanged**: the fields are
+  appended to `Metrics`, the computation draws nothing from an RNG stream and only walks
+  tapes the sample has already read, and the pinned digests of the earlier fields are left
+  where they were — a 20 000-epoch 128² run at the defaults emits the same 2 001 samples,
+  field for field, as the same run on the commit before. It costs one pass over the top
+  lineage's tapes per sample (members × tape length): 0.6 ms of a 28 ms sample on 128².

@@ -194,6 +194,22 @@
       the tape the most cells hold, whatever it does.
     </dd>
 
+    <dt class="mono">conserved_core_bytes</dt>
+    <dd>
+      How many byte positions the largest lineage holds invariant across its members: the
+      positions at least nine of every ten of them give one and the same value, read off the
+      largest lineage that holds more than one cell. Beside it
+      <span class="mono">conserved_core_ops</span> counts how many of those positions hold a
+      byte the run's instruction set executes.
+      <span class="mono">lineage_variation</span> says how far a lineage has spread; these
+      say whether a working core survived the spreading — a conserved copy loop with junk
+      around it reads a small core of instructions inside a wide cloud, and turnover at a
+      flat tape size reads none at all. A member too short to reach a position holds nothing
+      there and agrees with nobody. A lineage of identical tapes reads its whole tape length.
+      Null where no lineage holds two cells, on the Life substrate, and on every sample
+      recorded before they existed.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which

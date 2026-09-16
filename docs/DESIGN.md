@@ -114,6 +114,24 @@ claim rests on it.
   alone in its lineage sits at distance 0 from itself, and the crowd of them a young soup
   carries would dilute a drifting colony to nothing. The 8 is a constant of the engine
   (`metrics::VARIATION_TOP_LINEAGES`), not a parameter. The life substrate reports 0.
+- `conserved_core_bytes` / `conserved_core_ops`: what the largest lineage holds
+  invariant across its members — the reading that tells a conserved copy loop with junk
+  around it from turnover at a flat size, which `lineage_variation` alone cannot. The
+  sampling rule is the one `lineage_variation` ranks by: the largest lineage that holds
+  **at least 2 cells** (ties by lowest lineage id), read off the cells the sample has
+  already ranked, so the reading draws nothing and no RNG stream moves. A byte **position**
+  counts as conserved when at least **9 of every 10** members hold one and the same value
+  there — a ratio of two integers, so exactly nine in ten is inside the core and eight is
+  not, and never a rounded 0.9 (`metrics::CONSERVED_CORE_SHARE_NUMERATOR` over
+  `_DENOMINATOR`, a constant of the engine and not a parameter). A member too short to
+  reach a position holds nothing there and agrees with nobody, the same reading
+  `lineage_variation` makes of a tape that grew. The first count is those positions; the
+  second is how many of them hold a byte the run's own instruction set executes, so a core
+  of program can be told from a core of junk held still. A lineage of clones reads its whole
+  tape length; a lineage whose every position drifts reads 0. Both are null where no lineage
+  holds two cells, on the life substrate, and on every sample recorded before they existed.
+  The reading costs one pass over the top lineage's tapes — members × tape length — per
+  sample.
 - `copy_cost`: interpreter steps per byte-exact copy by the **dominant replicator** — the
   most populous tape among the `top_k` tested that passes the replicator test. The test
   already executes four trials per tape; the reading is the **median** of the steps the

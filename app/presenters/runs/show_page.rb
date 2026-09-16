@@ -19,7 +19,9 @@ module Runs
       "copy_cost" => "Copy cost (steps)",
       "dominant_compressed_len" => "Compressed length of the dominant tape (bytes)",
       "dominant_instruction_count" => "Instructions in the dominant tape",
-      "dominant_raw_len" => "Length of the dominant tape (bytes)"
+      "dominant_raw_len" => "Length of the dominant tape (bytes)",
+      "conserved_core_bytes" => "Conserved core of the largest lineage (bytes)",
+      "conserved_core_ops" => "Instructions in that conserved core"
     }.freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"

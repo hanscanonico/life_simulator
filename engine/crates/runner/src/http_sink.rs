@@ -162,6 +162,8 @@ mod tests {
             dominant_replicates: false,
             dominant_raw_len: None,
             dominant_tape_hash: None,
+            conserved_core_bytes: None,
+            conserved_core_ops: None,
         }
     }
 
