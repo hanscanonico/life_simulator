@@ -747,6 +747,17 @@ mod tests {
             "the singleton second lineage is not what is read"
         );
 
+        // `ab ab ab` under lineage 1 and `cd ce` under lineage 2: the second is ranked as
+        // well, holding two cells, and its core is one byte rather than two.
+        let cells = b"abababcdce";
+        assert_eq!(
+            conserved_core(Tapes::uniform(cells, 2), &[1, 1, 1, 2, 2], bff::OpSet::ALL)
+                .expect("a lineage of three")
+                .bytes,
+            2,
+            "the smaller lineage of two is not what is read either"
+        );
+
         let cells = b"aaabacbbbb";
         assert_eq!(
             conserved_core(Tapes::uniform(cells, 5), &[1, 2], bff::OpSet::ALL),
