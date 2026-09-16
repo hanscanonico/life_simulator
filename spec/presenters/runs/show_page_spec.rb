@@ -42,6 +42,20 @@ RSpec.describe Runs::ShowPage do
       expect(page.compressibility_points).to be_empty
     end
 
+    it "reads no ratio off a tape of no bytes at all" do
+      create(:sample, run: run, epoch: 100,
+                      values: { "dominant_compressed_len" => 11, "dominant_raw_len" => 0 })
+
+      expect(page.compressibility_points).to be_empty
+    end
+
+    it "names the axes of the two derived charts short enough to be read rotated" do
+      axes = page.charts.last(2).map(&:y_label)
+
+      expect(axes).to eq([described_class::COMPRESSIBILITY_AXIS, described_class::TURNOVER_AXIS])
+      expect(axes.map(&:length)).to all(be <= 20)
+    end
+
     it "counts the dominant tape as turned over whenever its hash changed" do
       %w[aa aa bb].each_with_index do |hash, index|
         create(:sample, run: run, epoch: 100 + (index * 10), values: { "dominant_tape_hash" => hash })

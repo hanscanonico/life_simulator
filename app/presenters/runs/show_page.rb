@@ -24,6 +24,11 @@ module Runs
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
     TURNOVER_TITLE = "Dominant tape turnover (1 = a different tape than the sample before)"
+    # The y title is drawn rotated inside a gutter the height of the plot (240 user units,
+    # `Charts::Plot`), so a name much past twenty characters is clipped at both ends. These
+    # two say in the caption what the axis cannot.
+    COMPRESSIBILITY_AXIS = "Compressed / raw"
+    TURNOVER_AXIS = "Turnover (0 or 1)"
 
     SAMPLE_CLOCK = "COUNT(*), MIN(epoch), MAX(epoch), MIN(created_at), MAX(created_at)"
     # The rows of one batch (50 samples, `http_sink::BATCH_SIZE`) share a wall-clock instant
@@ -42,8 +47,8 @@ module Runs
 
     def charts
       @charts ||= METRICS.map { |metric, title| chart_of(MetricSeriesService.call(run: run, metric: metric), title) } +
-                  [chart_of(compressibility_points, COMPRESSIBILITY_TITLE),
-                   chart_of(turnover_points, TURNOVER_TITLE)]
+                  [chart_of(compressibility_points, COMPRESSIBILITY_TITLE, axis: COMPRESSIBILITY_AXIS),
+                   chart_of(turnover_points, TURNOVER_TITLE, axis: TURNOVER_AXIS)]
     end
 
     # zlib wraps an incompressible tape in 11 bytes, so a tape of junk compresses to a
@@ -144,8 +149,8 @@ module Runs
       end
     end
 
-    def chart_of(points, title)
-      Charts::LineChart.new(points: points, title: title, x_label: "Epoch", y_label: title,
+    def chart_of(points, title, axis: title)
+      Charts::LineChart.new(points: points, title: title, x_label: "Epoch", y_label: axis,
                             marker: run.transition_epoch)
     end
 
