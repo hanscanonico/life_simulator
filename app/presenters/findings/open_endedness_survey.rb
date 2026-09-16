@@ -3,8 +3,9 @@
 module Findings
   # The three substrate bets of DESIGN §1.3 — instruction cost (sweep 6), environmental
   # structure (sweep 7) and room to grow (sweep 8) — read as one open-endedness question:
-  # after emergence, does the dominant replicator's complexity, or the number of lineages
-  # a world keeps, go anywhere the default substrate did not take it?
+  # after emergence, does the dominant replicator's complexity — how many instructions its
+  # tape carries — or the number of lineages a world keeps, go anywhere the default
+  # substrate did not take it?
   #
   # Emergence here is the confirmed crossing (`docs/design_record.md`, 2026-09-15): a run
   # the detector flagged but no replicator or copy backed is not one of these worlds, and
@@ -38,7 +39,12 @@ module Findings
     end
     private_class_method :numeric_reading
 
-    LENGTH_READING = numeric_reading("dominant_compressed_len")
+    # Complexity is read off the instruction count and never off the compressed length:
+    # zlib's 11-byte envelope on an incompressible tape puts `dominant_compressed_len` at
+    # the tape cap plus 11 on nearly every post-crossing sample of every room-to-grow arm,
+    # so that reading measures the cap rather than the replicator (`docs/design_record.md`,
+    # 2026-09-16).
+    INSTRUCTION_READING = numeric_reading("dominant_instruction_count")
     LINEAGE_READING = numeric_reading("distinct_lineages")
 
     # The conventional threshold, and the only place this page uses one: it marks a
@@ -53,8 +59,8 @@ module Findings
     # which this substrate reads as lineages kept alive.
     BETS = [
       { sweep: "energy_per_epoch", decided_by: :lineages },
-      { sweep: "environmental_structure", decided_by: :length },
-      { sweep: "max_tape_len", decided_by: :length }
+      { sweep: "environmental_structure", decided_by: :instructions },
+      { sweep: "max_tape_len", decided_by: :instructions }
     ].freeze
 
     # One emerged run, as the two series its samples carry at or after its confirmed
@@ -217,7 +223,7 @@ module Findings
 
     def instruction_cost = bet("energy-per-epoch")
 
-    def instruction_cost_complexity = instruction_cost.with(decided_by: :length)
+    def instruction_cost_complexity = instruction_cost.with(decided_by: :instructions)
 
     def environmental_structure = bet("environmental-structure")
 
@@ -310,13 +316,13 @@ module Findings
         Sample.joins(:run).where(run_id: emerged_runs.map(&:id))
               .where("samples.epoch >= runs.emergence_epoch")
               .order(:run_id, :epoch)
-              .pluck(:run_id, :epoch, LENGTH_READING, LINEAGE_READING)
+              .pluck(:run_id, :epoch, INSTRUCTION_READING, LINEAGE_READING)
               .group_by(&:first)
               .transform_values { |rows| series_of(rows) }
     end
 
     def series_of(rows)
-      { length: points_of(rows) { |row| row[2] }, lineages: points_of(rows) { |row| row[3] } }
+      { instructions: points_of(rows) { |row| row[2] }, lineages: points_of(rows) { |row| row[3] } }
     end
 
     def points_of(rows)

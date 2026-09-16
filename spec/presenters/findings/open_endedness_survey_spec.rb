@@ -8,12 +8,12 @@ RSpec.describe Findings::OpenEndednessSurvey do
                         param_grid: Lab::SWEEPS.fetch(key).fetch(:param_grid))
   end
 
-  def emerged_run(experiment, arm, lengths: [], lineages: [], transition_epoch: 100)
+  def emerged_run(experiment, arm, instructions: [], lineages: [], transition_epoch: 100)
     run = create(:run, :emerged, experiment: experiment, transition_epoch: transition_epoch,
                                  params: Lab::Schema.run_defaults.merge(arm))
-    [lengths.size, lineages.size].max.times do |index|
+    [instructions.size, lineages.size].max.times do |index|
       create(:sample, run: run, epoch: transition_epoch + (index * 10),
-                      values: { "dominant_compressed_len" => lengths[index],
+                      values: { "dominant_instruction_count" => instructions[index],
                                 "distinct_lineages" => lineages[index] }.compact)
     end
     run
@@ -32,14 +32,14 @@ RSpec.describe Findings::OpenEndednessSurvey do
   end
 
   it "decides the instruction-cost bet on lineages and the other two on complexity" do
-    expect(described_class.build.bets.map(&:decided_by)).to eq(%i[lineages length length])
+    expect(described_class.build.bets.map(&:decided_by)).to eq(%i[lineages instructions instructions])
   end
 
   it "reads every sweep on both observables, deciding it on only one" do
     survey = described_class.build
 
     expect(survey.instruction_cost.decided_by).to eq(:lineages)
-    expect(survey.instruction_cost_complexity).to have_attributes(decided_by: :length,
+    expect(survey.instruction_cost_complexity).to have_attributes(decided_by: :instructions,
                                                                   slug: "energy-per-epoch")
     expect(survey.environmental_structure_lineages).to have_attributes(decided_by: :lineages,
                                                                        slug: "environmental-structure")
@@ -65,8 +65,8 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with a treated arm settling above its control" do
     it "reads the hypothesis as supported even while other arms are untestable" do
       experiment = sweep("max_tape_len")
-      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
-      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, lengths: [60, 120]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, instructions: [60, 120]) }
 
       bet = described_class.build.bet("max-tape-len")
 
@@ -79,9 +79,9 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with every treated arm measured and plateauing where its control does" do
     it "reads the hypothesis as not supported" do
       experiment = sweep("environmental_structure")
-      2.times { emerged_run(experiment, { "structure" => "uniform" }, lengths: [36, 44]) }
-      2.times { emerged_run(experiment, { "structure" => "gradient" }, lengths: [36, 44]) }
-      2.times { emerged_run(experiment, { "structure" => "patchwork" }, lengths: [40, 40]) }
+      2.times { emerged_run(experiment, { "structure" => "uniform" }, instructions: [36, 44]) }
+      2.times { emerged_run(experiment, { "structure" => "gradient" }, instructions: [36, 44]) }
+      2.times { emerged_run(experiment, { "structure" => "patchwork" }, instructions: [40, 40]) }
 
       bet = described_class.build.bet("environmental-structure")
 
@@ -94,10 +94,10 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with one treated arm under the threshold and no other arm raising the peak" do
     it "leaves the hypothesis unresolved and names the arm nothing could be read from" do
       experiment = sweep("max_tape_len")
-      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 44]) }
-      2.times { emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [30, 36]) }
-      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, lengths: [30, 40]) }
-      emerged_run(experiment, { "max_tape_len" => 512 }, lengths: [30, 36])
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 44]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 128 }, instructions: [30, 36]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, instructions: [30, 40]) }
+      emerged_run(experiment, { "max_tape_len" => 512 }, instructions: [30, 36])
 
       bet = described_class.build.bet("max-tape-len")
 
@@ -109,16 +109,16 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with half of an arm's runs above the control and half below" do
     it "needs more than half to read the arm as raising the peak" do
       experiment = sweep("environmental_structure")
-      2.times { emerged_run(experiment, { "structure" => "uniform" }, lengths: [36, 44]) }
-      emerged_run(experiment, { "structure" => "gradient" }, lengths: [60, 120])
-      emerged_run(experiment, { "structure" => "gradient" }, lengths: [30, 36])
-      2.times { emerged_run(experiment, { "structure" => "patchwork" }, lengths: [40, 40]) }
+      2.times { emerged_run(experiment, { "structure" => "uniform" }, instructions: [36, 44]) }
+      emerged_run(experiment, { "structure" => "gradient" }, instructions: [60, 120])
+      emerged_run(experiment, { "structure" => "gradient" }, instructions: [30, 36])
+      2.times { emerged_run(experiment, { "structure" => "patchwork" }, instructions: [40, 40]) }
 
       bet = described_class.build.bet("environmental-structure")
       arm = bet.arms.find { |candidate| candidate.value == "gradient" }
 
-      expect(arm.measured_count(:length)).to eq(2)
-      expect(arm.above_count(:length, bet.control_median_peak)).to eq(1)
+      expect(arm.measured_count(:instructions)).to eq(2)
+      expect(arm.above_count(:instructions, bet.control_median_peak)).to eq(1)
       expect(bet).to have_attributes(verdict: :not_supported, raising_arms: [])
     end
   end
@@ -126,15 +126,15 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with a minority of an arm's runs above the control" do
     it "does not read that arm as raising the peak" do
       experiment = sweep("environmental_structure")
-      2.times { emerged_run(experiment, { "structure" => "uniform" }, lengths: [36, 44]) }
-      emerged_run(experiment, { "structure" => "gradient" }, lengths: [60, 120])
-      2.times { emerged_run(experiment, { "structure" => "gradient" }, lengths: [30, 36]) }
-      2.times { emerged_run(experiment, { "structure" => "patchwork" }, lengths: [40, 40]) }
+      2.times { emerged_run(experiment, { "structure" => "uniform" }, instructions: [36, 44]) }
+      emerged_run(experiment, { "structure" => "gradient" }, instructions: [60, 120])
+      2.times { emerged_run(experiment, { "structure" => "gradient" }, instructions: [30, 36]) }
+      2.times { emerged_run(experiment, { "structure" => "patchwork" }, instructions: [40, 40]) }
 
       bet = described_class.build.bet("environmental-structure")
       arm = bet.arms.find { |candidate| candidate.value == "gradient" }
 
-      expect(arm.above_count(:length, bet.control_median_peak)).to eq(1)
+      expect(arm.above_count(:instructions, bet.control_median_peak)).to eq(1)
       expect(bet).to have_attributes(verdict: :not_supported, raising_arms: [])
     end
   end
@@ -142,9 +142,9 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with every treated arm measured against a control arm of one run" do
     it "leaves the hypothesis unresolved rather than refuting it against one seed" do
       experiment = sweep("max_tape_len")
-      emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40])
+      emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40])
       [128, 256, 512].each do |cap|
-        2.times { emerged_run(experiment, { "max_tape_len" => cap }, lengths: [30, 36]) }
+        2.times { emerged_run(experiment, { "max_tape_len" => cap }, instructions: [30, 36]) }
       end
 
       bet = described_class.build.bet("max-tape-len")
@@ -157,20 +157,20 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with a single run in the control arm" do
     it "leaves the hypothesis unresolved rather than deciding it on one seed" do
       experiment = sweep("max_tape_len")
-      emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40])
-      2.times { emerged_run(experiment, { "max_tape_len" => 512 }, lengths: [60, 120]) }
+      emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40])
+      2.times { emerged_run(experiment, { "max_tape_len" => 512 }, instructions: [60, 120]) }
 
       bet = described_class.build.bet("max-tape-len")
 
       expect(bet).to have_attributes(verdict: :unresolved, control_comparable?: false)
-      expect(bet.control_arm.measured_count(:length)).to eq(1)
+      expect(bet.control_arm.measured_count(:instructions)).to eq(1)
     end
   end
 
   context "with no treated arm transitioned" do
     it "leaves the hypothesis unresolved however many control runs there are" do
       experiment = sweep("max_tape_len")
-      3.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      3.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40]) }
 
       expect(described_class.build.bet("max-tape-len").verdict).to eq(:unresolved)
     end
@@ -179,9 +179,9 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with a treated arm run to a whole seed-block and nothing emerged" do
     it "reads the hypothesis as not supported with no other arm raising the peak" do
       experiment = sweep("max_tape_len")
-      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 44]) }
-      2.times { emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [30, 36]) }
-      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, lengths: [30, 40]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 44]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 128 }, instructions: [30, 36]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, instructions: [30, 40]) }
       10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
 
       bet = described_class.build.bet("max-tape-len")
@@ -193,9 +193,9 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
     it "reads the hypothesis as supported once another arm raises the peak" do
       experiment = sweep("max_tape_len")
-      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
-      2.times { emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [60, 120]) }
-      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, lengths: [30, 36]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 128 }, instructions: [60, 120]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 256 }, instructions: [30, 36]) }
       10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
 
       bet = described_class.build.bet("max-tape-len")
@@ -236,8 +236,8 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with a treated arm one run short of a whole seed-block" do
     it "leaves the arm untestable and the hypothesis unresolved" do
       experiment = sweep("max_tape_len")
-      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 44]) }
-      [128, 256].each { |cap| 2.times { emerged_run(experiment, { "max_tape_len" => cap }, lengths: [30, 36]) } }
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 44]) }
+      [128, 256].each { |cap| 2.times { emerged_run(experiment, { "max_tape_len" => cap }, instructions: [30, 36]) } }
       9.times { blank_run(experiment, { "max_tape_len" => 512 }) }
 
       bet = described_class.build.bet("max-tape-len")
@@ -251,9 +251,9 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with a treated arm of ten runs one of which emerged" do
     it "leaves the arm untestable rather than reading it as never emerged" do
       experiment = sweep("max_tape_len")
-      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 44]) }
-      [128, 256].each { |cap| 2.times { emerged_run(experiment, { "max_tape_len" => cap }, lengths: [30, 36]) } }
-      emerged_run(experiment, { "max_tape_len" => 512 }, lengths: [30, 36])
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 44]) }
+      [128, 256].each { |cap| 2.times { emerged_run(experiment, { "max_tape_len" => cap }, instructions: [30, 36]) } }
+      emerged_run(experiment, { "max_tape_len" => 512 }, instructions: [30, 36])
       9.times { blank_run(experiment, { "max_tape_len" => 512 }) }
 
       bet = described_class.build.bet("max-tape-len")
@@ -298,32 +298,32 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
   it "takes a run's peak from its highest reading after the crossing" do
     experiment = sweep("max_tape_len")
-    emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [36, 90, 44])
+    emerged_run(experiment, { "max_tape_len" => 128 }, instructions: [36, 90, 44])
 
     arm = described_class.build.bet("max-tape-len").arms.find { |candidate| candidate.value == 128 }
 
-    expect(arm.peaks(:length)).to eq([90])
+    expect(arm.peaks(:instructions)).to eq([90])
   end
 
   it "leaves out the samples taken before the crossing" do
     experiment = sweep("max_tape_len")
     run = create(:run, :emerged, experiment: experiment, transition_epoch: 200,
                                  params: Lab::Schema.run_defaults.merge("max_tape_len" => 128))
-    create(:sample, run: run, epoch: 100, values: { "dominant_compressed_len" => 500 })
-    create(:sample, run: run, epoch: 200, values: { "dominant_compressed_len" => 36 })
+    create(:sample, run: run, epoch: 100, values: { "dominant_instruction_count" => 500 })
+    create(:sample, run: run, epoch: 200, values: { "dominant_instruction_count" => 36 })
 
     arm = described_class.build.bet("max-tape-len").arms.find { |candidate| candidate.value == 128 }
 
-    expect(arm.peaks(:length)).to eq([36])
+    expect(arm.peaks(:instructions)).to eq([36])
   end
 
   it "keeps a run measured on one observable out of the other's counts" do
     experiment = sweep("environmental_structure")
-    emerged_run(experiment, { "structure" => "gradient" }, lengths: [36, 44])
+    emerged_run(experiment, { "structure" => "gradient" }, instructions: [36, 44])
 
     bet = described_class.build.bet("environmental-structure")
 
-    expect(bet.measured_count_of(:length)).to eq(1)
+    expect(bet.measured_count_of(:instructions)).to eq(1)
     expect(bet.measured_count_of(:lineages)).to eq(0)
   end
 
@@ -331,25 +331,34 @@ RSpec.describe Findings::OpenEndednessSurvey do
     experiment = sweep("max_tape_len")
     run = create(:run, :emerged, experiment: experiment,
                                  params: Lab::Schema.run_defaults.merge("max_tape_len" => 128))
-    create(:sample, run: run, epoch: 100, values: { "dominant_compressed_len" => nil })
+    create(:sample, run: run, epoch: 100, values: { "dominant_instruction_count" => nil })
 
-    expect(described_class.build.bet("max-tape-len").measured_count_of(:length)).to eq(0)
+    expect(described_class.build.bet("max-tape-len").measured_count_of(:instructions)).to eq(0)
   end
 
   it "reads a value the engine did not write as a number as no reading" do
     experiment = sweep("max_tape_len")
     run = create(:run, :emerged, experiment: experiment,
                                  params: Lab::Schema.run_defaults.merge("max_tape_len" => 128))
-    create(:sample, run: run, epoch: 100, values: { "dominant_compressed_len" => "44" })
+    create(:sample, run: run, epoch: 100, values: { "dominant_instruction_count" => "44" })
 
-    expect(described_class.build.bet("max-tape-len").measured_count_of(:length)).to eq(0)
+    expect(described_class.build.bet("max-tape-len").measured_count_of(:instructions)).to eq(0)
+  end
+
+  it "reads nothing off the compressed length, which saturates at the tape cap" do
+    experiment = sweep("max_tape_len")
+    run = create(:run, :emerged, experiment: experiment,
+                                 params: Lab::Schema.run_defaults.merge("max_tape_len" => 512))
+    create(:sample, run: run, epoch: 100, values: { "dominant_compressed_len" => 523 })
+
+    expect(described_class.build.bet("max-tape-len").measured_count_of(:instructions)).to eq(0)
   end
 
   it "counts no run that has not transitioned" do
     experiment = sweep("max_tape_len")
     run = create(:run, experiment: experiment, status: "finished", transition_epoch: nil,
                        params: Lab::Schema.run_defaults.merge("max_tape_len" => 128))
-    create(:sample, run: run, epoch: 100, values: { "dominant_compressed_len" => 44 })
+    create(:sample, run: run, epoch: 100, values: { "dominant_instruction_count" => 44 })
 
     expect(described_class.build).to have_attributes(emerged_count: 0, flagged_count: 0)
   end
@@ -357,15 +366,15 @@ RSpec.describe Findings::OpenEndednessSurvey do
   context "with a crossing no replicator confirmed" do
     it "counts the run as flagged and reads none of its samples" do
       experiment = sweep("max_tape_len")
-      emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [36, 44])
+      emerged_run(experiment, { "max_tape_len" => 128 }, instructions: [36, 44])
       flagged = create(:run, experiment: experiment, status: "finished", transition_epoch: 100,
                              params: Lab::Schema.run_defaults.merge("max_tape_len" => 512))
-      create(:sample, run: flagged, epoch: 100, values: { "dominant_compressed_len" => 500 })
+      create(:sample, run: flagged, epoch: 100, values: { "dominant_instruction_count" => 500 })
 
       survey = described_class.build
 
       expect(survey).to have_attributes(flagged_count: 2, emerged_count: 1)
-      expect(survey.bet("max-tape-len").measured_count_of(:length)).to eq(1)
+      expect(survey.bet("max-tape-len").measured_count_of(:instructions)).to eq(1)
     end
   end
 
@@ -374,7 +383,7 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
     it "reads each arm's emerged runs over its terminal runs" do
       experiment = sweep("max_tape_len")
-      3.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      3.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40]) }
       7.times { blank_run(experiment, { "max_tape_len" => 64 }) }
       10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
 
@@ -389,9 +398,9 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
     it "tests each treated arm against the control arm with Fisher's exact test" do
       experiment = sweep("max_tape_len")
-      emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40])
+      emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40])
       9.times { blank_run(experiment, { "max_tape_len" => 64 }) }
-      3.times { emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [36, 40]) }
+      3.times { emerged_run(experiment, { "max_tape_len" => 128 }, instructions: [36, 40]) }
       7.times { blank_run(experiment, { "max_tape_len" => 128 }) }
 
       bet = described_class.build.bet("max-tape-len")
@@ -405,7 +414,7 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
     it "marks a difference below the threshold as significant" do
       experiment = sweep("max_tape_len")
-      10.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      10.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40]) }
       10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
 
       bet = described_class.build.bet("max-tape-len")
@@ -416,7 +425,7 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
     it "reads every treated arm emerging less often than its control" do
       experiment = sweep("max_tape_len")
-      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40]) }
       8.times { blank_run(experiment, { "max_tape_len" => 64 }) }
       %w[128 256 512].each do |cap|
         10.times { blank_run(experiment, { "max_tape_len" => cap.to_i }) }
@@ -429,9 +438,9 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
     it "names the arms that emerged more often than their control" do
       experiment = sweep("max_tape_len")
-      emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40])
+      emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40])
       9.times { blank_run(experiment, { "max_tape_len" => 64 }) }
-      3.times { emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [36, 40]) }
+      3.times { emerged_run(experiment, { "max_tape_len" => 128 }, instructions: [36, 40]) }
       7.times { blank_run(experiment, { "max_tape_len" => 128 }) }
       10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
 
@@ -442,7 +451,7 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
     it "says a significant difference only where the p-value carries it" do
       experiment = sweep("max_tape_len")
-      10.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      10.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40]) }
       10.times { blank_run(experiment, { "max_tape_len" => 512 }) }
 
       expect(described_class.build.bet("max-tape-len").emergence_reading)
@@ -474,9 +483,9 @@ RSpec.describe Findings::OpenEndednessSurvey do
 
     it "pools the three controls against every treated arm" do
       experiment = sweep("max_tape_len")
-      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, lengths: [36, 40]) }
+      2.times { emerged_run(experiment, { "max_tape_len" => 64 }, instructions: [36, 40]) }
       8.times { blank_run(experiment, { "max_tape_len" => 64 }) }
-      emerged_run(experiment, { "max_tape_len" => 128 }, lengths: [36, 40])
+      emerged_run(experiment, { "max_tape_len" => 128 }, instructions: [36, 40])
       9.times { blank_run(experiment, { "max_tape_len" => 128 }) }
       structure = sweep("environmental_structure")
       5.times { blank_run(structure, { "structure" => "uniform" }) }

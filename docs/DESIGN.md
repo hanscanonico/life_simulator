@@ -139,6 +139,18 @@ claim rests on it.
   dominant tape keeps getting more complicated reads a rising length, a world that found one
   recipe and stopped reads a flat one. The hand-written replicator of the engine's test suite
   reads 36 bytes and 15 instructions.
+- `dominant_raw_len` / `dominant_tape_hash`: the same tape's own length in bytes before
+  zlib, and a stable digest of those bytes. The length is what makes the compressed reading
+  readable: zlib's envelope on an incompressible tape is 11 bytes, so a tape of random bytes
+  compresses to `raw + 11` and `dominant_compressed_len` alone cannot be told from the tape
+  cap (`docs/design_record.md`, 2026-09-16). Compressed over raw near 1 is junk; well under 1
+  is a tape with structure in it. The hash is **FNV-1a 64** of the tape bytes — the engine's
+  own `hash::fnv1a64`, not a platform hasher — written as sixteen lowercase hex digits, so it
+  is the same value on every platform and every build and survives a JSON reader that parses
+  numbers as doubles. It carries no magnitude and is only ever compared for equality: two
+  consecutive samples with different hashes are two different dominant tapes, which is what
+  the run page's turnover series counts. Both are null exactly where the two readings above
+  are — the life substrate — and both are null on every sample recorded before they existed.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard

@@ -1086,7 +1086,7 @@ RSpec.describe "Findings", type: :request do
                                      params: Lab::Schema.run_defaults.merge(arm))
         lengths.each_with_index do |length, index|
           create(:sample, run: run, epoch: 1_000 + (index * 10),
-                          values: { "dominant_compressed_len" => length, "distinct_lineages" => length * 2 })
+                          values: { "dominant_instruction_count" => length, "distinct_lineages" => length * 2 })
         end
         run
       end
@@ -1108,14 +1108,23 @@ RSpec.describe "Findings", type: :request do
                       "Every run is read from its own crossing.")
       end
 
+      it "states why the compressed length is not the reading it decides on" do
+        get finding_path(open_endedness)
+
+        expect(response.body.squish)
+          .to include("zlib wraps an incompressible stream in an 11-byte envelope",
+                      "The reading is the cap, not the replicator",
+                      "every verdict below is read off the instruction count")
+      end
+
       it "reads every sweep on both observables and decides it on only one" do
         get finding_path(open_endedness)
 
         tables = response.parsed_body.css(".table-scroll").pluck("id")
 
-        expect(tables).to include("energy-per-epoch-lineages-arms", "energy-per-epoch-length-arms",
-                                  "environmental-structure-length-arms", "environmental-structure-lineages-arms",
-                                  "max-tape-len-length-arms", "max-tape-len-lineages-arms")
+        expect(tables).to include("energy-per-epoch-lineages-arms", "energy-per-epoch-instructions-arms",
+                                  "environmental-structure-instructions-arms", "environmental-structure-lineages-arms",
+                                  "max-tape-len-instructions-arms", "max-tape-len-lineages-arms")
         expect(response.body.squish)
           .to include("Read but not the hypothesis under test.",
                       "neither support nor refute the hypothesis above")
@@ -1153,9 +1162,9 @@ RSpec.describe "Findings", type: :request do
 
           expect(response.body.squish)
             .to include("supported", "reads above the control arm in most of its runs",
-                        "has 4 emerged runs, 4 of them carrying a complexity in bytes after the crossing",
-                        "The control arm's median peak is 40 bytes")
-          expect(response.parsed_body.css("#max-tape-len-length-arms tbody tr").size).to eq(4)
+                        "has 4 emerged runs, 4 of them carrying a complexity in instructions after the crossing",
+                        "The control arm's median peak is 40 instructions")
+          expect(response.parsed_body.css("#max-tape-len-instructions-arms tbody tr").size).to eq(4)
         end
       end
 
@@ -1204,7 +1213,7 @@ RSpec.describe "Findings", type: :request do
           get finding_path(open_endedness)
 
           paragraphs = response.parsed_body.css("p").map { |paragraph| paragraph.text.squish }
-          row = response.parsed_body.css("#environmental-structure-length-arms tbody tr").last
+          row = response.parsed_body.css("#environmental-structure-instructions-arms tbody tr").last
 
           expect(paragraphs).to include(a_string_including("Arms that never emerged: patchwork (0 of 10 runs)"))
           expect(response.body.squish).to include("not supported")
