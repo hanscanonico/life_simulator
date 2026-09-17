@@ -672,3 +672,41 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   `world.rs` do not move, and a test asserts them again with `concat` named explicitly.
   The cost is one comparison in the interpreter's inner loop: criterion reads the change
   as under 2% on `bff/random_128` and inside the noise on a soup epoch.
+- 2026-09-16 — **A steal op, off by default.** §1.1 gains `steal_amount` and `steal_loss`:
+  the byte `$` becomes an instruction that moves `steal_amount` of instruction energy out of
+  the partner cell's stock into the executing cell's, destroying the `steal_loss` share of
+  it in transit, and §1.2 gains `steal_rate`, the share of a sampled epoch's interactions in
+  which one executed. **Why the substrate needs it.** The stock of the entry above makes
+  energy conserved and scarce; nothing yet makes it *contested*. Theft is the cheapest
+  mechanism that does: it gives one tape something to gain from another tape's state beyond
+  overwriting it, and gives the other something to defend, which is the arms race the
+  literature ties to rising structural complexity in fitness-free soups (arXiv 2609.10817;
+  Tierra's parasites and the hosts that learned to resist them). With the asymmetric
+  `interaction` mode already landed, a tape's code and a tape's substrate are separable, so
+  "steal from whoever hosts me" and "be expensive to steal from" are now distinguishable
+  strategies rather than two readings of one joint program. **The byte is `$` (0x24)**,
+  unassigned in BFF and the one character on the keyboard that says money; it is
+  deliberately **not** an eleventh member of `OPS`, because those ten are the instruction set
+  `op_density` measures and `ops` ablates, and folding a stock operation into them would move
+  a tape statistic every earlier run is pinned on. **Off is `steal_amount = 0`**, the
+  encoding `energy_influx`, `energy_per_epoch` and `max_tape_len` already use, rather than a
+  separate boolean: the schema has no boolean kind, a steal that moves nothing is not an
+  experiment, and `steal_loss` is read only once an amount is set the way
+  `structure_amplitude` is read only once a `structure` is. An amount with **no influx
+  behind it is refused** — there would be no stock to take from and the parameter would be
+  silently inert. **Four edges are fixed.** The thief is the half of the pair the instruction
+  pointer is in, which under `host` is always the host, matching how execution is already
+  charged. A steal is settled **after** the interaction has paid for the instructions it ran,
+  so theft comes out of what a cell has left and can never rob it of energy already spent —
+  and the interaction's budget, fixed before it started, is untouched by what it steals.
+  A partner poorer than the amount gives up everything it holds and an empty one gives up
+  nothing; the thief's gain is capped at `energy_stock_cap` like any other, so the world's
+  total energy still never passes cell count × cap. The thief's share is **rounded down**, so
+  theft never pays more than `1 - steal_loss`. **Off at 0, which is the default**: the byte
+  is absent from the table the interpreter's inner loop reads, so it is the plain no-op every
+  other non-instruction byte is, the identical instruction stream runs, and the pinned
+  determinism hashes and observable strings in `world.rs` do not move — a test asserts them
+  again with `steal_amount` named off and a `steal_loss` set, and another shows a soup of
+  nothing but `$` running the epoch a soup of any other inert byte runs, energy included,
+  with the stock on and with it off. No sweep is declared over theft here: the substrate
+  lands, and the sweep is written over the substrate the stock and this op make together.

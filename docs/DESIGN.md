@@ -57,6 +57,25 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   allocated, no cell is gated and the soup is exactly the substrate above. Independent of
   `energy_per_epoch`: a run may carry either, both (an interaction is then bounded by
   whichever is poorer) or neither.
+- **Steal op** (`steal_amount`, default `0` = off; `steal_loss`): with an amount set, the
+  byte `$` (0x24) becomes an eleventh instruction on a world whose cells hold an energy
+  stock. Executing it moves `steal_amount` of instruction energy out of the **partner**
+  cell's stock into the stock of the cell whose code is executing, destroying the
+  `steal_loss` share of what moved on the way — theft is possible, costly to the world, and
+  something a tape can be structured to resist. The thief is read off the instruction
+  pointer: the first tape's bytes are the first cell's code and everything past them is the
+  second cell's, which under `interaction = host` makes every steal the host's, exactly as
+  the execution cost is already charged to both cells of the pair. A partner poorer than the
+  amount gives up what it holds and no more, an empty partner gives up nothing, and the
+  thief's gain is capped at `energy_stock_cap` like any other, so the world's total energy
+  still never exceeds cell count × cap. The move is settled **after** the interaction has
+  been debited for the instructions it ran, so a cell can never be robbed of energy it has
+  already spent, and the share the thief receives is **rounded down** — theft never pays the
+  thief more than the fraction says. The op is not one of the ten: `op_density` and the
+  instruction counts read the BFF instruction set, and `ops` ablates that set alone. At `0`
+  the byte is a no-op like any other non-instruction byte, nothing is settled and the soup is
+  exactly the substrate above; an amount without an `energy_influx` behind it is refused,
+  since there would be no stock to take from.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The
@@ -193,6 +212,14 @@ claim rests on it.
   consecutive samples with different hashes are two different dominant tapes, which is what
   the run page's turnover series counts. Both are null exactly where the two readings above
   are — the life substrate — and both are null on every sample recorded before they existed.
+- `steal_rate`: share of the sampled epoch's interactions in which a steal executed — at
+  least one `$` op ran, whichever half of the pair ran it and whatever it managed to take,
+  so an interaction against an empty partner counts like any other. Counted over the
+  interactions that ran, on the epochs a sample reads, exactly as `copy_rate` is: a pair the
+  stock starved never ran and is in neither half. Theft caught in situ, and the reading that
+  tells an arm where theft never evolved from one where it was suppressed — or never
+  possible. 0 wherever the steal op is off, which is every run at the defaults, and on the
+  life substrate.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard

@@ -29,6 +29,8 @@ pub struct World {
     transition: TransitionTracker,
     /// The `copy_rate` of the most recently counted epoch; see `step_soup`.
     copy_rate: f64,
+    /// The `steal_rate` of that same epoch, counted in the same pass.
+    steal_rate: f64,
     /// One lineage id per cell, unique at init and inherited by descent in `step_soup`.
     /// Empty on the life substrate. A tag is read and written beside the tapes and never
     /// from the RNG stream, so a run's bytes are what they were before lineages existed.
@@ -55,6 +57,7 @@ impl World {
             scratch: life_scratch(params),
             transition: TransitionTracker::default(),
             copy_rate: 0.0,
+            steal_rate: 0.0,
             lineages: fresh_lineages(params),
             lens: fresh_lens(params),
             stock: fresh_stock(params),
@@ -234,6 +237,7 @@ impl World {
             scratch: life_scratch(params),
             transition: TransitionTracker::from_state(restored.header.transition),
             copy_rate: 0.0,
+            steal_rate: 0.0,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: restored_stock(params, restored.stock)?,
@@ -276,6 +280,7 @@ impl World {
         let max_steps = self.params.max_steps;
         let ops = self.params.op_set();
         let hosted = self.params.interaction == Interaction::Host;
+        let theft = Theft::of(&self.params);
         let counting = self.counts_copies();
         let mut energy = Energy::recharged(&self.params, std::mem::take(&mut self.stock));
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
@@ -285,6 +290,7 @@ impl World {
         let mut before = Vec::with_capacity(stride * 2);
         let mut interactions: u64 = 0;
         let mut copies: u64 = 0;
+        let mut thefts: u64 = 0;
         for cell in &order {
             let a = *cell as usize;
             let b = self.pick_partner(a, rng);
@@ -303,10 +309,19 @@ impl World {
             // host interaction the instruction pointer stops at the end of the first tape
             // and the partner is data; under the default it stops where the pair does.
             let code_len = if hosted { live_a } else { live_a + cap };
-            let outcome = bff::run_bounded(&mut pair, budget, ops, live_a + cap, code_len);
+            let stealing = match theft {
+                Some(_) => bff::Stealing::at(live_a),
+                None => bff::Stealing::OFF,
+            };
+            let outcome =
+                bff::run_stealing(&mut pair, budget, ops, live_a + cap, code_len, stealing);
             energy.spend(a, b, outcome.steps);
+            if let Some(theft) = theft {
+                energy.settle(a, b, outcome.steals, &theft);
+            }
             if counting {
                 interactions += 1;
+                thefts += u64::from(outcome.steals.iter().any(|steals| *steals > 0));
                 // A pair that arrives already satisfying the rule cannot show a copy: it
                 // ends satisfying it whether or not anything ran. Reading that exclusion
                 // as plain inequality would count every frozen pair whose shorter half is
@@ -333,11 +348,12 @@ impl World {
         }
         self.stock = energy.into_stock();
         if counting {
-            self.copy_rate = if interactions == 0 {
-                0.0
-            } else {
-                copies as f64 / interactions as f64
+            let share = |count: u64| match interactions {
+                0 => 0.0,
+                ran => count as f64 / ran as f64,
             };
+            self.copy_rate = share(copies);
+            self.steal_rate = share(thefts);
         }
     }
 
@@ -492,6 +508,7 @@ impl World {
             dominant_tape_hash: census.complexity.map(|read| read.tape_hash_hex()),
             conserved_core_bytes: core.map(|read| read.bytes),
             conserved_core_ops: core.map(|read| read.ops),
+            steal_rate: self.steal_rate,
         }
     }
 
@@ -607,10 +624,68 @@ impl Energy {
         }
     }
 
+    /// Settles the steal ops one interaction executed, after `spend` has taken what the
+    /// interaction cost: the first tape's thefts out of the second cell, then the second
+    /// tape's out of the first. Taking theft off what a cell has *left* is what keeps the
+    /// two economies apart — an interaction is bounded by the stocks its pair arrived with,
+    /// so a cell can never be robbed of energy it has already promised to instructions.
+    fn settle(&mut self, a: usize, b: usize, steals: [u32; 2], theft: &Theft) {
+        self.rob(a, b, steals[0], theft);
+        self.rob(b, a, steals[1], theft);
+    }
+
+    fn rob(&mut self, thief: usize, victim: usize, steals: u32, theft: &Theft) {
+        if steals == 0 || self.stock.is_empty() {
+            return;
+        }
+        let moved = theft.moved(steals, self.stock[victim]);
+        self.stock[victim] -= moved;
+        self.stock[thief] = self.stock[thief]
+            .saturating_add(theft.received(moved))
+            .min(theft.cap);
+    }
+
     /// The stock, back to the world it came from: it is the half of the epoch's energy
     /// that outlives the epoch.
     fn into_stock(self) -> Vec<u32> {
         self.stock
+    }
+}
+
+/// What a steal op is worth (`docs/DESIGN.md` §1.1), read off the parameters once per
+/// epoch: the energy one steal takes out of the partner's stock and the share of it
+/// destroyed in transit. `None` for every run whose `steal_amount` is 0, which is every run
+/// at the defaults — the byte is then not an instruction at all and nothing is settled.
+#[derive(Debug, Clone, Copy)]
+struct Theft {
+    amount: u32,
+    loss: f64,
+    cap: u32,
+}
+
+impl Theft {
+    fn of(params: &Params) -> Option<Self> {
+        params.steals().then_some(Self {
+            amount: params.steal_amount,
+            loss: params.steal_loss,
+            cap: params.energy_stock_cap,
+        })
+    }
+
+    /// What `steals` steal ops take out of a partner holding `held`: `steal_amount` each,
+    /// or everything the partner still has when that is less — an empty partner gives up
+    /// nothing, and no steal can take a cell below zero however often it runs.
+    fn moved(&self, steals: u32, held: u32) -> u32 {
+        let wanted = u64::from(steals) * u64::from(self.amount);
+        wanted.min(u64::from(held)) as u32
+    }
+
+    /// What the thief receives of it: the share `1 - steal_loss`, **rounded down**, so
+    /// theft is never worth more to the thief than the fraction says and the remainder is
+    /// energy the world has destroyed. The loss is taken on what the interaction moved in
+    /// total rather than on each steal separately.
+    fn received(&self, moved: u32) -> u32 {
+        (f64::from(moved) * (1.0 - self.loss)).floor() as u32
     }
 }
 
@@ -1437,6 +1512,7 @@ mod tests {
         let capped = bff::Outcome {
             halt: bff::Halt::StepLimit,
             steps: 8,
+            steals: [0, 0],
         };
         assert_eq!(
             halt_reason(&capped, 8, MAX_STEPS),
@@ -1454,7 +1530,11 @@ mod tests {
     #[test]
     fn a_program_that_ended_on_its_own_keeps_its_halt_under_an_energy_cap() {
         for halt in [bff::Halt::EndOfTape, bff::Halt::UnmatchedBracket] {
-            let outcome = bff::Outcome { halt, steps: 4 };
+            let outcome = bff::Outcome {
+                halt,
+                steps: 4,
+                steals: [0, 0],
+            };
             assert_eq!(halt_reason(&outcome, 8, 64), halt);
         }
     }
@@ -1731,6 +1811,221 @@ mod tests {
                 stepped(&without, 7, 20).tapes().bytes().into_owned(),
                 tapes,
                 "switching one economy off left the world where all three had it: {without:?}"
+            );
+        }
+    }
+
+    /// A soup whose every byte is one inert value: nothing executes, so the tapes are
+    /// frozen and every difference between two such worlds is a difference in the energy.
+    fn soup_of(params: &Params, byte: u8) -> World {
+        let mut world = World::new(params, 3).unwrap();
+        let tape = vec![byte; params.stride()];
+        for y in 0..params.height {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world
+    }
+
+    fn held_energy(world: &World) -> u64 {
+        world.stock.iter().map(|held| u64::from(*held)).sum()
+    }
+
+    fn theft(amount: u32, loss: f64, cap: u32) -> Theft {
+        Theft { amount, loss, cap }
+    }
+
+    fn purse(stock: Vec<u32>) -> Energy {
+        Energy {
+            allowance: Vec::new(),
+            stock,
+        }
+    }
+
+    /// The rule of §1.1: one steal takes `steal_amount` out of the partner's stock and the
+    /// thief receives all but the `steal_loss` share of it, the rest destroyed.
+    #[test]
+    fn a_steal_moves_the_amount_and_destroys_the_loss() {
+        let mut energy = purse(vec![0, 40]);
+        energy.settle(0, 1, [1, 0], &theft(10, 0.25, 64));
+
+        assert_eq!(
+            energy.stock,
+            vec![7, 30],
+            "10 left the partner and 7 arrived"
+        );
+
+        let mut both = purse(vec![40, 40]);
+        both.settle(0, 1, [2, 1], &theft(10, 0.5, 64));
+        assert_eq!(
+            both.stock,
+            vec![40, 25],
+            "the first tape's two steals settled before the second tape's one"
+        );
+    }
+
+    /// An empty partner is nothing to take: the interaction still ran the op and still paid
+    /// its step, and no energy is minted out of a cell that has none.
+    #[test]
+    fn a_steal_against_an_empty_partner_moves_nothing() {
+        let mut energy = purse(vec![12, 0]);
+        energy.settle(0, 1, [4, 0], &theft(10, 0.25, 64));
+
+        assert_eq!(energy.stock, vec![12, 0]);
+    }
+
+    /// And a partner with less than the amount gives up what it has and no more, however
+    /// many steals the interaction ran.
+    #[test]
+    fn a_partner_poorer_than_the_amount_gives_up_only_what_it_holds() {
+        let mut energy = purse(vec![0, 4]);
+        energy.settle(0, 1, [3, 0], &theft(10, 0.25, 64));
+
+        assert_eq!(energy.stock, vec![3, 0], "4 moved and 1 was destroyed");
+    }
+
+    /// Stolen energy is a gain like any other, so the cap bounds it: the world's total
+    /// energy still never passes cell count × `energy_stock_cap`.
+    #[test]
+    fn a_thiefs_stock_never_passes_the_cap() {
+        let mut energy = purse(vec![60, 40]);
+        energy.settle(0, 1, [1, 0], &theft(20, 0.0, 64));
+
+        assert_eq!(energy.stock, vec![64, 20]);
+    }
+
+    fn thieving_params() -> Params {
+        Params {
+            tape_len: 8,
+            mutation_rate: 0.0,
+            energy_influx: 4_096,
+            energy_stock_cap: 4_096,
+            steal_amount: 1,
+            steal_loss: 0.5,
+            interaction: Interaction::Host,
+            ..soup(8, 8)
+        }
+    }
+
+    /// The op is opt-in, and off it is the plain no-op every other non-instruction byte is:
+    /// a soup of nothing but `$` runs the epoch a soup of any other inert byte runs, down
+    /// to the energy every cell holds — with the stock on and with it off.
+    #[test]
+    fn the_steal_op_switched_off_moves_no_energy() {
+        for (energy_influx, energy_stock_cap) in [(0, 0), (8, 64)] {
+            let off = Params {
+                steal_amount: 0,
+                energy_influx,
+                energy_stock_cap,
+                ..thieving_params()
+            };
+            assert_eq!(off.validate(), Ok(()));
+
+            let mut thieves = soup_of(&off, bff::STEAL);
+            let mut inert = soup_of(&off, b'a');
+            for _ in 0..off.sample_every {
+                thieves.step();
+                inert.step();
+            }
+
+            assert_eq!(thieves.stock, inert.stock, "{off:?}");
+            assert_eq!(
+                thieves.tapes().bytes().into_owned(),
+                vec![bff::STEAL; off.cell_count() * off.stride()],
+                "a disabled steal wrote a byte: {off:?}"
+            );
+            assert_eq!(thieves.metrics().steal_rate, 0.0);
+        }
+    }
+
+    /// And naming it off must leave a run of the substrate exactly where the parameter's
+    /// absence left it, down to the bytes of the world and every observable of §1.2.
+    #[test]
+    fn the_steal_op_switched_off_moves_no_run() {
+        let off = Params {
+            steal_amount: 0,
+            steal_loss: 0.9,
+            ..soup(32, 32)
+        };
+        let mut world = World::new(&off, 42).unwrap();
+        for _ in 0..50 {
+            world.step();
+        }
+        assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
+
+        let measured = world.metrics();
+        assert_eq!(observable_digest(&measured), PINNED_OBSERVABLES);
+        assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
+        assert_eq!(measured.steal_rate, 0.0);
+    }
+
+    /// Switched on, theft is a drain on the world and not only a transfer: a soup of
+    /// thieves ends every epoch holding less energy than the influx handed it, and the
+    /// cells no longer hold equal shares of it.
+    #[test]
+    fn a_soup_of_thieves_destroys_the_energy_it_moves() {
+        let params = thieving_params();
+        assert_eq!(params.validate(), Ok(()));
+
+        let mut world = soup_of(&params, bff::STEAL);
+        let full = held_energy(&world);
+        world.step();
+
+        assert!(
+            held_energy(&world) < full,
+            "the loss destroyed nothing: {} of {full}",
+            held_energy(&world)
+        );
+        assert_ne!(
+            world.stock.iter().min(),
+            world.stock.iter().max(),
+            "every thief ended the epoch as rich as every other"
+        );
+    }
+
+    /// `steal_rate` (DESIGN §1.2): the share of the sampled epoch's interactions in which a
+    /// steal executed. Half this world's cells are thieves and the other half inert, and
+    /// only the visited cell's code runs under a `host` interaction, so exactly half of the
+    /// 64 interactions steal — while a world with no thief in it reads 0.
+    #[test]
+    fn the_steal_rate_reads_the_share_of_interactions_that_stole() {
+        let params = thieving_params();
+        let mut world = soup_of(&params, b'a');
+        let thief = vec![bff::STEAL; params.stride()];
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &thief);
+            }
+        }
+        for _ in 0..params.sample_every {
+            world.step();
+        }
+
+        assert_eq!(world.metrics().steal_rate, 0.5);
+
+        let mut honest = soup_of(&params, b'a');
+        for _ in 0..params.sample_every {
+            honest.step();
+        }
+        assert_eq!(honest.metrics().steal_rate, 0.0);
+    }
+
+    /// A run that steals is determined by `(params, seed)` like every other: the energy a
+    /// steal moves is written by the interaction that ran it and never drawn, and it is
+    /// state of the world, so a run resumed from a snapshot carries the stocks theft left.
+    #[test]
+    fn determinism_holds_under_a_steal_op() {
+        for (steal_amount, steal_loss) in [(1, 0.0), (64, 0.5), (4_096, 1.0)] {
+            assert_deterministic(
+                &Params {
+                    energy_influx: 64,
+                    energy_stock_cap: 4_096,
+                    steal_amount,
+                    steal_loss,
+                    ..soup(16, 16)
+                },
+                11,
             );
         }
     }

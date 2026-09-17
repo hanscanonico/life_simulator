@@ -76,6 +76,11 @@ pub struct Metrics {
     /// How many of those conserved positions hold a byte the run's instruction set
     /// executes: the part of the core that is program rather than junk held still.
     pub conserved_core_ops: Option<u32>,
+    /// Share of the sampled epoch's interactions in which a steal op executed — theft
+    /// caught in situ, whichever half of the pair ran it and whatever it managed to take.
+    /// 0 wherever the op is off, which is every run at the defaults, and on the life
+    /// substrate.
+    pub steal_rate: f64,
 }
 
 impl Metrics {
@@ -1098,6 +1103,7 @@ mod tests {
             dominant_tape_hash: None,
             conserved_core_bytes: None,
             conserved_core_ops: None,
+            steal_rate: 0.0,
         }
     }
 

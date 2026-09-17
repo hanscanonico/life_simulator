@@ -12,6 +12,13 @@ pub const COPY_TO_HEAD0: u8 = b',';
 pub const LOOP_START: u8 = b'[';
 pub const LOOP_END: u8 = b']';
 
+/// The steal op (`docs/DESIGN.md` §1.1): moves energy from the partner cell's stock to the
+/// stock of the cell whose code is executing. Deliberately not one of `OPS` — those ten are
+/// the BFF instruction set `op_density` reads and `ops` ablates, and this byte is an
+/// instruction only for a run whose `steal_amount` is set. `$` is a byte no BFF program has
+/// ever meant anything by, and it is the one character on the keyboard that says "money".
+pub const STEAL: u8 = b'$';
+
 /// The ten instruction bytes; every other byte is a no-op.
 pub const OPS: [u8; 10] = [
     HEAD0_LEFT,
@@ -102,6 +109,38 @@ pub enum Halt {
 pub struct Outcome {
     pub halt: Halt,
     pub steps: u32,
+    /// How many steal ops each half of the pair executed — the first tape's code, then the
+    /// second's. Always `[0, 0]` where the op is off, which is every run at the defaults.
+    /// The interpreter counts them and moves no energy itself: what a steal is worth is the
+    /// world's economy, and the world settles it once the interaction has been paid for.
+    pub steals: [u32; 2],
+}
+
+/// Whether the steal byte is an instruction in this execution, and where the pair the
+/// interpreter is running was joined (`docs/DESIGN.md` §1.1). The thief is the half of the
+/// pair the instruction pointer is in: the first tape's code before `split`, the second's
+/// after it — which under a `host` interaction is always the first, since the pointer never
+/// leaves its code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stealing {
+    enabled: bool,
+    split: usize,
+}
+
+impl Stealing {
+    /// The steal byte as the plain no-op it is for every run that has not switched it on.
+    pub const OFF: Self = Self {
+        enabled: false,
+        split: 0,
+    };
+
+    /// The steal byte as an instruction, over a pair whose first tape ends at `split`.
+    pub fn at(split: usize) -> Self {
+        Self {
+            enabled: true,
+            split,
+        }
+    }
 }
 
 /// Executes `tape` in place with every op enabled, at its own length.
@@ -145,12 +184,31 @@ pub fn run_bounded(
     cap: usize,
     code_len: usize,
 ) -> Outcome {
-    let enabled = enabled.table();
+    run_stealing(tape, max_steps, enabled, cap, code_len, Stealing::OFF)
+}
+
+/// Executes `tape` as `run_bounded` does, with the steal byte reading as the op of DESIGN
+/// §1.1 where `stealing` says so: the run counts the steals each half of the pair executed
+/// and the world settles what they move. Switched off — every run at the defaults — the
+/// byte is not in the table the loop reads, so it is the no-op it has always been and the
+/// identical instruction stream runs.
+pub fn run_stealing(
+    tape: &mut Vec<u8>,
+    max_steps: u32,
+    enabled: OpSet,
+    cap: usize,
+    code_len: usize,
+    stealing: Stealing,
+) -> Outcome {
+    let mut enabled = enabled.table();
+    enabled[STEAL as usize] = stealing.enabled;
+    let mut steals = [0u32; 2];
     let mut len = tape.len();
     if len == 0 {
         return Outcome {
             halt: Halt::EndOfTape,
             steps: 0,
+            steals,
         };
     }
 
@@ -168,6 +226,7 @@ pub fn run_bounded(
             return Outcome {
                 halt: Halt::StepLimit,
                 steps,
+                steals,
             };
         }
         steps += 1;
@@ -188,12 +247,14 @@ pub fn run_bounded(
             DEC => tape[head0] = tape[head0].wrapping_sub(1),
             COPY_TO_HEAD1 => tape[head1] = tape[head0],
             COPY_TO_HEAD0 => tape[head0] = tape[head1],
+            STEAL => steals[usize::from(ip >= stealing.split)] += 1,
             LOOP_START if tape[head0] == 0 => match match_forward(tape, ip) {
                 Some(target) => ip = target,
                 None => {
                     return Outcome {
                         halt: Halt::UnmatchedBracket,
                         steps,
+                        steals,
                     }
                 }
             },
@@ -203,6 +264,7 @@ pub fn run_bounded(
                     return Outcome {
                         halt: Halt::UnmatchedBracket,
                         steps,
+                        steals,
                     }
                 }
             },
@@ -215,6 +277,7 @@ pub fn run_bounded(
     Outcome {
         halt: Halt::EndOfTape,
         steps,
+        steals,
     }
 }
 
@@ -563,6 +626,47 @@ mod tests {
     fn ops_are_the_ten_documented_bytes() {
         assert!(OPS.iter().all(|b| is_op(*b)));
         assert!(!is_op(b'a'));
+        assert!(
+            !is_op(STEAL),
+            "the steal byte is not one of the ten BFF ops"
+        );
         assert_eq!(OPS.len(), 10);
+    }
+
+    /// The steal op of §1.1: the interpreter counts it against the half of the pair whose
+    /// bytes are executing — the first tape's code before the split, the second's after —
+    /// and moves nothing itself, since what a steal is worth is the world's economy.
+    #[test]
+    fn a_steal_is_counted_against_the_half_of_the_pair_that_ran_it() {
+        let joined = vec![STEAL, 0, 0, STEAL];
+        let mut pair = joined.clone();
+        let outcome = run_stealing(&mut pair, 100, OpSet::ALL, 4, 4, Stealing::at(2));
+
+        assert_eq!(outcome.steals, [1, 1]);
+        assert_eq!(outcome.steps, 4, "a steal costs its step like any other op");
+        assert_eq!(pair, joined, "a steal moves no byte of the pair");
+    }
+
+    /// Under a `host` interaction the pointer never leaves the first tape, so every steal
+    /// an interaction executes is the host's.
+    #[test]
+    fn a_hosted_run_credits_every_steal_to_the_host() {
+        let mut pair = vec![STEAL; 4];
+        let outcome = run_stealing(&mut pair, 100, OpSet::ALL, 4, 2, Stealing::at(2));
+
+        assert_eq!(outcome.steals, [2, 0], "the partner's bytes never ran");
+    }
+
+    /// Off — every run at the defaults — the byte is not in the table the loop reads, so it
+    /// is the plain no-op any other non-instruction byte is, down to the step it costs.
+    #[test]
+    fn the_steal_byte_is_a_no_op_until_a_run_switches_it_on() {
+        let mut thieves = vec![STEAL; 4];
+        let outcome = run_bounded(&mut thieves, 100, OpSet::ALL, 4, 4);
+        assert_eq!(outcome.steals, [0, 0]);
+        assert_eq!(thieves, vec![STEAL; 4]);
+
+        let mut inert = vec![b'a'; 4];
+        assert_eq!(run_bounded(&mut inert, 100, OpSet::ALL, 4, 4), outcome);
     }
 }

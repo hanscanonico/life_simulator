@@ -53,7 +53,10 @@
     Ten byte values are instructions; every other byte is a no-op. Both heads start at 0,
     the instruction pointer starts at 0, and execution stops at the end of the tape, at
     <span class="mono">max_steps</span>, or on an unmatched bracket. The heads wrap modulo
-    the current length of the concatenation.
+    the current length of the concatenation. An eleventh byte,
+    <span class="mono">$</span>, is an instruction only for a run that switched it on: it
+    steals energy from the partner cell rather than moving a byte, and is a no-op like any
+    other byte in every run that has not.
   </p>
   <div class="table-scroll" tabindex="0" role="region" aria-label="The instruction set">
     <table class="data-table">
@@ -208,6 +211,17 @@
       there and agrees with nobody. A lineage of identical tapes reads its whole tape length.
       Null where no lineage holds two cells, on the Life substrate, and on every sample
       recorded before they existed.
+    </dd>
+
+    <dt class="mono">steal_rate</dt>
+    <dd>
+      The share of the sampled epoch's interactions in which a steal executed. The steal op
+      is off by default: set <span class="mono">steal_amount</span> on a world whose cells
+      hold an energy stock and the byte <span class="mono">$</span> becomes an instruction
+      that takes that much energy out of the partner cell's stock, destroying the
+      <span class="mono">steal_loss</span> share of it on the way. The rate reads 0 wherever
+      the op is off, so an arm where theft never evolved can be told from one where it was
+      never possible.
     </dd>
 
     <dt class="mono">transition_epoch</dt>

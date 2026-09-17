@@ -73,6 +73,13 @@ pub struct Params {
     /// The most instruction energy one cell's stock may hold. Read only once an influx is
     /// set, and never below it.
     pub energy_stock_cap: u32,
+    /// Instruction energy one steal op moves out of the partner cell's stock; `0` (the
+    /// default) leaves the steal byte the no-op it is in the substrate of DESIGN §1.1 and
+    /// nothing is ever moved (DESIGN §1.1).
+    pub steal_amount: u32,
+    /// The share of what a steal moves that is destroyed in transit. Read only once a
+    /// `steal_amount` is set, so the default is no second off switch.
+    pub steal_loss: f64,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -108,6 +115,8 @@ impl Default for Params {
             energy_per_epoch: 0,
             energy_influx: 0,
             energy_stock_cap: 0,
+            steal_amount: 0,
+            steal_loss: 0.5,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
@@ -236,6 +245,26 @@ const FIELDS: &[Field] = &[
               refused below it.",
     },
     Field {
+        name: "steal_amount",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "Instruction energy one steal op moves out of the partner cell's stock into \
+              the stock of the cell whose code is executing, less the steal_loss destroyed \
+              in transit. A steal takes what the partner holds when that is less, and \
+              nothing at all from an empty one. 0 turns the op off, which is the substrate \
+              of DESIGN 1.1, and any amount needs an energy_influx to have a stock to \
+              steal from.",
+    },
+    Field {
+        name: "steal_loss",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The share of what a run's steal ops move that is destroyed in transit: the \
+              thief receives the rest, rounded down, so theft is never worth more to the \
+              thief than it costs the world. Read only once steal_amount is set.",
+    },
+    Field {
         name: "ops",
         kind: Kind::Subset(&["<", ">", "{", "}", "+", "-", ".", ",", "[", "]"]),
         doc: "The BFF instructions this run executes, as a string of distinct op bytes. \
@@ -330,6 +359,11 @@ pub enum ParamError {
         max_tape_len: u32,
         tape_len: u32,
     },
+    /// A steal op with no stock to steal from moves nothing whatever its amount: the
+    /// parameter would be silently inert, which is the one thing a parameter must never be.
+    StealWithoutStock {
+        steal_amount: u32,
+    },
     /// A stock that cannot hold one epoch's influx is no stock: the surplus would be
     /// thrown away the moment it arrived, and the economy would be the per-epoch
     /// allowance `energy_per_epoch` already is.
@@ -367,6 +401,11 @@ impl fmt::Display for ParamError {
                 f,
                 "max_tape_len is {max_tape_len}, below the tape_len of {tape_len}: \
                  0 turns growth off, and any cap must be at least the initial length"
+            ),
+            Self::StealWithoutStock { steal_amount } => write!(
+                f,
+                "steal_amount is {steal_amount} with no energy_influx: a steal op needs a \
+                 stock to take energy out of"
             ),
             Self::StockCapBelowInflux {
                 energy_stock_cap,
@@ -419,6 +458,11 @@ impl Params {
             return Err(ParamError::StockCapBelowInflux {
                 energy_stock_cap: self.energy_stock_cap,
                 energy_influx: self.energy_influx,
+            });
+        }
+        if self.steal_amount > 0 && self.energy_influx == 0 {
+            return Err(ParamError::StealWithoutStock {
+                steal_amount: self.steal_amount,
             });
         }
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
@@ -523,6 +567,13 @@ impl Params {
     /// cap on its own stocks nothing, and life has no interactions to pay for.
     pub fn stocked(&self) -> bool {
         self.substrate == Substrate::Soup && self.energy_influx > 0
+    }
+
+    /// Whether this run's steal byte is an instruction at all. The amount is the switch,
+    /// as the influx is the stock's: a steal that moves nothing is not an economy, and
+    /// validation refuses an amount with no stock behind it.
+    pub fn steals(&self) -> bool {
+        self.stocked() && self.steal_amount > 0
     }
 
     /// Bytes of state one cell's slot holds: the tape cap in the soup, one byte in life.
@@ -943,7 +994,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 19);
+        assert_eq!(fields.len(), 21);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
