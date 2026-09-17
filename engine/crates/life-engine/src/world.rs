@@ -1960,27 +1960,33 @@ mod tests {
         assert_eq!(measured.steal_rate, 0.0);
     }
 
-    /// Switched on, theft is a drain on the world and not only a transfer: a soup of
-    /// thieves ends every epoch holding less energy than the influx handed it, and the
-    /// cells no longer hold equal shares of it.
+    /// Switched on, theft is a drain on the world and not only a transfer. The baseline is
+    /// the same soup of a byte that is not an instruction: it runs the same interactions
+    /// for the same steps and so is charged exactly the same energy, and every difference
+    /// left is what the steals moved and the loss destroyed.
     #[test]
     fn a_soup_of_thieves_destroys_the_energy_it_moves() {
         let params = thieving_params();
         assert_eq!(params.validate(), Ok(()));
 
-        let mut world = soup_of(&params, bff::STEAL);
-        let full = held_energy(&world);
-        world.step();
+        let mut thieves = soup_of(&params, bff::STEAL);
+        let mut honest = soup_of(&params, b'a');
+        thieves.step();
+        honest.step();
 
         assert!(
-            held_energy(&world) < full,
-            "the loss destroyed nothing: {} of {full}",
-            held_energy(&world)
+            held_energy(&thieves) < held_energy(&honest),
+            "the steals moved and destroyed nothing: {} against a soup that never stole's {}",
+            held_energy(&thieves),
+            held_energy(&honest)
         );
-        assert_ne!(
-            world.stock.iter().min(),
-            world.stock.iter().max(),
-            "every thief ended the epoch as rich as every other"
+        assert!(
+            thieves
+                .stock
+                .iter()
+                .zip(&honest.stock)
+                .any(|(stolen_from, untouched)| stolen_from < untouched),
+            "no cell was any poorer for being stolen from"
         );
     }
 
