@@ -616,3 +616,33 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   where they were — a 20 000-epoch 128² run at the defaults emits the same 2 001 samples,
   field for field, as the same run on the commit before. It costs one pass over the top
   lineage's tapes per sample (members × tape length): 0.6 ms of a 28 ms sample on 128².
+- 2026-09-16 — **An energy stock that carries across epochs, off by default.** §1.1 gains
+  `energy_influx` and `energy_stock_cap`: every cell holds a stock of instruction energy,
+  one influx is added to it each epoch up to the cap, an interaction runs on the poorer of
+  its two cells' stocks and debits both, and a cell whose stock is empty is passed over
+  until a later influx recharges it. **This is not sweep 6 repeated.** `energy_per_epoch`
+  refills every cell to the same allowance at the start of every epoch: nothing is
+  accumulated, nothing is scarce across epochs, a cell that spends everything is whole
+  again next epoch, and there is nothing any cell could take from another. A stock is
+  conserved quantity — the world's total energy is bounded by cell count × cap, what one
+  cell spends is gone until the influx pays it back, and a saved stock is a thing a
+  future instruction can steal. The economy the evolution programme wants is that one; the
+  per-epoch tax was measured and is kept as it stands. Three choices are fixed here. Every
+  cell **starts the run full at the cap**, so a run opens at the world's energy ceiling
+  rather than spending its first epochs filling up, and the cap alone bounds the world's
+  energy at every epoch. A cap **below one epoch's influx is refused**: the surplus would
+  be discarded on arrival and the economy would be the per-epoch allowance under another
+  name. The stock is **state of the world, not a function of the epoch**: unlike the
+  allowance it is hashed with the tapes and written into the snapshot, which is snapshot
+  **version 5** — the version 4 container with the length payload's own length in the
+  header and one stock reading per cell after it — so a lab run resumed on the mini-pc
+  carries the energy its cells had instead of waking up full. The two economies are
+  independent and compose: with both on an interaction is bounded by whichever is poorer,
+  and both are debited. **Off at 0, which is the default**: with no influx nothing is
+  allocated, no cell is gated, no draw leaves the RNG stream in a different place, the
+  snapshot is version 3 or 4 byte for byte as before, and the pinned determinism hashes and
+  observable strings in `world.rs` do not move — a test asserts the pinned readings again
+  with both parameters named, influx 0 and a cap set, since a cap with no influx stocks
+  nothing. No sweep is declared over the stock here: the substrate lands first, the steal
+  op that makes the stock contestable follows, and the sweep is written over the substrate
+  those two make.
