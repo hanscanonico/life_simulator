@@ -20,7 +20,7 @@ gem "stimulus-rails"
 gem "jbuilder"
 # json 3.0 dropped positional parse options; Active Support 8.1 still calls
 # `JSON.parse(json, options)`, which breaks every jsonb attribute read.
-gem "json", "~> 2.7"
+gem "json", "~> 3.0"
 # The CSV exports; csv leaves the default gems in Ruby 3.4
 gem "csv"
 
