@@ -863,6 +863,32 @@ mod tests {
         ));
     }
 
+    /// A stock payload that does not count the cells is refused rather than laid into a
+    /// world it cannot fill: `World::from_snapshot` leans on this length holding.
+    #[test]
+    fn rejects_a_stock_that_does_not_count_the_cells() {
+        let params = Params {
+            energy_influx: 4,
+            energy_stock_cap: 64,
+            ..params()
+        };
+        let cells = vec![0u8; params.cell_count() * params.stride()];
+        let bytes = encode(
+            &header(&params, 1),
+            &cells,
+            &lineages(&params),
+            &[],
+            &vec![8u32; params.cell_count() - 1],
+        );
+
+        assert!(matches!(
+            decode(&params, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "cell count"
+            })
+        ));
+    }
+
     #[test]
     fn rejects_lineage_tags_that_do_not_count_the_cells() {
         let params = params();

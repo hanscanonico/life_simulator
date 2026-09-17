@@ -236,10 +236,7 @@ impl World {
             copy_rate: 0.0,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
-            stock: match restored.stock {
-                Some(stock) if params.stocked() => stock,
-                _ => fresh_stock(params),
-            },
+            stock: restored_stock(params, restored.stock)?,
         })
     }
 
@@ -667,6 +664,24 @@ fn fresh_lens(params: &Params) -> Vec<u32> {
     }
 }
 
+/// The stock a resumed run carries. Unlike the lineage tags or the lengths, a stock
+/// cannot be minted for a world that was not stored with one: the energy a cell holds is
+/// state the run spent epochs arriving at, so params that hold energy resuming a blob
+/// that carries none — and the reverse — is the params/snapshot divergence the tape cap
+/// refuses, refused the same way rather than silently filling or discarding the stocks.
+fn restored_stock(params: &Params, stock: Option<Vec<u32>>) -> Result<Vec<u32>, SnapshotError> {
+    match (stock, params.stocked()) {
+        (None, false) => Ok(fresh_stock(params)),
+        (Some(stock), true) if stock.len() == params.cell_count() => Ok(stock),
+        (Some(_), true) => Err(SnapshotError::Mismatch {
+            field: "cell count",
+        }),
+        _ => Err(SnapshotError::Mismatch {
+            field: "energy_influx",
+        }),
+    }
+}
+
 /// One energy stock per cell, every cell starting the run full — the world begins at the
 /// ceiling its cap sets rather than spending its first epochs filling up. Empty, and never
 /// read, on a world with no influx.
@@ -791,6 +806,15 @@ mod tests {
             width,
             height,
             ..Params::default()
+        }
+    }
+
+    fn stocked_params() -> Params {
+        Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            ..soup(16, 16)
         }
     }
 
@@ -2138,6 +2162,63 @@ mod tests {
         assert_eq!(restored.world_hash(), world.world_hash());
         assert_eq!(restored.epoch(), world.epoch());
         assert_eq!(restored.metrics().distinct_lineages, 64);
+    }
+
+    /// A stocked run resumes on the stocks it was stored with: the snapshot's version 5
+    /// payload is the world's energy, not a formality, and the restored world is the
+    /// stored world byte for byte.
+    #[test]
+    fn a_stocked_run_resumes_the_stocks_the_snapshot_carried() {
+        let params = stocked_params();
+        let world = stepped(&params, 11, 12);
+        assert!(
+            world
+                .stock
+                .iter()
+                .any(|held| *held < params.energy_stock_cap),
+            "the run must have spent something for the stocks to say anything: {:?}",
+            world.stock
+        );
+
+        let restored = World::from_snapshot(&params, 11, &world.snapshot()).unwrap();
+
+        assert_eq!(restored.stock, world.stock);
+        assert_eq!(restored.world_hash(), world.world_hash());
+    }
+
+    /// Params that hold energy cannot resume a blob that carries none: minting full stocks
+    /// for it would hand every cell energy the stored run never had. The same refusal the
+    /// tape cap gets.
+    #[test]
+    fn refuses_a_stocked_resume_of_a_snapshot_that_carries_no_stocks() {
+        let unstocked = soup(16, 16);
+        let bytes = stepped(&unstocked, 11, 4).snapshot();
+
+        assert!(matches!(
+            World::from_snapshot(&stocked_params(), 11, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "energy_influx"
+            })
+        ));
+    }
+
+    /// And params with no influx cannot resume a blob that carries stocks: the run that
+    /// wrote it was gated by energy this one would silently throw away.
+    #[test]
+    fn refuses_an_unstocked_resume_of_a_snapshot_that_carries_stocks() {
+        let stocked = stocked_params();
+        let bytes = stepped(&stocked, 11, 4).snapshot();
+        let without_influx = Params {
+            energy_influx: 0,
+            ..stocked
+        };
+
+        assert!(matches!(
+            World::from_snapshot(&without_influx, 11, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "energy_influx"
+            })
+        ));
     }
 
     #[test]
