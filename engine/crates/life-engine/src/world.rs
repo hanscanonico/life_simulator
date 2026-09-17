@@ -664,11 +664,11 @@ fn fresh_lens(params: &Params) -> Vec<u32> {
     }
 }
 
-/// The stock a resumed run carries. Unlike the lineage tags or the lengths, a stock
-/// cannot be minted for a world that was not stored with one: the energy a cell holds is
-/// state the run spent epochs arriving at, so params that hold energy resuming a blob
-/// that carries none — and the reverse — is the params/snapshot divergence the tape cap
-/// refuses, refused the same way rather than silently filling or discarding the stocks.
+/// The stock a resumed run carries. Unlike the lineage tags or the lengths, a stock cannot
+/// be minted for a world that was not stored with one: the energy a cell holds is state the
+/// run spent epochs arriving at. So stocked params meeting a blob that carries none — and
+/// the reverse — are refused the way a diverging tape cap is refused, rather than silently
+/// filling or discarding the stocks.
 fn restored_stock(params: &Params, stock: Option<Vec<u32>>) -> Result<Vec<u32>, SnapshotError> {
     match (stock, params.stocked()) {
         (None, false) => Ok(fresh_stock(params)),

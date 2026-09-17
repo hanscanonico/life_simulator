@@ -864,7 +864,7 @@ mod tests {
     }
 
     /// A stock payload that does not count the cells is refused rather than laid into a
-    /// world it cannot fill: `World::from_snapshot` leans on this length holding.
+    /// world it cannot fill: one reading per cell is what a world's stock is.
     #[test]
     fn rejects_a_stock_that_does_not_count_the_cells() {
         let params = Params {
