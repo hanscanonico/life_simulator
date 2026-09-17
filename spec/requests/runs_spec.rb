@@ -93,6 +93,16 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
+    context "with a run under an asymmetric interaction" do
+      it "shows the execution mode it ran with" do
+        hosted = create(:run, params: Lab::Schema.run_defaults.merge("interaction" => "host"))
+
+        get run_path(hosted)
+
+        expect(response.body).to include("<dt>interaction</dt><dd>host</dd>")
+      end
+    end
+
     context "with a transitioned run whose world held the state" do
       it "shows the census peak, the epochs persisted and no relapse" do
         run.update!(persistence: { "census_peak" => 867, "peak_epoch" => 5_080,

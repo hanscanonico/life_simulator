@@ -125,6 +125,26 @@ pub fn run_with(tape: &mut Vec<u8>, max_steps: u32, enabled: OpSet) -> Outcome {
 /// front once there is not. A `cap` equal to `tape.len()` is the fixed tape of §1.1 —
 /// there is never room, so the loop below executes the identical instruction stream.
 pub fn run_growing(tape: &mut Vec<u8>, max_steps: u32, enabled: OpSet, cap: usize) -> Outcome {
+    run_bounded(tape, max_steps, enabled, cap, cap)
+}
+
+/// Executes `tape` as `run_growing` does, with the instruction pointer confined to the
+/// first `code_len` bytes: the asymmetric execution mode of DESIGN §1.1, where only the
+/// host's own bytes are code and everything past them is read/write substrate. Both heads
+/// still range over the whole buffer, so the partner is data a program reads and writes;
+/// a jump whose matching bracket lies past the code lands outside it and ends the run,
+/// exactly as stepping off the end does.
+///
+/// A `code_len` at the `cap` is the symmetric substrate of §1.1 — the buffer never
+/// exceeds its cap, so the pointer stops where it always stopped, at the end of the
+/// buffer, and the identical instruction stream runs.
+pub fn run_bounded(
+    tape: &mut Vec<u8>,
+    max_steps: u32,
+    enabled: OpSet,
+    cap: usize,
+    code_len: usize,
+) -> Outcome {
     let enabled = enabled.table();
     let mut len = tape.len();
     if len == 0 {
@@ -138,8 +158,12 @@ pub fn run_growing(tape: &mut Vec<u8>, max_steps: u32, enabled: OpSet, cap: usiz
     let mut head0 = 0usize;
     let mut head1 = 0usize;
     let mut steps = 0u32;
+    // The pointer stops at the end of the code or at the end of the buffer, whichever
+    // comes first. Held rather than compared each step: only a head claiming a byte can
+    // move it, so the inner loop pays the one comparison it always paid.
+    let mut bound = len.min(code_len);
 
-    while ip < len {
+    while ip < bound {
         if steps == max_steps {
             return Outcome {
                 halt: Halt::StepLimit,
@@ -151,9 +175,15 @@ pub fn run_growing(tape: &mut Vec<u8>, max_steps: u32, enabled: OpSet, cap: usiz
         match tape[ip] {
             byte if !enabled[byte as usize] => {}
             HEAD0_LEFT => head0 = (head0 + len - 1) % len,
-            HEAD0_RIGHT => head0 = step_right(head0, &mut len, cap, tape),
+            HEAD0_RIGHT => {
+                head0 = step_right(head0, &mut len, cap, tape);
+                bound = len.min(code_len);
+            }
             HEAD1_LEFT => head1 = (head1 + len - 1) % len,
-            HEAD1_RIGHT => head1 = step_right(head1, &mut len, cap, tape),
+            HEAD1_RIGHT => {
+                head1 = step_right(head1, &mut len, cap, tape);
+                bound = len.min(code_len);
+            }
             INC => tape[head0] = tape[head0].wrapping_add(1),
             DEC => tape[head0] = tape[head0].wrapping_sub(1),
             COPY_TO_HEAD1 => tape[head1] = tape[head0],
@@ -434,6 +464,80 @@ mod tests {
         assert_eq!(tape.len(), 8);
         assert_eq!(tape[7], b'[', "the copy landed in the claimed byte");
         assert_eq!(outcome.halt, Halt::EndOfTape);
+    }
+
+    /// The asymmetric mode of §1.1: the pointer stops at the end of the host's code, so
+    /// the partner's increments are bytes and not instructions. Unbounded, the very same
+    /// pair runs them.
+    #[test]
+    fn a_bounded_pointer_never_executes_a_byte_past_the_host_code() {
+        let pair = vec![b'a', b'a', b'+', b'+', b'+'];
+
+        let cap = pair.len();
+        let mut hosted = pair.clone();
+        let outcome = run_bounded(&mut hosted, 100, OpSet::ALL, cap, 2);
+        assert_eq!(hosted, pair, "the partner's ops never ran");
+        assert_eq!(outcome.steps, 2, "the pointer stepped the host's two bytes");
+        assert_eq!(outcome.halt, Halt::EndOfTape);
+
+        let mut whole = pair.clone();
+        run_bounded(&mut whole, 100, OpSet::ALL, cap, cap);
+        assert_eq!(
+            whole[0],
+            b'a'.wrapping_add(3),
+            "unbounded they are instructions"
+        );
+    }
+
+    /// Both heads still range over the whole buffer under a bound: the host's own code
+    /// walks head1 into the partner and writes there.
+    #[test]
+    fn a_bounded_run_still_reaches_the_partner_with_both_heads() {
+        let mut pair = vec![b'}', b'}', b'}', b'}', b'}', b'}', b'.', 0, 0, 0];
+        let cap = pair.len();
+        let outcome = run_bounded(&mut pair, 100, OpSet::ALL, cap, 7);
+        assert_eq!(pair[6], b'}', "the copy landed in the partner's first byte");
+        assert_eq!(outcome.steps, 7);
+    }
+
+    /// Instrumented over random pairs: with the jumps left out the pointer only moves
+    /// forward, so one step is one byte of code and the step count reads how far it got.
+    /// A bound one byte wide of the host's length fails this.
+    #[test]
+    fn a_bounded_run_steps_no_byte_of_the_partner() {
+        let straight = OpSet::parse("<>{}+-.,").expect("a legal set");
+        let mut rng = crate::rng::seeded(7, 0, 0);
+        for _ in 0..200 {
+            let host: Vec<u8> = (0..24).map(|_| crate::rng::byte(&mut rng)).collect();
+            let mut pair = host.clone();
+            pair.extend((0..24).map(|_| crate::rng::byte(&mut rng)));
+            let cap = pair.len();
+
+            let outcome = run_bounded(&mut pair, 10_000, straight, cap, host.len());
+
+            assert!(
+                outcome.steps as usize <= host.len(),
+                "{} steps over {} bytes of code",
+                outcome.steps,
+                host.len()
+            );
+            assert_eq!(outcome.halt, Halt::EndOfTape);
+        }
+    }
+
+    /// A bound at the buffer's own cap is the symmetric substrate of §1.1 and must execute
+    /// the identical instruction stream: confinement is the one thing a bound adds.
+    #[test]
+    fn a_bound_at_the_buffers_cap_runs_it_exactly_as_an_unbounded_run() {
+        let program = vec![3, b'[', b'}', b'-', b']', b'.', b',', b'<', b'>', b'>', 0];
+        let mut unbounded = program.clone();
+        let mut bounded = program.clone();
+        let len = program.len();
+        assert_eq!(
+            run_growing(&mut unbounded, 100, OpSet::ALL, len),
+            run_bounded(&mut bounded, 100, OpSet::ALL, len, len)
+        );
+        assert_eq!(unbounded, bounded);
     }
 
     #[test]

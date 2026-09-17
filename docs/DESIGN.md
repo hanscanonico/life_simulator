@@ -30,6 +30,16 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   executed as a program for at most `max_steps` instructions (default 2^13). The result
   is split back into the two cells. Execution mutates the tapes in place: the program
   *is* the data.
+- **Execution mode** (`interaction`, default `concat`): at `concat` the whole
+  concatenation is the program, which is the substrate above. At `host` the pairing is
+  asymmetric — the instruction pointer ranges over the **first tape's bytes only**, so a
+  bracket whose match lies past them jumps out of the code and ends the run, exactly as
+  stepping off the end does. Both heads still range over the whole concatenation, so the
+  partner is pure read/write substrate: what a tape does is decided by its own code, and
+  what happens to a tape is decided by how the tapes that host it treat it as data. That
+  asymmetry is the precondition for parasitism and defence, which the symmetric pairing
+  cannot express. At `concat` the pointer stops where it always stopped and the soup is
+  exactly the substrate above.
 - **Instruction cost** (`energy_per_epoch`, default `0` = off): with a budget set, every
   cell starts each epoch with that many instructions to spend, an interaction may execute
   no more than what the poorer of its two cells has left — so it halts early once they run
@@ -58,7 +68,8 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   `.` copy byte at head0 → head1; `,` copy byte at head1 → head0; `[` jump forward past
   matching `]` if byte at head0 is 0; `]` jump back to matching `[` if byte at head0 is
   non-zero. Both heads start at 0; the instruction pointer starts at 0 and stops at end of
-  tape, at `max_steps`, or on an unmatched bracket. Heads wrap modulo the concatenation's
+  tape, at `max_steps`, at the end of the host's code under an asymmetric `interaction`,
+  or on an unmatched bracket. Heads wrap modulo the concatenation's
   current length — 2×`tape_len` unless the tapes have room to grow.
 - **Mutation**: after every epoch each byte is replaced by a uniformly random byte with
   probability `mutation_rate` (default 1/4096 per byte per epoch... tune by measurement).
