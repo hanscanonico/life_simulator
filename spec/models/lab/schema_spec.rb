@@ -19,6 +19,7 @@ RSpec.describe Lab::Schema do
   it "exposes an enum's values" do
     expect(described_class.values_for("substrate")).to eq(%w[soup life])
     expect(described_class.values_for("structure")).to eq(%w[uniform gradient patchwork])
+    expect(described_class.values_for("interaction")).to eq(%w[concat host])
   end
 
   it "has no values for a numeric parameter" do
@@ -32,7 +33,7 @@ RSpec.describe Lab::Schema do
   it "drops the parameters a run never carries from the defaults a sweep starts from" do
     expect(described_class.run_defaults.keys)
       .to eq(%w[width height tape_len max_tape_len radius max_steps energy_per_epoch energy_influx
-                energy_stock_cap ops mutation_rate structure structure_amplitude init top_k])
+                energy_stock_cap ops mutation_rate structure structure_amplitude interaction init top_k])
   end
 
   # Pinned by value rather than derived from the schema: an engine default moving under
@@ -42,7 +43,8 @@ RSpec.describe Lab::Schema do
       "width" => 128, "height" => 128, "tape_len" => 64, "max_tape_len" => 0, "radius" => 1, "max_steps" => 2**13,
       "energy_per_epoch" => 0, "energy_influx" => 0, "energy_stock_cap" => 0,
       "ops" => "<>{}+-.,[]", "mutation_rate" => 1.0 / 4096,
-      "structure" => "uniform", "structure_amplitude" => 0.5, "init" => "random", "top_k" => 16
+      "structure" => "uniform", "structure_amplitude" => 0.5, "interaction" => "concat",
+      "init" => "random", "top_k" => 16
     )
   end
 

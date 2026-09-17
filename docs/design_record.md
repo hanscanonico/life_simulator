@@ -646,3 +646,29 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   nothing. No sweep is declared over the stock here: the substrate lands first, the steal
   op that makes the stock contestable follows, and the sweep is written over the substrate
   those two make.
+- 2026-09-16 — **An asymmetric execution mode, off by default.** §1.1 gains `interaction`:
+  at `concat` — the default and the substrate every run so far lived in — the whole
+  concatenation is the program; at `host` the instruction pointer ranges over the first
+  tape's bytes only and the partner is pure read/write substrate. **Why the substrate needs
+  it.** In the symmetric pairing a tape's fate is decided by what the joint program does,
+  and a tape has no interest in what it is made of: there is nothing another tape can do
+  to it that its own bytes could resist, encourage or exploit, because its own bytes are
+  running too. Asymmetry splits the two roles the parasitism literature needs apart — what
+  a tape *does* is its own code, what *happens to* a tape is how the tapes that host it
+  treat it as data — so a tape that is cheap to copy, or expensive to overwrite, or that
+  hijacks a host's copy loop, is for the first time a distinguishable strategy. It is the
+  precondition for the steal-and-defend arms race, not the arms race itself; no sweep is
+  declared over it here. **Three edges are fixed.** The host's code is its **live** length,
+  so a run with room to grow executes exactly the bytes the first cell holds and the bytes
+  the pair claimed past them are data like the rest of the partner. **Both heads still
+  range over the whole concatenation** and wrap around it — confining them too would make
+  the partner unreachable and the mode pointless. And **bracket matching still scans the
+  whole buffer**: a `[` whose match lies in the partner jumps the pointer out of the code,
+  which ends the run exactly as stepping off the end does, rather than inventing a second
+  matching rule for the same byte. **Off at `concat`, which is the default**: the
+  interpreter gained one entry point taking an instruction-pointer bound and the existing
+  ones pass the buffer's own cap, a bound the pointer can never reach, so the identical
+  instruction stream runs — the pinned determinism hashes and observable strings in
+  `world.rs` do not move, and a test asserts them again with `concat` named explicitly.
+  The cost is one comparison in the interpreter's inner loop: criterion reads the change
+  as under 2% on `bff/random_128` and inside the noise on a soup epoch.

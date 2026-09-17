@@ -6,7 +6,7 @@
 use crate::bff;
 use crate::hash::{fnv1a64, fnv1a64_of};
 use crate::metrics::{self, Metrics, TransitionTracker};
-use crate::params::{Init, ParamError, Params, Substrate};
+use crate::params::{Init, Interaction, ParamError, Params, Substrate};
 use crate::render;
 use crate::replicator;
 use crate::rng::{self, Rng};
@@ -275,6 +275,7 @@ impl World {
         let cap = self.params.tape_cap() as usize;
         let max_steps = self.params.max_steps;
         let ops = self.params.op_set();
+        let hosted = self.params.interaction == Interaction::Host;
         let counting = self.counts_copies();
         let mut energy = Energy::recharged(&self.params, std::mem::take(&mut self.stock));
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
@@ -298,8 +299,11 @@ impl World {
             before.extend_from_slice(&pair);
             let budget = energy.budget(a, b, max_steps);
             // The pair may lengthen to the first tape's length plus a whole second tape at
-            // its cap; with no room to grow that is the length it already has.
-            let outcome = bff::run_growing(&mut pair, budget, ops, live_a + cap);
+            // its cap; with no room to grow that is the length it already has. Under a
+            // host interaction the instruction pointer stops at the end of the first tape
+            // and the partner is data; under the default it stops where the pair does.
+            let code_len = if hosted { live_a } else { live_a + cap };
+            let outcome = bff::run_bounded(&mut pair, budget, ops, live_a + cap, code_len);
             energy.spend(a, b, outcome.steps);
             if counting {
                 interactions += 1;
@@ -710,7 +714,7 @@ fn draw_cell_byte(rng: &mut Rng, substrate: Substrate) -> u8 {
 mod tests {
     use super::*;
     use crate::metrics::TransitionState;
-    use crate::params::Structure;
+    use crate::params::{Interaction, Structure};
 
     /// Pinned so a change in the rules, the RNG or the visiting order cannot pass unseen:
     /// `Params::default()` at 32×32, seed 42, after 50 epochs.
@@ -1821,6 +1825,57 @@ mod tests {
             20,
         );
         assert_eq!(structured.world_hash(), flat.world_hash());
+    }
+
+    /// The asymmetric mode of §1.1: at `host` only the first tape's bytes are code, so a
+    /// pair runs a different program from the one the concatenation ran and the same seed
+    /// reaches a world the default substrate never reaches.
+    #[test]
+    fn a_host_run_is_not_the_run_at_the_defaults() {
+        let params = soup(16, 16);
+        let concat = stepped(&params, 42, 20);
+        let hosted = stepped(
+            &Params {
+                interaction: Interaction::Host,
+                ..params
+            },
+            42,
+            20,
+        );
+        assert_ne!(hosted.world_hash(), concat.world_hash());
+    }
+
+    /// And the default mode is the substrate every earlier run lived in, down to the byte:
+    /// naming it must not move a run.
+    #[test]
+    fn the_concatenated_interaction_moves_no_run() {
+        let concat = Params {
+            interaction: Interaction::Concat,
+            ..soup(32, 32)
+        };
+        let mut world = World::new(&concat, 42).unwrap();
+        for _ in 0..50 {
+            world.step();
+        }
+        assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
+
+        let measured = world.metrics();
+        assert_eq!(observable_digest(&measured), PINNED_OBSERVABLES);
+        assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
+    }
+
+    /// A host run is determined by `(params, seed)` like every other, with room to grow on
+    /// so the bound and the lengthening pair are exercised together.
+    #[test]
+    fn determinism_holds_under_an_asymmetric_interaction() {
+        assert_deterministic(
+            &Params {
+                interaction: Interaction::Host,
+                max_tape_len: 96,
+                ..soup(16, 16)
+            },
+            11,
+        );
     }
 
     fn tape_lengths(world: &World) -> Vec<usize> {

@@ -32,6 +32,17 @@ pub enum Structure {
     Patchwork,
 }
 
+/// What an interaction executes (`docs/DESIGN.md` §1.1). `Concat` is the default and the
+/// substrate every earlier run lived in: the whole concatenation is the program. `Host`
+/// makes the pairing asymmetric — only the first tape's bytes are code, and the partner is
+/// substrate the program reads and writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Interaction {
+    Concat,
+    Host,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Init {
@@ -75,6 +86,9 @@ pub struct Params {
     /// `1 + amplitude`. Read only once a `structure` is set, so the default is no second
     /// off switch.
     pub structure_amplitude: f64,
+    /// What an interaction executes: the whole concatenation (`concat`, the default and
+    /// the substrate of DESIGN §1.1), or the first tape's bytes only (`host`).
+    pub interaction: Interaction,
     pub init: Init,
     pub sample_every: u32,
     pub top_k: u32,
@@ -98,6 +112,7 @@ impl Default for Params {
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
             structure_amplitude: 0.5,
+            interaction: Interaction::Concat,
             init: Init::Random,
             sample_every: 10,
             top_k: 16,
@@ -246,6 +261,14 @@ const FIELDS: &[Field] = &[
         doc: "How far a structured world's cells lean from mutation_rate, as a fraction \
               of it: the driest cell runs at 1 - amplitude times the rate and the wettest \
               at 1 + amplitude.",
+    },
+    Field {
+        name: "interaction",
+        kind: Kind::Choice(&["concat", "host"]),
+        doc: "What an interaction executes: concat runs the whole concatenation of the \
+              two tapes, which is the substrate of DESIGN 1.1; host runs the first tape's \
+              bytes only, leaving the partner as data the program reads and writes. Both \
+              heads range over the whole pair either way.",
     },
     Field {
         name: "init",
@@ -920,7 +943,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 18);
+        assert_eq!(fields.len(), 19);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -962,6 +985,11 @@ mod tests {
             structure["values"],
             serde_json::json!(["uniform", "gradient", "patchwork"])
         );
+
+        let interaction = fields.iter().find(|f| f["name"] == "interaction").unwrap();
+        assert_eq!(interaction["type"], "enum");
+        assert_eq!(interaction["default"], "concat");
+        assert_eq!(interaction["values"], serde_json::json!(["concat", "host"]));
 
         let substrate = fields.iter().find(|f| f["name"] == "substrate").unwrap();
         assert_eq!(substrate["type"], "enum");
@@ -1030,5 +1058,20 @@ mod tests {
             }
         );
         assert!(serde_json::from_str::<Params>(r#"{"structure": "swirl"}"#).is_err());
+    }
+
+    /// The asymmetric execution mode of §1.1, off by default: an interaction runs the
+    /// whole concatenation unless the run asks for a host.
+    #[test]
+    fn an_interaction_runs_the_whole_concatenation_by_default() {
+        assert_eq!(Params::default().interaction, Interaction::Concat);
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"interaction": "host"}"#).unwrap(),
+            Params {
+                interaction: Interaction::Host,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"interaction": "duel"}"#).is_err());
     }
 }

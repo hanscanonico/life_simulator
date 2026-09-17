@@ -115,6 +115,20 @@ mod tests {
         );
     }
 
+    /// The viewer takes the asymmetric execution mode of DESIGN §1.1 like any other
+    /// parameter, and runs the world the engine runs under it.
+    #[test]
+    fn a_world_runs_the_interaction_mode_its_params_name() {
+        let params = r#"{"width": 16, "height": 16, "interaction": "host"}"#;
+        let mut hosted = World::build(params, 42).unwrap();
+        let mut concat = World::build(r#"{"width": 16, "height": 16}"#, 42).unwrap();
+        hosted.step(20);
+        concat.step(20);
+
+        assert_ne!(hosted.world_hash(), concat.world_hash());
+        assert!(World::build(r#"{"interaction": "duel"}"#, 1).is_err());
+    }
+
     #[test]
     fn bad_json_and_bad_params_come_back_as_errors() {
         assert!(World::build("not json", 1).is_err());
