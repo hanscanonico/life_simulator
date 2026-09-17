@@ -525,6 +525,25 @@ mod tests {
         }
     }
 
+    /// Bracket matching still scans the whole buffer (DESIGN §1.1): a `[` whose match lies
+    /// in the partner jumps the pointer out of the code and ends the run there, rather
+    /// than reading as the unmatched bracket the same byte would be under a second
+    /// matching rule confined to the code. Either way the partner's `+` never runs.
+    #[test]
+    fn a_bracket_matched_in_the_partner_jumps_the_pointer_out_of_the_code() {
+        let matched = vec![0, b'[', b'+', 0, 0, b']'];
+        let mut jumped = matched.clone();
+        let outcome = run_bounded(&mut jumped, 100, OpSet::ALL, matched.len(), 3);
+        assert_eq!(outcome.halt, Halt::EndOfTape, "the jump left the code");
+        assert_eq!(outcome.steps, 2, "the zero byte and the bracket");
+        assert_eq!(jumped, matched, "the byte past the bracket never ran");
+
+        let mut unmatched = vec![0, b'[', b'+', 0, 0, 0];
+        let outcome = run_bounded(&mut unmatched, 100, OpSet::ALL, 6, 3);
+        assert_eq!(outcome.halt, Halt::UnmatchedBracket);
+        assert_eq!(unmatched[0], 0, "the byte past the bracket never ran");
+    }
+
     /// A bound at the buffer's own cap is the symmetric substrate of §1.1 and must execute
     /// the identical instruction stream: confinement is the one thing a bound adds.
     #[test]
