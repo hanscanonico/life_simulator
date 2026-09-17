@@ -88,7 +88,8 @@ RSpec.describe "Runs", type: :request do
 
         get run_path(stocked)
 
-        expect(response.body).to include("energy_influx", "64", "energy_stock_cap", "4096")
+        expect(response.body).to include("<dt>energy_influx</dt><dd>64</dd>",
+                                         "<dt>energy_stock_cap</dt><dd>4096</dd>")
       end
     end
 

@@ -1533,6 +1533,31 @@ mod tests {
         );
     }
 
+    /// A cell passed over for an empty stock is passed over in the epoch's census too: the
+    /// pair never ran, so it is in neither half of `copy_rate` (DESIGN §1.2). Eight of the
+    /// fifty-three pairs that ran in this epoch copied; the eleven the stock starved are in
+    /// neither number. Were they counted as interactions that copied nothing, the rate
+    /// would read 8/64 — every starving epoch diluted by however many cells ran dry.
+    #[test]
+    fn a_starved_pair_is_in_neither_half_of_the_epochs_copy_rate() {
+        let params = Params {
+            sample_every: 1,
+            energy_influx: 64,
+            energy_stock_cap: 8192,
+            ..colony_params()
+        };
+        assert_eq!(params.cell_count(), 64);
+
+        let mut world = colony(&params, 3);
+        world.step();
+
+        assert!(
+            world.stock.contains(&0),
+            "no cell was starved, so the epoch counted nothing either way"
+        );
+        assert_eq!(world.metrics().copy_rate, 8.0 / 53.0);
+    }
+
     /// What separates the stock from the per-epoch allowance: the allowance is whole again
     /// next epoch however it was spent, so under it every cell runs every epoch, while
     /// under a stock the same influx buys a cell nothing it has already spent.
