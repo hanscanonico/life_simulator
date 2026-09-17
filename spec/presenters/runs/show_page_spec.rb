@@ -20,7 +20,8 @@ RSpec.describe Runs::ShowPage do
       expect(described_class::METRICS.keys)
         .to eq(%w[compress_ratio distinct_tapes top_share replicator_count op_density entropy_bits alphabet_size
                   copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost
-                  dominant_compressed_len dominant_instruction_count dominant_raw_len])
+                  dominant_compressed_len dominant_instruction_count dominant_raw_len
+                  conserved_core_bytes conserved_core_ops])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
       expect(page.charts.map(&:title))
         .to eq(described_class::METRICS.values +
@@ -102,6 +103,17 @@ RSpec.describe Runs::ShowPage do
 
       expect(chart_for("dominant_compressed_len")).not_to be_empty
       expect(chart_for("dominant_instruction_count")).not_to be_empty
+    end
+
+    it "draws the conserved core of the samples that carry one" do
+      create(:sample, run: run, epoch: 100,
+                      values: { "conserved_core_bytes" => 36, "conserved_core_ops" => 15 })
+      create(:sample, run: run, epoch: 200,
+                      values: { "conserved_core_bytes" => nil, "conserved_core_ops" => nil })
+
+      expect(chart_for("conserved_core_bytes")).not_to be_empty
+      expect(chart_for("conserved_core_ops")).not_to be_empty
+      expect(Runs::MetricSeriesService.call(run: run, metric: "conserved_core_bytes")).to eq([[100, 36]])
     end
   end
 

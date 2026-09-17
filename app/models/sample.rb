@@ -8,6 +8,7 @@ class Sample < ApplicationRecord
     compress_ratio distinct_tapes top_share op_density replicator_count entropy_bits alphabet_size copy_rate
     distinct_lineages top_lineage_share lineage_variation copy_cost dominant_compressed_len
     dominant_instruction_count dominant_replicates dominant_raw_len dominant_tape_hash
+    conserved_core_bytes conserved_core_ops
   ].freeze
 
   # The observables that are not numbers: exported like the rest, but there is no series a

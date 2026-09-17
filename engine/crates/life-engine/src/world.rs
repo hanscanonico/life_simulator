@@ -455,6 +455,7 @@ impl World {
         let histogram = metrics::ByteHistogram::of(&self.tapes().bytes());
         let (distinct_lineages, top_lineage_share) = metrics::lineage_census(&self.lineages);
         let census = self.replicator_census(&ranked);
+        let core = self.conserved_core();
 
         Metrics {
             compress_ratio,
@@ -474,7 +475,19 @@ impl World {
             dominant_replicates: census.dominant_replicates,
             dominant_raw_len: census.complexity.map(|read| read.raw_len),
             dominant_tape_hash: census.complexity.map(|read| read.tape_hash_hex()),
+            conserved_core_bytes: core.map(|read| read.bytes),
+            conserved_core_ops: core.map(|read| read.ops),
         }
+    }
+
+    /// What the largest lineage holds invariant across its members. Life cells carry no
+    /// tape and no lineage, so there is nothing there to conserve. The reading walks the
+    /// tapes the census has already ranked and draws nothing: no RNG stream moves.
+    fn conserved_core(&self) -> Option<metrics::ConservedCore> {
+        if self.params.substrate != Substrate::Soup {
+            return None;
+        }
+        metrics::conserved_core(self.tapes(), &self.lineages, self.params.op_set())
     }
 
     /// Cells holding one of the `top_k` most common tapes that passes the replicator test,
@@ -653,6 +666,11 @@ mod tests {
          dominant_tape_hash=Some(\"fdc479506869ad61\")";
     const PINNED_SEEDED_DOMINANT_TAPE: &str = "dominant_raw_len=Some(256) \
          dominant_tape_hash=Some(\"1d895db59f8130fa\")";
+    /// And the two fields #193 added, pinned apart again: what the largest lineage of each
+    /// of those worlds holds invariant across its members.
+    const PINNED_CONSERVED_CORE: &str = "conserved_core_bytes=Some(1) conserved_core_ops=Some(0)";
+    const PINNED_SEEDED_CONSERVED_CORE: &str =
+        "conserved_core_bytes=Some(253) conserved_core_ops=Some(15)";
 
     fn observable_digest(measured: &Metrics) -> String {
         format!(
@@ -696,6 +714,13 @@ mod tests {
         format!(
             "dominant_raw_len={:?} dominant_tape_hash={:?}",
             measured.dominant_raw_len, measured.dominant_tape_hash,
+        )
+    }
+
+    fn conserved_core_digest(measured: &Metrics) -> String {
+        format!(
+            "conserved_core_bytes={:?} conserved_core_ops={:?}",
+            measured.conserved_core_bytes, measured.conserved_core_ops,
         )
     }
 
@@ -1008,6 +1033,7 @@ mod tests {
         assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
         assert_eq!(dominant_digest(&measured), PINNED_DOMINANT);
         assert_eq!(dominant_tape_digest(&measured), PINNED_DOMINANT_TAPE);
+        assert_eq!(conserved_core_digest(&measured), PINNED_CONSERVED_CORE);
     }
 
     #[test]
@@ -1031,6 +1057,10 @@ mod tests {
         assert_eq!(lineage_digest(&measured), PINNED_SEEDED_LINEAGES);
         assert_eq!(dominant_digest(&measured), PINNED_SEEDED_DOMINANT);
         assert_eq!(dominant_tape_digest(&measured), PINNED_SEEDED_DOMINANT_TAPE);
+        assert_eq!(
+            conserved_core_digest(&measured),
+            PINNED_SEEDED_CONSERVED_CORE
+        );
     }
 
     /// A colony of the handwritten replicator is one lineage spreading: each cell it
@@ -1216,6 +1246,8 @@ mod tests {
         assert_eq!(measured.distinct_lineages, 0);
         assert_eq!(measured.top_lineage_share, 0.0);
         assert_eq!(measured.lineage_variation, 0.0);
+        assert_eq!(measured.conserved_core_bytes, None);
+        assert_eq!(measured.conserved_core_ops, None);
     }
 
     #[test]

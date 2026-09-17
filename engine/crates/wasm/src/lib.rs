@@ -104,6 +104,18 @@ mod tests {
     }
 
     #[test]
+    fn the_readout_carries_the_conserved_core_of_the_largest_lineage() {
+        let mut world = World::build(r#"{"width": 32, "height": 32}"#, 42).unwrap();
+        world.step(50);
+
+        let metrics: serde_json::Value = serde_json::from_str(&world.metrics_json()).unwrap();
+        assert!(
+            metrics["conserved_core_bytes"].is_u64() && metrics["conserved_core_ops"].is_u64(),
+            "a world whose lineages have met reads a conserved core: {metrics}"
+        );
+    }
+
+    #[test]
     fn bad_json_and_bad_params_come_back_as_errors() {
         assert!(World::build("not json", 1).is_err());
         assert!(World::build(r#"{"width": 2}"#, 1).is_err());

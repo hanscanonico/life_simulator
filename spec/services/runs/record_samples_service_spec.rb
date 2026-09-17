@@ -35,6 +35,13 @@ RSpec.describe Runs::RecordSamplesService do
       expect(run.reload.summary).to eq("compress_ratio" => 0.4)
     end
 
+    it "stores the conserved core of a lineage the engine reported" do
+      described_class.call(run: run, samples: [{ "epoch" => 100, "compress_ratio" => 0.5,
+                                                 "conserved_core_bytes" => 36, "conserved_core_ops" => 15 }])
+
+      expect(run.samples.sole.values).to include("conserved_core_bytes" => 36, "conserved_core_ops" => 15)
+    end
+
     it "stores no duplicate rows" do
       described_class.call(run: run, samples: batch(100, 200))
 

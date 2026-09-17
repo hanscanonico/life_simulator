@@ -203,7 +203,9 @@ RSpec.describe "Runs", type: :request do
         expect(response.body).to include("Distinct lineages", "Share of the largest lineage",
                                          "Copy cost (steps)",
                                          "Compressed length of the dominant tape (bytes)",
-                                         "Instructions in the dominant tape")
+                                         "Instructions in the dominant tape",
+                                         "Conserved core of the largest lineage (bytes)",
+                                         "Instructions in that conserved core")
       end
     end
 

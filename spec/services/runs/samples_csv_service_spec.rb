@@ -44,6 +44,15 @@ RSpec.describe Runs::SamplesCsvService do
     expect(rows.last.values_at(*columns)).to eq(%w[36 15])
   end
 
+  it "exports the conserved core of the largest lineage in its own two columns" do
+    create(:sample, run: run, epoch: 100,
+                    values: { "conserved_core_bytes" => 36, "conserved_core_ops" => 15 })
+
+    columns = %w[conserved_core_bytes conserved_core_ops].map { |name| Sample::OBSERVABLES.index(name) + 1 }
+
+    expect(rows.last.values_at(*columns)).to eq(%w[36 15])
+  end
+
   it "exports whether the dominant tape replicates beside its complexity" do
     create(:sample, run: run, epoch: 100,
                     values: { "dominant_compressed_len" => 75, "dominant_replicates" => false })
