@@ -11,6 +11,12 @@
 //! length, and a third payload holding one live tape length per cell. Its cell payload is
 //! the ragged live bytes end to end rather than the padded slots. A world that cannot grow
 //! writes version 3, byte for byte as it always did.
+//!
+//! Version 5 is what a world whose cells hold an energy stock (DESIGN §1.1) writes: the
+//! version 4 header with the live-length payload's own length after the tape cap, and a
+//! fourth payload holding one stock reading per cell. Its length payload is empty where
+//! the tapes cannot grow, so a stocked world of fixed-length tapes and one of growing
+//! tapes are the same container. A world with no influx writes version 3 or 4 as before.
 
 use crate::metrics::{self, TransitionState};
 use crate::params::{Params, Substrate};
@@ -22,14 +28,17 @@ pub const MAGIC: [u8; 4] = *b"LSNP";
 pub const VERSION: u8 = 3;
 /// The version a world whose tapes can grow writes; it carries the lengths.
 pub const VERSION_RAGGED: u8 = 4;
+/// The version a world whose cells hold energy writes; it carries the stocks.
+pub const VERSION_STOCKED: u8 = 5;
 pub const HEADER_LEN: usize = 62;
 const HEADER_LEN_V4: usize = 74;
+const HEADER_LEN_V5: usize = 82;
 /// Version 2 carried tapes only, version 1 not even the transition tracker; Postgres
 /// still holds both, and every run they belong to must stay resumable.
 const HEADER_LEN_V2: usize = 54;
 const HEADER_LEN_V1: usize = 26;
 const LINEAGE_BYTES: usize = 8;
-const LEN_BYTES: usize = 4;
+const WORD_BYTES: usize = 4;
 const NO_EPOCH: i64 = -1;
 
 #[derive(Debug)]
@@ -72,12 +81,14 @@ pub struct Header {
 /// the world holds them in, the lineage tags a version 3 blob carries, and the live tape
 /// lengths a version 4 blob carries. `lineages` is `None` for the older formats, which
 /// held no ancestry — the caller mints a fresh census there rather than inventing one
-/// here — and `lens` is `None` wherever every tape fills its slot.
+/// here — and `lens` is `None` wherever every tape fills its slot. `stock` is `None` for
+/// every format written before cells held energy.
 pub struct Restored {
     pub header: Header,
     pub cells: Vec<u8>,
     pub lineages: Option<Vec<u64>>,
     pub lens: Option<Vec<u32>>,
+    pub stock: Option<Vec<u32>>,
 }
 
 fn epoch_field(epoch: Option<u64>) -> i64 {
@@ -88,8 +99,14 @@ fn epoch_from_field(field: i64) -> Option<u64> {
     (field >= 0).then_some(field as u64)
 }
 
-pub fn encode(header: &Header, cells: &[u8], lineages: &[u64], lens: &[u32]) -> Vec<u8> {
-    encode_compressed(header, &metrics::compress(cells), lineages, lens)
+pub fn encode(
+    header: &Header,
+    cells: &[u8],
+    lineages: &[u64],
+    lens: &[u32],
+    stock: &[u32],
+) -> Vec<u8> {
+    encode_compressed(header, &metrics::compress(cells), lineages, lens, stock)
 }
 
 /// A snapshot built from a cell payload already compressed by `compress` — the header and
@@ -101,12 +118,24 @@ pub fn encode_compressed(
     payload: &[u8],
     lineages: &[u64],
     lens: &[u32],
+    stock: &[u32],
 ) -> Vec<u8> {
     let tags = metrics::compress(&lineage_bytes(lineages));
-    let ragged = !lens.is_empty();
-    let mut out = Vec::with_capacity(HEADER_LEN_V4 + payload.len() + tags.len());
+    let stocked = !stock.is_empty();
+    let ragged = stocked || !lens.is_empty();
+    // A stocked world of fixed-length tapes writes the length payload empty rather than a
+    // compressed nothing: the reader tells "no lengths" from "lengths" by that length alone.
+    let lengths = match lens.is_empty() {
+        true => Vec::new(),
+        false => metrics::compress(&word_bytes(lens)),
+    };
+    let mut out = Vec::with_capacity(HEADER_LEN_V5 + payload.len() + tags.len());
     out.extend_from_slice(&MAGIC);
-    out.push(if ragged { VERSION_RAGGED } else { VERSION });
+    out.push(match (stocked, ragged) {
+        (true, _) => VERSION_STOCKED,
+        (false, true) => VERSION_RAGGED,
+        (false, false) => VERSION,
+    });
     out.push(substrate_byte(header.substrate));
     out.extend_from_slice(&header.width.to_le_bytes());
     out.extend_from_slice(&header.height.to_le_bytes());
@@ -121,10 +150,16 @@ pub fn encode_compressed(
         out.extend_from_slice(&(tags.len() as u64).to_le_bytes());
         out.extend_from_slice(&header.tape_cap.to_le_bytes());
     }
+    if stocked {
+        out.extend_from_slice(&(lengths.len() as u64).to_le_bytes());
+    }
     out.extend_from_slice(payload);
     out.extend_from_slice(&tags);
     if ragged {
-        out.extend_from_slice(&metrics::compress(&len_bytes(lens)));
+        out.extend_from_slice(&lengths);
+    }
+    if stocked {
+        out.extend_from_slice(&metrics::compress(&word_bytes(stock)));
     }
     out
 }
@@ -144,17 +179,17 @@ fn lineage_bytes(lineages: &[u64]) -> Vec<u8> {
     out
 }
 
-fn len_bytes(lens: &[u32]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(lens.len() * LEN_BYTES);
-    for len in lens {
-        out.extend_from_slice(&len.to_le_bytes());
+fn word_bytes(words: &[u32]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(words.len() * WORD_BYTES);
+    for word in words {
+        out.extend_from_slice(&word.to_le_bytes());
     }
     out
 }
 
-fn lens_from(bytes: &[u8]) -> Vec<u32> {
-    let (lens, _) = bytes.as_chunks::<LEN_BYTES>();
-    lens.iter().copied().map(u32::from_le_bytes).collect()
+fn words_from(bytes: &[u8]) -> Vec<u32> {
+    let (words, _) = bytes.as_chunks::<WORD_BYTES>();
+    words.iter().copied().map(u32::from_le_bytes).collect()
 }
 
 fn lineages_from(bytes: &[u8]) -> Vec<u64> {
@@ -188,6 +223,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
         2 => HEADER_LEN_V2,
         VERSION => HEADER_LEN,
         VERSION_RAGGED => HEADER_LEN_V4,
+        VERSION_STOCKED => HEADER_LEN_V5,
         version => return Err(SnapshotError::UnsupportedVersion(version)),
     };
     if bytes.len() < header_len {
@@ -216,7 +252,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
         width: word(6),
         height: word(10),
         tape_len: word(14),
-        tape_cap: if header_len == HEADER_LEN_V4 {
+        tape_cap: if header_len >= HEADER_LEN_V4 {
             word(HEADER_LEN + 8)
         } else {
             word(14)
@@ -239,7 +275,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
     }
     // The lengths alone cannot tell the cap they were written under: every one of them
     // fitting a narrower slot is no evidence the world had no more room than that.
-    if header_len == HEADER_LEN_V4 && header.tape_cap != params.tape_cap() {
+    if header_len >= HEADER_LEN_V4 && header.tape_cap != params.tape_cap() {
         return Err(SnapshotError::Mismatch {
             field: "max_tape_len",
         });
@@ -252,7 +288,25 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
         .map_err(|_| SnapshotError::Truncated)
     };
     let body = &bytes[header_len..];
-    let (cell_payload, lineage_payload, len_payload) = match header_len {
+    let (cell_payload, lineage_payload, len_payload, stock_payload) = match header_len {
+        HEADER_LEN_V5 => {
+            let cells_len = payload_at(HEADER_LEN_V2)?;
+            let tags_len = payload_at(HEADER_LEN)?;
+            let lens_len = payload_at(HEADER_LEN_V4)?;
+            let payloads = cells_len
+                .checked_add(tags_len)
+                .and_then(|so_far| so_far.checked_add(lens_len))
+                .ok_or(SnapshotError::Truncated)?;
+            if body.len() < payloads {
+                return Err(SnapshotError::Truncated);
+            }
+            (
+                &body[..cells_len],
+                Some(&body[cells_len..cells_len + tags_len]),
+                (lens_len > 0).then(|| &body[cells_len + tags_len..payloads]),
+                Some(&body[payloads..]),
+            )
+        }
         HEADER_LEN_V4 => {
             let cells_len = payload_at(HEADER_LEN_V2)?;
             let tags_len = payload_at(HEADER_LEN)?;
@@ -266,6 +320,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
                 &body[..cells_len],
                 Some(&body[cells_len..cells_len + tags_len]),
                 Some(&body[cells_len + tags_len..]),
+                None,
             )
         }
         HEADER_LEN => {
@@ -273,9 +328,9 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
             if body.len() < cells_len {
                 return Err(SnapshotError::Truncated);
             }
-            (&body[..cells_len], Some(&body[cells_len..]), None)
+            (&body[..cells_len], Some(&body[cells_len..]), None, None)
         }
-        _ => (body, None, None),
+        _ => (body, None, None, None),
     };
 
     let lens = len_payload
@@ -299,11 +354,15 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
     let lineages = lineage_payload
         .map(|payload| decode_lineages(params, payload))
         .transpose()?;
+    let stock = stock_payload
+        .map(|payload| decode_stock(params, payload))
+        .transpose()?;
     Ok(Restored {
         header,
         cells,
         lineages,
         lens,
+        stock,
     })
 }
 
@@ -323,14 +382,14 @@ fn into_slots(live: &[u8], lens: &[u32], stride: usize) -> Vec<u8> {
 /// The live tape lengths, refused unless there is one per cell and each fits a slot: a
 /// blob written under a wider cap cannot be restored into a narrower world.
 fn decode_lens(params: &Params, payload: &[u8]) -> Result<Vec<u32>, SnapshotError> {
-    let expected = params.cell_count() * LEN_BYTES;
+    let expected = params.cell_count() * WORD_BYTES;
     let bytes = inflate_bounded(payload, expected)?;
     if bytes.len() != expected {
         return Err(SnapshotError::Mismatch {
             field: "cell count",
         });
     }
-    let lens = lens_from(&bytes);
+    let lens = words_from(&bytes);
     if lens
         .iter()
         .any(|len| *len == 0 || *len as usize > params.stride())
@@ -338,6 +397,25 @@ fn decode_lens(params: &Params, payload: &[u8]) -> Result<Vec<u32>, SnapshotErro
         return Err(SnapshotError::Mismatch { field: "tape_len" });
     }
     Ok(lens)
+}
+
+/// The energy stocks, refused unless there is one per cell and none holds more than the
+/// world's cap: a blob written under a richer economy cannot be restored into a poorer one.
+fn decode_stock(params: &Params, payload: &[u8]) -> Result<Vec<u32>, SnapshotError> {
+    let expected = params.cell_count() * WORD_BYTES;
+    let bytes = inflate_bounded(payload, expected)?;
+    if bytes.len() != expected {
+        return Err(SnapshotError::Mismatch {
+            field: "cell count",
+        });
+    }
+    let stock = words_from(&bytes);
+    if stock.iter().any(|held| *held > params.energy_stock_cap) {
+        return Err(SnapshotError::Mismatch {
+            field: "energy_stock_cap",
+        });
+    }
+    Ok(stock)
 }
 
 fn decode_lineages(params: &Params, payload: &[u8]) -> Result<Vec<u64>, SnapshotError> {
@@ -431,7 +509,7 @@ mod tests {
     fn round_trips_cells_and_epoch() {
         let params = params();
         let cells: Vec<u8> = (0..128).map(|i| i as u8).collect();
-        let bytes = encode(&header(&params, 99), &cells, &lineages(&params), &[]);
+        let bytes = encode(&header(&params, 99), &cells, &lineages(&params), &[], &[]);
         assert!(bytes.len() < cells.len() + HEADER_LEN + 64);
 
         let restored = decode(&params, &bytes).unwrap();
@@ -446,7 +524,7 @@ mod tests {
         let cells = vec![7u8; 128];
         let tags = lineages(&params);
 
-        let bytes = encode(&header(&params, 3), &cells, &tags, &[]);
+        let bytes = encode(&header(&params, 3), &cells, &tags, &[], &[]);
 
         assert_eq!(decode(&params, &bytes).unwrap().lineages, Some(tags));
     }
@@ -462,7 +540,7 @@ mod tests {
         };
         let cells: Vec<u8> = (0..params.cell_count()).map(|i| (i % 2) as u8).collect();
 
-        let bytes = encode(&header(&params, 5), &cells, &[], &[]);
+        let bytes = encode(&header(&params, 5), &cells, &[], &[], &[]);
 
         let restored = decode(&params, &bytes).unwrap();
         assert_eq!(restored.cells, cells);
@@ -487,6 +565,7 @@ mod tests {
             },
             &cells,
             &lineages(&params),
+            &[],
             &[],
         );
 
@@ -548,6 +627,7 @@ mod tests {
             &vec![0u8; expected * 8],
             &lineages(&params),
             &[],
+            &[],
         );
 
         assert!(matches!(
@@ -571,7 +651,7 @@ mod tests {
             .collect();
         let live: Vec<u8> = (0..lens.iter().sum::<u32>()).map(|at| at as u8).collect();
 
-        let bytes = encode(&header(&params, 7), &live, &lineages(&params), &lens);
+        let bytes = encode(&header(&params, 7), &live, &lineages(&params), &lens, &[]);
 
         assert_eq!(bytes[4], VERSION_RAGGED);
         let restored = decode(&params, &bytes).unwrap();
@@ -602,7 +682,7 @@ mod tests {
         let live: Vec<u8> = (0..lens.iter().sum::<u32>()).map(|at| at as u8).collect();
         let tags = lineages(&params);
 
-        let bytes = encode(&header(&params, 9), &live, &tags, &lens);
+        let bytes = encode(&header(&params, 9), &live, &tags, &lens, &[]);
 
         assert_eq!(bytes[..4], MAGIC);
         assert_eq!(bytes[4], VERSION_RAGGED);
@@ -633,9 +713,96 @@ mod tests {
             lineage_bytes(&tags)
         );
         assert_eq!(
-            inflate_bounded(&body[cells_len + tags_len..], lens.len() * LEN_BYTES).unwrap(),
-            len_bytes(&lens)
+            inflate_bounded(&body[cells_len + tags_len..], lens.len() * WORD_BYTES).unwrap(),
+            word_bytes(&lens)
         );
+    }
+
+    /// Version 5: the stocks travel with the tapes, so a stocked run resumed from a
+    /// snapshot carries the energy its cells had rather than a fresh full world. A stocked
+    /// world of fixed-length tapes writes no lengths at all, and reads back as one.
+    #[test]
+    fn round_trips_the_energy_stocks_of_a_stocked_world() {
+        let params = Params {
+            energy_influx: 4,
+            energy_stock_cap: 64,
+            ..params()
+        };
+        let cells = vec![3u8; params.cell_count() * params.stride()];
+        let stock: Vec<u32> = (0..params.cell_count() as u32)
+            .map(|cell| cell % 65)
+            .collect();
+
+        let bytes = encode(
+            &header(&params, 12),
+            &cells,
+            &lineages(&params),
+            &[],
+            &stock,
+        );
+
+        assert_eq!(bytes[4], VERSION_STOCKED);
+        let restored = decode(&params, &bytes).unwrap();
+        assert_eq!(restored.cells, cells);
+        assert_eq!(restored.header.epoch, 12);
+        assert_eq!(restored.lens, None, "a fixed-length world wrote lengths");
+        assert_eq!(restored.stock, Some(stock));
+    }
+
+    /// A world may hold both: the lengths and the stocks follow the tapes and the tags, in
+    /// that order, and each comes back its own.
+    #[test]
+    fn round_trips_the_lengths_and_the_stocks_of_a_growing_stocked_world() {
+        let params = Params {
+            max_tape_len: 32,
+            energy_influx: 4,
+            energy_stock_cap: 64,
+            ..params()
+        };
+        let lens: Vec<u32> = (0..params.cell_count() as u32)
+            .map(|cell| 8 + cell % 3)
+            .collect();
+        let live: Vec<u8> = (0..lens.iter().sum::<u32>()).map(|at| at as u8).collect();
+        let stock = vec![17u32; params.cell_count()];
+
+        let bytes = encode(
+            &header(&params, 6),
+            &live,
+            &lineages(&params),
+            &lens,
+            &stock,
+        );
+
+        assert_eq!(bytes[4], VERSION_STOCKED);
+        let restored = decode(&params, &bytes).unwrap();
+        assert_eq!(restored.lens, Some(lens));
+        assert_eq!(restored.stock, Some(stock));
+    }
+
+    /// A stock over the world's cap is not this world's: restoring it would hand cells
+    /// energy the params say they cannot hold.
+    #[test]
+    fn rejects_a_stock_written_under_a_richer_economy() {
+        let params = Params {
+            energy_influx: 4,
+            energy_stock_cap: 64,
+            ..params()
+        };
+        let cells = vec![0u8; params.cell_count() * params.stride()];
+        let bytes = encode(
+            &header(&params, 1),
+            &cells,
+            &lineages(&params),
+            &[],
+            &vec![4096u32; params.cell_count()],
+        );
+
+        assert!(matches!(
+            decode(&params, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "energy_stock_cap"
+            })
+        ));
     }
 
     /// The lengths alone cannot tell the cap they were written under: a blob whose tapes
@@ -650,7 +817,7 @@ mod tests {
         };
         let lens = vec![8u32; params.cell_count()];
         let live = vec![b'a'; lens.len() * 8];
-        let bytes = encode(&header(&params, 4), &live, &lineages(&params), &lens);
+        let bytes = encode(&header(&params, 4), &live, &lineages(&params), &lens, &[]);
 
         let narrower = Params {
             max_tape_len: 128,
@@ -676,6 +843,7 @@ mod tests {
             &vec![0u8; 16 * params.cell_count()],
             &lineages(&params),
             &vec![16u32; params.cell_count()],
+            &[],
         );
         assert!(matches!(
             decode(&params, &over_the_cap),
@@ -687,6 +855,7 @@ mod tests {
             &[],
             &lineages(&params),
             &vec![0u32; params.cell_count()],
+            &[],
         );
         assert!(matches!(
             decode(&params, &empty_tapes),
@@ -694,11 +863,37 @@ mod tests {
         ));
     }
 
+    /// A stock payload that does not count the cells is refused rather than laid into a
+    /// world it cannot fill: one reading per cell is what a world's stock is.
+    #[test]
+    fn rejects_a_stock_that_does_not_count_the_cells() {
+        let params = Params {
+            energy_influx: 4,
+            energy_stock_cap: 64,
+            ..params()
+        };
+        let cells = vec![0u8; params.cell_count() * params.stride()];
+        let bytes = encode(
+            &header(&params, 1),
+            &cells,
+            &lineages(&params),
+            &[],
+            &vec![8u32; params.cell_count() - 1],
+        );
+
+        assert!(matches!(
+            decode(&params, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "cell count"
+            })
+        ));
+    }
+
     #[test]
     fn rejects_lineage_tags_that_do_not_count_the_cells() {
         let params = params();
         let cells = vec![0u8; 128];
-        let bytes = encode(&header(&params, 0), &cells, &vec![0u64; 128], &[]);
+        let bytes = encode(&header(&params, 0), &cells, &vec![0u64; 128], &[], &[]);
 
         assert!(matches!(
             decode(&params, &bytes),
@@ -711,7 +906,13 @@ mod tests {
     #[test]
     fn rejects_a_cell_payload_length_the_blob_cannot_hold() {
         let params = params();
-        let mut bytes = encode(&header(&params, 0), &[0u8; 128], &lineages(&params), &[]);
+        let mut bytes = encode(
+            &header(&params, 0),
+            &[0u8; 128],
+            &lineages(&params),
+            &[],
+            &[],
+        );
         let overrun = (bytes.len() as u64).to_le_bytes();
         bytes[HEADER_LEN_V2..HEADER_LEN].copy_from_slice(&overrun);
 
@@ -725,7 +926,7 @@ mod tests {
     fn rejects_snapshots_that_do_not_fit_the_params() {
         let params = params();
         let cells = vec![0u8; 128];
-        let bytes = encode(&header(&params, 0), &cells, &lineages(&params), &[]);
+        let bytes = encode(&header(&params, 0), &cells, &lineages(&params), &[], &[]);
 
         let other = Params {
             width: 8,
@@ -745,10 +946,10 @@ mod tests {
         ));
 
         let mut future = bytes.clone();
-        future[4] = VERSION_RAGGED + 1;
+        future[4] = VERSION_STOCKED + 1;
         assert!(matches!(
             decode(&params, &future),
-            Err(SnapshotError::UnsupportedVersion(5))
+            Err(SnapshotError::UnsupportedVersion(6))
         ));
     }
 }

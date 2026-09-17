@@ -81,6 +81,18 @@ RSpec.describe "Runs", type: :request do
       expect(response.body).to include("Compression ratio", "Copy rate", "<svg", "4242", "mutation_rate")
     end
 
+    context "with a run under an energy stock" do
+      it "shows the influx and the stock cap it ran with" do
+        stocked = create(:run, params: Lab::Schema.run_defaults.merge("energy_influx" => 64,
+                                                                      "energy_stock_cap" => 4_096))
+
+        get run_path(stocked)
+
+        expect(response.body).to include("<dt>energy_influx</dt><dd>64</dd>",
+                                         "<dt>energy_stock_cap</dt><dd>4096</dd>")
+      end
+    end
+
     context "with a transitioned run whose world held the state" do
       it "shows the census peak, the epochs persisted and no relapse" do
         run.update!(persistence: { "census_peak" => 867, "peak_epoch" => 5_080,

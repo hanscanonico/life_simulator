@@ -22,7 +22,8 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
 - **World**: a 2D torus, `width × height` cells. Every cell holds one **tape** of
   `tape_len` bytes (default 64). Tapes are the only state. There is no fitness and no
   reproduction rule: any copying that happens is done by the programs themselves. Energy
-  is off by default and optional (`energy_per_epoch`, sweep 6 below).
+  is off by default and optional — as a per-epoch allowance (`energy_per_epoch`, sweep 6
+  below) or as a stock that carries across epochs (`energy_influx`, below).
 - **Interaction** (one per cell per epoch, cells visited in a random order): the cell
   picks a random neighbour within `radius` (Moore neighbourhood, default 1). The two
   tapes are concatenated (`A ++ B`, 2×`tape_len` bytes) and the concatenation is
@@ -34,6 +35,18 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   no more than what the poorer of its two cells has left — so it halts early once they run
   dry — and both cells are debited what it executed. At `0` nothing is counted and the
   soup is exactly the substrate above.
+- **Energy stock** (`energy_influx`, default `0` = off; `energy_stock_cap`): with an influx
+  set, every cell holds a stock of instruction energy that **carries across epochs** rather
+  than being refilled to an allowance. Each epoch adds `energy_influx` to every cell's
+  stock, never past `energy_stock_cap` (the stock every cell also starts the run with, so
+  the world's total energy never exceeds cell count × cap); an interaction may execute no
+  more instructions than the poorer of its two cells holds and debits both of them what it
+  ran; and a cell whose stock is empty is passed over entirely until a later epoch's influx
+  has recharged it. The stock is state of the world: it is hashed with the tapes and travels
+  in the snapshot, so a resumed run carries the energy its cells had. At `0` no stock is
+  allocated, no cell is gated and the soup is exactly the substrate above. Independent of
+  `energy_per_epoch`: a run may carry either, both (an interaction is then bounded by
+  whichever is poorer) or neither.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The

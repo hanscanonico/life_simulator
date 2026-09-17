@@ -1061,6 +1061,7 @@ mod tests {
             &payload,
             &[],
             &[],
+            &[],
         );
         assert_eq!(
             &encoded[crate::snapshot::HEADER_LEN..crate::snapshot::HEADER_LEN + payload.len()],

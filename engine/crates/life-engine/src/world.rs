@@ -37,6 +37,11 @@ pub struct World {
     /// fills its `stride`-wide slot — unless this run's tapes can grow, so a world that
     /// cannot allocates nothing and is read exactly as it was before lengths existed.
     lens: Vec<u32>,
+    /// The instruction energy each cell holds (DESIGN §1.1, `energy_influx`). Unlike the
+    /// per-epoch allowance this carries across epochs, so it is state of the world: it is
+    /// hashed, snapshotted and restored. Empty — and never read — unless this run has an
+    /// influx, so a run without one is the run it always was.
+    stock: Vec<u32>,
 }
 
 impl World {
@@ -52,6 +57,7 @@ impl World {
             copy_rate: 0.0,
             lineages: fresh_lineages(params),
             lens: fresh_lens(params),
+            stock: fresh_stock(params),
         };
         if params.init == Init::Random {
             let mut rng = rng::seeded(seed, STREAM_INIT, 0);
@@ -159,6 +165,7 @@ impl World {
                 &payload,
                 &self.lineages,
                 &self.lens,
+                &self.stock,
             ),
         )
     }
@@ -167,15 +174,16 @@ impl World {
         self.transition.epoch()
     }
 
-    /// The hash of every byte the world holds, padding included — and, where tapes can
-    /// grow, of the lengths after them: the same bytes under two different sets of lengths
-    /// are two different worlds.
+    /// The hash of every byte the world holds, padding included — and after them, where
+    /// tapes can grow, the lengths, and where cells hold energy, the stocks: the same bytes
+    /// under two different sets of lengths, or two different stocks, are two different
+    /// worlds. A world with neither hashes the bytes alone, as it always did.
     pub fn world_hash(&self) -> u64 {
-        if self.lens.is_empty() {
+        if self.lens.is_empty() && self.stock.is_empty() {
             return fnv1a64(&self.cells);
         }
-        let lens: Vec<u8> = self.lens.iter().flat_map(|len| len.to_le_bytes()).collect();
-        fnv1a64_of([self.cells.as_slice(), lens.as_slice()])
+        let (lens, stock) = (words(&self.lens), words(&self.stock));
+        fnv1a64_of([self.cells.as_slice(), lens.as_slice(), stock.as_slice()])
     }
 
     pub fn snapshot(&self) -> Vec<u8> {
@@ -184,6 +192,7 @@ impl World {
             &self.tapes().bytes(),
             &self.lineages,
             &self.lens,
+            &self.stock,
         )
     }
 
@@ -227,6 +236,7 @@ impl World {
             copy_rate: 0.0,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
+            stock: restored_stock(params, restored.stock)?,
         })
     }
 
@@ -266,7 +276,7 @@ impl World {
         let max_steps = self.params.max_steps;
         let ops = self.params.op_set();
         let counting = self.counts_copies();
-        let mut energy = EpochEnergy::recharged(&self.params, self.params.cell_count());
+        let mut energy = Energy::recharged(&self.params, std::mem::take(&mut self.stock));
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
 
@@ -277,7 +287,7 @@ impl World {
         for cell in &order {
             let a = *cell as usize;
             let b = self.pick_partner(a, rng);
-            if a == b {
+            if a == b || energy.starved(a, b) {
                 continue;
             }
             let (live_a, live_b) = (self.live_len(a), self.live_len(b));
@@ -317,6 +327,7 @@ impl World {
             }
             self.inherit_lineages(a, b, &pair, &before, live_a);
         }
+        self.stock = energy.into_stock();
         if counting {
             self.copy_rate = if interactions == 0 {
                 0.0
@@ -533,39 +544,69 @@ struct ReplicatorCensus {
     dominant_replicates: bool,
 }
 
-/// What the epoch's cells have left to spend on instructions (`energy_per_epoch`,
-/// DESIGN §1.3 sweep 6). The cost is opt-in, and `Free` is what off means: no per-cell
-/// budget exists, nothing is allocated and an interaction is capped by `max_steps` alone.
-enum EpochEnergy {
-    Free,
-    Budgeted(Vec<u32>),
+/// What the epoch's cells may spend on instructions, out of the two economies the
+/// substrate offers: the allowance `energy_per_epoch` refills in full every epoch (DESIGN
+/// §1.3 sweep 6) and the stock `energy_influx` tops up and execution draws down (DESIGN
+/// §1.1). Both are opt-in and independent — a run may have either, both or neither — and
+/// an empty purse is what off means: nothing is allocated and nothing bounds an
+/// interaction but `max_steps`.
+struct Energy {
+    allowance: Vec<u32>,
+    stock: Vec<u32>,
 }
 
-impl EpochEnergy {
-    fn recharged(params: &Params, cell_count: usize) -> Self {
-        match params.energy_per_epoch {
-            0 => Self::Free,
-            budget => Self::Budgeted(vec![budget; cell_count]),
+impl Energy {
+    /// The epoch's energy: the allowance refilled in full, and the stock the world carried
+    /// in topped up by one influx, never past its cap.
+    fn recharged(params: &Params, mut stock: Vec<u32>) -> Self {
+        for held in &mut stock {
+            *held = held
+                .saturating_add(params.energy_influx)
+                .min(params.energy_stock_cap);
+        }
+        Self {
+            allowance: match params.energy_per_epoch {
+                0 => Vec::new(),
+                budget => vec![budget; params.cell_count()],
+            },
+            stock,
         }
     }
 
     /// How many instructions one interaction may execute: what the poorer of the two cells
-    /// has left of its epoch's energy, never more than `max_steps`. Both cells execute the
-    /// one concatenated program, so neither can pay past its own budget and the interaction
-    /// halts where the poorer one runs dry.
+    /// has left in each economy it lives under, never more than `max_steps`. Both cells
+    /// execute the one concatenated program, so neither can pay past its own energy and the
+    /// interaction halts where the poorer one runs dry.
     fn budget(&self, a: usize, b: usize, max_steps: u32) -> u32 {
-        match self {
-            Self::Free => max_steps,
-            Self::Budgeted(left) => max_steps.min(left[a]).min(left[b]),
-        }
+        [&self.allowance, &self.stock]
+            .into_iter()
+            .filter(|purse| !purse.is_empty())
+            .fold(max_steps, |budget, purse| {
+                budget.min(purse[a]).min(purse[b])
+            })
+    }
+
+    /// Whether either cell of a pair holds an empty stock: it is not executed at all until
+    /// the influx has recharged it, which is the one thing the stock does that a per-epoch
+    /// allowance cannot — the allowance is whole again next epoch whatever was spent.
+    fn starved(&self, a: usize, b: usize) -> bool {
+        self.stock.get(a) == Some(&0) || self.stock.get(b) == Some(&0)
     }
 
     /// Debits both cells of an interaction with the instructions it executed.
     fn spend(&mut self, a: usize, b: usize, steps: u32) {
-        if let Self::Budgeted(left) = self {
-            left[a] -= steps;
-            left[b] -= steps;
+        for purse in [&mut self.allowance, &mut self.stock] {
+            if !purse.is_empty() {
+                purse[a] -= steps;
+                purse[b] -= steps;
+            }
         }
+    }
+
+    /// The stock, back to the world it came from: it is the half of the epoch's energy
+    /// that outlives the epoch.
+    fn into_stock(self) -> Vec<u32> {
+        self.stock
     }
 }
 
@@ -600,6 +641,14 @@ fn inherits_partner(result: &[u8], own: &[u8], partner: &[u8]) -> bool {
     metrics::hamming_distance(result, partner) < metrics::hamming_distance(result, own)
 }
 
+/// A run of `u32`s as the little-endian bytes the world hashes them by.
+fn words(values: &[u32]) -> Vec<u8> {
+    values
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect()
+}
+
 /// One id per cell, unique in the world: the cell's own index, so a lineage census at
 /// epoch 0 reads one cell per lineage without drawing anything.
 fn fresh_lineages(params: &Params) -> Vec<u64> {
@@ -611,6 +660,34 @@ fn fresh_lineages(params: &Params) -> Vec<u64> {
 fn fresh_lens(params: &Params) -> Vec<u32> {
     match params.grows() {
         true => vec![params.tape_len; params.cell_count()],
+        false => Vec::new(),
+    }
+}
+
+/// The stock a resumed run carries. Unlike the lineage tags or the lengths, a stock cannot
+/// be minted for a world that was not stored with one: the energy a cell holds is state the
+/// run spent epochs arriving at. So stocked params meeting a blob that carries none — and
+/// the reverse — are refused the way a diverging tape cap is refused, rather than silently
+/// filling or discarding the stocks.
+fn restored_stock(params: &Params, stock: Option<Vec<u32>>) -> Result<Vec<u32>, SnapshotError> {
+    match (stock, params.stocked()) {
+        (None, false) => Ok(fresh_stock(params)),
+        (Some(stock), true) if stock.len() == params.cell_count() => Ok(stock),
+        (Some(_), true) => Err(SnapshotError::Mismatch {
+            field: "cell count",
+        }),
+        _ => Err(SnapshotError::Mismatch {
+            field: "energy_influx",
+        }),
+    }
+}
+
+/// One energy stock per cell, every cell starting the run full — the world begins at the
+/// ceiling its cap sets rather than spending its first epochs filling up. Empty, and never
+/// read, on a world with no influx.
+fn fresh_stock(params: &Params) -> Vec<u32> {
+    match params.stocked() {
+        true => vec![params.energy_stock_cap; params.cell_count()],
         false => Vec::new(),
     }
 }
@@ -729,6 +806,15 @@ mod tests {
             width,
             height,
             ..Params::default()
+        }
+    }
+
+    fn stocked_params() -> Params {
+        Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            ..soup(16, 16)
         }
     }
 
@@ -991,6 +1077,26 @@ mod tests {
                         tape_len: 64,
                         max_tape_len,
                         mutation_rate: 1.0 / 256.0,
+                        ..soup(16, 16)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// And under an energy stock, which — unlike the per-epoch allowance — is state of the
+    /// world rather than a function of the epoch: a run resumed from a snapshot must carry
+    /// the stocks the snapshot was written with, or it would recharge from a fuller world
+    /// than the uninterrupted one held.
+    #[test]
+    fn determinism_holds_under_an_energy_stock() {
+        for (energy_influx, energy_stock_cap) in [(8, 64), (64, 4096)] {
+            for seed in [1, 2, 3] {
+                assert_deterministic(
+                    &Params {
+                        energy_influx,
+                        energy_stock_cap,
                         ..soup(16, 16)
                     },
                     seed,
@@ -1390,6 +1496,241 @@ mod tests {
         assert_eq!(costly.world_hash(), free.world_hash());
     }
 
+    /// The stock's gate, read off the energy itself: an interaction runs on the poorer of
+    /// the two stocks, and a cell that has spent its last instruction is starved — passed
+    /// over entirely — until the next epoch's influx has recharged it.
+    #[test]
+    fn an_empty_stock_starves_a_pair_until_the_next_influx() {
+        let params = Params {
+            energy_influx: 4,
+            energy_stock_cap: 16,
+            ..soup(4, 4)
+        };
+        let mut energy = Energy::recharged(&params, vec![0, 8, 16, 16]);
+        assert!(!energy.starved(0, 1));
+        assert_eq!(energy.budget(0, 1, 64), 4, "the poorer of the two stocks");
+
+        energy.spend(0, 1, 4);
+        assert!(
+            energy.starved(0, 1),
+            "a cell that spent its last instruction was executed again"
+        );
+        assert!(!energy.starved(2, 3));
+
+        let next = Energy::recharged(&params, energy.into_stock());
+        assert!(!next.starved(0, 1), "an influx left a cell starved");
+        assert_eq!(next.budget(2, 3, 64), 16, "a stock filled past its cap");
+    }
+
+    /// And in the world: with an influx worth exactly one interaction, a cell the epoch's
+    /// earlier interactions emptied executes nothing at all on its own turn, and runs again
+    /// only once the next influx has paid it back.
+    #[test]
+    fn a_cell_emptied_by_its_neighbours_runs_again_once_the_influx_recharges_it() {
+        let stock = Params {
+            energy_influx: ADDING_INTERACTION_STEPS,
+            energy_stock_cap: ADDING_INTERACTION_STEPS,
+            ..adding_params()
+        };
+        let mut world = adding_soup(&stock);
+        world.step();
+        let first = increments(&world);
+        assert!(
+            first.iter().all(|paid| *paid <= ADDING_INTERACTION_STEPS),
+            "a cell paid past its stock: {first:?}"
+        );
+        let emptied: Vec<usize> = (0..first.len()).filter(|at| first[*at] == 0).collect();
+        assert!(
+            !emptied.is_empty(),
+            "no cell was emptied before its own turn came: {first:?}"
+        );
+
+        world.step();
+        let second = increments(&world);
+        assert!(
+            emptied.iter().any(|at| second[*at] > first[*at]),
+            "a cell emptied in one epoch never ran again: {first:?} then {second:?}"
+        );
+        assert!(
+            (0..first.len()).all(|at| second[at] - first[at] <= ADDING_INTERACTION_STEPS),
+            "an epoch paid past the stock the influx could fill: {first:?} then {second:?}"
+        );
+    }
+
+    /// A cell passed over for an empty stock is passed over in the epoch's census too: the
+    /// pair never ran, so it is in neither half of `copy_rate` (DESIGN §1.2). Eight of the
+    /// fifty-three pairs that ran in this epoch copied; the eleven the stock starved are in
+    /// neither number. Were they counted as interactions that copied nothing, the rate
+    /// would read 8/64 — every starving epoch diluted by however many cells ran dry.
+    #[test]
+    fn a_starved_pair_is_in_neither_half_of_the_epochs_copy_rate() {
+        let params = Params {
+            sample_every: 1,
+            energy_influx: 64,
+            energy_stock_cap: 8192,
+            ..colony_params()
+        };
+        assert_eq!(params.cell_count(), 64);
+
+        let mut world = colony(&params, 3);
+        world.step();
+
+        assert!(
+            world.stock.contains(&0),
+            "no cell was starved, so the epoch counted nothing either way"
+        );
+        assert_eq!(world.metrics().copy_rate, 8.0 / 53.0);
+    }
+
+    /// What separates the stock from the per-epoch allowance: the allowance is whole again
+    /// next epoch however it was spent, so under it every cell runs every epoch, while
+    /// under a stock the same influx buys a cell nothing it has already spent.
+    #[test]
+    fn what_a_stock_leaves_unspent_is_what_the_next_epoch_adds_to() {
+        const INFLUX: u32 = 4;
+        let stock = Params {
+            energy_influx: INFLUX,
+            energy_stock_cap: 4 * ADDING_INTERACTION_STEPS,
+            ..adding_params()
+        };
+        let mut world = adding_soup(&stock);
+        let mut paid = Vec::new();
+        for _ in 0..4 {
+            world.step();
+            paid.push(increments(&world));
+        }
+        let ceiling = |epoch: u32| stock.energy_stock_cap + epoch * INFLUX;
+        for (epoch, counted) in paid.iter().enumerate() {
+            assert!(
+                counted.iter().all(|spent| *spent <= ceiling(epoch as u32)),
+                "a cell spent more than every epoch so far gave it: {counted:?}"
+            );
+        }
+
+        let mut allowance = adding_soup(&Params {
+            energy_influx: 0,
+            energy_stock_cap: 0,
+            energy_per_epoch: INFLUX,
+            ..stock.clone()
+        });
+        for _ in 0..4 {
+            allowance.step();
+        }
+        assert_ne!(
+            increments(&allowance),
+            *paid.last().expect("four epochs"),
+            "a carried stock ran the world exactly as a refilled allowance did"
+        );
+    }
+
+    /// The stock is opt-in: naming it off — and naming a cap with no influx to fill it —
+    /// must leave a run exactly where the parameters' absence left it, down to the bytes of
+    /// the world and every observable of §1.2.
+    #[test]
+    fn the_energy_stock_switched_off_moves_no_run() {
+        let off = Params {
+            energy_influx: 0,
+            energy_stock_cap: 4096,
+            ..soup(32, 32)
+        };
+        let mut world = World::new(&off, 42).unwrap();
+        for _ in 0..50 {
+            world.step();
+        }
+        assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
+
+        let measured = world.metrics();
+        assert_eq!(observable_digest(&measured), PINNED_OBSERVABLES);
+        assert_eq!(lineage_digest(&measured), PINNED_LINEAGES);
+    }
+
+    /// And switched on it is a different world: the same seed under an influx no cell can
+    /// spend freely runs a soup the defaults never reach.
+    #[test]
+    fn a_run_under_an_energy_stock_is_not_the_run_at_the_defaults() {
+        let params = Params {
+            max_steps: 64,
+            ..soup(16, 16)
+        };
+        let free = stepped(&params, 42, 20);
+        let stocked = stepped(
+            &Params {
+                energy_influx: 8,
+                energy_stock_cap: 64,
+                ..params.clone()
+            },
+            42,
+            20,
+        );
+        assert_ne!(stocked.world_hash(), free.world_hash());
+    }
+
+    /// A stock no epoch can spend — every cell could pay for a full-length interaction many
+    /// times over and the influx keeps it there — has to read as the soup with the stock
+    /// off: the accounting itself must not move a byte.
+    #[test]
+    fn an_unspendable_energy_stock_runs_the_soup_unchanged() {
+        let params = Params {
+            max_steps: 64,
+            energy_influx: 1_048_576,
+            energy_stock_cap: 1_048_576,
+            ..soup(16, 16)
+        };
+        let stocked = stepped(&params, 42, 20);
+        let free = stepped(
+            &Params {
+                energy_influx: 0,
+                energy_stock_cap: 0,
+                ..params.clone()
+            },
+            42,
+            20,
+        );
+        assert_eq!(stocked.tapes().bytes(), free.tapes().bytes());
+    }
+
+    /// The three optional economies of §1.1 compose: a run may carry a stock, a per-epoch
+    /// allowance and room to grow at once, every one of them binding what an interaction
+    /// executes, and the run is still none of the runs with one of them switched off.
+    #[test]
+    fn a_stock_composes_with_the_per_epoch_allowance_and_room_to_grow() {
+        let all = Params {
+            max_steps: 64,
+            energy_per_epoch: 80,
+            energy_influx: 16,
+            energy_stock_cap: 128,
+            tape_len: 64,
+            max_tape_len: 96,
+            mutation_rate: 1.0 / 256.0,
+            ..soup(16, 16)
+        };
+        assert_eq!(all.validate(), Ok(()));
+        assert_deterministic(&all, 7);
+
+        let tapes = stepped(&all, 7, 20).tapes().bytes().into_owned();
+        for without in [
+            Params {
+                energy_influx: 0,
+                energy_stock_cap: 0,
+                ..all.clone()
+            },
+            Params {
+                energy_per_epoch: 0,
+                ..all.clone()
+            },
+            Params {
+                max_tape_len: 0,
+                ..all.clone()
+            },
+        ] {
+            assert_ne!(
+                stepped(&without, 7, 20).tapes().bytes().into_owned(),
+                tapes,
+                "switching one economy off left the world where all three had it: {without:?}"
+            );
+        }
+    }
+
     /// A world of zero tapes executes nothing — every byte is a no-op — so after one epoch
     /// the only bytes that moved are the ones mutation drew, and a cell's non-zero bytes
     /// count the mutations it was offered.
@@ -1616,6 +1957,24 @@ mod tests {
         assert_ne!(shorter.world_hash(), claimed.world_hash());
     }
 
+    /// Two worlds holding one array of bytes whose cells hold different energy are two
+    /// different worlds: the stock is state, and a hash blind to it would read a run
+    /// resumed with full cells as the run that had spent them.
+    #[test]
+    fn the_world_hash_reads_the_energy_stocks_as_well_as_the_bytes() {
+        let params = Params {
+            energy_influx: 4,
+            energy_stock_cap: 64,
+            ..soup(4, 4)
+        };
+        let world = World::new(&params, 5).unwrap();
+        let mut spent = world.clone();
+        spent.stock[0] -= 1;
+
+        assert_eq!(world.cells, spent.cells, "the two worlds hold one array");
+        assert_ne!(world.world_hash(), spent.world_hash());
+    }
+
     /// A mixed-length world is read on its live bytes alone: the zeros a slot holds past a
     /// tape are not a byte of the world, and an observable that counted them would read a
     /// short tape as a long one padded with zeros.
@@ -1803,6 +2162,63 @@ mod tests {
         assert_eq!(restored.world_hash(), world.world_hash());
         assert_eq!(restored.epoch(), world.epoch());
         assert_eq!(restored.metrics().distinct_lineages, 64);
+    }
+
+    /// A stocked run resumes on the stocks it was stored with: the snapshot's version 5
+    /// payload is the world's energy, not a formality, and the restored world is the
+    /// stored world byte for byte.
+    #[test]
+    fn a_stocked_run_resumes_the_stocks_the_snapshot_carried() {
+        let params = stocked_params();
+        let world = stepped(&params, 11, 12);
+        assert!(
+            world
+                .stock
+                .iter()
+                .any(|held| *held < params.energy_stock_cap),
+            "the run must have spent something for the stocks to say anything: {:?}",
+            world.stock
+        );
+
+        let restored = World::from_snapshot(&params, 11, &world.snapshot()).unwrap();
+
+        assert_eq!(restored.stock, world.stock);
+        assert_eq!(restored.world_hash(), world.world_hash());
+    }
+
+    /// Params that hold energy cannot resume a blob that carries none: minting full stocks
+    /// for it would hand every cell energy the stored run never had. The same refusal the
+    /// tape cap gets.
+    #[test]
+    fn refuses_a_stocked_resume_of_a_snapshot_that_carries_no_stocks() {
+        let unstocked = soup(16, 16);
+        let bytes = stepped(&unstocked, 11, 4).snapshot();
+
+        assert!(matches!(
+            World::from_snapshot(&stocked_params(), 11, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "energy_influx"
+            })
+        ));
+    }
+
+    /// And params with no influx cannot resume a blob that carries stocks: the run that
+    /// wrote it was gated by energy this one would silently throw away.
+    #[test]
+    fn refuses_an_unstocked_resume_of_a_snapshot_that_carries_stocks() {
+        let stocked = stocked_params();
+        let bytes = stepped(&stocked, 11, 4).snapshot();
+        let without_influx = Params {
+            energy_influx: 0,
+            ..stocked
+        };
+
+        assert!(matches!(
+            World::from_snapshot(&without_influx, 11, &bytes),
+            Err(SnapshotError::Mismatch {
+                field: "energy_influx"
+            })
+        ));
     }
 
     #[test]

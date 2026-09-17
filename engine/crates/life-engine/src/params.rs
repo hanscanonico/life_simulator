@@ -55,6 +55,13 @@ pub struct Params {
     /// Instruction energy one cell may spend per epoch; `0` (the default) turns the cost
     /// off and the soup runs as it always has (DESIGN §1.3, sweep 6).
     pub energy_per_epoch: u32,
+    /// Instruction energy every cell is given at the start of every epoch, added to a
+    /// stock that carries across epochs up to `energy_stock_cap`; `0` (the default) turns
+    /// the stock economy off and no stock is allocated at all (DESIGN §1.1).
+    pub energy_influx: u32,
+    /// The most instruction energy one cell's stock may hold. Read only once an influx is
+    /// set, and never below it.
+    pub energy_stock_cap: u32,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -85,6 +92,8 @@ impl Default for Params {
             radius: 1,
             max_steps: 8192,
             energy_per_epoch: 0,
+            energy_influx: 0,
+            energy_stock_cap: 0,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
@@ -189,6 +198,29 @@ const FIELDS: &[Field] = &[
               0 turns the cost off, which is the substrate of DESIGN 1.1.",
     },
     Field {
+        name: "energy_influx",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "Instructions one cell is given per epoch, added to a stock that carries \
+              across epochs up to energy_stock_cap rather than being refilled to it. An \
+              interaction runs on what the poorer of its two cells holds, both are \
+              debited what ran, and a cell whose stock is empty is not executed until it \
+              has recharged. 0 turns the stock off, which is the substrate of DESIGN 1.1.",
+    },
+    Field {
+        name: "energy_stock_cap",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "The most instruction energy one cell's stock may hold, which is also the \
+              stock every cell starts the run with, so the world's total energy never \
+              exceeds cell count times this. Read only once energy_influx is set, and \
+              refused below it.",
+    },
+    Field {
         name: "ops",
         kind: Kind::Subset(&["<", ">", "{", "}", "+", "-", ".", ",", "[", "]"]),
         doc: "The BFF instructions this run executes, as a string of distinct op bytes. \
@@ -275,6 +307,13 @@ pub enum ParamError {
         max_tape_len: u32,
         tape_len: u32,
     },
+    /// A stock that cannot hold one epoch's influx is no stock: the surplus would be
+    /// thrown away the moment it arrived, and the economy would be the per-epoch
+    /// allowance `energy_per_epoch` already is.
+    StockCapBelowInflux {
+        energy_stock_cap: u32,
+        energy_influx: u32,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -305,6 +344,14 @@ impl fmt::Display for ParamError {
                 f,
                 "max_tape_len is {max_tape_len}, below the tape_len of {tape_len}: \
                  0 turns growth off, and any cap must be at least the initial length"
+            ),
+            Self::StockCapBelowInflux {
+                energy_stock_cap,
+                energy_influx,
+            } => write!(
+                f,
+                "energy_stock_cap is {energy_stock_cap}, below the energy_influx of \
+                 {energy_influx}: a stock must hold at least one epoch's influx"
             ),
         }
     }
@@ -343,6 +390,12 @@ impl Params {
             return Err(ParamError::MaxTapeLenBelowInitial {
                 max_tape_len: self.max_tape_len,
                 tape_len: self.tape_len,
+            });
+        }
+        if self.energy_influx > 0 && self.energy_stock_cap < self.energy_influx {
+            return Err(ParamError::StockCapBelowInflux {
+                energy_stock_cap: self.energy_stock_cap,
+                energy_influx: self.energy_influx,
             });
         }
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
@@ -441,6 +494,12 @@ impl Params {
     /// fixed-length world of DESIGN §1.1, exactly as `max_tape_len` 0 is.
     pub fn grows(&self) -> bool {
         self.substrate == Substrate::Soup && self.tape_cap() > self.tape_len
+    }
+
+    /// Whether this run's cells hold an energy stock at all. The influx is the switch: a
+    /// cap on its own stocks nothing, and life has no interactions to pay for.
+    pub fn stocked(&self) -> bool {
+        self.substrate == Substrate::Soup && self.energy_influx > 0
     }
 
     /// Bytes of state one cell's slot holds: the tape cap in the soup, one byte in life.
@@ -611,6 +670,64 @@ mod tests {
             beyond.validate(),
             Err(ParamError::OutOfRange {
                 field: "energy_per_epoch",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn the_energy_stock_is_off_by_default_and_the_influx_is_its_switch() {
+        assert_eq!(Params::default().energy_influx, 0);
+        assert_eq!(Params::default().energy_stock_cap, 0);
+        assert!(!Params::default().stocked());
+
+        let capped_only = Params {
+            energy_stock_cap: 4096,
+            ..Params::default()
+        };
+        assert_eq!(capped_only.validate(), Ok(()));
+        assert!(!capped_only.stocked());
+
+        let stocked = Params {
+            energy_influx: 64,
+            energy_stock_cap: 4096,
+            ..Params::default()
+        };
+        assert_eq!(stocked.validate(), Ok(()));
+        assert!(stocked.stocked());
+
+        assert!(!Params {
+            substrate: Substrate::Life,
+            ..stocked
+        }
+        .stocked());
+    }
+
+    #[test]
+    fn rejects_a_stock_cap_below_one_epochs_influx() {
+        let params = Params {
+            energy_influx: 64,
+            energy_stock_cap: 32,
+            ..Params::default()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::StockCapBelowInflux {
+                energy_stock_cap: 32,
+                energy_influx: 64
+            })
+        );
+        assert!(params.validate().unwrap_err().to_string().contains("64"));
+
+        let beyond = Params {
+            energy_influx: 1_048_577,
+            energy_stock_cap: 1_048_576,
+            ..Params::default()
+        };
+        assert!(matches!(
+            beyond.validate(),
+            Err(ParamError::OutOfRange {
+                field: "energy_influx",
                 ..
             })
         ));
@@ -803,7 +920,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 16);
+        assert_eq!(fields.len(), 18);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -823,6 +940,14 @@ mod tests {
         assert_eq!(energy["type"], "integer");
         assert_eq!(energy["default"], 0);
         assert_eq!(energy["min"], 0);
+
+        for name in ["energy_influx", "energy_stock_cap"] {
+            let stock = fields.iter().find(|f| f["name"] == name).unwrap();
+            assert_eq!(stock["type"], "integer", "{name}");
+            assert_eq!(stock["default"], 0, "{name}");
+            assert_eq!(stock["min"], 0, "{name}");
+            assert_eq!(stock["max"], 1_048_576, "{name}");
+        }
 
         let cap = fields.iter().find(|f| f["name"] == "max_tape_len").unwrap();
         assert_eq!(cap["type"], "integer");

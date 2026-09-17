@@ -67,6 +67,22 @@
       "type": "integer"
     },
     {
+      "default": 0,
+      "doc": "Instructions one cell is given per epoch, added to a stock that carries across epochs up to energy_stock_cap rather than being refilled to it. An interaction runs on what the poorer of its two cells holds, both are debited what ran, and a cell whose stock is empty is not executed until it has recharged. 0 turns the stock off, which is the substrate of DESIGN 1.1.",
+      "max": 1048576,
+      "min": 0,
+      "name": "energy_influx",
+      "type": "integer"
+    },
+    {
+      "default": 0,
+      "doc": "The most instruction energy one cell's stock may hold, which is also the stock every cell starts the run with, so the world's total energy never exceeds cell count times this. Read only once energy_influx is set, and refused below it.",
+      "max": 1048576,
+      "min": 0,
+      "name": "energy_stock_cap",
+      "type": "integer"
+    },
+    {
       "default": "<>{}+-.,[]",
       "doc": "The BFF instructions this run executes, as a string of distinct op bytes. A byte whose op is left out is a no-op, like any non-instruction byte.",
       "name": "ops",
