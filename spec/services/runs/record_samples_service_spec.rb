@@ -42,6 +42,12 @@ RSpec.describe Runs::RecordSamplesService do
       expect(run.samples.sole.values).to include("conserved_core_bytes" => 36, "conserved_core_ops" => 15)
     end
 
+    it "stores the share of interactions that stole" do
+      described_class.call(run: run, samples: [{ "epoch" => 100, "compress_ratio" => 0.5, "steal_rate" => 0.25 }])
+
+      expect(run.samples.sole.values).to include("steal_rate" => 0.25)
+    end
+
     it "stores no duplicate rows" do
       described_class.call(run: run, samples: batch(100, 200))
 

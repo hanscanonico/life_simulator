@@ -53,6 +53,12 @@ RSpec.describe Runs::SamplesCsvService do
     expect(rows.last.values_at(*columns)).to eq(%w[36 15])
   end
 
+  it "exports the share of interactions that stole in its own column" do
+    create(:sample, run: run, epoch: 100, values: { "steal_rate" => 0.25 })
+
+    expect(rows.last[Sample::OBSERVABLES.index("steal_rate") + 1]).to eq("0.25")
+  end
+
   it "exports whether the dominant tape replicates beside its complexity" do
     create(:sample, run: run, epoch: 100,
                     values: { "dominant_compressed_len" => 75, "dominant_replicates" => false })

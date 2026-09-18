@@ -47,6 +47,13 @@ module Home
       substrates.index_with { |substrate| params_for(substrate) }
     end
 
+    # The parameters each substrate's world is handed, as one line the viewer prints under
+    # the readout: the page shows what the engine is actually running with — the steal op's
+    # amount and loss among them — and formats a parameter in exactly one place.
+    def param_lines
+      worlds.transform_values { |params| params.map { |name, value| "#{name} #{value}" }.join(" · ") }
+    end
+
     def params_for(substrate)
       params = Lab::Schema.defaults.merge(
         "substrate" => substrate,

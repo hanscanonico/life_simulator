@@ -164,6 +164,7 @@ mod tests {
             dominant_tape_hash: None,
             conserved_core_bytes: None,
             conserved_core_ops: None,
+            steal_rate: 0.0,
         }
     }
 

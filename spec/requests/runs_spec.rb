@@ -103,6 +103,20 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
+    context "with a run whose cells could steal" do
+      it "shows the amount a steal moved and the share it destroyed" do
+        thieving = create(:run, params: Lab::Schema.run_defaults.merge("energy_influx" => 64,
+                                                                       "energy_stock_cap" => 4_096,
+                                                                       "steal_amount" => 16,
+                                                                       "steal_loss" => 0.25))
+
+        get run_path(thieving)
+
+        expect(response.body).to include("<dt>steal_amount</dt><dd>16</dd>",
+                                         "<dt>steal_loss</dt><dd>0.25</dd>")
+      end
+    end
+
     context "with a transitioned run whose world held the state" do
       it "shows the census peak, the epochs persisted and no relapse" do
         run.update!(persistence: { "census_peak" => 867, "peak_epoch" => 5_080,
@@ -227,7 +241,7 @@ RSpec.describe "Runs", type: :request do
                                          "Compressed length of the dominant tape (bytes)",
                                          "Instructions in the dominant tape",
                                          "Conserved core of the largest lineage (bytes)",
-                                         "Instructions in that conserved core")
+                                         "Instructions in that conserved core", "Steal rate")
       end
     end
 

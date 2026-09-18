@@ -21,7 +21,8 @@ module Runs
       "dominant_instruction_count" => "Instructions in the dominant tape",
       "dominant_raw_len" => "Length of the dominant tape (bytes)",
       "conserved_core_bytes" => "Conserved core of the largest lineage (bytes)",
-      "conserved_core_ops" => "Instructions in that conserved core"
+      "conserved_core_ops" => "Instructions in that conserved core",
+      "steal_rate" => "Steal rate"
     }.freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"

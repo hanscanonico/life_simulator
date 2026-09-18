@@ -83,6 +83,22 @@
       "type": "integer"
     },
     {
+      "default": 0,
+      "doc": "Instruction energy one steal op moves out of the partner cell's stock into the stock of the cell whose code is executing, less the steal_loss destroyed in transit. A steal takes what the partner holds when that is less, and nothing at all from an empty one. 0 turns the op off, which is the substrate of DESIGN 1.1, and any amount needs an energy_influx to have a stock to steal from.",
+      "max": 1048576,
+      "min": 0,
+      "name": "steal_amount",
+      "type": "integer"
+    },
+    {
+      "default": 0.5,
+      "doc": "The share of what a run's steal ops move that is destroyed in transit: the thief receives the rest, rounded down, so theft is never worth more to the thief than it costs the world. Read only once steal_amount is set.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "steal_loss",
+      "type": "float"
+    },
+    {
       "default": "<>{}+-.,[]",
       "doc": "The BFF instructions this run executes, as a string of distinct op bytes. A byte whose op is left out is a no-op, like any non-instruction byte.",
       "name": "ops",
