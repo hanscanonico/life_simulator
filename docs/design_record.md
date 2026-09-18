@@ -739,8 +739,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   not a no-op — run 737 @5900 gives 43 at 16 and 49 at 256 — but across the twelve worlds
   re-read only that one moved, and the issue's `--top-k 1,16,4096` probe cannot be run at
   all (values above 256 are refused). The check is bounded by snapshot cadence: only 5 of
-  16 confirmed runs hold a snapshot at an epoch whose census was positive, because the
-  cadence is 500 and a census peak lasts under 10 epochs. Closing that gap is follow-up
-  work — a `census` snapshot reason that forces a world where the count is positive, and a
-  census read as a pass rate over repeated draws rather than one seeded draw — neither
-  decided here.
+  16 confirmed runs hold a snapshot at an epoch whose census was positive, because a
+  snapshot is written every 500 to 2 000 epochs depending on the sweep while outside a
+  sustained peak the census reads positive at scattered single samples — run 384 at 23 of
+  the samples between 15 020 and 18 230, run 186 at 11 between 9 650 and 27 700. Closing
+  that gap is follow-up work — a `census` snapshot reason that forces a world where the
+  count is positive, and a census read as a pass rate over repeated draws rather than one
+  seeded draw — neither decided here.
