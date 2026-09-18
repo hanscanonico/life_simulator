@@ -23,6 +23,12 @@ RSpec.describe Experiments::ComplexityArmsService do
       expect(arms.sole).to have_attributes(rising_count: 0, plateau_count: 1)
     end
 
+    it "reads a rise of exactly a fifth as a rise" do
+      emerged(instructions: ([10] * 10) + ([12] * 10))
+
+      expect(arms.sole).to have_attributes(rising_count: 1, plateau_count: 0)
+    end
+
     it "refuses a rise the conserved core paid for" do
       emerged(instructions: ([10] * 10) + ([30] * 10), core: ([40] * 10) + ([20] * 10))
 
@@ -37,9 +43,10 @@ RSpec.describe Experiments::ComplexityArmsService do
 
     it "ignores the samples before the crossing" do
       run = emerged(instructions: [100] * 20, emergence_epoch: 2_100)
-      create(:sample, run: run, epoch: 100, values: { "dominant_instruction_count" => 1 })
+      20.times { |index| create(:sample, run: run, epoch: index * 10, values: { "dominant_instruction_count" => 1 }) }
 
-      expect(arms.sole.instructions.first).to eq(100)
+      expect(arms.sole.instructions).to have_attributes(first: 100, last: 100)
+      expect(arms.sole.rising_count).to eq(0)
     end
 
     it "leaves a run with a single reading unmeasured" do
@@ -64,10 +71,17 @@ RSpec.describe Experiments::ComplexityArmsService do
     end
 
     it "keeps rising where half its measured runs do" do
-      2.times { emerged(instructions: ([10] * 10) + ([30] * 10)) }
+      emerged(instructions: ([10] * 10) + ([30] * 10))
+      emerged(instructions: ([10] * 10) + ([5] * 10))
+
+      expect(arms.sole).to have_attributes(reading: :keeps_rising, rising_count: 1, measured_count: 2)
+    end
+
+    it "reads an arm split between a rising run and a plateauing one as neither" do
+      emerged(instructions: ([10] * 10) + ([30] * 10))
       emerged(instructions: ([10] * 10) + ([10] * 10))
 
-      expect(arms.sole).to have_attributes(reading: :keeps_rising, rising_count: 2, measured_count: 3)
+      expect(arms.sole).to have_attributes(reading: :mixed, rising_count: 1, plateau_count: 1)
     end
 
     it "plateaus where half its measured runs sit within a tenth of where they started" do

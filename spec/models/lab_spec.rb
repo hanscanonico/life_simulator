@@ -195,10 +195,9 @@ RSpec.describe Lab do
           .to eq([[128, 256], [64], [Lab::EMERGENT_MUTATION_RATE]])
       end
 
-      it "gives every priced arm ninety seeds and the control arms thirty" do
-        expect(definition.values_at(:seeds, :epochs)).to eq([(1..30).to_a, 20_000])
-        expect(definition.fetch(:seeds_by_arm))
-          .to eq("energy_influx" => { 2**13 => (1..90).to_a, 2**11 => (1..90).to_a, 2**9 => (1..90).to_a })
+      it "gives every arm ninety seeds, the control included" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..90).to_a, 20_000])
+        expect(definition).not_to have_key(:seeds_by_arm)
       end
     end
 
@@ -229,17 +228,9 @@ RSpec.describe Lab do
     it "overrides the seeds of arms its own grid carries" do
       Lab::SWEEPS.each_value do |definition|
         definition.fetch(:seeds_by_arm, {}).each do |name, seeds_by_value|
-          expect(grid_values_of(definition.fetch(:param_grid), name)).to include(*seeds_by_value.keys)
+          expect(definition.fetch(:param_grid).fetch(name)).to include(*seeds_by_value.keys)
         end
       end
-    end
-
-    # A bundle axis carries its parameters inside each of its values, so the values an
-    # arm can be named by are the ones the bundles hold under that parameter.
-    def grid_values_of(param_grid, name)
-      return param_grid.fetch(name) if param_grid.key?(name)
-
-      param_grid.each_value.flat_map { |values| values.grep(Hash).filter_map { |bundle| bundle[name] } }.uniq
     end
 
     # An axis whose values are hashes is a bundle of parameters travelling together, so it

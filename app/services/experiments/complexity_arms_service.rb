@@ -97,11 +97,17 @@ module Experiments
       def reading
         return :barren if barren?
         return :unread unless readable?
-        return :keeps_rising if rising_count * 2 >= measured_count
-        return :plateau if plateau_count * 2 >= measured_count
+        return :keeps_rising if half?(rising_count) && !half?(plateau_count)
+        return :plateau if half?(plateau_count) && !half?(rising_count)
 
         :mixed
       end
+
+      # Half of the arm's measured runs, the bar DESIGN §1.3 sweep 9 sets a reading at. Two
+      # measured runs is the smallest arm that reads, so a split clearing the bar both ways
+      # — one run rising against one plateauing — is common enough to name: it is an arm
+      # disagreeing with itself, never an arm that keeps rising.
+      def half?(count) = count * 2 >= measured_count
 
       def reading_label = reading.to_s.tr("_", " ")
 

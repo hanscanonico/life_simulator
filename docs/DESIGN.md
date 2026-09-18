@@ -305,10 +305,10 @@ holding a tape that passed.
    so the influx is the only energy quantity the sweep varies — and it is inert in the
    `(0, 0)` control, which is the substrate every earlier sweep ran. At the default loss
    one steal delivers 2^9: a whole epoch's influx in the poorest arm, an eighth of one in
-   the richest, and never the zero a smaller amount would round to. Every priced arm runs
-   90 seeds, since every priced arm so far lowered the emergence rate and the reading needs
-   two emerged runs; the two control arms run 30, because sweep 8 already ran that exact
-   substrate at 90 seeds under each of these two caps.
+   the richest, and never the zero a smaller amount would round to. Every arm runs 90 seeds,
+   the control included: every priced arm so far lowered the emergence rate, the reading
+   needs two emerged runs, and thirty seeds of this very substrate — sweep 8's 128 and 256
+   arms — left one emerged run under each cap.
    Dependent variables: `transition_epoch` and the confirmed `emergence_epoch` as in every
    sweep, then `dominant_instruction_count` and `conserved_core_bytes` as the complexity
    pair, with `dominant_compressed_len` and `steal_rate` beside them.
@@ -319,7 +319,8 @@ holding a tape that passed.
    `dominant_instruction_count` median rises by at least **20%** and its
    `conserved_core_bytes` median does not fall over the same span; it **plateaus** when the
    last decile sits within **±10%** of the first. An arm keeps rising when at least half of
-   its measured emerged runs do, and plateaus when at least half plateau.
+   its measured emerged runs do, and plateaus when at least half plateau; a split clearing
+   both bars — one run rising against one plateauing — reads **mixed**, never rising.
    `dominant_compressed_len` is reported beside them and never decides: it saturates at the
    cap plus zlib's 11-byte envelope (`docs/design_record.md`, 2026-09-16). An arm reads at
    all only with **two measured emerged runs**, or a **blank block of ten** — which reads as

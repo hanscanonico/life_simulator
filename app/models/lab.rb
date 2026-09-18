@@ -220,14 +220,11 @@ module Lab
         "height" => [128],
         "mutation_rate" => [EMERGENT_MUTATION_RATE]
       },
-      seeds: (1..30).to_a,
-      # Ninety seeds for every priced arm: every priced arm so far lowered the emergence
-      # rate and the reading needs two emerged runs in an arm. The two control arms keep a
-      # thirty-seed block, since sweep 8 already ran that exact substrate at ninety seeds
-      # under each of these two caps.
-      seeds_by_arm: {
-        "energy_influx" => { 2**13 => (1..90).to_a, 2**11 => (1..90).to_a, 2**9 => (1..90).to_a }
-      },
+      # Ninety seeds in every arm, the control included: every priced arm so far lowered the
+      # emergence rate, the reading needs two emerged runs in an arm, and thirty seeds of
+      # this very substrate — sweep 8's 128 and 256 arms — left one emerged run under each
+      # cap, one short of a reading.
+      seeds: (1..90).to_a,
       epochs: 20_000
     },
     "bff_control" => {

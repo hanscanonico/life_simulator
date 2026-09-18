@@ -290,11 +290,12 @@ RSpec.describe "lab:sweep" do
   end
 
   describe "host_parasite" do
-    it "builds every priced arm at ninety seeds and the two control arms at thirty" do
+    it "builds every arm at ninety seeds, the control included" do
       build_sweep("host_parasite")
 
-      expect(Experiment.find_by(slug: "host-parasite").runs_count).to eq(1_140)
-      expect(Run.group("params->>'energy_influx'").count).to eq("0" => 60, "512" => 360, "2048" => 360, "8192" => 360)
+      expect(Experiment.find_by(slug: "host-parasite").runs_count).to eq(1_260)
+      expect(Run.group("params->>'energy_influx'").count)
+        .to eq("0" => 180, "512" => 360, "2048" => 360, "8192" => 360)
     end
 
     it "pairs every influx with theft on and off, and never theft without a stock" do
