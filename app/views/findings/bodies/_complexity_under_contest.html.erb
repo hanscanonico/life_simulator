@@ -35,17 +35,25 @@
   The reading is <strong>pre-registered</strong> (DESIGN §1.3 sweep 9) and taken on emerged
   runs only — a crossing the replicator census or the copy rate confirmed, not every
   crossing the detector flagged. Per run, the median of the last decile of the post-crossing
-  samples against the median of the first decile. A run <em>keeps rising</em> when
+  samples against the median of the first decile. A run counts as <em>measured</em> only
+  where both halves of the rule can be read over that span: one carrying no
+  <span class="mono">conserved_core_bytes</span> sample, or whose first decile of either
+  observable medians to zero and so has no ratio to take, is unmeasured rather than read on
+  the instruction count alone. A measured run <em>keeps rising</em> when
   <span class="mono">dominant_instruction_count</span> rises by at least 20% and
   <span class="mono">conserved_core_bytes</span> does not fall over the same span; it
-  <em>plateaus</em> when the last decile sits within ±10% of the first. An arm reads the way
-  at least half its measured runs read. <span class="mono">dominant_compressed_len</span> is
+  <em>plateaus</em> when the last decile sits within ±10% of the first. An arm keeps rising
+  where at least half its measured runs do and plateaus where at least half plateau; an arm
+  clearing both bars reads <em>mixed</em>, never rising, and one clearing neither, its runs
+  having mostly fallen, reads <em>neither</em>.
+  <span class="mono">dominant_compressed_len</span> is
   printed beside them and decides nothing: it saturates at the cap plus zlib's 11-byte
   envelope, which is what made the room-to-grow reading a measurement of tape length rather
   than of complexity. An arm reads at all on two measured emerged runs, or on a blank block
   of ten, which reads as an arm holding no replicator to read rather than as an arm still to
   be tested. And a steal arm whose <span class="mono">steal_rate</span> never leaves zero
-  reads <em>theft never evolved</em> — never <em>theft does not help</em>.
+  reads <em>theft never evolved</em> — never <em>theft does not help</em>, and never for an
+  arm no <span class="mono">steal_rate</span> was sampled on, which reads unmeasured.
 </p>
 
 <h2>Result</h2>

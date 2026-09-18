@@ -1352,6 +1352,16 @@ RSpec.describe "Findings", type: :request do
           .to include("does complexity keep rising when energy is a contested stock?",
                       "at least 20%", "within ±10% of the first",
                       "theft never evolved")
+      end
+
+      it "states the clauses that leave a run or an arm unread" do
+        get finding_path(pending_finding)
+
+        expect(response.body.squish)
+          .to include("is unmeasured rather than read on the instruction count alone",
+                      "clearing both bars reads <em>mixed</em>, never rising",
+                      "its runs having mostly fallen, reads <em>neither</em>",
+                      "was sampled on, which reads unmeasured")
         expect(response.body).to include(%(<span class="badge badge-info">open</span>))
       end
 
