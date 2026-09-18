@@ -1342,6 +1342,29 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the host-parasite skeleton" do
+      let(:pending_finding) { Findings::Registry.find("complexity-under-contest") }
+
+      it "states the question, the arms and the rule the claim will be made by" do
+        get finding_path(pending_finding)
+
+        expect(response.body.squish)
+          .to include("does complexity keep rising when energy is a contested stock?",
+                      "at least 20%", "within ±10% of the first",
+                      "theft never evolved")
+        expect(response.body).to include(%(<span class="badge badge-info">open</span>))
+      end
+
+      it "says no arm has read yet and points at the sweep the lab will fill it from" do
+        create(:experiment, name: "Host–parasite economy", slug: "host-parasite")
+
+        get finding_path(pending_finding)
+
+        expect(response.body.squish).to include("No claim yet: 0 runs of the sweep have finished")
+        expect(response.body).to include(experiment_path("host-parasite"))
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

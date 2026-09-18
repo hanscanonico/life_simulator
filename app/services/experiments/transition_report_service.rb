@@ -18,6 +18,7 @@ module Experiments
 
     RUN_COLUMNS = %w[run_id seed status].freeze
     ARM_COLUMNS = %w[arm n n_terminal flagged replicators both either_but_not_both].freeze
+    READING_COLUMNS = ComplexityArmsService::COLUMNS
     SAMPLE_COLUMNS = %w[
       transition_epoch collapse_epoch crossings confirmed_epoch confirmed_by min_entropy_bits
       min_entropy_epoch peak_replicator_count peak_replicator_epoch first_replicator_epoch
@@ -50,11 +51,14 @@ module Experiments
       def cells = [label, runs, terminal, flagged, replicated, both, either_but_not_both]
     end
 
-    Report = Data.define(:rows, :arms, :param_keys) do
+    Report = Data.define(:rows, :arms, :readings, :param_keys) do
       def headers = [*RUN_COLUMNS, *param_keys, *SAMPLE_COLUMNS]
 
       def to_text
-        [table(headers, rows.map(&:cells)), table(ARM_COLUMNS, arms.map(&:cells))].join("\n")
+        sections = [table(headers, rows.map(&:cells)), table(ARM_COLUMNS, arms.map(&:cells))]
+        sections << table(READING_COLUMNS, readings.map(&:cells)) if readings.any?
+
+        sections.join("\n")
       end
 
       def to_csv
@@ -64,6 +68,11 @@ module Experiments
           csv << []
           csv << ARM_COLUMNS
           arms.each { |arm| csv << arm.cells }
+          next if readings.empty?
+
+          csv << []
+          csv << READING_COLUMNS
+          readings.each { |reading| csv << reading.cells }
         end
       end
 
@@ -90,7 +99,7 @@ module Experiments
       @include_running = include_running
     end
 
-    def call = Report.new(rows: rows, arms: arms, param_keys: param_keys)
+    def call = Report.new(rows: rows, arms: arms, readings: readings, param_keys: param_keys)
 
     private
 
@@ -105,6 +114,13 @@ module Experiments
     # INCLUDE_RUNNING opts back into counting the in-flight ones.
     def arms
       @arms ||= rows.group_by { |row| arm_label(row.params) }.map { |label, arm_rows| arm(label, arm_rows) }
+    end
+
+    # The pre-registered complexity reading of DESIGN 1.3 sweep 9, over the same arms: an
+    # arm with nothing to read on it — no measured emerged run, no blank block, no steal op
+    # — carries no row, so a sweep the reading says nothing about keeps the report it had.
+    def readings
+      @readings ||= ComplexityArmsService.call(experiment: @experiment).select(&:reads?)
     end
 
     def arm(label, arm_rows)

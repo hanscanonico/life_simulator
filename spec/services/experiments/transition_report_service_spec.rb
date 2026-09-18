@@ -235,6 +235,42 @@ RSpec.describe Experiments::TransitionReportService do
     end
   end
 
+  describe "the complexity reading" do
+    before do
+      2.times do
+        run = create(:run, :emerged, experiment: experiment, transition_epoch: 100, emergence_epoch: 100,
+                                     params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
+        (([12] * 10) + ([40] * 10)).each_with_index do |count, index|
+          create(:sample, run: run, epoch: 100 + (index * 10),
+                          values: { "compress_ratio" => 0.4, "dominant_instruction_count" => count,
+                                    "conserved_core_bytes" => 30, "dominant_compressed_len" => 139 })
+        end
+      end
+    end
+
+    it "reads the arm the way the sweep page does" do
+      expect(report.readings.sole).to have_attributes(reading: :keeps_rising, measured_count: 2)
+    end
+
+    it "prints the reading under the arm summary" do
+      expect(report.to_text).to include("instructions_first", "keeps rising")
+    end
+
+    it "writes the reading as a third section of the CSV" do
+      table = CSV.parse(report.to_csv)
+
+      expect(table[-2]).to eq(Experiments::ComplexityArmsService::COLUMNS)
+      expect(table.last.first).to eq("0.000244")
+    end
+  end
+
+  context "with no arm carrying a complexity reading" do
+    it "leaves the report as it was" do
+      expect(report.readings).to be_empty
+      expect(CSV.parse(report.to_csv).last).to eq(["0.000244", "3", "3", "2", "2", "1", "2"])
+    end
+  end
+
   describe "#to_text" do
     it "aligns a header and one line per run over the fixed columns" do
       lines = report.to_text.lines.map(&:strip)

@@ -390,6 +390,43 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with an arm whose emerged runs carry a complexity reading" do
+      let(:experiment) do
+        create(:experiment, name: "Host-parasite economy", slug: "host-parasite",
+                            param_grid: { "economy" => [{ "energy_influx" => 0, "steal_amount" => 0 },
+                                                        { "energy_influx" => 512,
+                                                          "steal_amount" => 1_024 }] })
+      end
+
+      before do
+        2.times do
+          run = create(:run, :emerged, experiment: experiment, transition_epoch: 100, emergence_epoch: 100,
+                                       params: Lab::Schema.run_defaults.merge("energy_influx" => 512,
+                                                                              "steal_amount" => 1_024))
+          (([12] * 10) + ([40] * 10)).each_with_index do |count, index|
+            create(:sample, run: run, epoch: 100 + (index * 10),
+                            values: { "compress_ratio" => 0.4, "dominant_instruction_count" => count,
+                                      "conserved_core_bytes" => 30, "dominant_compressed_len" => 139,
+                                      "steal_rate" => 0.0 })
+          end
+        end
+      end
+
+      it "reads instruction count and conserved core per arm, compressed length beside them" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Does complexity keep rising, per arm",
+                                         "Conserved core", "Compressed length", "keeps rising")
+        expect(response.body.squish).to include("12 → 40", "30 → 30", "139 → 139")
+      end
+
+      it "reads a steal arm nothing ever stole in as theft that never evolved" do
+        get experiment_path(experiment)
+
+        expect(response.body.squish).to include("theft never evolved")
+      end
+    end
+
     context "with a corpus pass over the sweep" do
       let(:run) do
         create(:run, experiment: experiment, seed: 7, status: "finished",

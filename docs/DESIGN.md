@@ -286,6 +286,46 @@ holding a tape that passed.
    and the control and 512 arms 30: only those two have an emerged run whose plateau is
    measured and need a second one, the control is already comparable, and 512 emerged in
    none of a full seed-block.
+9. **Host–parasite economy** — does complexity keep rising when energy is a contested
+   stock? Sweeps 6–8 are spent: complexity rises at emergence and plateaus within 20 000
+   epochs on every substrate tested, because a byte off the copy path costs a tape nothing
+   and there is no quantity any tape can take from another. This sweep prices that. Arms
+   are an **economy** bundle — `(energy_influx, steal_amount)` travelling together, since
+   the cartesian product would otherwise pair theft with no stock to steal from, which the
+   engine refuses — crossed with the two **room-to-grow caps** whose plateau sweep 8
+   measured:
+   `economy ∈ {(0, 0) = off, (2^13, 0), (2^13, 2^10), (2^11, 0), (2^11, 2^10), (2^9, 0),
+   (2^9, 2^10)}` × `max_tape_len ∈ {128, 256}`, at `energy_stock_cap` 2^15 and
+   `steal_loss` 0.5 throughout, 128² for 20 000 epochs at the emergent mutation rate.
+   The influx levels are one full-length interaction's worth per epoch (`max_steps` is
+   2^13), a quarter of one and a sixteenth: a cell pairs about twice an epoch, so even the
+   richest arm cannot pay for everything it could run, and the poorest is the ladder's
+   bottom rung sweep 6 walked for the per-epoch tax, one notch lower because a stock
+   accumulates. The cap is four full interactions — the same hoard ceiling in every arm,
+   so the influx is the only energy quantity the sweep varies — and it is inert in the
+   `(0, 0)` control, which is the substrate every earlier sweep ran. At the default loss
+   one steal delivers 2^9: a whole epoch's influx in the poorest arm, an eighth of one in
+   the richest, and never the zero a smaller amount would round to. Every priced arm runs
+   90 seeds, since every priced arm so far lowered the emergence rate and the reading needs
+   two emerged runs; the two control arms run 30, because sweep 8 already ran that exact
+   substrate at 90 seeds under each of these two caps.
+   Dependent variables: `transition_epoch` and the confirmed `emergence_epoch` as in every
+   sweep, then `dominant_instruction_count` and `conserved_core_bytes` as the complexity
+   pair, with `dominant_compressed_len` and `steal_rate` beside them.
+   **Pre-registered reading**, on emerged runs only — a crossing the replicator census or
+   `copy_rate` confirmed, any crossing of the run, not the detector's first alone. Per run,
+   take the samples at or after that crossing and compare the **median of the last decile**
+   of them against the median of the first decile. A run **keeps rising** when its
+   `dominant_instruction_count` median rises by at least **20%** and its
+   `conserved_core_bytes` median does not fall over the same span; it **plateaus** when the
+   last decile sits within **±10%** of the first. An arm keeps rising when at least half of
+   its measured emerged runs do, and plateaus when at least half plateau.
+   `dominant_compressed_len` is reported beside them and never decides: it saturates at the
+   cap plus zlib's 11-byte envelope (`docs/design_record.md`, 2026-09-16). An arm reads at
+   all only with **two measured emerged runs**, or a **blank block of ten** — which reads as
+   an arm holding no replicator to read, not as an arm still to be tested. And a steal arm
+   whose `steal_rate` never leaves zero reads **"theft never evolved"**, never "theft does
+   not help": the op was available and no lineage picked it up.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no

@@ -127,6 +127,16 @@ RSpec.describe Experiments::SweepBuilderService do
       expect(experiment.runs.order(:id).map { |run| run.params.slice("width", "height") })
         .to eq([{ "width" => 32, "height" => 32 }, { "width" => 64, "height" => 64 }])
     end
+
+    context "with seeds of their own given to a parameter the bundles carry" do
+      before { experiment.update!(seeds_by_arm: { "width" => { 64 => [1, 2, 3] } }) }
+
+      it "runs the bundles holding that value at their own seeds" do
+        build_sweep
+
+        expect(experiment.runs.group("params->>'width'").count).to eq("32" => 1, "64" => 3)
+      end
+    end
   end
 
   context "with an empty grid" do

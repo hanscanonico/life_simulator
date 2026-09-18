@@ -289,6 +289,33 @@ RSpec.describe "lab:sweep" do
     end
   end
 
+  describe "host_parasite" do
+    it "builds every priced arm at ninety seeds and the two control arms at thirty" do
+      build_sweep("host_parasite")
+
+      expect(Experiment.find_by(slug: "host-parasite").runs_count).to eq(1_140)
+      expect(Run.group("params->>'energy_influx'").count).to eq("0" => 60, "512" => 360, "2048" => 360, "8192" => 360)
+    end
+
+    it "pairs every influx with theft on and off, and never theft without a stock" do
+      build_sweep("host_parasite")
+
+      expect(Run.distinct.pluck(Arel.sql("params->'energy_influx'"), Arel.sql("params->'steal_amount'")).sort)
+        .to eq([[0, 0], [512, 0], [512, 1_024], [2_048, 0], [2_048, 1_024], [8_192, 0], [8_192, 1_024]].sort)
+    end
+
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("host_parasite")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0,
+                                              "energy_stock_cap" => 2**15, "steal_loss" => 0.5,
+                                              "max_tape_len" => 128, "tape_len" => 64,
+                                              "width" => 128, "height" => 128,
+                                              "mutation_rate" => 2.0**-13))
+    end
+  end
+
   describe "bff_control" do
     it "builds the two mutation arms times three seeds" do
       build_sweep("bff_control")

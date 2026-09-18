@@ -147,6 +147,61 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the host-parasite sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("host_parasite") }
+      let(:economy) { definition[:param_grid].fetch("economy") }
+
+      it "crosses three influx levels with theft on and off, under one control at the defaults" do
+        expect(economy).to eq(
+          [{ "energy_influx" => 0, "steal_amount" => 0 },
+           { "energy_influx" => 2**13, "steal_amount" => 0 },
+           { "energy_influx" => 2**13, "steal_amount" => 2**10 },
+           { "energy_influx" => 2**11, "steal_amount" => 0 },
+           { "energy_influx" => 2**11, "steal_amount" => 2**10 },
+           { "energy_influx" => 2**9, "steal_amount" => 0 },
+           { "energy_influx" => 2**9, "steal_amount" => 2**10 }]
+        )
+      end
+
+      it "carries the arm where the economy is off, the substrate every other sweep ran" do
+        expect(economy.first)
+          .to eq(Lab::Schema.defaults.slice("energy_influx", "steal_amount"))
+      end
+
+      it "prices the influx against the step budget one interaction is cut from" do
+        full_interaction = Lab::Schema.defaults.fetch("max_steps")
+
+        expect(economy.filter_map { |arm| arm["energy_influx"].positive? ? arm["energy_influx"] : nil }.uniq)
+          .to eq([full_interaction, full_interaction / 4, full_interaction / 16])
+      end
+
+      it "keeps every priced arm's hoard under one ceiling, four full interactions high" do
+        cap = definition[:param_grid].fetch("energy_stock_cap").sole
+
+        expect(cap).to eq(4 * Lab::Schema.defaults.fetch("max_steps"))
+        expect(economy.map { |arm| arm.fetch("energy_influx") }).to all(be <= cap)
+      end
+
+      it "pays a thief something for every steal it runs" do
+        loss = definition[:param_grid].fetch("steal_loss").sole
+        amount = economy.filter_map { |arm| arm["steal_amount"] }.max
+
+        expect(loss).to eq(Lab::Schema.defaults.fetch("steal_loss"))
+        expect((amount * (1 - loss)).floor).to be_positive
+      end
+
+      it "runs both room-to-grow caps at the mutation rate that first produced emergence" do
+        expect(definition[:param_grid].values_at("max_tape_len", "tape_len", "mutation_rate"))
+          .to eq([[128, 256], [64], [Lab::EMERGENT_MUTATION_RATE]])
+      end
+
+      it "gives every priced arm ninety seeds and the control arms thirty" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..30).to_a, 20_000])
+        expect(definition.fetch(:seeds_by_arm))
+          .to eq("energy_influx" => { 2**13 => (1..90).to_a, 2**11 => (1..90).to_a, 2**9 => (1..90).to_a })
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 
@@ -174,9 +229,17 @@ RSpec.describe Lab do
     it "overrides the seeds of arms its own grid carries" do
       Lab::SWEEPS.each_value do |definition|
         definition.fetch(:seeds_by_arm, {}).each do |name, seeds_by_value|
-          expect(definition.fetch(:param_grid).fetch(name)).to include(*seeds_by_value.keys)
+          expect(grid_values_of(definition.fetch(:param_grid), name)).to include(*seeds_by_value.keys)
         end
       end
+    end
+
+    # A bundle axis carries its parameters inside each of its values, so the values an
+    # arm can be named by are the ones the bundles hold under that parameter.
+    def grid_values_of(param_grid, name)
+      return param_grid.fetch(name) if param_grid.key?(name)
+
+      param_grid.each_value.flat_map { |values| values.grep(Hash).filter_map { |bundle| bundle[name] } }.uniq
     end
 
     # An axis whose values are hashes is a bundle of parameters travelling together, so it
