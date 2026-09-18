@@ -247,7 +247,9 @@ claim rests on it.
 **Replicator test**: a tape `T` is a replicator if executing `T ++ R` for a random tape
 `R` (fresh, seeded) yields `T` in the second half for at least 3 of 4 trials. Run on the
 `top_k` (default 16) most common tapes each sample; `replicator_count` counts cells
-holding a tape that passed.
+holding a tape that passed. The trial is seeded per epoch, so a rescore of a stored world
+is comparable only with the live sample at the same epoch (docs/design_record.md
+2026-09-18).
 
 ### 1.3 The sweeps (in order; each is one `Experiment`)
 

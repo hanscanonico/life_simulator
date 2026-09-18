@@ -715,3 +715,32 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   nothing but `$` running the epoch a soup of any other inert byte runs, energy included,
   with the stock on and with it off. No sweep is declared over theft here: the substrate
   lands, and the sweep is written over the substrate the stock and this op make together.
+- 2026-09-18 — **A rescore is comparable only with the live sample at the same epoch.**
+  Issue #184 read a corpus rescore as a decode regression — every confirmed-emerged run of
+  the `max-tape-len` sweep rescoring to `replicator_count` 0 while its samples had held a
+  census, `--top-k` moving no column — and concluded that **every negative rescore in the
+  record is void**. That conclusion is **retracted**. A read-only re-measurement of the
+  stored corpus finds no decode failure: at every epoch where a snapshot and a live sample
+  coincide, the rescored count equals the stored one exactly — run 367 @5000 538/538/538
+  against 538, run 737 @5900 43/43/49 against 43, run 197 @5000 538 against 538, run 186
+  @9900 316 against 316, run 185 @16000 112 against 112, and the runs whose latest world is
+  read (367 @20000, 186 @50000, the three `mutation-rate` nulls @20000) read 0 where the
+  live sample also reads 0. Two things made it look otherwise. **The wrong epoch**:
+  `rescore-corpus --epochs latest`, the default, reads each run's final world, and in every
+  confirmed run the census is 0 at the final epoch on the live sample too — census-positive
+  epochs are transient and mid-run. **A per-epoch draw**: `World::replicator_census` seeds
+  its assay with `rng::seeded(seed, STREAM_REPLICATOR, epoch)`, so the result flickers
+  sample to sample — run 384 reads 0 at 15000, 51 at 15020, 0 at 15030, 68 at 15040, 0 at
+  15050 — and the issue compared a snapshot at 15000 (live 0, rescore 0, agreement) with a
+  sample at 15020. A negative rescore of a final world is therefore a valid reading of that
+  final world and nothing more; `rescore-corpus --epochs latest` is not the instrument for
+  confirming emergence, and any rescore offered as evidence about a census peak must name
+  the epoch of the peak. **`top_k` stays at 16**, where DESIGN §1.2 locks it: widening is
+  not a no-op — run 737 @5900 gives 43 at 16 and 49 at 256 — but across the twelve worlds
+  re-read only that one moved, and the issue's `--top-k 1,16,4096` probe cannot be run at
+  all (values above 256 are refused). The check is bounded by snapshot cadence: only 5 of
+  16 confirmed runs hold a snapshot at an epoch whose census was positive, because the
+  cadence is 500 and a census peak lasts under 10 epochs. Closing that gap is follow-up
+  work — a `census` snapshot reason that forces a world where the count is positive, and a
+  census read as a pass rate over repeated draws rather than one seeded draw — neither
+  decided here.
