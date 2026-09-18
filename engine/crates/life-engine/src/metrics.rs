@@ -81,6 +81,15 @@ pub struct Metrics {
     /// 0 wherever the op is off, which is every run at the defaults, and on the life
     /// substrate.
     pub steal_rate: f64,
+    /// Share of the census's independent assay draws in which at least one tape passed the
+    /// replicator test. The assay is four Bernoulli trials against random partners, so a
+    /// marginal tape passes or fails at random between adjacent epochs and a single draw is
+    /// unreadable on its own (`docs/design_record.md`, 2026-09-18). `None` on the life
+    /// substrate, which has no tapes to assay.
+    pub replicator_pass_rate: Option<f64>,
+    /// The mean of those draws' counts: how many cells hold a passing tape on an average
+    /// draw, where `replicator_count` is what one draw read. `None` on the life substrate.
+    pub replicator_count_mean: Option<f64>,
 }
 
 impl Metrics {
@@ -1104,6 +1113,8 @@ mod tests {
             conserved_core_bytes: None,
             conserved_core_ops: None,
             steal_rate: 0.0,
+            replicator_pass_rate: None,
+            replicator_count_mean: None,
         }
     }
 

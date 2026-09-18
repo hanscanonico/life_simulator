@@ -97,6 +97,12 @@ pub struct Report {
 pub struct Setting {
     pub top_k: u32,
     pub replicator_count: u64,
+    /// The share of the census's draws that found a replicator at this `top_k`. One draw
+    /// is a coin toss on a marginal tape, so a count of 0 beside a pass rate of 0 is a
+    /// world with nothing in it and a count of 0 beside a positive rate is a world the
+    /// first draw happened to miss (`docs/design_record.md`, 2026-09-18). 0.0 for a world
+    /// whose substrate runs no assay.
+    pub replicator_pass_rate: f64,
     pub top_share: f64,
     pub distinct_tapes: u64,
     pub compress_ratio: f64,
@@ -321,6 +327,7 @@ fn setting(top_k: u32, metrics: &Metrics) -> Setting {
     Setting {
         top_k,
         replicator_count: metrics.replicator_count,
+        replicator_pass_rate: metrics.replicator_pass_rate.unwrap_or(0.0),
         top_share: metrics.top_share,
         distinct_tapes: metrics.distinct_tapes,
         compress_ratio: metrics.compress_ratio,
@@ -352,23 +359,36 @@ impl Report {
         )
     }
 
-    pub fn print(&self) {
-        println!("{}", self.print_line());
-        println!(
-            "\n{:>6}  {:>16}  {:>10}  {:>14}  {:>14}  {:>12}",
-            "top_k", "replicators", "top_share", "distinct_tapes", "compress_ratio", "entropy_bits"
+    /// The `top_k` table, as one block of text so a test can read what the run prints.
+    fn settings_table(&self) -> String {
+        let mut table = format!(
+            "{:>6}  {:>16}  {:>10}  {:>10}  {:>14}  {:>14}  {:>12}",
+            "top_k",
+            "replicators",
+            "pass_rate",
+            "top_share",
+            "distinct_tapes",
+            "compress_ratio",
+            "entropy_bits"
         );
         for setting in &self.settings {
-            println!(
-                "{:>6}  {:>16}  {:>10.6}  {:>14}  {:>14.4}  {:>12.4}",
+            table.push_str(&format!(
+                "\n{:>6}  {:>16}  {:>10.4}  {:>10.6}  {:>14}  {:>14.4}  {:>12.4}",
                 setting.top_k,
                 setting.replicator_count,
+                setting.replicator_pass_rate,
                 setting.top_share,
                 setting.distinct_tapes,
                 setting.compress_ratio,
                 setting.entropy_bits
-            );
+            ));
         }
+        table
+    }
+
+    pub fn print(&self) {
+        println!("{}", self.print_line());
+        println!("\n{}", self.settings_table());
         println!(
             "\n{:>6}  {:>10}  {:>10}  replicates",
             "rank", "cells", "share"
@@ -601,6 +621,22 @@ mod tests {
         assert_eq!(counts, vec![(1, 0), (16, 3)]);
         assert_eq!(report.run, Some(45));
         assert_eq!(report.epoch, 0);
+    }
+
+    /// A rescore reports how often the census found the replicator, not only what one draw
+    /// counted: the rate rides the printed table and the report JSON alike.
+    #[test]
+    fn a_rescore_reports_the_share_of_census_draws_that_found_a_replicator() {
+        let stored = seeded_world(3);
+
+        let report = measure(&stored, None, &[16]).unwrap();
+
+        assert_eq!(report.settings[0].replicator_pass_rate, 1.0);
+        let table = report.settings_table();
+        assert!(table.contains("pass_rate"), "{table}");
+        assert!(table.contains("1.0000"), "{table}");
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["settings"][0]["replicator_pass_rate"], json!(1.0));
     }
 
     #[test]

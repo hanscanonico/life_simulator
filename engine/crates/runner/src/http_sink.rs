@@ -165,6 +165,8 @@ mod tests {
             conserved_core_bytes: None,
             conserved_core_ops: None,
             steal_rate: 0.0,
+            replicator_pass_rate: None,
+            replicator_count_mean: None,
         }
     }
 
