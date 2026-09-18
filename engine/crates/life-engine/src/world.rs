@@ -15,6 +15,16 @@ use crate::snapshot::{self, SnapshotError};
 const STREAM_INIT: u64 = 0;
 const STREAM_STEP: u64 = 1;
 const STREAM_REPLICATOR: u64 = 2;
+/// The stream the census's repeat draws are keyed on, kept far from the small stream ids
+/// above so a draw can never collide with one. Draw 0 keeps `STREAM_REPLICATOR`, which is
+/// what the census has always drawn on, so `replicator_count` reads exactly what it read
+/// before the repeats existed.
+const STREAM_REPLICATOR_DRAW: u64 = 0x5245_5043_0000_0000;
+/// How many independent assays one census runs. The test is four Bernoulli trials against
+/// random partners, so one draw is a coin toss on a marginal tape and a run's census
+/// flickers between adjacent samples (`docs/design_record.md`, 2026-09-18). Module-private
+/// and not a parameter: it is how an observable is read, not something a sweep varies.
+const CENSUS_DRAWS: u32 = 8;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -510,6 +520,8 @@ impl World {
             conserved_core_bytes: core.map(|read| read.bytes),
             conserved_core_ops: core.map(|read| read.ops),
             steal_rate: self.steal_rate,
+            replicator_pass_rate: census.pass_rate(),
+            replicator_count_mean: census.count_mean(),
         }
     }
 
@@ -531,27 +543,52 @@ impl World {
     /// read nothing there left such a run unmeasurable (`docs/design_record.md`,
     /// 2026-09-15). Exactly one tape is compressed per sample, whichever it is. Life cells
     /// are single bits and have no tape to read at all.
-    fn replicator_census(&self, ranked: &[(&[u8], u64)]) -> ReplicatorCensus {
+    fn replicator_census<'a>(&self, ranked: &[(&'a [u8], u64)]) -> ReplicatorCensus {
         if self.params.substrate != Substrate::Soup {
             return ReplicatorCensus::default();
         }
-        let mut rng = rng::seeded(self.seed, STREAM_REPLICATOR, self.epoch);
+        let draws: Vec<CensusDraw<'a>> = (0..CENSUS_DRAWS)
+            .map(|draw| self.census_draw(ranked, draw))
+            .collect();
+        let first = &draws[0];
+        ReplicatorCensus {
+            count: first.count,
+            copy_cost: first.copy_cost,
+            complexity: first
+                .dominant
+                .map(|tape| metrics::Complexity::of(tape, self.params.op_set())),
+            dominant_replicates: first.dominant_replicates,
+            counts: draws.iter().map(|draw| draw.count).collect(),
+        }
+    }
+
+    /// One assay of every ranked tape, on the stream draw `draw` owns. The census reads the
+    /// world and writes nothing back — no cell, no lineage and no simulation stream moves —
+    /// so a draw is a pure function of `(seed, epoch, draw)` and repeating it cannot change
+    /// what the run does next.
+    fn census_draw<'a>(&self, ranked: &[(&'a [u8], u64)], draw: u32) -> CensusDraw<'a> {
+        let stream = match draw {
+            0 => STREAM_REPLICATOR,
+            draw => STREAM_REPLICATOR_DRAW | u64::from(draw),
+        };
+        let mut rng = rng::seeded(self.seed, stream, self.epoch);
         let ops = self.params.op_set();
-        let mut census = ReplicatorCensus::default();
-        let mut dominant = ranked.first().map(|(tape, _)| *tape);
+        let mut read_off = CensusDraw {
+            dominant: ranked.first().map(|(tape, _)| *tape),
+            ..CensusDraw::default()
+        };
         for (tape, cells) in ranked.iter().take(self.params.top_k as usize) {
             let read = replicator::assay(tape, self.params.max_steps, ops, &mut rng);
             if read.replicates() {
-                census.count += cells;
-                if !census.dominant_replicates {
-                    census.dominant_replicates = true;
-                    dominant = Some(*tape);
+                read_off.count += cells;
+                if !read_off.dominant_replicates {
+                    read_off.dominant_replicates = true;
+                    read_off.dominant = Some(*tape);
                 }
-                census.copy_cost = census.copy_cost.or(read.copy_cost);
+                read_off.copy_cost = read_off.copy_cost.or(read.copy_cost);
             }
         }
-        census.complexity = dominant.map(|tape| metrics::Complexity::of(tape, ops));
-        census
+        read_off
     }
 }
 
@@ -563,6 +600,40 @@ struct ReplicatorCensus {
     count: u64,
     copy_cost: Option<u32>,
     complexity: Option<metrics::Complexity>,
+    dominant_replicates: bool,
+    /// What each of the `CENSUS_DRAWS` draws counted, draw 0 first — the count above being
+    /// that first draw's. Empty on the life substrate, where no assay runs at all.
+    counts: Vec<u64>,
+}
+
+impl ReplicatorCensus {
+    /// The share of draws that found a replicator: 1.0 where a tape passes every assay,
+    /// and a fraction where the census is catching a tape at the edge of the test.
+    fn pass_rate(&self) -> Option<f64> {
+        self.read(|counts| {
+            counts.iter().filter(|count| **count > 0).count() as f64 / counts.len() as f64
+        })
+    }
+
+    fn count_mean(&self) -> Option<f64> {
+        self.read(|counts| counts.iter().sum::<u64>() as f64 / counts.len() as f64)
+    }
+
+    fn read(&self, of: impl Fn(&[u64]) -> f64) -> Option<f64> {
+        match self.counts.is_empty() {
+            true => None,
+            false => Some(of(&self.counts)),
+        }
+    }
+}
+
+/// What one assay draw of the census read: the cells it counted, and the dominant tape it
+/// picked out with whether that tape passed.
+#[derive(Default)]
+struct CensusDraw<'a> {
+    count: u64,
+    copy_cost: Option<u32>,
+    dominant: Option<&'a [u8]>,
     dominant_replicates: bool,
 }
 
@@ -843,6 +914,12 @@ mod tests {
     const PINNED_CONSERVED_CORE: &str = "conserved_core_bytes=Some(1) conserved_core_ops=Some(0)";
     const PINNED_SEEDED_CONSERVED_CORE: &str =
         "conserved_core_bytes=Some(253) conserved_core_ops=Some(15)";
+    /// And the two fields the eight-draw census added (`docs/design_record.md`,
+    /// 2026-09-18), pinned apart once more: `replicator_count` above stays draw 0.
+    const PINNED_CENSUS_DRAWS: &str = "replicator_pass_rate=Some(0.0) \
+         replicator_count_mean=Some(0.0)";
+    const PINNED_SEEDED_CENSUS_DRAWS: &str = "replicator_pass_rate=Some(1.0) \
+         replicator_count_mean=Some(196.0)";
 
     fn observable_digest(measured: &Metrics) -> String {
         format!(
@@ -889,6 +966,13 @@ mod tests {
         )
     }
 
+    fn census_digest(measured: &Metrics) -> String {
+        format!(
+            "replicator_pass_rate={:?} replicator_count_mean={:?}",
+            measured.replicator_pass_rate, measured.replicator_count_mean,
+        )
+    }
+
     fn conserved_core_digest(measured: &Metrics) -> String {
         format!(
             "conserved_core_bytes={:?} conserved_core_ops={:?}",
@@ -902,6 +986,26 @@ mod tests {
             height,
             ..Params::default()
         }
+    }
+
+    /// The 16×16 soup half filled with the handwritten replicator, seed 7, stepped to the
+    /// first sample — the world the seeded pins above were read on.
+    fn seeded_world() -> World {
+        let params = Params {
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 7).unwrap();
+        let tape = replicator::handwritten_replicator();
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        for _ in 0..params.sample_every {
+            world.step();
+        }
+        world
     }
 
     fn stocked_params() -> Params {
@@ -1235,24 +1339,12 @@ mod tests {
         assert_eq!(dominant_digest(&measured), PINNED_DOMINANT);
         assert_eq!(dominant_tape_digest(&measured), PINNED_DOMINANT_TAPE);
         assert_eq!(conserved_core_digest(&measured), PINNED_CONSERVED_CORE);
+        assert_eq!(census_digest(&measured), PINNED_CENSUS_DRAWS);
     }
 
     #[test]
     fn the_observables_of_a_seeded_soup_read_what_they_read_before_lineage_tags() {
-        let params = Params {
-            tape_len: replicator::handwritten_replicator().len() as u32,
-            ..soup(16, 16)
-        };
-        let mut world = World::new(&params, 7).unwrap();
-        let tape = replicator::handwritten_replicator();
-        for y in 0..params.height / 2 {
-            for x in 0..params.width {
-                world.set_cell(x, y, &tape);
-            }
-        }
-        for _ in 0..params.sample_every {
-            world.step();
-        }
+        let mut world = seeded_world();
         let measured = world.metrics();
         assert_eq!(observable_digest(&measured), PINNED_SEEDED_OBSERVABLES);
         assert_eq!(lineage_digest(&measured), PINNED_SEEDED_LINEAGES);
@@ -1262,6 +1354,63 @@ mod tests {
             conserved_core_digest(&measured),
             PINNED_SEEDED_CONSERVED_CORE
         );
+        assert_eq!(census_digest(&measured), PINNED_SEEDED_CENSUS_DRAWS);
+    }
+
+    /// The census only reads the world: it draws on streams of its own, moves no cell and
+    /// writes nothing back, so measuring the same epoch again — or measuring it again on a
+    /// world rebuilt from that epoch's snapshot — reads the same draws.
+    #[test]
+    fn a_repeated_census_reads_the_same_pass_rate_twice() {
+        let mut world = seeded_world();
+        let measured = world.metrics();
+        let again = world.metrics();
+
+        assert_eq!(
+            (
+                measured.replicator_pass_rate,
+                measured.replicator_count_mean
+            ),
+            (again.replicator_pass_rate, again.replicator_count_mean)
+        );
+
+        let mut restored =
+            World::from_snapshot(world.params(), world.seed(), &world.snapshot()).unwrap();
+        let reread = restored.metrics();
+
+        assert_eq!(
+            (
+                measured.replicator_pass_rate,
+                measured.replicator_count_mean
+            ),
+            (reread.replicator_pass_rate, reread.replicator_count_mean)
+        );
+    }
+
+    /// `replicator_count` stays what it always was — the cells one draw counted, on the
+    /// stream that draw has always used — so a sample taken today is comparable with every
+    /// sample in the record. The mean is the reading beside it, not a replacement.
+    #[test]
+    fn the_first_draw_is_the_census_the_count_has_always_reported() {
+        let mut world = seeded_world();
+        let measured = world.metrics();
+
+        assert_eq!(measured.replicator_count, 196);
+        assert_eq!(measured.replicator_pass_rate, Some(1.0));
+        assert_eq!(measured.replicator_count_mean, Some(196.0));
+    }
+
+    /// The two readings over a census whose draws disagree: the share of draws that found
+    /// anything, and the mean of what they counted.
+    #[test]
+    fn a_census_whose_draws_disagree_reads_a_fraction_of_a_pass_rate() {
+        let census = ReplicatorCensus {
+            counts: vec![0, 12, 0, 8, 0, 0, 0, 0],
+            ..ReplicatorCensus::default()
+        };
+
+        assert_eq!(census.pass_rate(), Some(0.25));
+        assert_eq!(census.count_mean(), Some(2.5));
     }
 
     /// A colony of the handwritten replicator is one lineage spreading: each cell it
@@ -1461,6 +1610,8 @@ mod tests {
         assert_eq!(measured.dominant_instruction_count, None);
         assert_eq!(measured.dominant_raw_len, None);
         assert_eq!(measured.dominant_tape_hash, None);
+        assert_eq!(measured.replicator_pass_rate, None);
+        assert_eq!(measured.replicator_count_mean, None);
         assert!(!measured.dominant_replicates);
     }
 

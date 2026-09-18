@@ -121,7 +121,12 @@ claim rests on it.
 - `distinct_tapes`: number of distinct tape values in the world.
 - `top_share`: fraction of cells holding the single most common tape.
 - `op_density`: fraction of bytes that are one of the 10 instructions (random ≈ 10/256).
-- `replicator_count`: how many cells pass the replicator test (below).
+- `replicator_count`: how many cells pass the replicator test (below), on the first of
+  the census's draws — the reading every sample in the record carries.
+- `replicator_pass_rate`: the share of the census's 8 independent draws in which some
+  tape passed. A tape at the edge of the test passes or fails at random, so this is what
+  says whether a count of 0 is an empty world or a draw that missed.
+- `replicator_count_mean`: the mean of what those 8 draws counted.
 - `entropy_bits`: Shannon entropy of the byte distribution.
 - `alphabet_size`: how many of the 256 byte values the world still holds, 1–256. Only
   `+` and `-` can mint a byte value, so with `mutation_rate = 0` the alphabet is a
@@ -249,7 +254,9 @@ claim rests on it.
 `top_k` (default 16) most common tapes each sample; `replicator_count` counts cells
 holding a tape that passed. The trial is seeded per epoch, so a rescore of a stored world
 is comparable only with the live sample at the same epoch (docs/design_record.md
-2026-09-18).
+2026-09-18). The census runs the test **8 times**, each draw on its own seeded stream and
+a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
+`replicator_pass_rate` and `replicator_count_mean` read across all eight.
 
 ### 1.3 The sweeps (in order; each is one `Experiment`)
 

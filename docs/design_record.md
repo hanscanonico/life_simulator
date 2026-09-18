@@ -746,3 +746,33 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   that gap is follow-up work — a `census` snapshot reason that forces a world where the
   count is positive, and a census read as a pass rate over repeated draws rather than one
   seeded draw — neither decided here.
+- 2026-09-18 — **The replicator census is read over 8 draws, not one.** The assay is four
+  Bernoulli trials against random partners with a 3-of-4 threshold, seeded
+  `(seed, STREAM_REPLICATOR, epoch)`, so a tape at the edge of the test passes or fails at
+  random between adjacent samples: run 384 reads 0, 51, 0, 68, 0, 54 across epochs
+  15 000–15 090 (entry above). `World::replicator_census` now runs the ranked loop
+  `CENSUS_DRAWS = 8` times and reports two new observables beside the count —
+  **`replicator_pass_rate`**, the share of draws in which some tape passed, and
+  **`replicator_count_mean`**, the mean of what they counted. A count of 0 beside a
+  positive pass rate is a draw that missed; a count of 0 beside a pass rate of 0 is a world
+  with nothing in it, and only that second reading is a negative result. **The census is an
+  observable**: it reads the world and writes nothing back — no cell, no lineage, no
+  simulation stream — so repeating it cannot change what the run does next, and the extra
+  draws use a distinct seeded stream (`STREAM_REPLICATOR_DRAW | draw`) that the simulation
+  never touches. Draw 0 keeps `STREAM_REPLICATOR` unchanged, which is why the pinned
+  `(params, seed) → hash` of both substrates and every pinned observable string in
+  `world.rs` are unmoved and every field a sample already carried prints the same digits;
+  the two new fields are pinned apart from them, as #192's and #193's were.
+  **`replicator_count` stays draw 0** rather than becoming the mean: every finding in the
+  record reads it, a mean would silently redefine a series that has thousands of samples
+  behind it and no backfill is possible, and the count is the reading a rescore of a stored
+  world reproduces exactly. The mean is the better estimator and it is offered as its own
+  field, to be read forward. **Draws are 8 and not a parameter**: this is how an observable
+  is read, not something a sweep varies, so it is a module constant with no schema, wasm or
+  sweep-grid consequence. The measured cost, `runner run` at 128×128 for 300 epochs with
+  `sample_every = 10`, `--release`, three runs each: **7.61 s → 7.82 s, +2.7 %**, inside the
+  3 % the change was allowed — a census is 30 of the 300 epochs' work, and eight draws of a
+  16-tape assay are cheap beside the epochs between them. `runner rescore` prints a
+  `pass_rate` column and carries it in its report JSON; no `rescores` column and no
+  migration, and samples carry the two fields in the `values` jsonb they already use, so an
+  old runner and a new one coexist.

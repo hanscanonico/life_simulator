@@ -22,7 +22,9 @@ module Runs
       "dominant_raw_len" => "Length of the dominant tape (bytes)",
       "conserved_core_bytes" => "Conserved core of the largest lineage (bytes)",
       "conserved_core_ops" => "Instructions in that conserved core",
-      "steal_rate" => "Steal rate"
+      "steal_rate" => "Steal rate",
+      "replicator_pass_rate" => "Census pass rate",
+      "replicator_count_mean" => "Mean census count"
     }.freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
