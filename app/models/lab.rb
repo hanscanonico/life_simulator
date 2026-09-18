@@ -180,6 +180,53 @@ module Lab
       seeds_by_arm: { "max_tape_len" => { 128 => (1..90).to_a, 256 => (1..90).to_a } },
       epochs: 20_000
     },
+    "host_parasite" => {
+      name: "Host–parasite economy",
+      description: "Does complexity keep rising when energy is a contested stock? Every " \
+                   "cell holds instruction energy that carries across epochs, so what one " \
+                   "cell spends is gone until the influx pays it back; with the steal op " \
+                   "on, a tape can take what a neighbour saved. That gives one tape " \
+                   "something to gain from another's state beyond overwriting it and the " \
+                   "other something to defend, which is the arms race the literature ties " \
+                   "to rising structural complexity in fitness-free soups.",
+      # One bundle per economy rather than two axes, because the grid's cartesian product
+      # would otherwise pair theft with no stock to steal from, which the engine refuses.
+      # The first bundle is the economy off — no stock, no theft — the substrate every
+      # earlier sweep ran, so the priced arms are read against a control inside the same
+      # experiment. The three influx levels are one full-length interaction's worth per
+      # epoch (`max_steps` is 2^13), a quarter of one and a sixteenth: a cell pairs about
+      # twice an epoch, so even the richest arm cannot pay for everything it could run.
+      param_grid: {
+        "economy" => [
+          { "energy_influx" => 0, "steal_amount" => 0 },
+          { "energy_influx" => 2**13, "steal_amount" => 0 },
+          { "energy_influx" => 2**13, "steal_amount" => 2**10 },
+          { "energy_influx" => 2**11, "steal_amount" => 0 },
+          { "energy_influx" => 2**11, "steal_amount" => 2**10 },
+          { "energy_influx" => 2**9, "steal_amount" => 0 },
+          { "energy_influx" => 2**9, "steal_amount" => 2**10 }
+        ],
+        # Four full interactions of hoard, the same ceiling in every arm, so the influx is
+        # the only energy quantity the sweep varies. Inert in the control, which has no
+        # influx to stock. At the engine's default loss of 0.5 one steal delivers 2^9 —
+        # a whole epoch's influx in the poorest arm, an eighth of one in the richest.
+        "energy_stock_cap" => [4 * (2**13)],
+        "steal_loss" => [0.5],
+        # Both arms of sweep 8 whose plateau was measured, since a contested economy is
+        # only readable where the dominant tape has room to get more complicated.
+        "max_tape_len" => [128, 256],
+        "tape_len" => [64],
+        "width" => [128],
+        "height" => [128],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE]
+      },
+      # Ninety seeds in every arm, the control included: every priced arm so far lowered the
+      # emergence rate, the reading needs two emerged runs in an arm, and thirty seeds of
+      # this very substrate — sweep 8's 128 and 256 arms — left one emerged run under each
+      # cap, one short of a reading.
+      seeds: (1..90).to_a,
+      epochs: 20_000
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

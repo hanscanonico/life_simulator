@@ -147,6 +147,60 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the host-parasite sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("host_parasite") }
+      let(:economy) { definition[:param_grid].fetch("economy") }
+
+      it "crosses three influx levels with theft on and off, under one control at the defaults" do
+        expect(economy).to eq(
+          [{ "energy_influx" => 0, "steal_amount" => 0 },
+           { "energy_influx" => 2**13, "steal_amount" => 0 },
+           { "energy_influx" => 2**13, "steal_amount" => 2**10 },
+           { "energy_influx" => 2**11, "steal_amount" => 0 },
+           { "energy_influx" => 2**11, "steal_amount" => 2**10 },
+           { "energy_influx" => 2**9, "steal_amount" => 0 },
+           { "energy_influx" => 2**9, "steal_amount" => 2**10 }]
+        )
+      end
+
+      it "carries the arm where the economy is off, the substrate every other sweep ran" do
+        expect(economy.first)
+          .to eq(Lab::Schema.defaults.slice("energy_influx", "steal_amount"))
+      end
+
+      it "prices the influx against the step budget one interaction is cut from" do
+        full_interaction = Lab::Schema.defaults.fetch("max_steps")
+
+        expect(economy.filter_map { |arm| arm["energy_influx"].positive? ? arm["energy_influx"] : nil }.uniq)
+          .to eq([full_interaction, full_interaction / 4, full_interaction / 16])
+      end
+
+      it "keeps every priced arm's hoard under one ceiling, four full interactions high" do
+        cap = definition[:param_grid].fetch("energy_stock_cap").sole
+
+        expect(cap).to eq(4 * Lab::Schema.defaults.fetch("max_steps"))
+        expect(economy.map { |arm| arm.fetch("energy_influx") }).to all(be <= cap)
+      end
+
+      it "pays a thief something for every steal it runs" do
+        loss = definition[:param_grid].fetch("steal_loss").sole
+        amount = economy.filter_map { |arm| arm["steal_amount"] }.max
+
+        expect(loss).to eq(Lab::Schema.defaults.fetch("steal_loss"))
+        expect((amount * (1 - loss)).floor).to be_positive
+      end
+
+      it "runs both room-to-grow caps at the mutation rate that first produced emergence" do
+        expect(definition[:param_grid].values_at("max_tape_len", "tape_len", "mutation_rate"))
+          .to eq([[128, 256], [64], [Lab::EMERGENT_MUTATION_RATE]])
+      end
+
+      it "gives every arm ninety seeds, the control included" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..90).to_a, 20_000])
+        expect(definition).not_to have_key(:seeds_by_arm)
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 

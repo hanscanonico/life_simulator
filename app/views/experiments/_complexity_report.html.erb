@@ -1,0 +1,61 @@
+<%# The pre-registered complexity reading of DESIGN §1.3 sweep 9, arm by arm: `arms` are
+    Experiments::ComplexityArmsService::Arm. %>
+<figure class="table-figure mt-4">
+  <%# The caption sits outside .table-scroll: inside it, it is laid out at the table's width
+      and clipped mid-word on a phone. %>
+  <figcaption class="table-caption text-sm text-muted" id="complexity-reading">
+    Does complexity keep rising, per arm — the median of the last decile of each emerged
+    run's post-crossing samples against the median of its first decile. An arm keeps rising
+    where at least half its measured runs raise
+    <span class="mono">dominant_instruction_count</span> by <%= percent_value rise_margin %>
+    or more without their conserved core falling, and plateaus where at least half sit
+    within <%= percent_value plateau_band %> of where they started. An arm clearing both
+    bars reads mixed and one clearing neither reads neither; a run carrying no conserved
+    core over the span is unmeasured, since the rule reads both observables.
+    <span class="mono">dominant_compressed_len</span> is printed beside them and decides
+    nothing: it saturates at the tape cap plus zlib's envelope. An arm reads on two measured
+    runs, or on a blank block of ten; a steal arm whose
+    <span class="mono">steal_rate</span> never left zero reads as theft that never evolved,
+    not as theft that does not help, and one never sampled on that observable reads
+    unmeasured
+  </figcaption>
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="complexity-reading">
+    <table class="data-table" aria-labelledby="complexity-reading">
+      <thead>
+        <tr>
+          <th>Arm</th>
+          <th class="numeric">Emerged</th>
+          <th class="numeric">Measured</th>
+          <th class="numeric">Instructions</th>
+          <th class="numeric">Conserved core</th>
+          <th class="numeric">Compressed length</th>
+          <th class="numeric">Rising</th>
+          <th class="numeric">Plateau</th>
+          <th class="numeric">Peak <span class="mono">steal_rate</span></th>
+          <th>Reading</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% arms.each do |arm| %>
+          <tr>
+            <td class="mono"><%= arm.label %></td>
+            <td class="numeric"><%= arm.emerged_count %> / <%= arm.terminal_count %></td>
+            <td class="numeric"><%= arm.measured_count %></td>
+            <td class="numeric"><%= render "experiments/complexity_span", span: arm.instructions %></td>
+            <td class="numeric"><%= render "experiments/complexity_span", span: arm.core %></td>
+            <td class="numeric"><%= render "experiments/complexity_span", span: arm.compressed %></td>
+            <td class="numeric"><%= arm.rising_count %> / <%= arm.measured_count %></td>
+            <td class="numeric"><%= arm.plateau_count %> / <%= arm.measured_count %></td>
+            <td class="numeric"><%= metric_value arm.peak_steal_rate %></td>
+            <td>
+              <span class="badge <%= arm.badge_class %>"><%= arm.reading_label %></span>
+              <% if arm.theft_label %>
+                <span class="text-sm text-muted">theft <%= arm.theft_label %></span>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</figure>

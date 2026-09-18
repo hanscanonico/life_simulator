@@ -7,6 +7,24 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "complexity-under-contest",
+        title: "Does complexity keep rising when energy is contested?",
+        date: Date.new(2026, 9, 18),
+        experiment_slug: "host-parasite",
+        related_finding_slugs: %w[complexity-keeps-rising replicator-complexity-plateau],
+        status: :open,
+        summary: "Complexity rises at emergence and then stops rising on every substrate " \
+                 "the programme has tested, because a byte off the copy path costs its " \
+                 "tape nothing and no quantity in the world is worth taking. DESIGN §1.3 " \
+                 "sweep 9 prices that: instruction energy becomes a stock that carries " \
+                 "across epochs, bounded by a cap, and with the steal op on a tape can " \
+                 "take what a neighbour saved. The reading is pre-registered on " \
+                 "dominant_instruction_count and the conserved core, never on compressed " \
+                 "length, and it is taken on the last decile of a run's post-crossing " \
+                 "samples against its first. No arm has read yet: this page states the " \
+                 "question, the arms and the rule the claim will be made by."
+      ),
+      Finding.new(
         slug: "complexity-keeps-rising",
         title: "Does complexity keep rising?",
         date: Date.new(2026, 9, 14),

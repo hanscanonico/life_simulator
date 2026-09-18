@@ -67,6 +67,12 @@
   </div>
 <% end %>
 
+<% if @show.complexity_reading? %>
+  <%= render "experiments/complexity_report", arms: @show.complexity_arms,
+                                              rise_margin: @show.rise_margin,
+                                              plateau_band: @show.plateau_band %>
+<% end %>
+
 <% if @show.rescores? %>
   <%= render "experiments/rescores_table", summary: @show.rescore_summary %>
 <% end %>
