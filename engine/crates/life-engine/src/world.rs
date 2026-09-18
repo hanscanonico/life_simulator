@@ -315,8 +315,7 @@ impl World {
                 cap: live_a + cap,
                 code_len,
             };
-            let stealing = theft.map_or(bff::Stealing::Off, |theft| theft.stealing(live_a));
-            let outcome = bff::run_stealing(&mut pair, bounds, stealing);
+            let outcome = bff::run_stealing(&mut pair, bounds, Theft::stealing(theft, live_a));
             energy.spend(a, b, outcome.steps);
             if let Some(theft) = theft {
                 energy.settle(a, b, outcome.steals, &theft);
@@ -679,11 +678,15 @@ impl Theft {
         })
     }
 
-    /// The steal byte as an instruction over a pair whose first tape ends at `split`: a
-    /// theft exists only where the run switched the op on, so this `Option<Theft>` is the
-    /// single switch the interpreter and the settlement both read.
-    fn stealing(&self, split: usize) -> bff::Stealing {
-        bff::Stealing::At(split)
+    /// The steal byte as the interpreter should read it over a pair whose first tape ends
+    /// at `split`: an instruction where a theft exists at all, the plain no-op where none
+    /// does. A theft exists only where the run switched the op on, so this `Option<Theft>`
+    /// is the single switch the interpreter and the settlement both read.
+    fn stealing(theft: Option<Self>, split: usize) -> bff::Stealing {
+        match theft {
+            Some(_) => bff::Stealing::At(split),
+            None => bff::Stealing::Off,
+        }
     }
 
     /// What one steal op takes out of a partner holding `held`: `steal_amount`, or
