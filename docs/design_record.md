@@ -749,9 +749,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
 - 2026-09-18 — **The replicator census is read over 8 draws, not one.** The assay is four
   Bernoulli trials against random partners with a 3-of-4 threshold, seeded
   `(seed, STREAM_REPLICATOR, epoch)`, so a tape at the edge of the test passes or fails at
-  random between adjacent samples: run 384 reads 0, 51, 0, 68, 0, 54 across epochs
-  15 000–15 090 (entry above). `World::replicator_census` now runs the ranked loop
-  `CENSUS_DRAWS = 8` times and reports two new observables beside the count —
+  random between adjacent samples: run 384 reads 0 at 15 000, 51 at 15 020, 0 at 15 030,
+  68 at 15 040 and 0 at 15 050 (entry above). `World::replicator_census` now runs the
+  ranked loop `CENSUS_DRAWS = 8` times and reports two new observables beside the count —
   **`replicator_pass_rate`**, the share of draws in which some tape passed, and
   **`replicator_count_mean`**, the mean of what they counted. A count of 0 beside a
   positive pass rate is a draw that missed; a count of 0 beside a pass rate of 0 is a world

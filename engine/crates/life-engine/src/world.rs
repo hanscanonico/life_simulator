@@ -567,11 +567,7 @@ impl World {
     /// so a draw is a pure function of `(seed, epoch, draw)` and repeating it cannot change
     /// what the run does next.
     fn census_draw<'a>(&self, ranked: &[(&'a [u8], u64)], draw: u32) -> CensusDraw<'a> {
-        let stream = match draw {
-            0 => STREAM_REPLICATOR,
-            draw => STREAM_REPLICATOR_DRAW | u64::from(draw),
-        };
-        let mut rng = rng::seeded(self.seed, stream, self.epoch);
+        let mut rng = rng::seeded(self.seed, census_stream(draw), self.epoch);
         let ops = self.params.op_set();
         let mut read_off = CensusDraw {
             dominant: ranked.first().map(|(tape, _)| *tape),
@@ -589,6 +585,16 @@ impl World {
             }
         }
         read_off
+    }
+}
+
+/// The stream one census draw is seeded on. Draw 0 keeps `STREAM_REPLICATOR` — that is
+/// what makes `replicator_count` the same reading every stored sample carries — and the
+/// repeats take a stream of their own that the simulation never draws from.
+fn census_stream(draw: u32) -> u64 {
+    match draw {
+        0 => STREAM_REPLICATOR,
+        draw => STREAM_REPLICATOR_DRAW | u64::from(draw),
     }
 }
 
@@ -877,6 +883,7 @@ mod tests {
     use super::*;
     use crate::metrics::TransitionState;
     use crate::params::{Interaction, Structure};
+    use std::collections::BTreeSet;
 
     /// Pinned so a change in the rules, the RNG or the visiting order cannot pass unseen:
     /// `Params::default()` at 32×32, seed 42, after 50 epochs.
@@ -1398,6 +1405,30 @@ mod tests {
         assert_eq!(measured.replicator_count, 196);
         assert_eq!(measured.replicator_pass_rate, Some(1.0));
         assert_eq!(measured.replicator_count_mean, Some(196.0));
+    }
+
+    /// What makes the repeats independent, and `replicator_count` the reading it always
+    /// was: draw 0 is seeded on the stream the census has drawn on since it existed, and
+    /// the seven repeats take seven streams of their own that the simulation never draws
+    /// from. No world can show this — a world whose census reads the same count on every
+    /// stream is exactly the world the pins above are taken on — so it is read off the
+    /// seeding itself.
+    #[test]
+    fn the_first_census_draw_keeps_the_stream_the_count_has_always_been_seeded_on() {
+        let streams: Vec<u64> = (0..CENSUS_DRAWS).map(census_stream).collect();
+
+        assert_eq!(streams[0], STREAM_REPLICATOR);
+        assert_eq!(
+            streams.iter().collect::<BTreeSet<_>>().len(),
+            CENSUS_DRAWS as usize,
+            "{streams:?}"
+        );
+        for stream in &streams[1..] {
+            assert!(
+                ![STREAM_INIT, STREAM_STEP, STREAM_REPLICATOR].contains(stream),
+                "{stream:#x} is a stream the simulation draws from"
+            );
+        }
     }
 
     /// The two readings over a census whose draws disagree: the share of draws that found
