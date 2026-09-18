@@ -25,6 +25,27 @@ module Findings
                  "question, the arms and the rule the claim will be made by."
       ),
       Finding.new(
+        slug: "complexity-under-asymmetry",
+        title: "Does complexity keep rising when only one partner's code runs?",
+        date: Date.new(2026, 9, 18),
+        experiment_slug: "asymmetric-execution",
+        related_finding_slugs: %w[complexity-under-contest complexity-keeps-rising
+                                  replicator-complexity-plateau],
+        status: :open,
+        summary: "Complexity rises at emergence and then stops rising on every substrate " \
+                 "the programme has tested, and each bet so far changed what a tape can " \
+                 "hold or spend rather than what it is to its partner. DESIGN §1.3 " \
+                 "sweep 10 changes that: under a host interaction only the first tape's " \
+                 "code runs, so the second is read/write substrate whose fate depends on " \
+                 "how the tapes hosting it treat it as data. The reading is the " \
+                 "pre-registered one of sweep 9 — dominant_instruction_count and the " \
+                 "conserved core over a run's last decile against its first, never " \
+                 "compressed length — with late-run distinct_lineages against the concat " \
+                 "control at the same cap as the arms-race secondary. No arm has read " \
+                 "yet: this page states the question, the arms and the rule the claim " \
+                 "will be made by."
+      ),
+      Finding.new(
         slug: "complexity-keeps-rising",
         title: "Does complexity keep rising?",
         date: Date.new(2026, 9, 14),

@@ -1,4 +1,4 @@
-<%# The pre-registered complexity reading of DESIGN §1.3 sweep 9, arm by arm: `arms` are
+<%# The pre-registered complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm: `arms` are
     Experiments::ComplexityArmsService::Arm. %>
 <figure class="table-figure mt-4">
   <%# The caption sits outside .table-scroll: inside it, it is laid out at the table's width
@@ -13,8 +13,10 @@
     bars reads mixed and one clearing neither reads neither; a run carrying no conserved
     core over the span is unmeasured, since the rule reads both observables.
     <span class="mono">dominant_compressed_len</span> is printed beside them and decides
-    nothing: it saturates at the tape cap plus zlib's envelope. An arm reads on two measured
-    runs, or on a blank block of ten; a steal arm whose
+    nothing: it saturates at the tape cap plus zlib's envelope, and
+    <span class="mono">distinct_lineages</span> is the secondary reading of sweep 10, where
+    an arms race shows as a late-run lineage count above the control's at the same cap. An
+    arm reads on two measured runs, or on a blank block of ten; a steal arm whose
     <span class="mono">steal_rate</span> never left zero reads as theft that never evolved,
     not as theft that does not help, and one never sampled on that observable reads
     unmeasured
@@ -29,6 +31,7 @@
           <th class="numeric">Instructions</th>
           <th class="numeric">Conserved core</th>
           <th class="numeric">Compressed length</th>
+          <th class="numeric">Distinct lineages</th>
           <th class="numeric">Rising</th>
           <th class="numeric">Plateau</th>
           <th class="numeric">Peak <span class="mono">steal_rate</span></th>
@@ -44,6 +47,7 @@
             <td class="numeric"><%= render "experiments/complexity_span", span: arm.instructions %></td>
             <td class="numeric"><%= render "experiments/complexity_span", span: arm.core %></td>
             <td class="numeric"><%= render "experiments/complexity_span", span: arm.compressed %></td>
+            <td class="numeric"><%= render "experiments/complexity_span", span: arm.lineages %></td>
             <td class="numeric"><%= arm.rising_count %> / <%= arm.measured_count %></td>
             <td class="numeric"><%= arm.plateau_count %> / <%= arm.measured_count %></td>
             <td class="numeric"><%= metric_value arm.peak_steal_rate %></td>

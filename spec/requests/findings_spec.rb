@@ -1375,6 +1375,37 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the asymmetric-execution skeleton" do
+      let(:pending_finding) { Findings::Registry.find("complexity-under-asymmetry") }
+
+      it "states the question, the arms and the rule the claim will be made by" do
+        get finding_path(pending_finding)
+
+        expect(response.body.squish)
+          .to include("does complexity keep rising when only one partner's code runs?",
+                      "at least 20%", "within ±10% of the first",
+                      "the two room-to-grow caps whose plateau sweep 8 measured")
+      end
+
+      it "states the secondary reading and what would refute the sweep" do
+        get finding_path(pending_finding)
+
+        expect(response.body.squish)
+          .to include("last decile holds more lineages than the",
+                      "controls plateau — same caps, same rate, same world")
+        expect(response.body).to include(%(<span class="badge badge-info">open</span>))
+      end
+
+      it "says no arm has read yet and points at the sweep the lab will fill it from" do
+        create(:experiment, name: "Asymmetric execution", slug: "asymmetric-execution")
+
+        get finding_path(pending_finding)
+
+        expect(response.body.squish).to include("No claim yet: 0 runs of the sweep have finished")
+        expect(response.body).to include(experiment_path("asymmetric-execution"))
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

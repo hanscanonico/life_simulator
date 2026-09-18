@@ -427,6 +427,45 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with an asymmetric-execution arm read against its own control" do
+      let(:experiment) do
+        create(:experiment, name: "Asymmetric execution", slug: "asymmetric-execution",
+                            param_grid: { "interaction" => %w[concat host], "max_tape_len" => [128, 256] })
+      end
+
+      before do
+        %w[concat host].each do |interaction|
+          2.times do
+            emerged_run(interaction: interaction, lineages: interaction == "host" ? 900 : 120)
+          end
+        end
+      end
+
+      it "names each arm by its interaction mode and cap" do
+        get experiment_path(experiment)
+
+        expect(response.body.squish).to include("concat 128", "host 128")
+      end
+
+      it "prints the late-run lineage count the secondary reading is taken on" do
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Distinct lineages")
+        expect(response.body.squish).to include("900 → 900", "120 → 120")
+      end
+
+      def emerged_run(interaction:, lineages:)
+        run = create(:run, :emerged, experiment: experiment, transition_epoch: 100, emergence_epoch: 100,
+                                     params: Lab::Schema.run_defaults.merge("interaction" => interaction,
+                                                                            "max_tape_len" => 128))
+        (([12] * 10) + ([40] * 10)).each_with_index do |count, index|
+          create(:sample, run: run, epoch: 100 + (index * 10),
+                          values: { "compress_ratio" => 0.4, "dominant_instruction_count" => count,
+                                    "conserved_core_bytes" => 30, "distinct_lineages" => lineages })
+        end
+      end
+    end
+
     context "with a corpus pass over the sweep" do
       let(:run) do
         create(:run, experiment: experiment, seed: 7, status: "finished",

@@ -201,6 +201,31 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the asymmetric-execution sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("asymmetric_execution") }
+
+      it "reads the whole concatenation in its control arm, the substrate every other sweep ran" do
+        expect(definition[:param_grid].fetch("interaction")).to eq(%w[concat host])
+        expect(definition[:param_grid].fetch("interaction").first)
+          .to eq(Lab::Schema.defaults.fetch("interaction"))
+      end
+
+      it "crosses the two interaction modes with the two caps whose plateau sweep 8 measured" do
+        expect(definition[:param_grid].values_at("max_tape_len", "tape_len", "mutation_rate"))
+          .to eq([[128, 256], [64], [Lab::EMERGENT_MUTATION_RATE]])
+      end
+
+      it "runs the same 128-square world for the same budget as the sweep it extends" do
+        expect(definition[:param_grid].values_at("width", "height")).to eq([[128], [128]])
+        expect(definition[:epochs]).to eq(20_000)
+      end
+
+      it "gives every arm ninety seeds, the control included" do
+        expect(definition[:seeds]).to eq((1..90).to_a)
+        expect(definition).not_to have_key(:seeds_by_arm)
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 

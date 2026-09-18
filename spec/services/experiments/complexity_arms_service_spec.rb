@@ -127,6 +127,18 @@ RSpec.describe Experiments::ComplexityArmsService do
       expect(arms.sole.core).to have_attributes(first: 40, last: 40)
       expect(arms.sole.compressed).to have_attributes(first: 75, last: 139)
     end
+
+    it "carries the late-run lineage count the secondary reading is taken on" do
+      emerged(instructions: [10] * 20, lineages: ([900] * 10) + ([120] * 10))
+
+      expect(arms.sole.lineages).to have_attributes(first: 900, last: 120)
+    end
+
+    it "leaves the lineage span blank on an arm no lineage census was sampled in" do
+      emerged(instructions: [10] * 20)
+
+      expect(arms.sole.lineages).to be_nil
+    end
   end
 
   describe "the theft null" do
@@ -174,7 +186,7 @@ RSpec.describe Experiments::ComplexityArmsService do
   # A flat conserved core by default: the reading needs one over the same span, and a run
   # deliberately without it passes `core: []`.
   def emerged(instructions:, core: [40] * instructions.size, compressed: nil, steal_rate: nil,
-              emergence_epoch: 100, params: control_params)
+              lineages: nil, emergence_epoch: 100, params: control_params)
     run = create(:run, :emerged, experiment: experiment, params: params,
                                  transition_epoch: emergence_epoch, emergence_epoch: emergence_epoch)
     instructions.each_with_index do |count, index|
@@ -182,6 +194,7 @@ RSpec.describe Experiments::ComplexityArmsService do
                       values: { "dominant_instruction_count" => count,
                                 "conserved_core_bytes" => core&.at(index),
                                 "dominant_compressed_len" => compressed&.at(index),
+                                "distinct_lineages" => lineages&.at(index),
                                 "steal_rate" => steal_rate&.at(index) }.compact)
     end
     run

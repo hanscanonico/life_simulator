@@ -333,6 +333,39 @@ holding a tape that passed.
    not help": the op was available and no lineage picked it up — while an arm no
    `steal_rate` was ever sampled on reads **unmeasured**, which is no null at all.
 
+10. **Asymmetric execution** — does complexity keep rising when only one partner's code
+    runs? Sweep 9 prices energy; this one prices *whose program runs*. Under
+    `interaction = host` the instruction pointer ranges over the first tape's bytes only
+    while both heads still range over the whole pair, so the second tape is pure
+    read/write substrate and never runs a byte of its own: its fate depends on how the
+    tapes that host it treat it as data, which is a pressure on what a tape *looks like*
+    and not only on what it does — the asymmetry every host–parasite system in the
+    literature rests on. Arms: `interaction ∈ {concat (off, the control), host}` ×
+    `max_tape_len ∈ {128, 256}`, the two room-to-grow caps whose plateau sweep 8 measured,
+    since an asymmetry is only readable where the dominant tape has room to get more
+    complicated. `tape_len` 64 throughout, 128² for 20 000 epochs at the emergent mutation
+    rate. Every arm runs 90 seeds, the control included: the reading needs two emerged runs
+    in an arm, thirty seeds of this very substrate — sweep 8's 128 and 256 arms — left one
+    emerged run under each cap, and a host interaction runs only half of a pair as code, so
+    its emergence rate can only be lower.
+    Dependent variables: `transition_epoch` and the confirmed `emergence_epoch` as in every
+    sweep, then `dominant_instruction_count` and `conserved_core_bytes` as the complexity
+    pair, with `dominant_compressed_len` and `distinct_lineages` beside them.
+    **Pre-registered reading**, identical to sweep 9's: on emerged runs only, the median of
+    the last decile of a run's post-crossing samples against the median of its first
+    decile; a run is **measured** only where both halves of the rule can be read over that
+    span; a measured run **keeps rising** when `dominant_instruction_count` rises by at
+    least **20%** with `conserved_core_bytes` not falling, and **plateaus** when the last
+    decile sits within **±10%** of the first; an arm keeps rising or plateaus when at least
+    half of its measured runs do, reads **mixed** where it clears both bars and **neither**
+    where it clears none, and reads at all only on two measured emerged runs or a blank
+    block of ten. `dominant_compressed_len` is reported beside them and never decides.
+    Secondary reading: a `host` arm's `distinct_lineages` in the last decile stays above
+    that of the `concat` control **at the same cap**, which reads as an arms race keeping
+    lineages from fixating. Refuted if the `host` arms plateau where their own `concat`
+    controls plateau — same caps, same rate, same world — which would say an asymmetric
+    interaction buys this substrate no structure.
+
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
 replicator to read (`docs/design_record.md`, 2026-09-15).
