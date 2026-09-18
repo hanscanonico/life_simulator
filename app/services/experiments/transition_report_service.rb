@@ -116,8 +116,8 @@ module Experiments
       @arms ||= rows.group_by { |row| arm_label(row.params) }.map { |label, arm_rows| arm(label, arm_rows) }
     end
 
-    # The pre-registered complexity reading of DESIGN §1.3 sweep 9, over the same arms, so
-    # a sweep the reading says nothing about keeps the report it had.
+    # The pre-registered complexity reading of DESIGN §1.3 sweeps 9 and 10, over the same
+    # arms, so a sweep the reading says nothing about keeps the report it had.
     def readings = @readings ||= ComplexityArmsService.call(experiment: @experiment)
 
     def arm(label, arm_rows)

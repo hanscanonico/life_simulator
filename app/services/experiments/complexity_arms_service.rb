@@ -1,9 +1,10 @@
 # frozen_string_literal: true
 
 module Experiments
-  # The pre-registered complexity reading of DESIGN §1.3 sweep 9, arm by arm: does the
-  # dominant tape keep getting more complicated where energy is a contested stock, or does
-  # it plateau as it did on every substrate before it?
+  # The pre-registered complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm: does
+  # the dominant tape keep getting more complicated where energy is a contested stock or
+  # where only one partner's code runs, or does it plateau as it did on every substrate
+  # before it?
   #
   # Taken on emerged runs only — a crossing the census or the copy rate confirmed, not
   # every crossing the detector flagged. Per run it compares the median of the last decile
@@ -16,6 +17,9 @@ module Experiments
   # MIN_BARREN_RUNS; a steal arm whose `steal_rate` never left zero reads as theft that
   # never evolved rather than as theft that does not help, and one no `steal_rate` was ever
   # sampled on reads as theft unmeasured rather than as theft that never evolved.
+  # `distinct_lineages` rides beside them for sweep 10's secondary reading — an arms race
+  # shows as a late-run lineage count above the control's at the same cap — and decides
+  # nothing on its own.
   #
   # It publishes the arms it has something to say about: an arm with no measured run, no
   # blank block and no steal op carries no row at all.
@@ -29,6 +33,8 @@ module Experiments
     INSTRUCTIONS = "dominant_instruction_count"
     CORE = "conserved_core_bytes"
     COMPRESSED = "dominant_compressed_len"
+    LINEAGES = "distinct_lineages"
+    SERIES = [INSTRUCTIONS, CORE, COMPRESSED, LINEAGES].freeze
     STEAL_RATE = "steal_rate"
     STEAL_AMOUNT = "steal_amount"
 
@@ -39,7 +45,8 @@ module Experiments
 
     COLUMNS = %w[
       arm emerged measured instructions_first instructions_last core_first core_last
-      compressed_first compressed_last rising plateau peak_steal_rate theft reading
+      compressed_first compressed_last lineages_first lineages_last rising plateau
+      peak_steal_rate theft reading
     ].freeze
 
     READING_BADGES = { keeps_rising: "badge-success", plateau: "badge-warning", mixed: "badge-info",
@@ -64,7 +71,7 @@ module Experiments
     # same span, so a run carrying only one of the two is unread rather than counted on the
     # instruction count alone: without a core span the "core did not fall" clause is
     # vacuous and the run could only ever be a plateau.
-    Reading = Data.define(:instructions, :core, :compressed) do
+    Reading = Data.define(:instructions, :core, :compressed, :lineages) do
       def measured? = spanned?(instructions) && spanned?(core)
 
       def rising? = measured? && instructions.rose_by?(RISE_MARGIN) && !core.fell?
@@ -101,6 +108,8 @@ module Experiments
       def core = median_span(&:core)
 
       def compressed = median_span(&:compressed)
+
+      def lineages = median_span(&:lineages)
 
       def reading
         return :barren if barren?
@@ -142,7 +151,8 @@ module Experiments
 
       def cells
         [label, emerged_count, measured_count, *span_cells(instructions), *span_cells(core),
-         *span_cells(compressed), rising_count, plateau_count, peak_steal_rate, theft_label, reading_label]
+         *span_cells(compressed), *span_cells(lineages), rising_count, plateau_count,
+         peak_steal_rate, theft_label, reading_label]
       end
 
       private
@@ -180,7 +190,7 @@ module Experiments
       series = series_by_run.fetch(run.id, {})
 
       Reading.new(instructions: span_of(series[INSTRUCTIONS]), core: span_of(series[CORE]),
-                  compressed: span_of(series[COMPRESSED]))
+                  compressed: span_of(series[COMPRESSED]), lineages: span_of(series[LINEAGES]))
     end
 
     # Nothing to compare on a single reading, so a run sampled once is unmeasured rather
@@ -210,7 +220,7 @@ module Experiments
                                                   .group(:run_id).maximum(value_of(STEAL_RATE))
     end
 
-    # One query for every arm's series: the three readings are written into the same
+    # One query for every arm's series: the four readings are written into the same
     # sample, and a sample the engine reported a null for drops out of that observable's
     # series while staying in the others'.
     def series_by_run
@@ -218,15 +228,17 @@ module Experiments
         Sample.joins(:run).where(run_id: emerged_run_ids)
               .where("samples.epoch >= runs.emergence_epoch")
               .order(:run_id, :epoch)
-              .pluck(:run_id, value_of(INSTRUCTIONS), value_of(CORE), value_of(COMPRESSED))
+              .pluck(:run_id, *SERIES.map { |observable| value_of(observable) })
               .group_by(&:first)
               .transform_values { |rows| series_of(rows) }
     end
 
+    # The run id leads every plucked row, so an observable's column sits one past its rank
+    # in SERIES.
     def series_of(rows)
-      { INSTRUCTIONS => rows.filter_map { |row| row[1]&.to_i },
-        CORE => rows.filter_map { |row| row[2]&.to_i },
-        COMPRESSED => rows.filter_map { |row| row[3]&.to_i } }
+      SERIES.each_with_index.to_h do |observable, index|
+        [observable, rows.filter_map { |row| row[index + 1]&.to_i }]
+      end
     end
 
     def emerged_run_ids = sampled_runs.select(&:emerged?).map(&:id)

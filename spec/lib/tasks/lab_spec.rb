@@ -317,6 +317,25 @@ RSpec.describe "lab:sweep" do
     end
   end
 
+  describe "asymmetric_execution" do
+    it "builds both interaction modes against both caps at ninety seeds each" do
+      build_sweep("asymmetric_execution")
+
+      expect(Experiment.find_by(slug: "asymmetric-execution").runs_count).to eq(360)
+      expect(Run.group("params->>'interaction'", "params->>'max_tape_len'").count)
+        .to eq(%w[concat 128] => 90, %w[concat 256] => 90, %w[host 128] => 90, %w[host 256] => 90)
+    end
+
+    it "resolves a run's parameters from the engine schema's defaults and the grid" do
+      build_sweep("asymmetric_execution")
+
+      expect(Run.order(:id).first.params)
+        .to eq(Lab::Schema.run_defaults.merge("interaction" => "concat", "max_tape_len" => 128,
+                                              "tape_len" => 64, "width" => 128, "height" => 128,
+                                              "mutation_rate" => 2.0**-13))
+    end
+  end
+
   describe "bff_control" do
     it "builds the two mutation arms times three seeds" do
       build_sweep("bff_control")

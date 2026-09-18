@@ -227,6 +227,34 @@ module Lab
       seeds: (1..90).to_a,
       epochs: 20_000
     },
+    "asymmetric_execution" => {
+      name: "Asymmetric execution",
+      description: "Does complexity keep rising when only one partner's code runs? Under " \
+                   "a host interaction the instruction pointer stays inside the first " \
+                   "tape while both heads still range over the pair, so the second tape " \
+                   "is pure read/write substrate and never runs a byte of its own. A " \
+                   "tape's fate then depends on how the tapes that host it treat it as " \
+                   "data, which is a pressure on what a tape looks like rather than only " \
+                   "on what it does — the asymmetry host–parasite systems are built on.",
+      # The control is `concat`, the whole-concatenation interaction every earlier sweep
+      # ran, so the asymmetric arms are read against it inside the same experiment. Crossed
+      # with the two room-to-grow caps whose plateau sweep 8 measured, since an asymmetry
+      # is only readable where the dominant tape has room to get more complicated.
+      param_grid: {
+        "interaction" => %w[concat host],
+        "max_tape_len" => [128, 256],
+        "tape_len" => [64],
+        "width" => [128],
+        "height" => [128],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE]
+      },
+      # Ninety seeds in every arm, the control included: the reading needs two emerged runs
+      # in an arm, thirty seeds of this very substrate — sweep 8's 128 and 256 arms — left
+      # one emerged run under each cap, and a host interaction runs only half of a
+      # pair as code, so its emergence rate can only be lower.
+      seeds: (1..90).to_a,
+      epochs: 20_000
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

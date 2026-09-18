@@ -3,7 +3,7 @@
 namespace :lab do
   desc "Build a sweep experiment from DESIGN.md 1.3 " \
        "(mutation_rate, world_size, radius, max_steps, ops, energy_per_epoch, " \
-       "environmental_structure, max_tape_len, host_parasite)"
+       "environmental_structure, max_tape_len, host_parasite, asymmetric_execution)"
   task :sweep, [:sweep] => :environment do |_task, args|
     definition = Lab::SWEEPS[args[:sweep]]
     raise "Unknown sweep #{args[:sweep].inspect}. Known sweeps: #{Lab::SWEEPS.keys.join(', ')}" if definition.nil?
