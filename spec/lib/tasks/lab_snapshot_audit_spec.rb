@@ -34,9 +34,10 @@ RSpec.describe "lab:snapshot_audit" do
     create(:snapshot, run: run, epoch: 300, reason: "cadence")
     create(:snapshot, run: run, epoch: 350, reason: "age")
     create(:snapshot, run: run, epoch: 405, reason: "transition")
+    create(:snapshot, run: run, epoch: 420, reason: "census")
 
     expect(invoke("lab:snapshot_audit", "mutation-rate"))
-      .to include("snapshots by reason: cadence 1, age 1, transition 1")
+      .to include("snapshots by reason: cadence 1, age 1, transition 1, census 1")
   end
 
   it "counts a transition no snapshot came within one sample of" do
@@ -64,7 +65,8 @@ RSpec.describe "lab:snapshot_audit" do
   it "names a reason nothing was taken for" do
     create(:snapshot, run: run, epoch: 400, reason: "transition")
 
-    expect(invoke("lab:snapshot_audit", "mutation-rate")).to include("cadence 0, age 0, transition 1")
+    expect(invoke("lab:snapshot_audit", "mutation-rate"))
+      .to include("cadence 0, age 0, transition 1, census 0")
   end
 
   it "refuses an experiment it does not know" do

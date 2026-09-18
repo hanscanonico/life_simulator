@@ -16,13 +16,15 @@ pub struct RunResult {
 }
 
 /// Why the loop took a snapshot: the epoch cadence, the wall-clock ceiling on snapshot
-/// age, or the sample that settled the transition. Lab mode logs it so a shift's restart
-/// cost can be read off the log rather than inferred from the snapshot epochs.
+/// age, the sample that settled the transition, or a census rising off zero. Lab mode
+/// logs it so a shift's restart cost can be read off the log rather than inferred from
+/// the snapshot epochs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapshotReason {
     Cadence,
     Age,
     Transition,
+    Census,
 }
 
 impl SnapshotReason {
@@ -31,6 +33,7 @@ impl SnapshotReason {
             Self::Cadence => "cadence",
             Self::Age => "age",
             Self::Transition => "transition",
+            Self::Census => "census",
         }
     }
 }

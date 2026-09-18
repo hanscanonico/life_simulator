@@ -2,7 +2,7 @@
 
 use crate::sink::{RunResult, RunSink, SnapshotReason};
 use anyhow::{bail, Result};
-use life_engine::{Params, World};
+use life_engine::{Metrics, Params, World};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -102,6 +102,38 @@ pub(crate) fn settling_world(params: &Params, seed: u64) -> World {
     world
 }
 
+/// The replicator census rising off zero, rate limited to one snapshot per
+/// `snapshot_every` epochs so a world whose census flickers cannot flood the lab with
+/// worlds. A rise is counted whether or not it earns a snapshot of its own, so an epoch
+/// the cadence already covers still spends the limiter's budget.
+#[derive(Debug, Default)]
+struct CensusWatch {
+    positive: bool,
+    last_snapshot_at: Option<u64>,
+}
+
+impl CensusWatch {
+    fn rise(&mut self, epoch: u64, positive: bool, snapshot_every: u64) -> bool {
+        let rising = positive && !self.positive;
+        let allowed = self
+            .last_snapshot_at
+            .is_none_or(|at| epoch - at >= snapshot_every);
+        self.positive = positive;
+        if !(rising && allowed) {
+            return false;
+        }
+        self.last_snapshot_at = Some(epoch);
+        true
+    }
+}
+
+/// Whether any of the census draws counted a replicator. The mean is read rather than a
+/// single draw's count so an epoch whose first draw fails but whose others succeed still
+/// counts as census-positive.
+fn saw_a_replicator(metrics: &Metrics) -> bool {
+    metrics.replicator_count_mean.is_some_and(|mean| mean > 0.0)
+}
+
 pub fn execute(
     params: &Params,
     seed: u64,
@@ -121,8 +153,9 @@ pub fn execute(
 /// world behind it to rescore. `snapshot_max_age` adds a wall-clock floor under the epoch
 /// cadence: past it the next sampled epoch snapshots, so a restart costs at most that
 /// much compute. Left `None` — local and file mode — only the cadence snapshots.
-/// `resumed_at` is the epoch a restored world came back from, whose observables were
-/// already measured and posted before the interruption.
+/// A sampled epoch whose replicator census rises off zero snapshots too, rate limited to
+/// one per `snapshot_every` epochs. `resumed_at` is the epoch a restored world came back
+/// from, whose observables were already measured and posted before the interruption.
 pub fn execute_world(
     mut world: World,
     epochs: u64,
@@ -139,6 +172,9 @@ pub fn execute_world(
     let mut last_snapshot_at = Instant::now();
     let mut buffers = SnapshotBuffers::default();
     let mut transition_seen = world.transition_epoch();
+    // The watch does not survive a restart: a resumed run reads its first positive sample
+    // as a rise and may store one extra snapshot the uninterrupted run would not.
+    let mut census_watch = CensusWatch::default();
 
     loop {
         let epoch = world.epoch();
@@ -149,7 +185,7 @@ pub fn execute_world(
         let sampling = !resuming && epoch.is_multiple_of(sample_every);
         let overdue = sampling
             && snapshot_max_age.is_some_and(|max_age| last_snapshot_at.elapsed() >= max_age);
-        let reason = if resuming {
+        let mut reason = if resuming {
             None
         } else if epoch.is_multiple_of(snapshot_every) {
             Some(SnapshotReason::Cadence)
@@ -158,16 +194,19 @@ pub fn execute_world(
         } else {
             None
         };
+        let mut census = None;
         match (sampling, reason) {
             (true, Some(reason)) => {
                 let (metrics, raw) = world.metrics_with_snapshot();
                 sink.sample(epoch, &metrics, world.transition_epoch())?;
+                census = Some(saw_a_replicator(&metrics));
                 sink.snapshot(epoch, &raw, buffers.render_png(&world)?, reason)?;
                 last_snapshot_at = Instant::now();
             }
             (true, None) => {
                 let metrics = world.metrics();
                 sink.sample(epoch, &metrics, world.transition_epoch())?;
+                census = Some(saw_a_replicator(&metrics));
             }
             (false, Some(reason)) => {
                 let raw = world.snapshot();
@@ -189,8 +228,24 @@ pub fn execute_world(
                     SnapshotReason::Transition,
                 )?;
                 last_snapshot_at = Instant::now();
+                reason = Some(SnapshotReason::Transition);
             }
             transition_seen = settled;
+        }
+        // A census peak lasts a handful of epochs and the cadence is hundreds, so without
+        // this a positive epoch almost never has a world to rescore. An epoch already
+        // snapshotted for another reason has one, so the rise only costs bytes elsewhere.
+        if let Some(positive) = census {
+            if census_watch.rise(epoch, positive, snapshot_every) && reason.is_none() {
+                let raw = world.snapshot();
+                sink.snapshot(
+                    epoch,
+                    &raw,
+                    buffers.render_png(&world)?,
+                    SnapshotReason::Census,
+                )?;
+                last_snapshot_at = Instant::now();
+            }
         }
         if epoch == epochs {
             break;
@@ -323,8 +378,6 @@ mod tests {
             Ok(())
         }
     }
-
-    use life_engine::Metrics;
 
     #[test]
     fn samples_and_snapshots_land_on_their_cadence() {
@@ -480,7 +533,15 @@ mod tests {
         execute_world(restored, 6, Some(4), None, &mut sink, &Progress::default()).unwrap();
 
         assert_eq!(sink.samples, vec![5, 6]);
-        assert_eq!(sink.snapshots, vec![6]);
+        assert_eq!(
+            sink.snapshots,
+            vec![5, 6],
+            "the resumed run reads its first positive sample as a census rise"
+        );
+        assert_eq!(
+            sink.reasons,
+            vec![SnapshotReason::Census, SnapshotReason::Cadence]
+        );
         assert!(
             sink.copy_rates.iter().all(|rate| *rate > 0.0),
             "{:?}",
@@ -546,6 +607,63 @@ mod tests {
 
         assert_eq!(after.samples, vec![6, 8]);
         assert_eq!(after.lineages, uninterrupted.lineages[3..]);
+    }
+
+    /// A resumed colony reads its first sample as a census rise, at an epoch no cadence
+    /// covers, so the epoch a replicator was counted at has a world to rescore.
+    #[test]
+    fn a_census_rise_stores_a_world() {
+        let params = Params {
+            width: 8,
+            height: 8,
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            snapshot_every: 1000,
+            ..Params::default()
+        };
+        let mut world = colony(&params, 3);
+        for _ in 0..5 {
+            world.step();
+        }
+        assert!(world.metrics().replicator_count_mean.unwrap() > 0.0);
+
+        let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        let sink = run_colony(restored, 6, None);
+
+        assert_eq!(sink.snapshots, vec![5]);
+        assert_eq!(sink.reasons, vec![SnapshotReason::Census]);
+        assert!(!sink.blob_at(5).is_empty());
+    }
+
+    #[test]
+    fn the_census_rate_limit_holds_across_rises() {
+        let mut watch = CensusWatch::default();
+
+        assert!(watch.rise(10, true, 4));
+        assert!(!watch.rise(11, false, 4), "a fall is not a rise");
+        assert!(!watch.rise(12, true, 4), "a rise inside the cadence waits");
+        assert!(!watch.rise(13, false, 4));
+        assert!(watch.rise(14, true, 4), "a rise a cadence later is stored");
+        assert!(!watch.rise(15, true, 4), "a run of positives is one rise");
+    }
+
+    /// A soup with no replicator in it snapshots exactly as it did before the reason.
+    #[test]
+    fn cadence_snapshots_are_unchanged_by_the_census_reason() {
+        let mut sink = RecordingSink::default();
+        execute(&params(), 1, 6, &mut sink).unwrap();
+
+        assert_eq!(sink.snapshots, vec![0, 3, 6]);
+        assert_eq!(
+            sink.reasons,
+            vec![
+                SnapshotReason::Cadence,
+                SnapshotReason::Cadence,
+                SnapshotReason::Cadence
+            ]
+        );
     }
 
     #[test]
