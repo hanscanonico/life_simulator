@@ -31,6 +31,7 @@ RSpec.describe Snapshot, type: :model do
   end
 
   it "accepts every reason the run loop gives" do
+    expect(described_class::REASONS).to eq(%w[cadence age transition census])
     described_class::REASONS.each do |reason|
       expect(build(:snapshot, reason: reason)).to be_valid
     end

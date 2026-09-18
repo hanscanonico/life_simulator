@@ -921,6 +921,7 @@ mod tests {
             SnapshotReason::Cadence,
             SnapshotReason::Age,
             SnapshotReason::Transition,
+            SnapshotReason::Census,
         ] {
             client(&lab)
                 .snapshot(1, "runner-1", snapshot(30, reason), &mut Vec::new())
@@ -931,7 +932,12 @@ mod tests {
         let reasons: Vec<_> = posted.iter().map(|body| body["reason"].clone()).collect();
         assert_eq!(
             reasons,
-            vec![json!("cadence"), json!("age"), json!("transition")]
+            vec![
+                json!("cadence"),
+                json!("age"),
+                json!("transition"),
+                json!("census")
+            ]
         );
     }
 

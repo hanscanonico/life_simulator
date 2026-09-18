@@ -409,7 +409,11 @@ docs/              this file, design_record.md, findings
   reads as one hue against a near-black random soup.
 - **Rails owns experiments, runs, results and the public pages.** Postgres holds
   `experiments`, `runs`, `samples` (one row per metric sample, `values jsonb`),
-  `snapshots` (compressed world bytes + a PNG thumbnail rendered by the engine).
+  `snapshots` (compressed world bytes + a PNG thumbnail rendered by the engine). Each
+  snapshot records why the run loop took it: `cadence` (an epoch multiple of
+  `snapshot_every`), `age` (the runner's wall-clock ceiling on snapshot age),
+  `transition` (the sample that settled the transition) or `census` (the replicator
+  census rising off zero, at most one per `snapshot_every` epochs).
 - **The runner is a stateless worker.** In lab mode it polls `POST /api/runs/claim` with
   a bearer token, executes the run, streams sample batches to
   `POST /api/runs/:id/samples`, snapshots to `POST /api/runs/:id/snapshots`, and finishes

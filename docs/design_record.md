@@ -776,3 +776,23 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   `pass_rate` column and carries it in its report JSON; no `rescores` column and no
   migration, and samples carry the two fields in the `values` jsonb they already use, so an
   old runner and a new one coexist.
+- 2026-09-18 — **A `census` snapshot reason, so a census-positive epoch has a world.** The
+  entry above closes on the gap it found: outside a sustained peak the census reads
+  positive at scattered single samples, cadence is 500 to 2 000 epochs, and only 5 of 16
+  confirmed runs hold a snapshot at an epoch whose census was positive. The run loop now
+  takes a snapshot when, on a sampling epoch, `replicator_count_mean` **rises off zero** —
+  the mean rather than draw 0's count, so an epoch whose first draw misses but whose others
+  pass still counts as positive — and it fires on every later rise after a return to zero,
+  not only the first. **Rate limit: at most one census snapshot per `snapshot_every`
+  epochs**, reusing the cadence parameter rather than adding a Params field; a rise inside
+  that window is counted and skipped. Worst case a world whose census flickers on and off
+  doubles its snapshot volume, which is what the limit buys. **Census is chosen only when
+  no other reason fires** — a cadence, age or transition snapshot at that epoch already
+  stores the world, and the rise still spends the limiter's budget so the limit is honest.
+  A census snapshot gets **no retention privilege**: the 2026-09-10 retention rules apply to
+  it unchanged. The watch is a loop local, so a resumed run reads its first positive sample
+  as a rise and may store one snapshot the uninterrupted run would not. **No simulation byte
+  moves**: the reason is chosen from an observable the loop already samples, the snapshot
+  format is unchanged (no version bump), and `Snapshot::REASONS` gains `"census"` with no
+  migration — Rails must accept the reason before a runner posts it, and the mini-pc deploys
+  the app before the runner.
