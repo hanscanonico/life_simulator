@@ -113,7 +113,16 @@ struct CensusWatch {
 }
 
 impl CensusWatch {
-    fn rise(&mut self, epoch: u64, positive: bool, snapshot_every: u64) -> bool {
+    /// Whether this epoch's census earns a snapshot of its own. A rise `covered` already
+    /// has a world stored under another reason, so it takes none — but it spends the
+    /// limiter's budget all the same, which is what keeps the limit honest.
+    fn wants_snapshot(
+        &mut self,
+        epoch: u64,
+        positive: bool,
+        snapshot_every: u64,
+        covered: bool,
+    ) -> bool {
         let rising = positive && !self.positive;
         let allowed = self
             .last_snapshot_at
@@ -123,7 +132,7 @@ impl CensusWatch {
             return false;
         }
         self.last_snapshot_at = Some(epoch);
-        true
+        !covered
     }
 }
 
@@ -236,7 +245,7 @@ pub fn execute_world(
         // this a positive epoch almost never has a world to rescore. An epoch already
         // snapshotted for another reason has one, so the rise only costs bytes elsewhere.
         if let Some(positive) = census {
-            if census_watch.rise(epoch, positive, snapshot_every) && reason.is_none() {
+            if census_watch.wants_snapshot(epoch, positive, snapshot_every, reason.is_some()) {
                 let raw = world.snapshot();
                 sink.snapshot(
                     epoch,
@@ -641,12 +650,67 @@ mod tests {
     fn the_census_rate_limit_holds_across_rises() {
         let mut watch = CensusWatch::default();
 
-        assert!(watch.rise(10, true, 4));
-        assert!(!watch.rise(11, false, 4), "a fall is not a rise");
-        assert!(!watch.rise(12, true, 4), "a rise inside the cadence waits");
-        assert!(!watch.rise(13, false, 4));
-        assert!(watch.rise(14, true, 4), "a rise a cadence later is stored");
-        assert!(!watch.rise(15, true, 4), "a run of positives is one rise");
+        assert!(watch.wants_snapshot(10, true, 4, false));
+        assert!(
+            !watch.wants_snapshot(11, false, 4, false),
+            "a fall is not a rise"
+        );
+        assert!(
+            !watch.wants_snapshot(12, true, 4, false),
+            "a rise inside the cadence waits"
+        );
+        assert!(!watch.wants_snapshot(13, false, 4, false));
+        assert!(
+            watch.wants_snapshot(14, true, 4, false),
+            "a rise a cadence later is stored"
+        );
+        assert!(
+            !watch.wants_snapshot(15, true, 4, false),
+            "a run of positives is one rise"
+        );
+    }
+
+    #[test]
+    fn a_covered_rise_takes_no_snapshot_of_its_own_and_still_spends_the_budget() {
+        let mut watch = CensusWatch::default();
+
+        assert!(
+            !watch.wants_snapshot(10, true, 4, true),
+            "a world another reason stored needs no second copy"
+        );
+        assert!(!watch.wants_snapshot(11, false, 4, false));
+        assert!(
+            !watch.wants_snapshot(12, true, 4, false),
+            "the covered rise spent the budget"
+        );
+        assert!(!watch.wants_snapshot(13, false, 4, false));
+        assert!(watch.wants_snapshot(14, true, 4, false));
+    }
+
+    /// The cadence snapshot at epoch 0 already stores the colony the census reads as a
+    /// rise, so that epoch keeps the one world it would have had without the reason.
+    #[test]
+    fn a_rise_a_cadence_snapshot_covers_stores_one_world() {
+        let params = Params {
+            width: 8,
+            height: 8,
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            snapshot_every: 2,
+            ..Params::default()
+        };
+        let mut probe = colony(&params, 3);
+        assert!(probe.metrics().replicator_count_mean.unwrap() > 0.0);
+
+        let sink = run_colony(colony(&params, 3), 2, None);
+
+        assert_eq!(sink.snapshots, vec![0, 2]);
+        assert_eq!(
+            sink.reasons,
+            vec![SnapshotReason::Cadence, SnapshotReason::Cadence]
+        );
     }
 
     /// A soup with no replicator in it snapshots exactly as it did before the reason.
