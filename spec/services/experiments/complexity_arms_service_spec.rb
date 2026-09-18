@@ -50,16 +50,32 @@ RSpec.describe Experiments::ComplexityArmsService do
     end
 
     it "leaves a run with a single reading unmeasured" do
+      emerged(instructions: [10] * 20)
       emerged(instructions: [10])
 
-      expect(arms.sole).to have_attributes(emerged_count: 1, measured_count: 0)
+      expect(arms.sole).to have_attributes(emerged_count: 2, measured_count: 1)
     end
 
     it "leaves a run whose samples carry no instruction count unmeasured" do
+      emerged(instructions: [10] * 20)
       run = create(:run, :emerged, experiment: experiment, params: control_params)
       create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.4 })
 
-      expect(arms.sole).to have_attributes(emerged_count: 1, measured_count: 0)
+      expect(arms.sole).to have_attributes(emerged_count: 2, measured_count: 1)
+    end
+
+    it "leaves a run with no conserved core over the span unmeasured" do
+      emerged(instructions: [10] * 20)
+      emerged(instructions: ([10] * 10) + ([30] * 10), core: [])
+
+      expect(arms.sole).to have_attributes(emerged_count: 2, measured_count: 1, rising_count: 0)
+    end
+
+    it "leaves a run whose instruction count is zero throughout unmeasured" do
+      emerged(instructions: [10] * 20)
+      emerged(instructions: [0] * 20)
+
+      expect(arms.sole).to have_attributes(emerged_count: 2, measured_count: 1, plateau_count: 1)
     end
   end
 
@@ -77,7 +93,7 @@ RSpec.describe Experiments::ComplexityArmsService do
       expect(arms.sole).to have_attributes(reading: :keeps_rising, rising_count: 1, measured_count: 2)
     end
 
-    it "reads an arm split between a rising run and a plateauing one as neither" do
+    it "reads an arm split between a rising run and a plateauing one as mixed" do
       emerged(instructions: ([10] * 10) + ([30] * 10))
       emerged(instructions: ([10] * 10) + ([10] * 10))
 
@@ -90,11 +106,11 @@ RSpec.describe Experiments::ComplexityArmsService do
       expect(arms.sole.reading).to eq(:plateau)
     end
 
-    it "reads neither where its runs disagree" do
+    it "reads an arm clearing neither bar as neither, not as mixed" do
       emerged(instructions: ([10] * 10) + ([30] * 10))
       2.times { emerged(instructions: ([10] * 10) + ([5] * 10)) }
 
-      expect(arms.sole.reading).to eq(:mixed)
+      expect(arms.sole).to have_attributes(reading: :neither, rising_count: 1, plateau_count: 0)
     end
 
     it "reads a blank block of ten as an arm holding no replicator to read" do
@@ -128,6 +144,12 @@ RSpec.describe Experiments::ComplexityArmsService do
       expect(arms.last).to have_attributes(theft: :evolved, peak_steal_rate: 0.25)
     end
 
+    it "reads an arm no steal rate was ever sampled on as theft unmeasured" do
+      emerged(instructions: [10] * 20, params: thief_params)
+
+      expect(arms.last).to have_attributes(theft: :unmeasured, peak_steal_rate: nil)
+    end
+
     it "says nothing about theft in an arm whose steal op is off" do
       emerged(instructions: [10] * 20)
 
@@ -149,8 +171,10 @@ RSpec.describe Experiments::ComplexityArmsService do
 
   def control_params = Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0)
 
-  def emerged(instructions:, core: nil, compressed: nil, steal_rate: nil, emergence_epoch: 100,
-              params: control_params)
+  # A flat conserved core by default: the reading needs one over the same span, and a run
+  # deliberately without it passes `core: []`.
+  def emerged(instructions:, core: [40] * instructions.size, compressed: nil, steal_rate: nil,
+              emergence_epoch: 100, params: control_params)
     run = create(:run, :emerged, experiment: experiment, params: params,
                                  transition_epoch: emergence_epoch, emergence_epoch: emergence_epoch)
     instructions.each_with_index do |count, index|

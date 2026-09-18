@@ -116,12 +116,9 @@ module Experiments
       @arms ||= rows.group_by { |row| arm_label(row.params) }.map { |label, arm_rows| arm(label, arm_rows) }
     end
 
-    # The pre-registered complexity reading of DESIGN 1.3 sweep 9, over the same arms: an
-    # arm with nothing to read on it — no measured emerged run, no blank block, no steal op
-    # — carries no row, so a sweep the reading says nothing about keeps the report it had.
-    def readings
-      @readings ||= ComplexityArmsService.call(experiment: @experiment).select(&:reads?)
-    end
+    # The pre-registered complexity reading of DESIGN §1.3 sweep 9, over the same arms, so
+    # a sweep the reading says nothing about keeps the report it had.
+    def readings = @readings ||= ComplexityArmsService.call(experiment: @experiment)
 
     def arm(label, arm_rows)
       counted = @include_running ? arm_rows : arm_rows.select(&:terminal?)

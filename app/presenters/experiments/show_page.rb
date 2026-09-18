@@ -93,12 +93,9 @@ module Experiments
 
     def transition_report? = finished_count.positive? && transition_arms.any?
 
-    # The pre-registered complexity reading of DESIGN §1.3 sweep 9, arm by arm: only the
-    # arms it has something to say about, so a sweep whose runs carry no such sample shows
-    # none of it.
-    def complexity_arms
-      @complexity_arms ||= ComplexityArmsService.call(experiment: experiment).select(&:reads?)
-    end
+    # The pre-registered complexity reading of DESIGN §1.3 sweep 9, arm by arm, so a sweep
+    # whose runs carry no such sample shows none of it.
+    def complexity_arms = @complexity_arms ||= ComplexityArmsService.call(experiment: experiment)
 
     def complexity_reading? = complexity_arms.any?
 

@@ -315,18 +315,23 @@ holding a tape that passed.
    **Pre-registered reading**, on emerged runs only — a crossing the replicator census or
    `copy_rate` confirmed, any crossing of the run, not the detector's first alone. Per run,
    take the samples at or after that crossing and compare the **median of the last decile**
-   of them against the median of the first decile. A run **keeps rising** when its
-   `dominant_instruction_count` median rises by at least **20%** and its
+   of them against the median of the first decile. A run is **measured** only where both
+   halves of the rule can be read over that span: a run carrying no `conserved_core_bytes`
+   sample, or whose first-decile median of either observable is zero (no ratio to take),
+   is unmeasured rather than counted on the instruction count alone. A measured run **keeps
+   rising** when its `dominant_instruction_count` median rises by at least **20%** and its
    `conserved_core_bytes` median does not fall over the same span; it **plateaus** when the
    last decile sits within **±10%** of the first. An arm keeps rising when at least half of
-   its measured emerged runs do, and plateaus when at least half plateau; a split clearing
-   both bars — one run rising against one plateauing — reads **mixed**, never rising.
+   its measured emerged runs do, and plateaus when at least half plateau; an arm clearing
+   **both** bars — one run rising against one plateauing — reads **mixed**, never rising,
+   and an arm clearing **neither** bar, its runs having mostly fallen, reads **neither**.
    `dominant_compressed_len` is reported beside them and never decides: it saturates at the
    cap plus zlib's 11-byte envelope (`docs/design_record.md`, 2026-09-16). An arm reads at
    all only with **two measured emerged runs**, or a **blank block of ten** — which reads as
    an arm holding no replicator to read, not as an arm still to be tested. And a steal arm
    whose `steal_rate` never leaves zero reads **"theft never evolved"**, never "theft does
-   not help": the op was available and no lineage picked it up.
+   not help": the op was available and no lineage picked it up — while an arm no
+   `steal_rate` was ever sampled on reads **unmeasured**, which is no null at all.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no

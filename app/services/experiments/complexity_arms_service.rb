@@ -14,12 +14,17 @@ module Experiments
   # nothing: it saturates at the tape cap plus zlib's envelope (`docs/design_record.md`,
   # 2026-09-16). An arm reads with MIN_ARM_RUNS measured runs, or with a blank block of
   # MIN_BARREN_RUNS; a steal arm whose `steal_rate` never left zero reads as theft that
-  # never evolved rather than as theft that does not help.
+  # never evolved rather than as theft that does not help, and one no `steal_rate` was ever
+  # sampled on reads as theft unmeasured rather than as theft that never evolved.
+  #
+  # It publishes the arms it has something to say about: an arm with no measured run, no
+  # blank block and no steal op carries no row at all.
   #
   # Every number here is an engine reading composed by arm; nothing re-implements a metric.
   # It reads stored samples and changes nothing.
   class ComplexityArmsService
     include Callable
+    include GroupsRunsByArm
 
     INSTRUCTIONS = "dominant_instruction_count"
     CORE = "conserved_core_bytes"
@@ -38,34 +43,37 @@ module Experiments
     ].freeze
 
     READING_BADGES = { keeps_rising: "badge-success", plateau: "badge-warning", mixed: "badge-info",
-                       unread: "badge-info", barren: "badge-error" }.freeze
+                       neither: "badge-error", unread: "badge-info", barren: "badge-error" }.freeze
 
     # The two decile medians of one observable over one run's post-crossing samples.
     Span = Data.define(:first, :last) do
-      # A span that starts at zero has no ratio, and a reading that leaves zero has risen by
-      # any margin: a core of nothing that became a core of something is not a 0% rise.
-      def growth
-        return 1.0 if first.zero? && last.zero?
-        return Float::INFINITY if first.zero?
+      # A span starting at zero has no ratio at all: nothing rose or plateaued by a
+      # percentage of nothing, so it is unmeasured rather than flat or infinite.
+      def measured? = !first.zero?
 
-        last / first.to_f
-      end
+      def growth = last / first.to_f
 
-      def rose_by?(margin) = growth >= 1 + margin
+      def rose_by?(margin) = measured? && growth >= 1 + margin
 
-      def fell? = growth < 1.0
+      def fell? = measured? && growth < 1.0
 
-      def flat_within?(band) = growth.between?(1 - band, 1 + band)
+      def flat_within?(band) = measured? && growth.between?(1 - band, 1 + band)
     end
 
+    # The pre-registered rule reads the instruction count and the conserved core over the
+    # same span, so a run carrying only one of the two is unread rather than counted on the
+    # instruction count alone: without a core span the "core did not fall" clause is
+    # vacuous and the run could only ever be a plateau.
     Reading = Data.define(:instructions, :core, :compressed) do
-      def measured? = !instructions.nil?
+      def measured? = spanned?(instructions) && spanned?(core)
 
-      def rising? = measured? && instructions.rose_by?(RISE_MARGIN) && !core_fell?
+      def rising? = measured? && instructions.rose_by?(RISE_MARGIN) && !core.fell?
 
       def plateau? = measured? && instructions.flat_within?(PLATEAU_BAND)
 
-      def core_fell? = core.present? && core.fell?
+      private
+
+      def spanned?(span) = span.present? && span.measured?
     end
 
     Arm = Data.define(:label, :terminal_count, :readings, :steals, :peak_steal_rate) do
@@ -97,25 +105,35 @@ module Experiments
       def reading
         return :barren if barren?
         return :unread unless readable?
-        return :keeps_rising if half?(rising_count) && !half?(plateau_count)
-        return :plateau if half?(plateau_count) && !half?(rising_count)
+        return :mixed if rises? && plateaus?
+        return :keeps_rising if rises?
+        return :plateau if plateaus?
 
-        :mixed
+        :neither
       end
+
+      def rises? = half?(rising_count)
+
+      def plateaus? = half?(plateau_count)
 
       # Half of the arm's measured runs, the bar DESIGN §1.3 sweep 9 sets a reading at. Two
       # measured runs is the smallest arm that reads, so a split clearing the bar both ways
       # — one run rising against one plateauing — is common enough to name: it is an arm
-      # disagreeing with itself, never an arm that keeps rising.
+      # disagreeing with itself, never an arm that keeps rising. An arm clearing neither bar
+      # is not that split: its runs mostly fell, and it reads neither.
       def half?(count) = count * 2 >= measured_count
 
       def reading_label = reading.to_s.tr("_", " ")
 
       def badge_class = READING_BADGES.fetch(reading)
 
+      # A steal arm no `steal_rate` was ever sampled on is unmeasured, never the
+      # theft-that-never-evolved null: the null is a claim about lineages that had the op
+      # and did not use it, which a missing observable says nothing about.
       def theft
         return :no_steal_op unless steals
-        return :never_evolved if peak_steal_rate.to_f.zero?
+        return :unmeasured if peak_steal_rate.nil?
+        return :never_evolved if peak_steal_rate.zero?
 
         :evolved
       end
@@ -145,9 +163,7 @@ module Experiments
       @experiment = experiment
     end
 
-    def call
-      sampled_runs.group_by { |run| arm_label(run) }.map { |label, runs| arm(label, runs) }
-    end
+    def call = arms_of(sampled_runs).select(&:reads?)
 
     private
 
@@ -175,12 +191,8 @@ module Experiments
 
       decile = (values.size / 10.0).ceil
 
-      Span.new(first: median_of(values.first(decile)), last: median_of(values.last(decile)))
+      Span.new(first: Findings::Median.of(values.first(decile)), last: Findings::Median.of(values.last(decile)))
     end
-
-    # The median convention of the finding pages: the lower of the two middle values, never
-    # an interpolation, over distributions a handful of readings wide.
-    def median_of(values) = Findings::Median.of(values)
 
     def peak_steal_rate_of(runs)
       peaks = runs.filter_map { |run| steal_peaks[run.id] }
@@ -189,12 +201,8 @@ module Experiments
     end
 
     def sampled_runs
-      @sampled_runs ||= @experiment.runs.where(id: sampled_run_ids)
-                                   .order(:id).select(:id, :params, :status, :emergence_epoch).to_a
-    end
-
-    def sampled_run_ids
-      @sampled_run_ids ||= Sample.where(run_id: @experiment.runs.select(:id)).distinct.pluck(:run_id)
+      @sampled_runs ||= experiment.runs.where(id: sampled_run_ids)
+                                  .order(:id).select(:id, :params, :status, :emergence_epoch).to_a
     end
 
     def steal_peaks
@@ -236,12 +244,6 @@ module Experiments
       ))
     end
 
-    def arm_label(run)
-      labels = axes.filter_map { |axis| axis.label_of_run(run.params) }
-
-      labels.empty? ? @experiment.slug : labels.join(" ")
-    end
-
-    def axes = @axes ||= Axis.sweep(@experiment.param_grid)
+    attr_reader :experiment
   end
 end
