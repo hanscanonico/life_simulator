@@ -243,7 +243,8 @@ RSpec.describe Experiments::TransitionReportService do
         (([12] * 10) + ([40] * 10)).each_with_index do |count, index|
           create(:sample, run: run, epoch: 100 + (index * 10),
                           values: { "compress_ratio" => 0.4, "dominant_instruction_count" => count,
-                                    "conserved_core_bytes" => 30, "dominant_compressed_len" => 139 })
+                                    "conserved_core_bytes" => 30, "dominant_compressed_len" => 139,
+                                    "distinct_lineages" => index < 10 ? 900 : 120 })
         end
       end
     end
@@ -261,6 +262,13 @@ RSpec.describe Experiments::TransitionReportService do
 
       expect(table[-2]).to eq(Experiments::ComplexityArmsService::COLUMNS)
       expect(table.last.first).to eq("0.000244")
+    end
+
+    it "carries the late-run lineage count of sweep 10's secondary reading" do
+      table = CSV.parse(report.to_csv)
+      columns = table[-2].zip(table.last).to_h
+
+      expect(columns.values_at("lineages_first", "lineages_last")).to eq(%w[900 120])
     end
   end
 
