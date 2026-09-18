@@ -135,10 +135,10 @@ RSpec.describe "Pages", type: :request do
       expect(terms).to include("transition", "flagged", "replicator", "census", "emergence", "arm")
     end
 
-    it "lists the ten instructions" do
+    it "lists the ten instructions and the opt-in steal byte" do
       get how_it_works_path
 
-      cells = %w[&lt; &gt; { } + - . , [ ]].map { |op| %(<td class="mono">#{op}</td>) }
+      cells = %w[&lt; &gt; { } + - . , [ ] $].map { |op| %(<td class="mono">#{op}</td>) }
 
       expect(response.body).to include(*cells)
     end

@@ -79,6 +79,8 @@ RSpec.describe "The home page viewer", :js, type: :system do
     expect(readout("compressRatio").to_f).to be_between(0.1, 2.0)
     expect(readout("distinctTapes").delete(",").to_i).to be > 1
     expect(readout("copyRate")).to match(/\A[01]\.\d{3}\z/)
+    expect(readout("stealRate")).to eq("0.000")
+    expect(readout("params")).to include("steal_amount 0", "steal_loss 0.5")
 
     click_on "Pause"
     stopped = epoch
@@ -93,6 +95,7 @@ RSpec.describe "The home page viewer", :js, type: :system do
 
     select "Life", from: "Substrate"
     expect(epoch).to eq(0)
+    expect(readout("params")).to include("substrate life")
     wait_until { canvas_has_colour? }
   end
 

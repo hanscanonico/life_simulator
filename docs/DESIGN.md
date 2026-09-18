@@ -59,9 +59,9 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   whichever is poorer) or neither.
 - **Steal op** (`steal_amount`, default `0` = off; `steal_loss`): with an amount set, the
   byte `$` (0x24) becomes an eleventh instruction on a world whose cells hold an energy
-  stock. Executing it moves `steal_amount` of instruction energy out of the **partner**
+  stock. Each execution moves `steal_amount` of instruction energy out of the **partner**
   cell's stock into the stock of the cell whose code is executing, destroying the
-  `steal_loss` share of what moved on the way — theft is possible, costly to the world, and
+  `steal_loss` share of what that one op moved on the way — theft is possible, costly to the world, and
   something a tape can be structured to resist. The thief is read off the instruction
   pointer: the first tape's bytes are the first cell's code and everything past them is the
   second cell's, which under `interaction = host` makes every steal the host's, exactly as
@@ -70,8 +70,13 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   thief's gain is capped at `energy_stock_cap` like any other, so the world's total energy
   still never exceeds cell count × cap. The move is settled **after** the interaction has
   been debited for the instructions it ran, so a cell can never be robbed of energy it has
-  already spent, and the share the thief receives is **rounded down** — theft never pays the
-  thief more than the fraction says. The op is not one of the ten: `op_density` and the
+  already spent. An interaction's steals settle **one op at a time**, in order, each taking
+  from what the partner still holds, and the share the thief receives of each is **rounded
+  down** — theft never pays the thief more than the fraction says. Taking the loss per op
+  rather than on an interaction's total is what makes a small amount pure destruction: one
+  steal of `1` at a loss of `0.5` delivers `floor(0.5) = 0`, so a sweep has to pick an amount
+  and a loss whose per-op yield `floor(steal_amount * (1 - steal_loss))` is non-zero for
+  theft to pay at all. The op is not one of the ten: `op_density` and the
   instruction counts read the BFF instruction set, and `ops` ablates that set alone. At `0`
   the byte is a no-op like any other non-instruction byte, nothing is settled and the soup is
   exactly the substrate above; an amount without an `energy_influx` behind it is refused,

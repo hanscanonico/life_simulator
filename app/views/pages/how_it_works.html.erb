@@ -77,6 +77,7 @@
         <tr><td class="mono">,</td><td>copy the byte at head1 → head0</td></tr>
         <tr><td class="mono">[</td><td>jump forward past the matching <span class="mono">]</span> if the byte at head0 is 0</td></tr>
         <tr><td class="mono">]</td><td>jump back to the matching <span class="mono">[</span> if the byte at head0 is non-zero</td></tr>
+        <tr><td class="mono">$</td><td>take <span class="mono">steal_amount</span> of energy from the partner cell, less the <span class="mono">steal_loss</span> share destroyed in transit — a no-op unless the run set <span class="mono">steal_amount</span></td></tr>
       </tbody>
     </table>
   </div>

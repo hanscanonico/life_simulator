@@ -122,25 +122,30 @@ pub struct Outcome {
 /// after it — which under a `host` interaction is always the first, since the pointer never
 /// leaves its code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Stealing {
-    enabled: bool,
-    split: usize,
+pub enum Stealing {
+    /// The steal byte as the plain no-op it is for every run that has not switched it on.
+    Off,
+    /// The steal byte as an instruction, over a pair whose first tape ends at this split.
+    At(usize),
 }
 
 impl Stealing {
-    /// The steal byte as the plain no-op it is for every run that has not switched it on.
-    pub const OFF: Self = Self {
-        enabled: false,
-        split: 0,
-    };
-
-    /// The steal byte as an instruction, over a pair whose first tape ends at `split`.
-    pub fn at(split: usize) -> Self {
-        Self {
-            enabled: true,
-            split,
+    fn split(self) -> Option<usize> {
+        match self {
+            Self::Off => None,
+            Self::At(split) => Some(split),
         }
     }
+}
+
+/// The bounds one execution is held to: the steps it may take, the ops it executes, the
+/// length its tape may grow to, and how much of the buffer in front of it is code.
+#[derive(Debug, Clone, Copy)]
+pub struct Bounds {
+    pub max_steps: u32,
+    pub enabled: OpSet,
+    pub cap: usize,
+    pub code_len: usize,
 }
 
 /// Executes `tape` in place with every op enabled, at its own length.
@@ -184,7 +189,16 @@ pub fn run_bounded(
     cap: usize,
     code_len: usize,
 ) -> Outcome {
-    run_stealing(tape, max_steps, enabled, cap, code_len, Stealing::OFF)
+    run_stealing(
+        tape,
+        Bounds {
+            max_steps,
+            enabled,
+            cap,
+            code_len,
+        },
+        Stealing::Off,
+    )
 }
 
 /// Executes `tape` as `run_bounded` does, with the steal byte reading as the op of DESIGN
@@ -192,16 +206,17 @@ pub fn run_bounded(
 /// and the world settles what they move. Switched off — every run at the defaults — the
 /// byte is not in the table the loop reads, so it is the no-op it has always been and the
 /// identical instruction stream runs.
-pub fn run_stealing(
-    tape: &mut Vec<u8>,
-    max_steps: u32,
-    enabled: OpSet,
-    cap: usize,
-    code_len: usize,
-    stealing: Stealing,
-) -> Outcome {
+pub fn run_stealing(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> Outcome {
+    let Bounds {
+        max_steps,
+        enabled,
+        cap,
+        code_len,
+    } = bounds;
+    let split = stealing.split();
     let mut enabled = enabled.table();
-    enabled[STEAL as usize] = stealing.enabled;
+    enabled[STEAL as usize] = split.is_some();
+    let split = split.unwrap_or(0);
     let mut steals = [0u32; 2];
     let mut len = tape.len();
     if len == 0 {
@@ -247,7 +262,7 @@ pub fn run_stealing(
             DEC => tape[head0] = tape[head0].wrapping_sub(1),
             COPY_TO_HEAD1 => tape[head1] = tape[head0],
             COPY_TO_HEAD0 => tape[head0] = tape[head1],
-            STEAL => steals[usize::from(ip >= stealing.split)] += 1,
+            STEAL => steals[usize::from(ip >= split)] += 1,
             LOOP_START if tape[head0] == 0 => match match_forward(tape, ip) {
                 Some(target) => ip = target,
                 None => {
@@ -633,6 +648,15 @@ mod tests {
         assert_eq!(OPS.len(), 10);
     }
 
+    fn joined_bounds(cap: usize) -> Bounds {
+        Bounds {
+            max_steps: 100,
+            enabled: OpSet::ALL,
+            cap,
+            code_len: cap,
+        }
+    }
+
     /// The steal op of §1.1: the interpreter counts it against the half of the pair whose
     /// bytes are executing — the first tape's code before the split, the second's after —
     /// and moves nothing itself, since what a steal is worth is the world's economy.
@@ -640,7 +664,7 @@ mod tests {
     fn a_steal_is_counted_against_the_half_of_the_pair_that_ran_it() {
         let joined = vec![STEAL, 0, 0, STEAL];
         let mut pair = joined.clone();
-        let outcome = run_stealing(&mut pair, 100, OpSet::ALL, 4, 4, Stealing::at(2));
+        let outcome = run_stealing(&mut pair, joined_bounds(4), Stealing::At(2));
 
         assert_eq!(outcome.steals, [1, 1]);
         assert_eq!(outcome.steps, 4, "a steal costs its step like any other op");
@@ -652,7 +676,14 @@ mod tests {
     #[test]
     fn a_hosted_run_credits_every_steal_to_the_host() {
         let mut pair = vec![STEAL; 4];
-        let outcome = run_stealing(&mut pair, 100, OpSet::ALL, 4, 2, Stealing::at(2));
+        let outcome = run_stealing(
+            &mut pair,
+            Bounds {
+                code_len: 2,
+                ..joined_bounds(4)
+            },
+            Stealing::At(2),
+        );
 
         assert_eq!(outcome.steals, [2, 0], "the partner's bytes never ran");
     }

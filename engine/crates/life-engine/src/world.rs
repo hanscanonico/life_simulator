@@ -309,12 +309,14 @@ impl World {
             // host interaction the instruction pointer stops at the end of the first tape
             // and the partner is data; under the default it stops where the pair does.
             let code_len = if hosted { live_a } else { live_a + cap };
-            let stealing = match theft {
-                Some(_) => bff::Stealing::at(live_a),
-                None => bff::Stealing::OFF,
+            let bounds = bff::Bounds {
+                max_steps: budget,
+                enabled: ops,
+                cap: live_a + cap,
+                code_len,
             };
-            let outcome =
-                bff::run_stealing(&mut pair, budget, ops, live_a + cap, code_len, stealing);
+            let stealing = theft.map_or(bff::Stealing::Off, |theft| theft.stealing(live_a));
+            let outcome = bff::run_stealing(&mut pair, bounds, stealing);
             energy.spend(a, b, outcome.steps);
             if let Some(theft) = theft {
                 energy.settle(a, b, outcome.steals, &theft);
@@ -634,15 +636,20 @@ impl Energy {
         self.rob(b, a, steals[1], theft);
     }
 
+    /// Settles one half of the pair's steals, one op at a time: each takes what it can out
+    /// of what the victim still holds, so the amount a steal moves shrinks as the stock it
+    /// takes from does and an emptied victim ends the run early.
     fn rob(&mut self, thief: usize, victim: usize, steals: u32, theft: &Theft) {
-        if steals == 0 || self.stock.is_empty() {
-            return;
+        for _ in 0..steals {
+            let moved = theft.takes(self.stock[victim]);
+            if moved == 0 {
+                break;
+            }
+            self.stock[victim] -= moved;
+            self.stock[thief] = self.stock[thief]
+                .saturating_add(theft.delivers(moved))
+                .min(theft.cap);
         }
-        let moved = theft.moved(steals, self.stock[victim]);
-        self.stock[victim] -= moved;
-        self.stock[thief] = self.stock[thief]
-            .saturating_add(theft.received(moved))
-            .min(theft.cap);
     }
 
     /// The stock, back to the world it came from: it is the half of the epoch's energy
@@ -672,19 +679,25 @@ impl Theft {
         })
     }
 
-    /// What `steals` steal ops take out of a partner holding `held`: `steal_amount` each,
-    /// or everything the partner still has when that is less — an empty partner gives up
-    /// nothing, and no steal can take a cell below zero however often it runs.
-    fn moved(&self, steals: u32, held: u32) -> u32 {
-        let wanted = u64::from(steals) * u64::from(self.amount);
-        wanted.min(u64::from(held)) as u32
+    /// The steal byte as an instruction over a pair whose first tape ends at `split`: a
+    /// theft exists only where the run switched the op on, so this `Option<Theft>` is the
+    /// single switch the interpreter and the settlement both read.
+    fn stealing(&self, split: usize) -> bff::Stealing {
+        bff::Stealing::At(split)
     }
 
-    /// What the thief receives of it: the share `1 - steal_loss`, **rounded down**, so
-    /// theft is never worth more to the thief than the fraction says and the remainder is
-    /// energy the world has destroyed. The loss is taken on what the interaction moved in
-    /// total rather than on each steal separately.
-    fn received(&self, moved: u32) -> u32 {
+    /// What one steal op takes out of a partner holding `held`: `steal_amount`, or
+    /// everything the partner still has when that is less — an empty partner gives up
+    /// nothing, and no steal can take a cell below zero however often it runs.
+    fn takes(&self, held: u32) -> u32 {
+        self.amount.min(held)
+    }
+
+    /// What the thief receives of one steal's `moved`: the share `1 - steal_loss`,
+    /// **rounded down**, so theft is never worth more to the thief than the fraction says
+    /// and the remainder is energy the world has destroyed. The loss is taken on each op
+    /// separately, so a single steal of 1 at a loss of 0.5 delivers nothing at all.
+    fn delivers(&self, moved: u32) -> u32 {
         (f64::from(moved) * (1.0 - self.loss)).floor() as u32
     }
 }
@@ -1865,6 +1878,22 @@ mod tests {
         );
     }
 
+    /// Each steal is its own transfer, and the loss is taken on each: three steals of 1 at
+    /// a loss of half deliver nothing at all, where the same movement read as one transfer
+    /// of 3 would have delivered 1. The rounding is what makes a small amount pure
+    /// destruction, and a sweep has to pick an amount and a loss with a per-op yield.
+    #[test]
+    fn the_loss_is_taken_on_each_steal_and_not_on_their_sum() {
+        let mut energy = purse(vec![0, 8]);
+        energy.settle(0, 1, [3, 0], &theft(1, 0.5, 64));
+
+        assert_eq!(
+            energy.stock,
+            vec![0, 5],
+            "3 left the partner and the thief received none of it"
+        );
+    }
+
     /// An empty partner is nothing to take: the interaction still ran the op and still paid
     /// its step, and no energy is minted out of a cell that has none.
     #[test]
@@ -1876,7 +1905,8 @@ mod tests {
     }
 
     /// And a partner with less than the amount gives up what it has and no more, however
-    /// many steals the interaction ran.
+    /// many steals the interaction ran: the first takes the remainder and the rest find an
+    /// empty cell.
     #[test]
     fn a_partner_poorer_than_the_amount_gives_up_only_what_it_holds() {
         let mut energy = purse(vec![0, 4]);

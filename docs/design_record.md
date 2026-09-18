@@ -701,8 +701,13 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   and the interaction's budget, fixed before it started, is untouched by what it steals.
   A partner poorer than the amount gives up everything it holds and an empty one gives up
   nothing; the thief's gain is capped at `energy_stock_cap` like any other, so the world's
-  total energy still never passes cell count × cap. The thief's share is **rounded down**, so
-  theft never pays more than `1 - steal_loss`. **Off at 0, which is the default**: the byte
+  total energy still never passes cell count × cap. **The accounting is per op**: an
+  interaction's steals settle one at a time, each taking `min(steal_amount, what the partner
+  still holds)` and delivering `floor(moved * (1 - steal_loss))`, rather than the loss being
+  taken on the interaction's summed movement. That is what the op means — one op, one
+  transfer — and it has a rounding consequence worth stating: three steals of `1` at a loss
+  of `0.5` deliver `0`, not `1`, so a small amount is pure destruction and a sweep must pick
+  an amount and a loss with a non-zero per-op yield. **Off at 0, which is the default**: the byte
   is absent from the table the interpreter's inner loop reads, so it is the plain no-op every
   other non-instruction byte is, the identical instruction stream runs, and the pinned
   determinism hashes and observable strings in `world.rs` do not move — a test asserts them
