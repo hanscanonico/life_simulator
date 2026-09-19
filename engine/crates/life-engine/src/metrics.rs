@@ -430,17 +430,7 @@ pub fn conserved_core(
     lineages: &[u64],
     ops: bff::OpSet,
 ) -> Option<ConservedCore> {
-    if lineages.is_empty() || tapes.stride() == 0 {
-        return None;
-    }
-    let (top, _) = *ranked_lineages(lineages).first()?;
-    let members: Vec<&[u8]> = lineages
-        .iter()
-        .copied()
-        .zip(tapes.iter())
-        .filter(|(id, _)| *id == top)
-        .map(|(_, tape)| tape)
-        .collect();
+    let members = largest_lineage_members(tapes, lineages)?;
 
     let width = members.iter().map(|tape| tape.len()).max().unwrap_or(0);
     // The 256 counts of every position, laid out flat so each member's tape is read in one
@@ -478,19 +468,28 @@ pub fn lineage_complexity(
     lineages: &[u64],
     ops: bff::OpSet,
 ) -> Option<Complexity> {
+    let members = largest_lineage_members(tapes, lineages)?;
+
+    Some(Complexity::of(modal_tape(&members)?, ops))
+}
+
+/// The tapes of the lineage `conserved_core` and `lineage_complexity` both read, in cell
+/// order: the members of the largest lineage `ranked_lineages` ranks. `None` where no
+/// lineage holds two cells, and on a world with no tapes.
+fn largest_lineage_members<'a>(tapes: Tapes<'a>, lineages: &[u64]) -> Option<Vec<&'a [u8]>> {
     if lineages.is_empty() || tapes.stride() == 0 {
         return None;
     }
     let (top, _) = *ranked_lineages(lineages).first()?;
-    let members: Vec<&[u8]> = lineages
-        .iter()
-        .copied()
-        .zip(tapes.iter())
-        .filter(|(id, _)| *id == top)
-        .map(|(_, tape)| tape)
-        .collect();
-
-    Some(Complexity::of(modal_tape(&members)?, ops))
+    Some(
+        lineages
+            .iter()
+            .copied()
+            .zip(tapes.iter())
+            .filter(|(id, _)| *id == top)
+            .map(|(_, tape)| tape)
+            .collect(),
+    )
 }
 
 /// The most common tape of a lineage's members, and the lowest tape of the ones that tie.
