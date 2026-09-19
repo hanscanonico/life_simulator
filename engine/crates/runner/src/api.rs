@@ -920,6 +920,7 @@ mod tests {
         for reason in [
             SnapshotReason::Cadence,
             SnapshotReason::Age,
+            SnapshotReason::Crossing,
             SnapshotReason::Transition,
             SnapshotReason::Census,
         ] {
@@ -935,6 +936,7 @@ mod tests {
             vec![
                 json!("cadence"),
                 json!("age"),
+                json!("crossing"),
                 json!("transition"),
                 json!("census")
             ]
