@@ -27,11 +27,19 @@ RSpec.describe Runs::RelativeTransitionEpochService do
     end
   end
 
-  context "with a run whose samples all sit inside the baseline window" do
-    let(:samples) { series(0.98, 0.5).select { |sample_epoch, _| sample_epoch <= 500 } }
+  context "with a run that fell inside the baseline window and sampled no further" do
+    let(:samples) { early_fall }
 
     it "reads nothing, the baseline never having closed" do
       expect(epoch).to be_nil
+    end
+
+    context "with one sample past the window" do
+      let(:samples) { early_fall + [[510, values(0.1)]] }
+
+      it "reads the crossing the closed window holds" do
+        expect(epoch).to eq(210)
+      end
     end
   end
 
@@ -53,6 +61,12 @@ RSpec.describe Runs::RelativeTransitionEpochService do
 
       expect(described_class.call(run: run)).to eq(510)
     end
+  end
+
+  # A run that falls at epoch 210, well inside the window its own baseline is drawn from.
+  def early_fall
+    (0..20).map { |sample| [sample * 10, values(0.98)] } +
+      (21..50).map { |sample| [sample * 10, values(0.1)] }
   end
 
   # A baseline window of samples at `start`, then a run of samples at `fallen`.

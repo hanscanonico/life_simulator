@@ -1511,18 +1511,36 @@ mod tests {
         assert_eq!(tracker.relative_epoch(), None);
     }
 
+    /// A collapsed world is compressible against any baseline, so the relative reading
+    /// applies the same guard the constant one does and settles on neither.
+    #[test]
+    fn a_collapsed_alphabet_settles_neither_reading() {
+        let collapsed = Metrics {
+            op_density: 1.0,
+            alphabet_size: 2,
+            ..reading(0.143)
+        };
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..=50u64 {
+            tracker.observe(sample * 10, &reading(0.98));
+        }
+        for sample in 51..200u64 {
+            tracker.observe(sample * 10, &collapsed);
+        }
+
+        assert_eq!(tracker.epoch(), None);
+        assert_eq!(
+            tracker.relative_epoch(),
+            None,
+            "0.143 is a seventh of the baseline and still not a transition"
+        );
+    }
+
     /// The relative reading is measured against the run's own start, so a run snapshotted
     /// inside its baseline window and resumed has to read the epoch the uninterrupted run
     /// reads — baseline, pending samples and all.
     #[test]
     fn a_resumed_tracker_reads_the_relative_epoch_the_uninterrupted_one_reads() {
-        let params = crate::params::Params {
-            width: 8,
-            height: 4,
-            tape_len: 16,
-            ..crate::params::Params::default()
-        };
-        let cells = vec![0u8; params.cell_count() * params.stride()];
         let series: Vec<(u64, f64)> = (0..=50)
             .map(|sample| (sample * 10, 0.98))
             .chain((51..200).map(|sample| (sample * 10, 0.55)))
@@ -1537,23 +1555,7 @@ mod tests {
         for (epoch, ratio) in &series[..20] {
             resumed.observe(*epoch, &reading(*ratio));
         }
-        let bytes = crate::snapshot::encode(
-            &crate::snapshot::Header {
-                substrate: params.substrate,
-                width: params.width,
-                height: params.height,
-                tape_len: params.tape_len,
-                tape_cap: params.tape_cap(),
-                epoch: 190,
-                transition: resumed.state(),
-            },
-            &cells,
-            &vec![0u64; params.lineage_count()],
-            &[],
-            &[],
-        );
-        let restored = crate::snapshot::decode(&params, &bytes).unwrap();
-        let mut resumed = TransitionTracker::from_state(restored.header.transition);
+        let mut resumed = through_a_snapshot(&resumed, 190);
         for (epoch, ratio) in &series[20..] {
             resumed.observe(*epoch, &reading(*ratio));
         }
@@ -1561,6 +1563,63 @@ mod tests {
         assert_eq!(uninterrupted.relative_epoch(), Some(510));
         assert_eq!(resumed.relative_epoch(), uninterrupted.relative_epoch());
         assert_eq!(resumed.epoch(), uninterrupted.epoch());
+    }
+
+    /// A run that fell inside its baseline window and was snapshotted before the window
+    /// closed: the samples held back are in the blob too, so the resumed run reads the
+    /// crossing it held rather than the first sample after the resume.
+    #[test]
+    fn a_tracker_resumed_inside_its_baseline_window_reads_the_crossing_it_held_back() {
+        let series: Vec<(u64, f64)> = (0..=20)
+            .map(|sample| (sample * 10, 0.98))
+            .chain((21..80).map(|sample| (sample * 10, 0.1)))
+            .collect();
+
+        let mut uninterrupted = TransitionTracker::default();
+        for (epoch, ratio) in &series {
+            uninterrupted.observe(*epoch, &reading(*ratio));
+        }
+
+        let mut resumed = TransitionTracker::default();
+        for (epoch, ratio) in &series[..31] {
+            resumed.observe(*epoch, &reading(*ratio));
+        }
+        let mut resumed = through_a_snapshot(&resumed, 300);
+        for (epoch, ratio) in &series[31..] {
+            resumed.observe(*epoch, &reading(*ratio));
+        }
+
+        assert_eq!(uninterrupted.relative_epoch(), Some(210));
+        assert_eq!(resumed.relative_epoch(), uninterrupted.relative_epoch());
+    }
+
+    /// The tracker's state as a snapshot carries it: written into a blob at `epoch` and
+    /// read back out of it.
+    fn through_a_snapshot(tracker: &TransitionTracker, epoch: u64) -> TransitionTracker {
+        let params = crate::params::Params {
+            width: 8,
+            height: 4,
+            tape_len: 16,
+            ..crate::params::Params::default()
+        };
+        let cells = vec![0u8; params.cell_count() * params.stride()];
+        let bytes = crate::snapshot::encode(
+            &crate::snapshot::Header {
+                substrate: params.substrate,
+                width: params.width,
+                height: params.height,
+                tape_len: params.tape_len,
+                tape_cap: params.tape_cap(),
+                epoch,
+                transition: tracker.state(),
+            },
+            &cells,
+            &vec![0u64; params.lineage_count()],
+            &[],
+            &[],
+        );
+        let restored = crate::snapshot::decode(&params, &bytes).unwrap();
+        TransitionTracker::from_state(restored.header.transition)
     }
 
     #[test]

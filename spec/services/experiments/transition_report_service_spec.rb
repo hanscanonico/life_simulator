@@ -66,6 +66,33 @@ RSpec.describe Experiments::TransitionReportService do
     end
   end
 
+  context "with a run whose fall is large against its own start" do
+    let!(:relative_crosser) do
+      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 510,
+                         params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
+      (0..800).step(10) do |epoch|
+        create(:sample, run: run, epoch: epoch, values: fallen_values(epoch))
+      end
+      run
+    end
+
+    it "reads the relative epoch off its samples beside the stored one" do
+      expect(row_for(relative_crosser)).to have_attributes(transition_epoch: 510, transition_epoch_relative: 510)
+    end
+
+    it "counts it under the relative rule and under both rules" do
+      expect(report.arms.sole).to have_attributes(relative: 1, both_rules: 1)
+    end
+
+    it "leaves the runs that never left their own start out of the relative count" do
+      expect(row_for(true_positive).transition_epoch_relative).to be_nil
+    end
+
+    def fallen_values(epoch)
+      sample(epoch > 500 ? 0.5 : 0.98, entropy: 4.0, replicators: 0, copy_rate: 0.0, tapes: 900, top_share: 0.02)
+    end
+  end
+
   it "confirms the crossing of a true positive against the census" do
     expect(row_for(true_positive)).to have_attributes(confirmed_epoch: 200, confirmed_by: "census")
   end
