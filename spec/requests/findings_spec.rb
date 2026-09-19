@@ -1128,6 +1128,7 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish)
           .to include("means 0.754 with a minimum of 0.618, against 0.984 at cap 64",
                       "30 constant crossings are the initial condition",
+                      "the 512 arm is the only place the two rules part",
                       "the crossings by cap read 3 / 5 / 4 / 1",
                       "No verdict above moves.")
       end
