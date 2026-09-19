@@ -5,11 +5,8 @@ require "rails"
 require "active_model/railtie"
 require "active_job/railtie"
 require "active_record/railtie"
-require "active_storage/engine"
 require "action_controller/railtie"
 require "action_mailer/railtie"
-require "action_mailbox/engine"
-require "action_text/engine"
 require "action_view/railtie"
 require "action_cable/engine"
 # require "rails/test_unit/railtie"
@@ -40,10 +37,5 @@ module LifeSimulator
 
     # Don't generate system test files.
     config.generators.system_tests = nil
-
-    # The app attaches nothing, so `image_processing` is not in the Gemfile;
-    # Active Storage (loaded by the Action Text engine) warns at boot unless
-    # variants are explicitly off.
-    config.active_storage.variant_processor = :disabled
   end
 end
