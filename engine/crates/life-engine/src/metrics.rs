@@ -20,6 +20,19 @@ pub const TRANSITION_HOLD_SAMPLES: u32 = 3;
 pub const TRANSITION_MAX_OP_DENSITY: f64 = 0.9;
 pub const TRANSITION_MIN_ALPHABET_SIZE: u32 = 16;
 
+/// The companion rule, read against the run's own start instead of the constant above: a
+/// fresh soup's `compress_ratio` depends on `max_tape_len` — measured 2026-09-19, the mean
+/// over the first `TRANSITION_BASELINE_EPOCHS` epochs falls 0.984 → 0.853 → 0.788 → 0.754
+/// as the cap goes 64 → 128 → 256 → 512, so a wide-tape soup starts at the constant
+/// threshold and crosses it with nothing replicating. The fraction is that constant
+/// expressed against the cap-64 start, 0.6 / 0.984 ≈ 0.61, so the arms the threshold was
+/// chosen on read the crossings they always did (`docs/design_record.md`, 2026-09-19).
+/// `transition_epoch` stays the locked observable; this is a second reading beside it.
+pub const TRANSITION_RELATIVE_FRACTION: f64 = 0.61;
+/// The last epoch counted into a run's baseline. A run whose first sample comes later has
+/// no baseline, and so no relative reading at all.
+pub const TRANSITION_BASELINE_EPOCHS: u64 = 500;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Metrics {
     pub compress_ratio: f64,
@@ -105,8 +118,12 @@ impl Metrics {
     /// Whether this sample counts towards a transition: a compressible world that is not
     /// simply an alphabet that collapsed onto a handful of instruction bytes.
     pub fn transition_candidate(&self) -> bool {
-        self.compress_ratio < TRANSITION_THRESHOLD
-            && self.op_density <= TRANSITION_MAX_OP_DENSITY
+        self.compress_ratio < TRANSITION_THRESHOLD && self.uncollapsed()
+    }
+
+    /// The collapse half of the rule on its own, which the relative reading applies too.
+    fn uncollapsed(&self) -> bool {
+        self.op_density <= TRANSITION_MAX_OP_DENSITY
             && self.alphabet_size >= TRANSITION_MIN_ALPHABET_SIZE
     }
 }
@@ -557,69 +574,192 @@ pub(crate) fn hamming_distance(one: &[u8], other: &[u8]) -> u64 {
 /// The first sampled epoch at which a qualifying sample appears and holds — the primary
 /// dependent variable of every sweep. A sample qualifies on `Metrics::transition_candidate`:
 /// `compress_ratio` below the threshold, and neither of the two collapse guards tripped.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransitionTracker {
-    candidate: Option<u64>,
-    held: u32,
-    settled: Option<u64>,
+    constant: Hold,
     last_epoch: Option<u64>,
+    relative: RelativeTracker,
 }
 
 /// The tracker's whole state, so a snapshot can carry it and a resumed run keeps the
-/// measurement it had already made.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// measurement it had already made — the relative reading's baseline included.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransitionState {
     pub candidate: Option<u64>,
     pub held: u32,
     pub settled: Option<u64>,
     pub last_epoch: Option<u64>,
+    pub relative: RelativeState,
+}
+
+/// The relative reading's state: the baseline as the sum and count it is a mean of, the
+/// samples inside the baseline window that cannot be judged until it closes, and the hold
+/// machine that judges them.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RelativeState {
+    pub baseline_sum: f64,
+    pub baseline_count: u32,
+    pub pending: Vec<PendingSample>,
+    pub candidate: Option<u64>,
+    pub held: u32,
+    pub settled: Option<u64>,
+}
+
+/// A sample inside the baseline window, kept until the window closes and the baseline it
+/// is to be judged against is known.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PendingSample {
+    pub epoch: u64,
+    pub ratio: f64,
+    pub uncollapsed: bool,
+}
+
+impl PendingSample {
+    fn qualifies(&self, baseline: f64) -> bool {
+        self.uncollapsed && self.ratio <= TRANSITION_RELATIVE_FRACTION * baseline
+    }
+}
+
+/// The candidate-and-hold machine both readings run: a qualifying sample opens a
+/// candidate, `TRANSITION_HOLD_SAMPLES` further qualifying samples settle it on the epoch
+/// it opened, and one that does not qualify drops it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Hold {
+    candidate: Option<u64>,
+    held: u32,
+    settled: Option<u64>,
+}
+
+impl Hold {
+    fn observe(&mut self, epoch: u64, qualifies: bool) {
+        if self.settled.is_some() {
+            return;
+        }
+        if !qualifies {
+            self.candidate = None;
+            self.held = 0;
+            return;
+        }
+        match self.candidate {
+            None => {
+                self.candidate = Some(epoch);
+                self.held = 0;
+            }
+            Some(candidate) => {
+                self.held += 1;
+                if self.held >= TRANSITION_HOLD_SAMPLES {
+                    self.settled = Some(candidate);
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+struct RelativeTracker {
+    baseline_sum: f64,
+    baseline_count: u32,
+    pending: Vec<PendingSample>,
+    hold: Hold,
+}
+
+impl RelativeTracker {
+    fn from_state(state: RelativeState) -> Self {
+        Self {
+            baseline_sum: state.baseline_sum,
+            baseline_count: state.baseline_count,
+            pending: state.pending,
+            hold: Hold {
+                candidate: state.candidate,
+                held: state.held,
+                settled: state.settled,
+            },
+        }
+    }
+
+    fn state(&self) -> RelativeState {
+        RelativeState {
+            baseline_sum: self.baseline_sum,
+            baseline_count: self.baseline_count,
+            pending: self.pending.clone(),
+            candidate: self.hold.candidate,
+            held: self.hold.held,
+            settled: self.hold.settled,
+        }
+    }
+
+    fn observe(&mut self, epoch: u64, measured: &Metrics) {
+        if self.hold.settled.is_some() {
+            return;
+        }
+        let sample = PendingSample {
+            epoch,
+            ratio: measured.compress_ratio,
+            uncollapsed: measured.uncollapsed(),
+        };
+        if epoch <= TRANSITION_BASELINE_EPOCHS {
+            self.baseline_sum += sample.ratio;
+            self.baseline_count += 1;
+            self.pending.push(sample);
+            return;
+        }
+        let Some(baseline) = self.baseline() else {
+            return;
+        };
+        for held in std::mem::take(&mut self.pending)
+            .into_iter()
+            .chain(std::iter::once(sample))
+        {
+            self.hold.observe(held.epoch, held.qualifies(baseline));
+        }
+    }
+
+    fn baseline(&self) -> Option<f64> {
+        (self.baseline_count > 0).then(|| self.baseline_sum / f64::from(self.baseline_count))
+    }
 }
 
 impl TransitionTracker {
     pub fn from_state(state: TransitionState) -> Self {
         Self {
-            candidate: state.candidate,
-            held: state.held,
-            settled: state.settled,
+            constant: Hold {
+                candidate: state.candidate,
+                held: state.held,
+                settled: state.settled,
+            },
             last_epoch: state.last_epoch,
+            relative: RelativeTracker::from_state(state.relative),
         }
     }
 
     pub fn state(&self) -> TransitionState {
         TransitionState {
-            candidate: self.candidate,
-            held: self.held,
-            settled: self.settled,
+            candidate: self.constant.candidate,
+            held: self.constant.held,
+            settled: self.constant.settled,
             last_epoch: self.last_epoch,
+            relative: self.relative.state(),
         }
     }
 
     pub fn observe(&mut self, epoch: u64, measured: &Metrics) {
-        if self.settled.is_some() || self.last_epoch == Some(epoch) {
+        if self.last_epoch == Some(epoch) {
             return;
         }
         self.last_epoch = Some(epoch);
-        if measured.transition_candidate() {
-            match self.candidate {
-                None => {
-                    self.candidate = Some(epoch);
-                    self.held = 0;
-                }
-                Some(candidate) => {
-                    self.held += 1;
-                    if self.held >= TRANSITION_HOLD_SAMPLES {
-                        self.settled = Some(candidate);
-                    }
-                }
-            }
-        } else {
-            self.candidate = None;
-            self.held = 0;
-        }
+        self.constant
+            .observe(epoch, measured.transition_candidate());
+        self.relative.observe(epoch, measured);
     }
 
     pub fn epoch(&self) -> Option<u64> {
-        self.settled
+        self.constant.settled
+    }
+
+    /// The same measurement made against the run's own baseline rather than the constant
+    /// threshold. Locked nothing: `epoch` above is the observable every finding reads.
+    pub fn relative_epoch(&self) -> Option<u64> {
+        self.relative.hold.settled
     }
 }
 
@@ -1169,7 +1309,8 @@ mod tests {
             &[],
         );
         assert_eq!(
-            &encoded[crate::snapshot::HEADER_LEN..crate::snapshot::HEADER_LEN + payload.len()],
+            &encoded[crate::snapshot::HEADER_LEN_RELATIVE
+                ..crate::snapshot::HEADER_LEN_RELATIVE + payload.len()],
             &payload[..]
         );
         assert_eq!(
@@ -1297,6 +1438,129 @@ mod tests {
         let all: Vec<u8> = (0..=255).collect();
         assert_eq!(alphabet_size(&all), 256);
         assert_eq!(alphabet_size(&[]), 0);
+    }
+
+    /// A tape cap wide enough to start near the constant threshold: the run slips under
+    /// 0.6 and the constant rule flags it, while against its own start of 0.62 it has
+    /// barely moved and the relative rule reads nothing.
+    #[test]
+    fn a_run_that_starts_at_the_threshold_flags_on_the_constant_rule_alone() {
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..=50u64 {
+            tracker.observe(sample * 10, &reading(0.62));
+        }
+        for sample in 51..200u64 {
+            tracker.observe(sample * 10, &reading(0.58));
+        }
+
+        assert_eq!(tracker.epoch(), Some(510));
+        assert_eq!(
+            tracker.relative_epoch(),
+            None,
+            "0.58 is 94% of its baseline"
+        );
+    }
+
+    /// A run that starts where the threshold was chosen — cap 64, mean 0.984 — and falls
+    /// to 0.55 crosses both rules, on the same epoch: that is what
+    /// `TRANSITION_RELATIVE_FRACTION` is derived to do.
+    #[test]
+    fn a_run_that_starts_high_and_falls_reads_the_same_epoch_on_both_rules() {
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..=50u64 {
+            tracker.observe(sample * 10, &reading(0.98));
+        }
+        for sample in 51..200u64 {
+            tracker.observe(sample * 10, &reading(0.55));
+        }
+
+        assert_eq!(tracker.epoch(), Some(510));
+        assert_eq!(tracker.relative_epoch(), Some(510));
+    }
+
+    /// The baseline is the run's own start, so a crossing inside the baseline window is
+    /// judged once the window closes rather than against a mean of a handful of samples.
+    #[test]
+    fn a_crossing_inside_the_baseline_window_is_read_once_the_window_closes() {
+        let mut tracker = TransitionTracker::default();
+        tracker.observe(0, &reading(0.98));
+        tracker.observe(100, &reading(0.98));
+        for sample in 2..=5u64 {
+            tracker.observe(sample * 100, &reading(0.2));
+        }
+        assert_eq!(
+            tracker.relative_epoch(),
+            None,
+            "the window has not closed yet"
+        );
+
+        tracker.observe(600, &reading(0.2));
+        assert_eq!(tracker.relative_epoch(), Some(200));
+    }
+
+    /// A run whose first sample comes after the window has no baseline to be read
+    /// against, and so no relative reading at all.
+    #[test]
+    fn a_run_with_no_sample_inside_the_baseline_window_reads_no_relative_epoch() {
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..20u64 {
+            tracker.observe(600 + sample * 10, &reading(0.05));
+        }
+
+        assert_eq!(tracker.epoch(), Some(600));
+        assert_eq!(tracker.relative_epoch(), None);
+    }
+
+    /// The relative reading is measured against the run's own start, so a run snapshotted
+    /// inside its baseline window and resumed has to read the epoch the uninterrupted run
+    /// reads — baseline, pending samples and all.
+    #[test]
+    fn a_resumed_tracker_reads_the_relative_epoch_the_uninterrupted_one_reads() {
+        let params = crate::params::Params {
+            width: 8,
+            height: 4,
+            tape_len: 16,
+            ..crate::params::Params::default()
+        };
+        let cells = vec![0u8; params.cell_count() * params.stride()];
+        let series: Vec<(u64, f64)> = (0..=50)
+            .map(|sample| (sample * 10, 0.98))
+            .chain((51..200).map(|sample| (sample * 10, 0.55)))
+            .collect();
+
+        let mut uninterrupted = TransitionTracker::default();
+        for (epoch, ratio) in &series {
+            uninterrupted.observe(*epoch, &reading(*ratio));
+        }
+
+        let mut resumed = TransitionTracker::default();
+        for (epoch, ratio) in &series[..20] {
+            resumed.observe(*epoch, &reading(*ratio));
+        }
+        let bytes = crate::snapshot::encode(
+            &crate::snapshot::Header {
+                substrate: params.substrate,
+                width: params.width,
+                height: params.height,
+                tape_len: params.tape_len,
+                tape_cap: params.tape_cap(),
+                epoch: 190,
+                transition: resumed.state(),
+            },
+            &cells,
+            &vec![0u64; params.lineage_count()],
+            &[],
+            &[],
+        );
+        let restored = crate::snapshot::decode(&params, &bytes).unwrap();
+        let mut resumed = TransitionTracker::from_state(restored.header.transition);
+        for (epoch, ratio) in &series[20..] {
+            resumed.observe(*epoch, &reading(*ratio));
+        }
+
+        assert_eq!(uninterrupted.relative_epoch(), Some(510));
+        assert_eq!(resumed.relative_epoch(), uninterrupted.relative_epoch());
+        assert_eq!(resumed.epoch(), uninterrupted.epoch());
     }
 
     #[test]

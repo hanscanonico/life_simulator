@@ -17,8 +17,14 @@
 //! fourth payload holding one stock reading per cell. Its length payload is empty where
 //! the tapes cannot grow, so a stocked world of fixed-length tapes and one of growing
 //! tapes are the same container. A world with no influx writes version 3 or 4 as before.
+//!
+//! Versions 6, 7 and 8 are versions 3, 4 and 5 carrying the relative transition reading's
+//! state as well (`docs/design_record.md`, 2026-09-19): the same header with that block's
+//! length last, and the block itself after every payload. Stripping the block off the end
+//! leaves the container the older version wrote, which is how a blob of either shape is
+//! read by the one set of payload offsets.
 
-use crate::metrics::{self, TransitionState};
+use crate::metrics::{self, PendingSample, RelativeState, TransitionState};
 use crate::params::{Params, Substrate};
 use flate2::read::ZlibDecoder;
 use std::fmt;
@@ -30,6 +36,12 @@ pub const VERSION: u8 = 3;
 pub const VERSION_RAGGED: u8 = 4;
 /// The version a world whose cells hold energy writes; it carries the stocks.
 pub const VERSION_STOCKED: u8 = 5;
+/// The versions that carry the relative transition reading beside the constant one — one
+/// per payload shape above, since the block is an addition to each rather than a shape of
+/// its own. Every world written since writes one of them.
+pub const VERSION_RELATIVE: u8 = 6;
+pub const VERSION_RELATIVE_RAGGED: u8 = 7;
+pub const VERSION_RELATIVE_STOCKED: u8 = 8;
 pub const HEADER_LEN: usize = 62;
 const HEADER_LEN_V4: usize = 74;
 const HEADER_LEN_V5: usize = 82;
@@ -38,6 +50,15 @@ const HEADER_LEN_V5: usize = 82;
 const HEADER_LEN_V2: usize = 54;
 const HEADER_LEN_V1: usize = 26;
 const LINEAGE_BYTES: usize = 8;
+/// The relative block's fixed part: the hold machine, the baseline as a sum and a count,
+/// and how many pending samples follow it.
+const RELATIVE_LEN: usize = 36;
+/// One pending sample: its epoch, its `compress_ratio` and whether its alphabet held.
+const PENDING_LEN: usize = 17;
+/// The `u64` holding the relative block's length, written last in the header.
+const RELATIVE_FIELD_BYTES: usize = 8;
+/// The header of a version 6 container: the version 3 header and that length.
+pub const HEADER_LEN_RELATIVE: usize = HEADER_LEN + RELATIVE_FIELD_BYTES;
 const WORD_BYTES: usize = 4;
 const NO_EPOCH: i64 = -1;
 
@@ -132,9 +153,9 @@ pub fn encode_compressed(
     let mut out = Vec::with_capacity(HEADER_LEN_V5 + payload.len() + tags.len());
     out.extend_from_slice(&MAGIC);
     out.push(match (stocked, ragged) {
-        (true, _) => VERSION_STOCKED,
-        (false, true) => VERSION_RAGGED,
-        (false, false) => VERSION,
+        (true, _) => VERSION_RELATIVE_STOCKED,
+        (false, true) => VERSION_RELATIVE_RAGGED,
+        (false, false) => VERSION_RELATIVE,
     });
     out.push(substrate_byte(header.substrate));
     out.extend_from_slice(&header.width.to_le_bytes());
@@ -153,6 +174,8 @@ pub fn encode_compressed(
     if stocked {
         out.extend_from_slice(&(lengths.len() as u64).to_le_bytes());
     }
+    let relative = relative_bytes(&header.transition.relative);
+    out.extend_from_slice(&(relative.len() as u64).to_le_bytes());
     out.extend_from_slice(payload);
     out.extend_from_slice(&tags);
     if ragged {
@@ -161,7 +184,57 @@ pub fn encode_compressed(
     if stocked {
         out.extend_from_slice(&metrics::compress(&word_bytes(stock)));
     }
+    out.extend_from_slice(&relative);
     out
+}
+
+/// The relative reading's state, written after every payload so that stripping it leaves
+/// the container the version before it wrote, byte for byte.
+fn relative_bytes(state: &RelativeState) -> Vec<u8> {
+    let mut out = Vec::with_capacity(RELATIVE_LEN + state.pending.len() * PENDING_LEN);
+    out.extend_from_slice(&epoch_field(state.candidate).to_le_bytes());
+    out.extend_from_slice(&state.held.to_le_bytes());
+    out.extend_from_slice(&epoch_field(state.settled).to_le_bytes());
+    out.extend_from_slice(&state.baseline_sum.to_le_bytes());
+    out.extend_from_slice(&state.baseline_count.to_le_bytes());
+    out.extend_from_slice(&(state.pending.len() as u32).to_le_bytes());
+    for sample in &state.pending {
+        out.extend_from_slice(&sample.epoch.to_le_bytes());
+        out.extend_from_slice(&sample.ratio.to_le_bytes());
+        out.push(u8::from(sample.uncollapsed));
+    }
+    out
+}
+
+fn relative_from(bytes: &[u8]) -> Result<RelativeState, SnapshotError> {
+    if bytes.len() < RELATIVE_LEN {
+        return Err(SnapshotError::Truncated);
+    }
+    let signed = |at: usize| i64::from_le_bytes(bytes[at..at + 8].try_into().expect("eight bytes"));
+    let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("four bytes"));
+    let float = |at: usize| f64::from_le_bytes(bytes[at..at + 8].try_into().expect("eight bytes"));
+    let count = word(32) as usize;
+    if bytes.len() < RELATIVE_LEN + count * PENDING_LEN {
+        return Err(SnapshotError::Truncated);
+    }
+    let pending = (0..count)
+        .map(|index| {
+            let at = RELATIVE_LEN + index * PENDING_LEN;
+            PendingSample {
+                epoch: u64::from_le_bytes(bytes[at..at + 8].try_into().expect("eight bytes")),
+                ratio: float(at + 8),
+                uncollapsed: bytes[at + 16] != 0,
+            }
+        })
+        .collect();
+    Ok(RelativeState {
+        baseline_sum: float(20),
+        baseline_count: word(28),
+        pending,
+        candidate: epoch_from_field(signed(0)),
+        held: word(8),
+        settled: epoch_from_field(signed(12)),
+    })
 }
 
 fn substrate_byte(substrate: Substrate) -> u8 {
@@ -218,14 +291,25 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
     if bytes[..4] != MAGIC {
         return Err(SnapshotError::BadMagic);
     }
-    let header_len = match bytes[4] {
-        1 => HEADER_LEN_V1,
-        2 => HEADER_LEN_V2,
-        VERSION => HEADER_LEN,
-        VERSION_RAGGED => HEADER_LEN_V4,
-        VERSION_STOCKED => HEADER_LEN_V5,
+    // The payload shape the blob was written in, and whether the relative block follows
+    // it: the shapes read alike, since the block sits past every payload.
+    let (shape, carries_relative) = match bytes[4] {
+        1 => (HEADER_LEN_V1, false),
+        2 => (HEADER_LEN_V2, false),
+        VERSION => (HEADER_LEN, false),
+        VERSION_RAGGED => (HEADER_LEN_V4, false),
+        VERSION_STOCKED => (HEADER_LEN_V5, false),
+        VERSION_RELATIVE => (HEADER_LEN, true),
+        VERSION_RELATIVE_RAGGED => (HEADER_LEN_V4, true),
+        VERSION_RELATIVE_STOCKED => (HEADER_LEN_V5, true),
         version => return Err(SnapshotError::UnsupportedVersion(version)),
     };
+    let header_len = shape
+        + if carries_relative {
+            RELATIVE_FIELD_BYTES
+        } else {
+            0
+        };
     if bytes.len() < header_len {
         return Err(SnapshotError::Truncated);
     }
@@ -237,12 +321,27 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
     let word =
         |at: usize| u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
     let signed = |at: usize| i64::from_le_bytes(bytes[at..at + 8].try_into().expect("eight bytes"));
-    let transition = if header_len > HEADER_LEN_V1 {
+    let relative_len = match carries_relative {
+        true => usize::try_from(u64::from_le_bytes(
+            bytes[shape..shape + 8].try_into().expect("eight bytes"),
+        ))
+        .map_err(|_| SnapshotError::Truncated)?,
+        false => 0,
+    };
+    if bytes.len() < header_len + relative_len {
+        return Err(SnapshotError::Truncated);
+    }
+    let payloads_end = bytes.len() - relative_len;
+    let transition = if shape > HEADER_LEN_V1 {
         TransitionState {
             candidate: epoch_from_field(signed(26)),
             held: word(34),
             settled: epoch_from_field(signed(38)),
             last_epoch: epoch_from_field(signed(46)),
+            relative: match carries_relative {
+                true => relative_from(&bytes[payloads_end..])?,
+                false => RelativeState::default(),
+            },
         }
     } else {
         TransitionState::default()
@@ -252,7 +351,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
         width: word(6),
         height: word(10),
         tape_len: word(14),
-        tape_cap: if header_len >= HEADER_LEN_V4 {
+        tape_cap: if shape >= HEADER_LEN_V4 {
             word(HEADER_LEN + 8)
         } else {
             word(14)
@@ -275,7 +374,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
     }
     // The lengths alone cannot tell the cap they were written under: every one of them
     // fitting a narrower slot is no evidence the world had no more room than that.
-    if header_len >= HEADER_LEN_V4 && header.tape_cap != params.tape_cap() {
+    if shape >= HEADER_LEN_V4 && header.tape_cap != params.tape_cap() {
         return Err(SnapshotError::Mismatch {
             field: "max_tape_len",
         });
@@ -287,8 +386,8 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
         ))
         .map_err(|_| SnapshotError::Truncated)
     };
-    let body = &bytes[header_len..];
-    let (cell_payload, lineage_payload, len_payload, stock_payload) = match header_len {
+    let body = &bytes[header_len..payloads_end];
+    let (cell_payload, lineage_payload, len_payload, stock_payload) = match shape {
         HEADER_LEN_V5 => {
             let cells_len = payload_at(HEADER_LEN_V2)?;
             let tags_len = payload_at(HEADER_LEN)?;
@@ -448,7 +547,7 @@ pub mod legacy {
     pub fn v2_blob(
         params: &Params,
         epoch: u64,
-        transition: TransitionState,
+        transition: &TransitionState,
         cells: &[u8],
     ) -> Vec<u8> {
         let mut out = prefix(params, 2, epoch);
@@ -510,7 +609,7 @@ mod tests {
         let params = params();
         let cells: Vec<u8> = (0..128).map(|i| i as u8).collect();
         let bytes = encode(&header(&params, 99), &cells, &lineages(&params), &[], &[]);
-        assert!(bytes.len() < cells.len() + HEADER_LEN + 64);
+        assert!(bytes.len() < cells.len() + HEADER_LEN_RELATIVE + RELATIVE_LEN + 64);
 
         let restored = decode(&params, &bytes).unwrap();
         assert_eq!(restored.cells, cells);
@@ -557,10 +656,22 @@ mod tests {
             held: 2,
             settled: Some(400),
             last_epoch: Some(500),
+            relative: RelativeState {
+                baseline_sum: 4.5,
+                baseline_count: 5,
+                pending: vec![PendingSample {
+                    epoch: 300,
+                    ratio: 0.81,
+                    uncollapsed: true,
+                }],
+                candidate: Some(420),
+                held: 1,
+                settled: None,
+            },
         };
         let bytes = encode(
             &Header {
-                transition,
+                transition: transition.clone(),
                 ..header(&params, 500)
             },
             &cells,
@@ -594,9 +705,10 @@ mod tests {
             held: 1,
             settled: None,
             last_epoch: Some(20),
+            relative: RelativeState::default(),
         };
 
-        let restored = decode(&params, &v2_blob(&params, 20, transition, &cells)).unwrap();
+        let restored = decode(&params, &v2_blob(&params, 20, &transition, &cells)).unwrap();
         assert_eq!(restored.cells, cells);
         assert_eq!(restored.header.epoch, 20);
         assert_eq!(restored.header.transition, transition);
@@ -653,7 +765,7 @@ mod tests {
 
         let bytes = encode(&header(&params, 7), &live, &lineages(&params), &lens, &[]);
 
-        assert_eq!(bytes[4], VERSION_RAGGED);
+        assert_eq!(bytes[4], VERSION_RELATIVE_RAGGED);
         let restored = decode(&params, &bytes).unwrap();
         assert_eq!(restored.lens, Some(lens.clone()));
         let mut at = 0;
@@ -685,7 +797,7 @@ mod tests {
         let bytes = encode(&header(&params, 9), &live, &tags, &lens, &[]);
 
         assert_eq!(bytes[..4], MAGIC);
-        assert_eq!(bytes[4], VERSION_RAGGED);
+        assert_eq!(bytes[4], VERSION_RELATIVE_RAGGED);
         assert_eq!(bytes[5], substrate_byte(params.substrate));
         assert_eq!(bytes[6..10], params.width.to_le_bytes());
         assert_eq!(bytes[10..14], params.height.to_le_bytes());
@@ -699,7 +811,9 @@ mod tests {
 
         let cells_len = u64::from_le_bytes(bytes[54..62].try_into().unwrap()) as usize;
         let tags_len = u64::from_le_bytes(bytes[62..70].try_into().unwrap()) as usize;
-        let body = &bytes[HEADER_LEN_V4..];
+        let relative_len = u64::from_le_bytes(bytes[74..82].try_into().unwrap()) as usize;
+        assert_eq!(relative_len, RELATIVE_LEN, "a tracker with nothing pending");
+        let body = &bytes[HEADER_LEN_V4 + RELATIVE_FIELD_BYTES..bytes.len() - relative_len];
         assert_eq!(
             inflate_bounded(&body[..cells_len], live.len()).unwrap(),
             live
@@ -741,7 +855,7 @@ mod tests {
             &stock,
         );
 
-        assert_eq!(bytes[4], VERSION_STOCKED);
+        assert_eq!(bytes[4], VERSION_RELATIVE_STOCKED);
         let restored = decode(&params, &bytes).unwrap();
         assert_eq!(restored.cells, cells);
         assert_eq!(restored.header.epoch, 12);
@@ -773,7 +887,7 @@ mod tests {
             &stock,
         );
 
-        assert_eq!(bytes[4], VERSION_STOCKED);
+        assert_eq!(bytes[4], VERSION_RELATIVE_STOCKED);
         let restored = decode(&params, &bytes).unwrap();
         assert_eq!(restored.lens, Some(lens));
         assert_eq!(restored.stock, Some(stock));
@@ -946,10 +1060,10 @@ mod tests {
         ));
 
         let mut future = bytes.clone();
-        future[4] = VERSION_STOCKED + 1;
+        future[4] = VERSION_RELATIVE_STOCKED + 1;
         assert!(matches!(
             decode(&params, &future),
-            Err(SnapshotError::UnsupportedVersion(6))
+            Err(SnapshotError::UnsupportedVersion(9))
         ));
     }
 }

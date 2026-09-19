@@ -33,7 +33,8 @@ module Api
 
     def samples
       Runs::RecordSamplesService.call(run: @run, samples: body_params.fetch("samples", []),
-                                      transition_epoch: params[:transition_epoch])
+                                      transition_epoch: params[:transition_epoch],
+                                      transition_epoch_relative: params[:transition_epoch_relative])
       head :no_content
     end
 
@@ -81,6 +82,7 @@ module Api
 
     def finish
       Runs::FinishService.call(run: @run, transition_epoch: params[:transition_epoch],
+                               transition_epoch_relative: params[:transition_epoch_relative],
                                summary: body_params["summary"], error: params[:error])
       head :no_content
     end

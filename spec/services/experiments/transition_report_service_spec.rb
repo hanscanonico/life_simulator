@@ -211,7 +211,7 @@ RSpec.describe Experiments::TransitionReportService do
     end
 
     it "writes the terminal-only counts the text prints to the arm section of the CSV" do
-      expect(CSV.parse(report.to_csv).last).to eq(%w[0.000244 10 8 7 7 6 2])
+      expect(CSV.parse(report.to_csv).last).to eq(%w[0.000244 10 8 7 0 0 7 6 2])
     end
 
     context "with the in-flight runs counted in" do
@@ -275,7 +275,7 @@ RSpec.describe Experiments::TransitionReportService do
   context "with no arm carrying a complexity reading" do
     it "leaves the report as it was" do
       expect(report.readings).to be_empty
-      expect(CSV.parse(report.to_csv).last).to eq(["0.000244", "3", "3", "2", "2", "1", "2"])
+      expect(CSV.parse(report.to_csv).last).to eq(["0.000244", "3", "3", "2", "0", "0", "2", "1", "2"])
     end
   end
 
@@ -284,7 +284,7 @@ RSpec.describe Experiments::TransitionReportService do
       lines = report.to_text.lines.map(&:strip)
 
       expect(lines.first).to match(
-        /\Arun_id\s+seed\s+status\s+mutation_rate\s+transition_epoch\s+collapse_epoch\s+crossings\s+confirmed_epoch/
+        /\Arun_id\s+seed\s+status\s+mutation_rate\s+transition_epoch\s+transition_epoch_relative\s+collapse_epoch/
       )
     end
 
@@ -315,7 +315,7 @@ RSpec.describe Experiments::TransitionReportService do
     it "writes the arm summary as a second section" do
       table = CSV.parse(report.to_csv)
 
-      expect(table.last).to eq(["0.000244", "3", "3", "2", "2", "1", "2"])
+      expect(table.last).to eq(["0.000244", "3", "3", "2", "0", "0", "2", "1", "2"])
     end
   end
 

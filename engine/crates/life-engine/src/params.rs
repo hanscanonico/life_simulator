@@ -3,8 +3,8 @@
 
 use crate::bff::OpSet;
 use crate::metrics::{
-    TRANSITION_HOLD_SAMPLES, TRANSITION_MAX_OP_DENSITY, TRANSITION_MIN_ALPHABET_SIZE,
-    TRANSITION_THRESHOLD,
+    TRANSITION_BASELINE_EPOCHS, TRANSITION_HOLD_SAMPLES, TRANSITION_MAX_OP_DENSITY,
+    TRANSITION_MIN_ALPHABET_SIZE, TRANSITION_RELATIVE_FRACTION, TRANSITION_THRESHOLD,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -518,6 +518,8 @@ impl Params {
                 "hold_samples": TRANSITION_HOLD_SAMPLES,
                 "max_op_density": TRANSITION_MAX_OP_DENSITY,
                 "min_alphabet_size": TRANSITION_MIN_ALPHABET_SIZE,
+                "relative_fraction": TRANSITION_RELATIVE_FRACTION,
+                "baseline_epochs": TRANSITION_BASELINE_EPOCHS,
             },
         }))
         .expect("schema always serialises")
@@ -1060,6 +1062,11 @@ mod tests {
             transition["min_alphabet_size"],
             TRANSITION_MIN_ALPHABET_SIZE
         );
+        assert_eq!(
+            transition["relative_fraction"],
+            TRANSITION_RELATIVE_FRACTION
+        );
+        assert_eq!(transition["baseline_epochs"], TRANSITION_BASELINE_EPOCHS);
     }
 
     #[test]

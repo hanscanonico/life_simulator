@@ -261,6 +261,15 @@ claim rests on it.
   (`Runs::CrossingsService`) — the replicator census or `copy_rate` positive within the
   confirmation window (`Runs::EmergenceEpochService`, docs/design_record.md 2026-09-15) —
   and it, not `transition_epoch`, is what the open-endedness findings read.
+- `transition_epoch_relative` (per run, once): the same measurement read against the run's
+  own start instead of the constant threshold — the first sampled epoch at which
+  `compress_ratio <= 0.61 x baseline` and the next 3 samples do too, under the same two
+  collapse guards, where `baseline` is the mean `compress_ratio` of the samples with epoch
+  <= 500 (docs/design_record.md 2026-09-19). A **companion** reading: a fresh soup's
+  `compress_ratio` depends on `max_tape_len`, so the constant threshold means different
+  things across the cap, and this says how far a run fell in its own terms.
+  `transition_epoch` above remains the primary dependent variable of every sweep and what
+  every finding is stated in; this one is reported beside it and relocks nothing.
 
 **Replicator test**: a tape `T` is a replicator if executing `T ++ R` for a random tape
 `R` (fresh, seeded) yields `T` in the second half for at least 3 of 4 trials. Run on the

@@ -856,3 +856,46 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   two fields in the `values` jsonb they already use, so there is no migration and an old
   runner and a new one coexist; the run page charts them, the samples CSV carries them, and
   the sweep page draws them per arm beside the dominant pair.
+- 2026-09-19 — **A relative transition reading beside the constant one;
+  `transition_epoch` stays locked.** Measured with `lab:detector_baseline` (GitHub #174):
+  a fresh soup's `compress_ratio` depends on `max_tape_len`, and the dependence straddles
+  the 0.6 threshold the detector is defined by.
+
+  | `max_tape_len` | mean over the first 500 epochs | min |
+  |---|---|---|
+  | 64 | 0.984 | 0.973 |
+  | 128 | 0.853 | 0.796 |
+  | 256 | 0.788 | 0.677 |
+  | 512 | 0.754 | 0.618 |
+
+  At cap 512 a run starts within a hair of the line and every seed "crosses" by epoch 1000
+  with nothing replicating, and the host–parasite cap-128/256 arms inherit the same offset,
+  so a cross-cap comparison of flag rates is confounded by the initial condition rather than
+  by anything that happened in the world. **`transition_epoch` does not move**: it is the
+  locked observable of §1.2 and every finding in this record is stated in it. What is added
+  is a second, independent reading beside it, **`transition_epoch_relative`**: the first
+  sampled epoch at which `compress_ratio <= 0.61 x baseline`, held the same 3 further
+  samples and guarded by the same alphabet-collapse rule, where `baseline` is the mean
+  `compress_ratio` of the samples with epoch <= 500. **The fraction is the constant
+  expressed against the arms it was chosen on**: 0.6 / 0.984 = 0.61 at cap 64, so those arms
+  read the crossings they always did while a wide-tape arm has to fall as far, in its own
+  terms, as a cap-64 arm does. A run with no sample inside the baseline window, and one that
+  never samples past it, read no relative epoch at all — the engine's tracker and the Rails
+  re-derivation agree on that, deliberately.
+
+  **It is an observable, not a rule**: no simulation byte moves, nothing is drawn from an
+  RNG stream, and the pinned `(params, seed) -> hash` of both substrates and every pinned
+  observable string are unmoved — the reading is the tracker's, not a `Metrics` field, and
+  it is tested apart from them (`metrics.rs`). The tracker carries the baseline as a sum and
+  a count plus the samples inside the window that cannot be judged until it closes, and
+  **the snapshot carries all of it**, so a resumed run reads the epoch the uninterrupted run
+  reads; snapshot versions 6, 7 and 8 are versions 3, 4 and 5 with that block written after
+  every payload, and every older blob still restores as it did.
+
+  **The corpus is rescored from the stored samples**, not re-run:
+  `lab:backfill_relative_transitions[slug]` fills the new `runs.transition_epoch_relative`
+  column from a run's samples through `Runs::RelativeTransitionEpochService`, and
+  `lab:transition_report` prints `relative` and `both_rules` per arm so the two rules can be
+  compared arm by arm. **Whether to relock the detector on the relative rule is not decided
+  here**: that waits for the rescore, and until then every finding keeps reading
+  `transition_epoch`.
