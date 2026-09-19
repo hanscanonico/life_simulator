@@ -161,10 +161,12 @@ module Findings
                  "soup of 2^17 tapes, the shape the published BFF work used. It shows the " \
                  "transition in tape statistics in one mutated seed and the largest " \
                  "replicator census in the lab in another, so the interpreter and the " \
-                 "pairing rule are not what the sweeps were measuring. But no stored " \
-                 "world brackets that census peak at this experiment's snapshot cadence, " \
-                 "so the count cannot yet be rescored and the census here is not yet " \
-                 "resolved. A zero-mutation control collapses entropy with a census of " \
+                 "pairing rule are not what the sweeps were measuring. Two of its stored " \
+                 "worlds sit on census-positive samples and rescore to the live count " \
+                 "exactly, 316 replicating cells and 112, so the census is real; but no " \
+                 "stored world brackets the peak itself at this experiment's snapshot " \
+                 "cadence, so its height is still read from in-run samples alone. A " \
+                 "zero-mutation control collapses entropy with a census of " \
                  "zero: compression alone is not a replicator."
       ),
       Finding.new(

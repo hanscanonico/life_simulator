@@ -396,14 +396,15 @@ RSpec.describe "Findings", type: :request do
                       "controls sit at the random-soup baseline")
       end
 
-      it "reads its census peak as not yet resolved rather than as no evidence" do
+      it "reads its census as confirmed by rescore off the peak and open at the peak" do
         get finding_path(Findings::Registry.find("bff-control"))
 
         expect(response.body.squish)
           .to include("And the census is not zero.",
                       "in the lab — thousands of replicating cells at its peak",
-                      "no snapshot falls inside the window where the count was high",
-                      "not yet resolved rather than not evidence",
+                      "316 replicating cells at epoch 9 900, 112 at epoch 16 000",
+                      "What no stored world holds is the peak itself",
+                      "confirmed off the peak and unresolved at it",
                       "neither triggered nor retired")
       end
 
@@ -425,7 +426,7 @@ RSpec.describe "Findings", type: :request do
           .to include("What the zero-mutation control shows",
                       "a copying cascade of the tapes the seed handed the world",
                       "an entropy collapse on its own is not evidence of a replicator",
-                      "the snapshot forced on the sample where a transition settles")
+                      "writes a snapshot whenever the census rises off zero")
       end
 
       it "keeps the requeue history" do
@@ -440,7 +441,7 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.body).not_to match(/\d{2}:\d{2} CEST/)
         expect(response.body).not_to match(/\brun \d+/i)
-        expect(response.body).not_to match(/epoch \d ?\d{3}/)
+        expect(response.body).not_to match(/\bseed \d+/i)
       end
     end
 

@@ -129,12 +129,13 @@ RSpec.describe Findings::Registry do
     expect(described_class.find("bff-control").experiment_slug).to eq("bff-control")
   end
 
-  it "holds the positive control at partial while its census peak cannot be rescored" do
+  it "holds the positive control at partial while no stored world brackets its census peak" do
     finding = described_class.find("bff-control")
 
     expect(finding.status).to eq(:partial)
     expect(finding.summary).to include("largest replicator census in the lab",
-                                       "not yet resolved")
+                                       "rescore to the live count exactly",
+                                       "no stored world brackets the peak itself")
   end
 
   it "reads the long-horizon re-run as partial while three of its runs are still on the clock" do
