@@ -73,7 +73,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_120000) do
     t.integer "transition_epoch_relative"
     t.datetime "updated_at", null: false
     t.index ["experiment_id"], name: "index_runs_on_experiment_id"
-    t.index ["finished_at"], name: "index_runs_on_finished_at_terminal", where: "((status)::text = ANY ((ARRAY['finished'::character varying, 'failed'::character varying])::text[]))"
+    t.index ["finished_at"], name: "index_runs_on_finished_at_terminal", where: "((status)::text = ANY (ARRAY[('finished'::character varying)::text, ('failed'::character varying)::text]))"
     t.index ["heartbeat_at"], name: "index_runs_on_heartbeat_at"
     t.index ["status", "id"], name: "index_runs_on_status_and_id"
     t.index ["status", "priority", "id"], name: "index_runs_on_status_and_priority_and_id", order: { priority: :desc }
