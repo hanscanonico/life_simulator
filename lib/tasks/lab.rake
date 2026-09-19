@@ -79,8 +79,8 @@ namespace :lab do
     base = args[:base].to_i
     band = Experiments::SetSeedMajorPriorityService.call(experiment: experiment, base: base)
 
-    puts "#{experiment.name}: priority #{base}, #{band.moved} unfinished runs " \
-         "over priorities #{band.lowest || base}..#{band.highest || base}"
+    over = band.moved.zero? ? "" : " over priorities #{band.lowest}..#{band.highest}"
+    puts "#{experiment.name}: priority #{base}, #{band.moved} unfinished runs#{over}"
   end
 
   desc "Set the queue priority of a batch of unfinished runs, as lab:prioritise_runs[12:40;13:39]"

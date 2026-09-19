@@ -320,6 +320,13 @@ RSpec.describe "the lab queue tasks" do
         .to include("priority 40, 2 unfinished runs over priorities 39..40")
     end
 
+    it "names no band of priorities it did not write" do
+      create(:run, experiment: experiment, seed: 1, status: "finished", priority: 1)
+
+      expect(invoke("lab:prioritise_seed_major", "bff-control", "40"))
+        .to include("priority 40, 0 unfinished runs\n")
+    end
+
     it "refuses an experiment it does not know" do
       expect { invoke("lab:prioritise_seed_major", "colour", "40") }.to raise_error(/Unknown experiment "colour"/)
     end
