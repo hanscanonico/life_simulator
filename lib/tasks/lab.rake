@@ -70,6 +70,30 @@ namespace :lab do
     puts "run #{run.id} (#{run.experiment.slug}, seed #{run.seed}): priority #{previous} → #{priority}"
   end
 
+  desc "Order an experiment's queue seed-major: every unfinished run at base - seed"
+  task :prioritise_seed_major, [:slug, :base] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+    raise "Priority #{args[:base].inspect} is not an integer." unless /\A-?\d+\z/.match?(args[:base].to_s)
+
+    base = args[:base].to_i
+    band = Experiments::SetSeedMajorPriorityService.call(experiment: experiment, base: base)
+
+    over = band.moved.zero? ? "" : " over priorities #{band.lowest}..#{band.highest}"
+    puts "#{experiment.name}: priority #{base}, #{band.moved} unfinished runs#{over}"
+  end
+
+  desc "Set the queue priority of a batch of unfinished runs, as lab:prioritise_runs[12:40;13:39]"
+  task :prioritise_runs, [:pairs] => :environment do |_task, args|
+    moves = Runs::SetPrioritiesService.call(pairs: args[:pairs])
+
+    moves.each do |move|
+      puts "run #{move.run.id} (#{move.run.experiment.slug}, seed #{move.run.seed}): " \
+           "priority #{move.previous} → #{move.priority}"
+    end
+    puts "#{moves.size} runs moved"
+  end
+
   desc "Recompute transition_epoch from the stored samples of terminal runs (one experiment, or all)"
   task :backfill_transitions, [:slug] => :environment do |_task, args|
     runs = Run.terminal.order(:id)
