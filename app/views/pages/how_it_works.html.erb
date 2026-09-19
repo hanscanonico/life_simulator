@@ -223,6 +223,17 @@
       recorded before they existed.
     </dd>
 
+    <dt class="mono">lineage_compressed_len</dt>
+    <dd>
+      The same two readings as <span class="mono">dominant_compressed_len</span>, taken of a
+      tape chosen by descent rather than by population: the modal tape of the largest
+      lineage, with <span class="mono">lineage_instruction_count</span> beside it. The
+      dominant tape is whichever tape most cells hold at that sample, and it rotates — so a
+      lineage that keeps getting more complicated while its modal tape turns over reads flat
+      through the dominant series and moves through this one. Null where no lineage holds
+      two cells, on the Life substrate, and on every sample recorded before they existed.
+    </dd>
+
     <dt class="mono">steal_rate</dt>
     <dd>
       The share of the sampled epoch's interactions in which a steal executed. The steal op

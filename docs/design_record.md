@@ -796,3 +796,39 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   format is unchanged (no version bump), and `Snapshot::REASONS` gains `"census"` with no
   migration — Rails must accept the reason before a runner posts it, and the mini-pc deploys
   the app before the runner.
+- 2026-09-19 — **Complexity is read per dominant lineage as well as per dominant tape.**
+  `dominant_compressed_len` / `dominant_instruction_count` are read off whichever tape is
+  most populous at each sample, and that tape is a rotating representative rather than a
+  persistent sequence: on `complexity-keeps-rising` both "still rising" columns read 0 for
+  every arm, because a lineage that keeps getting more complicated while its modal tape
+  turns over reads flat through a per-tape series. Two observables are added beside them:
+  **`lineage_compressed_len`** and **`lineage_instruction_count`**, the very same two
+  readings — zlib under the compressor `compress_ratio` uses, and the bytes the run's own
+  instruction set executes — taken of a tape chosen by descent. **The representative rule**:
+  the lineage is the one `conserved_core` and `lineage_variation` already rank each sample,
+  the largest that holds at least two cells with ties by lowest lineage id, and the tape is
+  that lineage's **modal tape**, ties broken by the lowest tape value — the rule
+  `lineage_variation` already reads a lineage's modal tape by, and a function of the world
+  alone rather than of the order the cells arrive in, so a run resumed from a snapshot reads
+  the tape the run that wrote it read (`world.rs`, `a_resumed_world_reads_the_same_lineage_complexity`).
+  The cell index is deliberately not the tie-breaker: the modal rule was already in the
+  engine, and reusing it keeps one definition of "the tape of a lineage" rather than two.
+  **The per-tape series stays** exactly as it is — every finding in the record reads it, the
+  tapes behind the stored samples are gone so no backfill is possible, and a redefinition
+  would silently move thousands of samples. The two series are read side by side instead.
+  **`lineage_compressed_len_median` over the lineage's members is not added**: the members
+  are enumerated, but the median would compress every one of them — 97–100 % of the cells at
+  the plateau, against exactly one tape today — which is nowhere near the 3 % budget.
+  **These are observables**: no simulation byte moves, nothing is drawn from an RNG stream,
+  and the reading walks tapes the sample already holds, so the pinned `(params, seed) → hash`
+  of both substrates and every pinned observable string in `world.rs` are unmoved; the two
+  new fields are pinned apart from them, as #192's, #193's and #211's were. A 300-epoch
+  128² run at the defaults emits the same 31 samples, field for field, as the same run on
+  the commit before — only the two new keys are added and only the wall clock differs.
+  The measured cost, `runner run` at 128×128 for 300 epochs with `sample_every = 10`,
+  `--release`, three runs each: **8.87 s → 8.76 s of user time** (before 8.65 / 8.90 / 9.05,
+  after 8.72 / 8.79 / 8.76), a difference inside the noise of a loaded laptop and well
+  inside the 3 % budget — one more tape compressed on 30 of 300 epochs. Samples carry the
+  two fields in the `values` jsonb they already use, so there is no migration and an old
+  runner and a new one coexist; the run page charts them, the samples CSV carries them, and
+  the sweep page draws them per arm beside the dominant pair.

@@ -22,7 +22,7 @@ RSpec.describe Runs::ShowPage do
                   copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost
                   dominant_compressed_len dominant_instruction_count dominant_raw_len
                   conserved_core_bytes conserved_core_ops steal_rate replicator_pass_rate
-                  replicator_count_mean])
+                  replicator_count_mean lineage_compressed_len lineage_instruction_count])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
       expect(page.charts.map(&:title))
         .to eq(described_class::METRICS.values +
