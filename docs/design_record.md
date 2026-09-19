@@ -796,6 +796,30 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   format is unchanged (no version bump), and `Snapshot::REASONS` gains `"census"` with no
   migration — Rails must accept the reason before a runner posts it, and the mini-pc deploys
   the app before the runner.
+- 2026-09-19 — **A `crossing` snapshot reason, so the transition epoch itself has a world.**
+  `transition_epoch` names the **first** qualifying sample, and the tracker only settles it
+  `TRANSITION_HOLD_SAMPLES` = 3 samples later, so the 2026-09-11 `transition` snapshot is
+  always stored 3 samples past the epoch a rescore is asked about — 150 epochs at the
+  sweeps' `sample_every` of 50. `Experiments::SnapshotAuditService` counts a transition
+  covered only within **one** sample, so a run whose nearest world is the settled snapshot
+  is reported uncovered by construction; issue #185 read that as a ~350-epoch miss on the
+  `max-tape-len` 512 arm. The run loop now takes a snapshot on the first sampling epoch
+  whose metrics are a `transition_candidate` while no transition has settled, under the
+  reason `crossing`, so the crossing epoch is stored when it happens rather than once it is
+  known to hold. **Rate limit and coverage follow the `census` rule verbatim** (2026-09-18):
+  at most one per `snapshot_every` epochs, skipped when another reason already stored that
+  epoch's world, the rise spending the budget either way — worst case a world whose
+  `compress_ratio` flickers around 0.6 costs one extra snapshot per cadence. **The settled
+  `transition` snapshot stays**: it is the world behind the observable the sweeps report,
+  and the two epochs are different worlds. Crossing is chosen **last**, after census, so an
+  epoch a replicator census also names keeps the narrower reading. `PruneSnapshotsService`
+  needs no change: it keeps the snapshot nearest the transition epoch, and a crossing
+  snapshot sits on it. **No simulation byte moves**: the reason is read off the metrics the
+  loop already samples through `Metrics::transition_candidate`, the snapshot format is
+  unchanged and `Snapshot::REASONS` gains `"crossing"` with no migration — Rails accepts the
+  reason before a runner posts it, and the mini-pc deploys the app before the runner. Runs
+  already stored keep the gap they have; only runs started after this ships are auditable at
+  their crossing epoch.
 - 2026-09-19 — **Complexity is read per dominant lineage as well as per dominant tape.**
   `dominant_compressed_len` / `dominant_instruction_count` are read off whichever tape is
   most populous at each sample, and that tape is a rotating representative rather than a

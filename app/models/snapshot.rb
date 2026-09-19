@@ -9,10 +9,10 @@ class Snapshot < ApplicationRecord
   # authority on world size (DESIGN §3).
   MAX_BYTES = 64.megabytes
   # Why the run loop took it: the epoch cadence, the runner's wall-clock ceiling on
-  # snapshot age, the sample that settled the transition, or a replicator census rising
-  # off zero. Keep in step with `SnapshotReason` in engine/crates/runner/src/sink.rs,
-  # which names them.
-  REASONS = %w[cadence age transition census].freeze
+  # snapshot age, the first sample to cross the transition threshold, the sample that
+  # settled the transition, or a replicator census rising off zero. Keep in step with
+  # `SnapshotReason` in engine/crates/runner/src/sink.rs, which names them.
+  REASONS = %w[cadence age crossing transition census].freeze
   DEFAULT_REASON = "cadence"
 
   enum :reason, REASONS.index_by(&:itself), validate: true

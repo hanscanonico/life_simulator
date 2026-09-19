@@ -285,6 +285,92 @@ RSpec.describe "the lab queue tasks" do
     end
   end
 
+  describe "lab:prioritise_seed_major" do
+    let(:experiment) { create(:experiment, slug: "bff-control", priority: 0) }
+
+    it "puts the experiment at the base and each unfinished run at base minus its seed" do
+      runs = [0, 1, 2].map { |seed| create(:run, experiment: experiment, seed: seed, priority: 0) }
+
+      invoke("lab:prioritise_seed_major", "bff-control", "40")
+
+      expect([experiment.reload.priority, *runs.map { |run| run.reload.priority }]).to eq([40, 40, 39, 38])
+    end
+
+    it "leaves a finished run's priority alone" do
+      run = create(:run, experiment: experiment, seed: 1, status: "finished", priority: 1)
+
+      invoke("lab:prioritise_seed_major", "bff-control", "40")
+
+      expect(run.reload.priority).to eq(1)
+    end
+
+    it "leaves another experiment's runs alone" do
+      create(:run, experiment: experiment, seed: 0)
+      other = create(:run, experiment: create(:experiment, slug: "room-to-grow", priority: 5), seed: 1, priority: 5)
+
+      invoke("lab:prioritise_seed_major", "bff-control", "40")
+
+      expect(other.reload.priority).to eq(5)
+    end
+
+    it "prints the count moved and the band it wrote" do
+      [0, 1].each { |seed| create(:run, experiment: experiment, seed: seed) }
+
+      expect(invoke("lab:prioritise_seed_major", "bff-control", "40"))
+        .to include("priority 40, 2 unfinished runs over priorities 39..40")
+    end
+
+    it "names no band of priorities it did not write" do
+      create(:run, experiment: experiment, seed: 1, status: "finished", priority: 1)
+
+      expect(invoke("lab:prioritise_seed_major", "bff-control", "40"))
+        .to include("priority 40, 0 unfinished runs\n")
+    end
+
+    it "refuses an experiment it does not know" do
+      expect { invoke("lab:prioritise_seed_major", "colour", "40") }.to raise_error(/Unknown experiment "colour"/)
+    end
+
+    it "refuses a base that is not an integer" do
+      experiment
+
+      expect { invoke("lab:prioritise_seed_major", "bff-control", "urgent") }
+        .to raise_error(/Priority "urgent" is not an integer/)
+    end
+  end
+
+  describe "lab:prioritise_runs" do
+    let(:experiment) { create(:experiment, slug: "bff-control", priority: 0) }
+
+    it "moves every run of the batch and leaves the experiment alone" do
+      runs = create_list(:run, 2, experiment: experiment, priority: 0)
+
+      invoke("lab:prioritise_runs", "#{runs.first.id}:40;#{runs.second.id}:39")
+
+      expect([*runs.map { |run| run.reload.priority }, experiment.reload.priority]).to eq([40, 39, 0])
+    end
+
+    it "prints one line per run and the count moved" do
+      run = create(:run, experiment: experiment, seed: 7, priority: 3)
+
+      expect(invoke("lab:prioritise_runs", "#{run.id}:40"))
+        .to include("run #{run.id} (bff-control, seed 7): priority 3 → 40", "1 runs moved")
+    end
+
+    it "refuses a malformed batch before moving anything" do
+      run = create(:run, experiment: experiment, priority: 0)
+
+      expect { invoke("lab:prioritise_runs", "#{run.id}:40;oops") }
+        .to raise_error(/Malformed pairs "oops"/)
+      expect(run.reload.priority).to eq(0)
+    end
+
+    it "refuses a batch holding a run it does not know" do
+      expect { invoke("lab:prioritise_runs", "#{Run.maximum(:id).to_i + 1}:40") }
+        .to raise_error(/Unknown runs/)
+    end
+  end
+
   def invoke(name, *args)
     Rails.application.load_tasks if Rake::Task.tasks.empty?
     task = Rake::Task[name]
