@@ -1118,6 +1118,21 @@ RSpec.describe "Findings", type: :request do
                       "every verdict below is read off the instruction count")
       end
 
+      it "reads the room-to-grow sweep under both detector rules" do
+        get finding_path(open_endedness)
+
+        rows = response.parsed_body.css("#max-tape-len-detector-rules tbody tr")
+                       .map { |row| row.css("td").map { |cell| cell.text.squish } }
+
+        expect(rows).to eq([%w[64 30 3 3 2], %w[128 90 5 5 3], %w[256 90 4 4 4], %w[512 30 30 1 1]])
+        expect(response.body.squish)
+          .to include("means 0.754 with a minimum of 0.618, against 0.984 at cap 64",
+                      "30 constant crossings are the initial condition",
+                      "the 512 arm is the only place the two rules part",
+                      "the crossings by cap read 3 / 5 / 4 / 1",
+                      "No verdict above moves.")
+      end
+
       it "reads every sweep on both observables and decides it on only one" do
         get finding_path(open_endedness)
 
