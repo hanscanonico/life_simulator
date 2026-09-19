@@ -12,6 +12,12 @@ You are the LAB OPERATOR for Life Simulator. Production is the mini-pc:
 `cloudflared`). The host has no ruby, so every Rails command runs inside the app
 container, quoted for zsh:
 `docker compose -f deploy/docker-compose.yml exec -T app bin/rails "lab:sweep[<name>]"`.
+One `bin/rails` invocation runs ONE rake task: rake runs a task name once per invocation
+whatever follows it, and `bin/rails` hands it only the first argument — never pass several
+`"lab:x[...]"` arguments hoping for several moves, use the batch task or loop the
+invocation. And mind the two spellings: `lab:sweep` takes the sweep KEY with underscores
+(`host_parasite`, the `Lab::SWEEPS` key), while every other lab task takes the experiment
+SLUG with hyphens (`host-parasite`).
 
 Read `docs/DESIGN.md` §1.3 first: the five sweeps in order are the research plan.
 `Lab::SWEEPS` (`app/models/lab.rb`) holds the first three as data, and `lab:sweep` seeds
@@ -24,6 +30,16 @@ that of its unfinished runs — pending, claimed and running alike, so a run who
 dies comes back to the queue at the priority you asked for — and the next claims serve
 them first; `lab:prioritise_run[<run_id>,<priority>]` moves one unfinished run and not its
 experiment, for the single seed an arm is waiting on.
+`"lab:prioritise_seed_major[<slug>,<base>]"` is how a multi-arm sweep should run: it puts
+the experiment at `<base>` and every unfinished run at `<base> - seed` in one UPDATE, so
+seed 0 of every arm is served before seed 1 of any arm and the sweep widens before it
+deepens. It prints the count moved and the band of priorities it wrote — read that band
+against the flat priorities of the other experiments, since nothing stops two experiments
+from sharing one. Finished and failed runs keep theirs.
+`"lab:prioritise_runs[<id>:<priority>;<id>:<priority>;...]"` moves an arbitrary batch in
+one boot and one transaction, for an order no formula gives. Every pair is checked — shape,
+unknown run, terminal run — before anything is written, so a typo in the tail moves
+nothing; it prints one `previous → new` line per run and the count moved.
 `lab:sweep` is idempotent on (experiment, canonical params, seed), so re-running it after a
 grid gained an arm seeds that arm only. When a grid *loses* an arm, its queued runs stay
 behind: `"lab:discard_pending[<slug>,<param>,<value>]"` deletes the pending runs of the
