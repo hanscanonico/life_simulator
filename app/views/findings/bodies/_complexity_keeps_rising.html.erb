@@ -138,6 +138,85 @@
            reading: "lineage count", unit: "lineages", decided_on: "complexity" %>
 <%= render "findings/substrate_emergence", bet: survey.room_to_grow %>
 
+<%# The 2026-09-19 corpus rescore, read from the stored samples of the sweep's 240 terminal
+    runs (GitHub #174). %>
+<% detector_rules = [
+     { cap: 64, terminal: 30, constant: 3, relative: 3, replicators: 2 },
+     { cap: 128, terminal: 90, constant: 5, relative: 5, replicators: 3 },
+     { cap: 256, terminal: 90, constant: 4, relative: 4, replicators: 4 },
+     { cap: 512, terminal: 30, constant: 30, relative: 1, replicators: 1 }
+   ] %>
+
+<h3>The same sweep under both detector rules</h3>
+<p>
+  This sweep is flagged by the detector of DESIGN §1.2, which reads a constant threshold:
+  <span class="mono">compress_ratio</span> at or below 0.6, held. A fresh soup's ratio
+  depends on the cap, and the dependence straddles that line — over its first 500 epochs the
+  512 arm means 0.754 with a minimum of 0.618, against 0.984 at cap 64
+  (<span class="mono">docs/design_record.md</span>, 2026-09-19). A second reading was added
+  beside it, <span class="mono">transition_epoch_relative</span>: the same fall taken against
+  each run's own baseline, the mean <span class="mono">compress_ratio</span> of its samples
+  at epoch 500 or earlier. The stored corpus was rescored under it on 2026-09-19, without
+  re-running anything. Both readings of this sweep:
+</p>
+
+<div class="table-scroll" id="max-tape-len-detector-rules">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th><span class="mono">max_tape_len</span></th>
+        <th class="numeric">Terminal runs</th>
+        <th class="numeric">Crossings, constant rule</th>
+        <th class="numeric">Crossings, relative rule</th>
+        <th class="numeric">Confirmed by a replicator</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% detector_rules.each do |arm| %>
+        <tr>
+          <td class="mono"><%= arm.fetch(:cap) %></td>
+          <td class="numeric mono"><%= arm.fetch(:terminal) %></td>
+          <td class="numeric mono"><%= arm.fetch(:constant) %></td>
+          <td class="numeric mono"><%= arm.fetch(:relative) %></td>
+          <td class="numeric mono"><%= arm.fetch(:replicators) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p class="text-sm text-muted">
+  Rescored with <span class="mono">lab:backfill_relative_transitions</span> over 1 729
+  terminal runs of the whole corpus, 2026-09-19 (GitHub #174).
+</p>
+
+<p>
+  The 512 arm's 30 constant crossings are the initial condition rather than anything that
+  happened in the world: the arm starts within a hair of the threshold, and every one of
+  those 30 runs crosses by epoch 1 000. Under the relative rule that arm keeps
+  <strong>1</strong> crossing — the same run the replicator census confirms. The three
+  narrower caps read the same crossings under both rules, and so does every other arm of the
+  corpus: across 35 arms and 1 729 terminal runs the two rules agree everywhere, with no
+  crossing the relative rule finds and the constant one misses.
+</p>
+<p>
+  <strong>No verdict above moves.</strong> Emergence on this page has required a witness
+  since the record's 2026-09-15 entries — the replicator census or the copy rate, read
+  against every crossing a run holds — so the 512 arm's flagged-but-dead runs were never
+  emerged runs here, and the arm has entered these tables as 1 of 30 all along. The peaks
+  the three hypotheses are decided on are read from emerged runs only, and they are
+  unchanged.
+</p>
+<p>
+  <strong>What the flag counts cannot be read for.</strong> Under the relative rule the
+  crossings by cap read 3 / 5 / 4 / 1 — flat, then falling at the widest cap — so nothing
+  here says that a bigger cap transitions more often or sooner. "Room to grow" is read on
+  this page for the height of the plateau the dominant replicator reaches, which is the
+  verdict above, and not for how often life started.
+  <span class="mono">transition_epoch</span> under the constant rule remains the locked
+  observable of DESIGN §1.2; whether the detector is relocked on the relative reading is a
+  design-record decision and is not made here.
+</p>
+
 <h2>Does anything keep rising?</h2>
 <% if survey.any? %>
   <p>
