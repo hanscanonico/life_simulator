@@ -25,6 +25,12 @@ module Experiments
       min_entropy_epoch peak_replicator_count peak_replicator_epoch first_replicator_epoch
       peak_copy_rate peak_copy_rate_epoch final_compress_ratio final_distinct_tapes final_top_share
     ].freeze
+    # Every observable a reading of this report asks a sample for, the guard observables
+    # Lab::TransitionRule reads included: keep it in step with them and with the readings
+    # below, because a key left out of it reads as a sample that never carried one.
+    SAMPLE_KEYS = %w[
+      compress_ratio op_density alphabet_size entropy_bits replicator_count copy_rate distinct_tapes top_share
+    ].freeze
 
     Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :transition_epoch_relative,
                       :collapse_epoch, :crossings,
@@ -110,7 +116,7 @@ module Experiments
     private
 
     def rows
-      @rows ||= sampled_runs.map { |run, samples| row(run, samples) }
+      @rows ||= sampled_rows
     end
 
     # Counted off the rows already read rather than off the page's block
@@ -147,15 +153,31 @@ module Experiments
 
     # A run nothing has been sampled from yet is no row: the report is a reading of stored
     # samples, not of the queue.
-    def sampled_runs
-      runs = @experiment.runs.order(:id).to_a
-      by_run = Sample.where(run: runs).order(:epoch).pluck(:run_id, :epoch, :values)
-                     .group_by(&:first)
+    #
+    # One run's samples are held at a time, and of each sample only the observables read
+    # below: the experiment's samples read at once cost the 2 GiB app container its memory
+    # at 848 runs of the host-parasite sweep (issue #223).
+    def sampled_rows
+      rows = []
 
-      runs.filter_map do |run|
-        samples = by_run[run.id]
-        [run, samples.map { |(_, epoch, values)| [epoch, values] }] if samples
+      @experiment.runs.find_each do |run|
+        samples = samples_of(run)
+        rows << row(run, samples) if samples.any?
       end
+
+      rows
+    end
+
+    def samples_of(run) = run.samples.order(:epoch).pluck(:epoch, observed_values)
+
+    # The projection keeps the values a jsonb object, so every reading below reads the
+    # numbers the whole column gave it; an observable the sample never carried comes back
+    # a JSON null, which reads as the missing key it was.
+    def observed_values
+      @observed_values ||= Arel.sql(ActiveRecord::Base.sanitize_sql_array(
+        ["jsonb_build_object(#{(['?, samples.values -> ?'] * SAMPLE_KEYS.size).join(', ')})",
+         *SAMPLE_KEYS.flat_map { |key| [key, key] }]
+      ))
     end
 
     def row(run, samples)
