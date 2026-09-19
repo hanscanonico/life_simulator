@@ -346,6 +346,28 @@ RSpec.describe Experiments::TransitionReportService do
     end
   end
 
+  # The host-parasite sweep is 1 260 runs of hundreds of samples each, and reading them all
+  # at once is what the 2 GiB app container was OOM-killed for at 848 of them (issue #223).
+  describe "reading a sweep too large to hold at once" do
+    let(:runs) { 400 }
+    let(:samples_per_run) { 200 }
+
+    before do
+      insert_sweep(experiment, runs: runs, samples_per_run: samples_per_run,
+                               params: { "mutation_rate" => 0.000244 }) do |index|
+        sample(index > 100 ? 0.4 : 0.9, entropy: 6.0 - (index / 50.0), replicators: index > 120 ? 3 : 0,
+                                        copy_rate: 0.001, tapes: 900 - index, top_share: 0.02)
+      end
+    end
+
+    it "reads the sample values one run at a time, in a statement count linear in the runs" do
+      reads = value_reads_of_report
+
+      expect(reads.max).to be <= samples_per_run
+      expect(reads.size).to be_between(runs, (runs + 10) * 2)
+    end
+  end
+
   def row_for(run) = report.rows.find { |row| row.run_id == run.id }
 
   def sampled(transition_epoch:, samples:, status: "finished")
@@ -353,6 +375,21 @@ RSpec.describe Experiments::TransitionReportService do
                        params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
     samples.each_with_index { |values, index| create(:sample, run: run, epoch: (index + 1) * 100, values: values) }
     run
+  end
+
+  # The rows every statement that reads sample values brought back: the one number that
+  # says how much of the sweep the report held at once.
+  def value_reads_of_report
+    reads = []
+    collect = lambda do |*, payload|
+      reads << payload[:row_count] if payload[:name] != "SCHEMA" && payload[:sql].include?("values")
+    end
+
+    ActiveSupport::Notifications.subscribed(collect, "sql.active_record") do
+      described_class.call(experiment: experiment).to_text
+    end
+
+    reads
   end
 
   def sample(compress_ratio, entropy:, replicators:, copy_rate:, tapes:, top_share:)
