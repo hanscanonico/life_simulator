@@ -47,6 +47,11 @@ RSpec.describe Experiments::DetectorBaselineService do
       expect(arm("512").mean_first_crossing_epoch).to eq(625)
     end
 
+    it "means the run means rather than pooling samples of unequal cadence" do
+      expect(arm("512").mean_compress_ratio)
+        .to be_within(1e-9).of((((0.72 + 0.65 + 0.61) / 3) + ((0.62 + 0.58) / 2)) / 2)
+    end
+
     it "counts both runs" do
       expect(arm("512").runs).to eq(2)
     end
