@@ -17,15 +17,17 @@ module Experiments
     CONFIRM_WINDOW = Runs::EmergenceEpochService::CONFIRM_WINDOW
 
     RUN_COLUMNS = %w[run_id seed status].freeze
-    ARM_COLUMNS = %w[arm n n_terminal flagged replicators both either_but_not_both].freeze
+    ARM_COLUMNS = %w[arm n n_terminal flagged relative both_rules replicators both either_but_not_both].freeze
     READING_COLUMNS = ComplexityArmsService::COLUMNS
     SAMPLE_COLUMNS = %w[
-      transition_epoch collapse_epoch crossings confirmed_epoch confirmed_by min_entropy_bits
+      transition_epoch transition_epoch_relative collapse_epoch crossings confirmed_epoch confirmed_by
+      min_entropy_bits
       min_entropy_epoch peak_replicator_count peak_replicator_epoch first_replicator_epoch
       peak_copy_rate peak_copy_rate_epoch final_compress_ratio final_distinct_tapes final_top_share
     ].freeze
 
-    Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :collapse_epoch, :crossings,
+    Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :transition_epoch_relative,
+                      :collapse_epoch, :crossings,
                       :confirmed_epoch, :confirmed_by, :min_entropy_bits, :min_entropy_epoch, :peak_replicator_count,
                       :peak_replicator_epoch, :first_replicator_epoch, :peak_copy_rate,
                       :peak_copy_rate_epoch, :final_compress_ratio, :final_distinct_tapes,
@@ -38,17 +40,21 @@ module Experiments
 
       def flagged? = transition_epoch.present?
 
+      def flagged_relative? = transition_epoch_relative.present?
+
       def replicated? = peak_replicator_count.to_f.positive?
     end
 
-    Arm = Data.define(:label, :runs, :terminal, :flagged, :replicated, :both) do
+    Arm = Data.define(:label, :runs, :terminal, :flagged, :relative, :both_rules, :replicated, :both) do
       def flagged_only = flagged - both
 
       def replicated_only = replicated - both
 
       def either_but_not_both = flagged_only + replicated_only
 
-      def cells = [label, runs, terminal, flagged, replicated, both, either_but_not_both]
+      def cells
+        [label, runs, terminal, flagged, relative, both_rules, replicated, both, either_but_not_both]
+      end
     end
 
     Report = Data.define(:rows, :arms, :readings, :param_keys) do
@@ -123,9 +129,14 @@ module Experiments
     def arm(label, arm_rows)
       counted = @include_running ? arm_rows : arm_rows.select(&:terminal?)
 
-      Arm.new(label: label, runs: arm_rows.size, terminal: arm_rows.count(&:terminal?),
-              flagged: counted.count(&:flagged?), replicated: counted.count(&:replicated?),
-              both: counted.count { |row| row.flagged? && row.replicated? })
+      Arm.new(label: label, runs: arm_rows.size, terminal: arm_rows.count(&:terminal?), **counts_of(counted))
+    end
+
+    def counts_of(rows)
+      { flagged: rows.count(&:flagged?), relative: rows.count(&:flagged_relative?),
+        both_rules: rows.count { |row| row.flagged? && row.flagged_relative? },
+        replicated: rows.count(&:replicated?),
+        both: rows.count { |row| row.flagged? && row.replicated? } }
     end
 
     def arm_label(params)
@@ -163,6 +174,7 @@ module Experiments
       entropy = extreme(samples, "entropy_bits", :min_by)
 
       { transition_epoch: run.transition_epoch,
+        transition_epoch_relative: Runs::RelativeTransitionEpochService.call(samples: samples),
         collapse_epoch: samples.find { |(_, values)| below_threshold?(values) }&.first,
         crossings: Runs::CrossingsService.call(samples: samples).size,
         **confirmation_of(run.transition_epoch, samples),

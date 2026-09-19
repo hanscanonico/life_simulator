@@ -1,6 +1,6 @@
 //! The local-mode sink: `samples.ndjson`, `snapshots/<epoch>.{bin,png}`, `result.json`.
 
-use crate::sink::{RunResult, RunSink, SnapshotReason};
+use crate::sink::{RunResult, RunSink, SnapshotReason, Transitions};
 use anyhow::{Context, Result};
 use life_engine::Metrics;
 use std::fs::{self, File};
@@ -26,12 +26,7 @@ impl FileSink {
 }
 
 impl RunSink for FileSink {
-    fn sample(
-        &mut self,
-        epoch: u64,
-        metrics: &Metrics,
-        _transition_epoch: Option<u64>,
-    ) -> Result<()> {
+    fn sample(&mut self, epoch: u64, metrics: &Metrics, _transitions: Transitions) -> Result<()> {
         let mut line = serde_json::to_value(metrics)?;
         line["epoch"] = serde_json::json!(epoch);
         writeln!(self.samples, "{}", serde_json::to_string(&line)?)?;

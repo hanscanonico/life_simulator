@@ -1,10 +1,10 @@
-//! The lab-mode sink: metric samples batched to the app with the transition epoch the
+//! The lab-mode sink: metric samples batched to the app with the transition readings the
 //! run has settled on, snapshots posted as they are taken, and one `finish` carrying
-//! that epoch again with the last metrics.
+//! those again with the last metrics.
 
 use crate::api::{LabClient, Snapshot};
 use crate::lab::Slot;
-use crate::sink::{RunResult, RunSink, SnapshotReason};
+use crate::sink::{RunResult, RunSink, SnapshotReason, Transitions};
 use anyhow::Result;
 use life_engine::Metrics;
 use serde_json::{json, Value};
@@ -23,7 +23,7 @@ pub struct HttpSink<'a> {
     batched_at: Instant,
     batch_age: Duration,
     last_metrics: Option<Metrics>,
-    transition_epoch: Option<u64>,
+    transitions: Transitions,
     /// The snapshot request body, reused: a slot posting a 512x256 world every few
     /// epochs would otherwise allocate megabytes of base64 for each one.
     body: Vec<u8>,
@@ -39,7 +39,7 @@ impl<'a> HttpSink<'a> {
             batched_at: Instant::now(),
             batch_age: BATCH_AGE,
             last_metrics: None,
-            transition_epoch: None,
+            transitions: Transitions::default(),
             body: Vec::new(),
         }
     }
@@ -61,7 +61,7 @@ impl<'a> HttpSink<'a> {
             self.run,
             &self.slot.claim_id,
             &self.pending,
-            self.transition_epoch,
+            self.transitions,
         )?;
         self.pending.clear();
         self.batched_at = Instant::now();
@@ -70,18 +70,13 @@ impl<'a> HttpSink<'a> {
 }
 
 impl RunSink for HttpSink<'_> {
-    fn sample(
-        &mut self,
-        epoch: u64,
-        metrics: &Metrics,
-        transition_epoch: Option<u64>,
-    ) -> Result<()> {
+    fn sample(&mut self, epoch: u64, metrics: &Metrics, transitions: Transitions) -> Result<()> {
         let mut sample = serde_json::to_value(metrics)?;
         sample["epoch"] = json!(epoch);
         self.pending.push(sample);
         self.last_metrics = Some(metrics.clone());
-        if transition_epoch.is_some() {
-            self.transition_epoch = transition_epoch;
+        if transitions.settled() {
+            self.transitions = transitions;
         }
         if self.pending.len() >= BATCH_SIZE || self.batched_at.elapsed() >= self.batch_age {
             self.flush()?;
@@ -120,7 +115,10 @@ impl RunSink for HttpSink<'_> {
         self.client.finish(
             self.run,
             &self.slot.claim_id,
-            result.transition_epoch,
+            Transitions {
+                epoch: result.transition_epoch,
+                relative: result.transition_epoch_relative,
+            },
             self.last_metrics.as_ref(),
             None,
         )
@@ -180,7 +178,8 @@ mod tests {
         let mut sink = HttpSink::new(&client, 1, &slot).with_batch_age(Duration::from_secs(600));
 
         for epoch in 0..(BATCH_SIZE as u64 - 1) {
-            sink.sample(epoch, &metrics(0.9), None).unwrap();
+            sink.sample(epoch, &metrics(0.9), Transitions::default())
+                .unwrap();
         }
 
         assert_eq!(lab.count("POST /api/runs/1/samples"), 0);
@@ -194,7 +193,8 @@ mod tests {
         let mut sink = HttpSink::new(&client, 1, &slot).with_batch_age(Duration::from_secs(600));
 
         for epoch in 0..BATCH_SIZE as u64 {
-            sink.sample(epoch, &metrics(0.9), None).unwrap();
+            sink.sample(epoch, &metrics(0.9), Transitions::default())
+                .unwrap();
         }
 
         let posted = lab.request("POST /api/runs/1/samples");
@@ -211,7 +211,8 @@ mod tests {
         let slot = slot();
         let mut sink = HttpSink::new(&client, 1, &slot).with_batch_age(Duration::ZERO);
 
-        sink.sample(0, &metrics(0.9), None).unwrap();
+        sink.sample(0, &metrics(0.9), Transitions::default())
+            .unwrap();
 
         assert_eq!(lab.count("POST /api/runs/1/samples"), 1);
     }
@@ -302,16 +303,27 @@ mod tests {
         let slot = slot();
         let mut sink = HttpSink::new(&client, 1, &slot).with_batch_age(Duration::from_secs(600));
 
-        sink.sample(0, &metrics(0.9), None).unwrap();
-        sink.sample(2, &metrics(0.4), Some(2)).unwrap();
+        sink.sample(0, &metrics(0.9), Transitions::default())
+            .unwrap();
+        sink.sample(
+            2,
+            &metrics(0.4),
+            Transitions {
+                epoch: Some(2),
+                relative: Some(2),
+            },
+        )
+        .unwrap();
         sink.flush().unwrap();
-        sink.sample(4, &metrics(0.4), None).unwrap();
+        sink.sample(4, &metrics(0.4), Transitions::default())
+            .unwrap();
         sink.flush().unwrap();
 
         let batches = lab.requests("POST /api/runs/1/samples");
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[1]["samples"][0]["epoch"], json!(4));
         assert_eq!(batches[1]["transition_epoch"], json!(2));
+        assert_eq!(batches[1]["transition_epoch_relative"], json!(2));
     }
 
     #[test]
@@ -321,13 +333,23 @@ mod tests {
         let slot = slot();
         let mut sink = HttpSink::new(&client, 1, &slot).with_batch_age(Duration::from_secs(600));
 
-        sink.sample(0, &metrics(0.9), None).unwrap();
-        sink.sample(2, &metrics(0.4), Some(2)).unwrap();
+        sink.sample(0, &metrics(0.9), Transitions::default())
+            .unwrap();
+        sink.sample(
+            2,
+            &metrics(0.4),
+            Transitions {
+                epoch: Some(2),
+                relative: Some(2),
+            },
+        )
+        .unwrap();
         sink.finish(&RunResult {
             params: MockLab::params(),
             seed: 7,
             epochs: 2,
             transition_epoch: Some(2),
+            transition_epoch_relative: Some(2),
             wall_seconds: 1.0,
             epochs_per_second: 2.0,
         })
@@ -335,6 +357,7 @@ mod tests {
 
         let finished = lab.request("POST /api/runs/1/finish");
         assert_eq!(finished["transition_epoch"], json!(2));
+        assert_eq!(finished["transition_epoch_relative"], json!(2));
         assert_eq!(finished["summary"]["compress_ratio"], json!(0.4));
         assert_eq!(finished["runner_id"], json!("runner-1"));
     }

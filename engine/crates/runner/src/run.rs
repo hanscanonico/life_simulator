@@ -1,6 +1,6 @@
 //! The execution loop, shared by every sink.
 
-use crate::sink::{RunResult, RunSink, SnapshotReason};
+use crate::sink::{RunResult, RunSink, SnapshotReason, Transitions};
 use anyhow::{bail, Result};
 use life_engine::{Metrics, Params, World};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -214,7 +214,7 @@ pub fn execute_world(
         match (sampling, reason) {
             (true, Some(reason)) => {
                 let (metrics, raw) = world.metrics_with_snapshot();
-                sink.sample(epoch, &metrics, world.transition_epoch())?;
+                sink.sample(epoch, &metrics, Transitions::of(&world))?;
                 census = Some(saw_a_replicator(&metrics));
                 crossing = Some(metrics.transition_candidate());
                 sink.snapshot(epoch, &raw, buffers.render_png(&world)?, reason)?;
@@ -222,7 +222,7 @@ pub fn execute_world(
             }
             (true, None) => {
                 let metrics = world.metrics();
-                sink.sample(epoch, &metrics, world.transition_epoch())?;
+                sink.sample(epoch, &metrics, Transitions::of(&world))?;
                 census = Some(saw_a_replicator(&metrics));
                 crossing = Some(metrics.transition_candidate());
             }
@@ -302,6 +302,7 @@ pub fn execute_world(
         seed,
         epochs,
         transition_epoch: world.transition_epoch(),
+        transition_epoch_relative: world.transition_epoch_relative(),
         wall_seconds,
         epochs_per_second: if wall_seconds > 0.0 {
             epochs as f64 / wall_seconds
@@ -387,7 +388,7 @@ mod tests {
             &mut self,
             epoch: u64,
             metrics: &Metrics,
-            _transition_epoch: Option<u64>,
+            _transitions: Transitions,
         ) -> Result<()> {
             self.samples.push(epoch);
             self.copy_rates.push(metrics.copy_rate);

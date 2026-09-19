@@ -5,7 +5,7 @@
 //! doubling, capped backoff until the grace window runs out, or fatal — a 4xx other than
 //! 408/429, a malformed or oversized answer — and returned to the caller at once.
 
-use crate::sink::SnapshotReason;
+use crate::sink::{SnapshotReason, Transitions};
 use anyhow::{anyhow, bail, Context, Result};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
@@ -242,11 +242,14 @@ impl LabClient {
         run: i64,
         runner_id: &str,
         samples: &[Value],
-        transition_epoch: Option<u64>,
+        transitions: Transitions,
     ) -> Result<()> {
         let mut body = json!({ "samples": samples });
-        if let Some(epoch) = transition_epoch {
+        if let Some(epoch) = transitions.epoch {
             body["transition_epoch"] = json!(epoch);
+        }
+        if let Some(epoch) = transitions.relative {
+            body["transition_epoch_relative"] = json!(epoch);
         }
         self.member(run, runner_id, "samples", body)
     }
@@ -274,13 +277,16 @@ impl LabClient {
         &self,
         run: i64,
         runner_id: &str,
-        transition_epoch: Option<u64>,
+        transitions: Transitions,
         summary: Option<&Metrics>,
         error: Option<&str>,
     ) -> Result<()> {
         let mut body = json!({});
-        if let Some(epoch) = transition_epoch {
+        if let Some(epoch) = transitions.epoch {
             body["transition_epoch"] = json!(epoch);
+        }
+        if let Some(epoch) = transitions.relative {
+            body["transition_epoch_relative"] = json!(epoch);
         }
         if let Some(summary) = summary {
             body["summary"] = serde_json::to_value(summary)?;

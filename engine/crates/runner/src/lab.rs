@@ -10,6 +10,7 @@
 use crate::api::{self, ClaimedRun, LabClient};
 use crate::http_sink::HttpSink;
 use crate::run::{self, Completion, Progress};
+use crate::sink::Transitions;
 use anyhow::Result;
 use life_engine::World;
 use std::any::Any;
@@ -208,10 +209,13 @@ impl Lab {
             Err(panic) => panic_message(&panic),
         };
         self.report(slot, &[("run", run.clone()), ("message", quoted(&failure))]);
-        if let Err(error) =
-            self.client
-                .finish(claimed.id, &slot.claim_id, None, None, Some(&failure))
-        {
+        if let Err(error) = self.client.finish(
+            claimed.id,
+            &slot.claim_id,
+            Transitions::default(),
+            None,
+            Some(&failure),
+        ) {
             self.report(
                 slot,
                 &[

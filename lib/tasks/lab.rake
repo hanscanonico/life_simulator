@@ -118,6 +118,31 @@ namespace :lab do
     puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
   end
 
+  desc "Fill transition_epoch_relative from the stored samples of terminal runs (one experiment, or all). " \
+       "Leaves transition_epoch, the locked reading, alone"
+  task :backfill_relative_transitions, [:slug] => :environment do |_task, args|
+    runs = Run.terminal.order(:id)
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+      runs = runs.where(experiment: experiment)
+    end
+
+    terminal = runs.to_a
+    backfilled = terminal.count do |run|
+      recomputed = Runs::RelativeTransitionEpochService.call(run: run)
+      next false if recomputed == run.transition_epoch_relative
+
+      puts "run #{run.id}: constant #{run.transition_epoch || 'none'}, " \
+           "relative #{run.transition_epoch_relative || 'none'} → #{recomputed || 'none'}"
+      run.update!(transition_epoch_relative: recomputed)
+      true
+    end
+
+    puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
+  end
+
   desc "Confirm the crossing of every terminal run against its stored census and copy rate (one experiment, or all)"
   task :backfill_emergence, [:slug] => :environment do |_task, args|
     runs = Run.terminal.order(:id)

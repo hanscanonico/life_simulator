@@ -549,7 +549,7 @@ mod tests {
             blob: life_engine::snapshot::legacy::v2_blob(
                 &stored.params,
                 restored.header.epoch,
-                restored.header.transition,
+                &restored.header.transition,
                 &restored.cells,
             ),
             ..stored

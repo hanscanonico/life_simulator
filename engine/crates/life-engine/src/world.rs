@@ -187,6 +187,13 @@ impl World {
         self.transition.epoch()
     }
 
+    /// The transition read against this run's own baseline rather than the constant
+    /// threshold, a companion to the locked `transition_epoch` above and never a
+    /// replacement for it (`docs/design_record.md`, 2026-09-19).
+    pub fn transition_epoch_relative(&self) -> Option<u64> {
+        self.transition.relative_epoch()
+    }
+
     /// The hash of every byte the world holds, padding included — and after them, where
     /// tapes can grow, the lengths, and where cells hold energy, the stocks: the same bytes
     /// under two different sets of lengths, or two different stocks, are two different
@@ -2594,10 +2601,11 @@ mod tests {
         }
     }
 
-    /// A world that cannot grow writes the snapshot it always wrote, byte for byte, so a
-    /// blob the lab already holds and one written today are the same bytes.
+    /// A world that cannot grow writes the fixed-length container, and a world capped at
+    /// the length it already has writes the very same bytes as one with no cap at all: the
+    /// cap is not part of a world that never uses it.
     #[test]
-    fn a_world_that_cannot_grow_writes_the_snapshot_it_always_wrote() {
+    fn a_world_that_cannot_grow_writes_the_fixed_length_container() {
         let fixed = stepped(&soup(8, 8), 9, 4).snapshot();
         let capped = stepped(
             &Params {
@@ -2608,7 +2616,7 @@ mod tests {
             4,
         )
         .snapshot();
-        assert_eq!(fixed[4], snapshot::VERSION);
+        assert_eq!(fixed[4], snapshot::VERSION_RELATIVE);
         assert_eq!(fixed, capped);
     }
 
@@ -2622,7 +2630,7 @@ mod tests {
         assert!(tape_lengths(&world).iter().any(|len| *len > 64));
 
         let bytes = world.snapshot();
-        assert_eq!(bytes[4], snapshot::VERSION_RAGGED);
+        assert_eq!(bytes[4], snapshot::VERSION_RELATIVE_RAGGED);
         let mut restored = World::from_snapshot(&params, 5, &bytes).unwrap();
         assert_eq!(tape_lengths(&restored), tape_lengths(&world));
         assert_eq!(restored.world_hash(), world.world_hash());
@@ -2851,7 +2859,7 @@ mod tests {
         let older = snapshot::legacy::v2_blob(
             &params,
             world.epoch(),
-            TransitionState::default(),
+            &TransitionState::default(),
             &world.cells,
         );
         let mut restored = World::from_snapshot(&params, 5, &older).unwrap();

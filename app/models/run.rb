@@ -46,4 +46,11 @@ class Run < ApplicationRecord
 
     transition_epoch.nil? || epoch.to_i < transition_epoch
   end
+
+  # The same guard for the companion reading (docs/design_record.md, 2026-09-19).
+  def earlier_transition_epoch_relative?(epoch)
+    return false if epoch.blank?
+
+    transition_epoch_relative.nil? || epoch.to_i < transition_epoch_relative
+  end
 end

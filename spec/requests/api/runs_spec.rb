@@ -237,6 +237,13 @@ RSpec.describe "Api::Runs", type: :request do
       expect(run.reload.transition_epoch).to eq(200)
     end
 
+    it "records the relative transition epoch beside it" do
+      post samples_api_run_path(run), params: payload.merge(transition_epoch: 200, transition_epoch_relative: 260),
+                                      headers: headers, as: :json
+
+      expect(run.reload).to have_attributes(transition_epoch: 200, transition_epoch_relative: 260)
+    end
+
     context "with a batch the runner already posted" do
       it "stores no duplicate rows" do
         post samples_api_run_path(run), params: payload, headers: headers, as: :json
@@ -474,10 +481,12 @@ RSpec.describe "Api::Runs", type: :request do
 
     it "finishes the run" do
       post finish_api_run_path(run),
-           params: { runner_id: "runner-1", transition_epoch: 4_200, summary: { compress_ratio: 0.31 } },
+           params: { runner_id: "runner-1", transition_epoch: 4_200, transition_epoch_relative: 4_600,
+                     summary: { compress_ratio: 0.31 } },
            headers: headers, as: :json
 
       expect(run.reload).to have_attributes(status: "finished", transition_epoch: 4_200,
+                                            transition_epoch_relative: 4_600,
                                             summary: { "compress_ratio" => 0.31 })
     end
 
