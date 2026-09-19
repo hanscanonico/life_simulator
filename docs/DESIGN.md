@@ -412,10 +412,10 @@ docs/              this file, design_record.md, findings
   `snapshots` (compressed world bytes + a PNG thumbnail rendered by the engine). Each
   snapshot records why the run loop took it: `cadence` (an epoch multiple of
   `snapshot_every`), `age` (the runner's wall-clock ceiling on snapshot age),
-  `crossing` (the first sample below the transition threshold — the epoch
-  `transition_epoch` names — at most one per `snapshot_every` epochs), `transition` (the
-  sample that settled the transition) or `census` (the replicator census rising off zero,
-  at most one per `snapshot_every` epochs).
+  `crossing` (the first *qualifying* sample — the epoch `transition_epoch` names, stored
+  before the next 3 samples confirm it; at most one per `snapshot_every` epochs),
+  `transition` (the sample that settled the transition) or `census` (the replicator census
+  rising off zero, at most one per `snapshot_every` epochs).
 - **The runner is a stateless worker.** In lab mode it polls `POST /api/runs/claim` with
   a bearer token, executes the run, streams sample batches to
   `POST /api/runs/:id/samples`, snapshots to `POST /api/runs/:id/snapshots`, and finishes

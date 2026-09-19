@@ -497,6 +497,37 @@ mod tests {
         assert!(sink.snapshots.len() > cadence_only.snapshots.len());
     }
 
+    /// The point of the reason: the stored world sits on the epoch `transition_epoch`
+    /// names — nought epochs away, where the settled `transition` snapshot is three
+    /// samples past it and the audit reads that as a miss.
+    #[test]
+    fn the_crossing_snapshot_sits_on_the_epoch_the_transition_names() {
+        let params = Params {
+            snapshot_every: 12,
+            ..settling_params()
+        };
+        let mut world = settling_world(&params, 3);
+        for _ in 0..2 {
+            world.step();
+        }
+
+        let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        let mut sink = RecordingSink::default();
+        let completion =
+            execute_world(restored, 8, None, None, &mut sink, &Progress::default()).unwrap();
+
+        let Completion::Finished(result) = completion else {
+            panic!("the run stopped short of its epochs")
+        };
+        assert_eq!(result.transition_epoch, Some(2));
+        assert_eq!(sink.samples, vec![2, 4, 6, 8]);
+        assert_eq!(sink.snapshots, vec![2, 8]);
+        assert_eq!(
+            sink.reasons,
+            vec![SnapshotReason::Crossing, SnapshotReason::Transition]
+        );
+    }
+
     /// `transition_epoch` names the sample that crossed, and the settle only confirms it
     /// three samples later, so a run interrupted mid-candidate stores the crossing it
     /// samples next rather than leaving the cadence to be the nearest world.
