@@ -56,7 +56,16 @@ fell — and counts the experiment's snapshots by reason. `"lab:cost_report[<slu
 arm costs — per arm the mean, minimum and maximum epochs per compute second over its runs
 and the compute hours it has burned, then the experiment's total — off `compute_seconds`,
 which every heartbeat adds to and which a resume therefore never resets; runs claimed
-before the runner sent its intervals carry none and are left out. `lab:db_size` and
+before the runner sent its intervals carry none and are left out.
+`"lab:detector_baseline[<slug>]"` (or with no slug, every experiment) reads how close each
+arm's initial condition already sits to the detector's constant threshold — per arm the
+tape cap, the mean and minimum `compress_ratio` over the terminal runs' first 500 epochs,
+the mean epoch of the first crossing and the share of runs that crossed by epoch 1000
+(`FORMAT=csv` for CSV). It is the instrument for issue #174: if the gap to the threshold
+tracks `max_tape_len`, a run whose soup starts compressible crosses on the substrate and
+not on anything that replicated. It measures only — changing the detector to a per-run
+baseline moves a locked observable and starts with a `docs/design_record.md` entry.
+`lab:db_size` and
 `lab:prune_snapshots` are the maintenance tasks.
 `runner rescore` re-reads a run's stored world at other `top_k` settings, for the question
 "did the replicator test miss the lineage, or is there none?" — it measures only and

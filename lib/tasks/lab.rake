@@ -170,6 +170,20 @@ namespace :lab do
     print Runs::TransitionAuditService.call(experiment: experiment).to_text
   end
 
+  desc "Read how close each arm's initial condition already sits to the detector threshold (one experiment, " \
+       "or all). Prints them; changes nothing (FORMAT=csv)"
+  task :detector_baseline, [:slug] => :environment do |_task, args|
+    experiment = nil
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+    end
+
+    report = Experiments::DetectorBaselineService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
   desc "Check that every run with a transition has a snapshot near it, and count snapshots by reason"
   task :snapshot_audit, [:slug] => :environment do |_task, args|
     experiment = Experiment.find_by(slug: args[:slug])
