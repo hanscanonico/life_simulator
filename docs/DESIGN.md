@@ -222,6 +222,19 @@ claim rests on it.
   consecutive samples with different hashes are two different dominant tapes, which is what
   the run page's turnover series counts. Both are null exactly where the two readings above
   are — the life substrate — and both are null on every sample recorded before they existed.
+- `lineage_compressed_len` / `lineage_instruction_count`: the two readings above, taken of
+  a tape chosen by **descent** rather than by population — the representative of the largest
+  lineage. The dominant tape is whichever tape most cells hold at that sample, and it
+  rotates: a lineage that keeps getting more complicated while its modal tape turns over
+  reads flat through the dominant series (`docs/design_record.md`, 2026-09-19). The lineage
+  is the one `conserved_core` and `lineage_variation` already rank — the largest that holds
+  **at least 2 cells**, ties by lowest lineage id — and the representative is its **modal
+  tape**, ties by the lowest tape value, the rule `lineage_variation` already reads a modal
+  tape by. Both halves are functions of the world alone, so a run resumed from a snapshot
+  reads the representative the run that wrote it read. One more tape is compressed per
+  sample and no RNG stream moves. Null where no lineage holds two cells, on the life
+  substrate, and on every sample recorded before they existed. The per-tape series stays
+  exactly as it is: every finding in the record reads it, and no backfill is possible.
 - `steal_rate`: share of the sampled epoch's interactions in which a steal executed — at
   least one `$` op ran, whichever half of the pair ran it and whatever it managed to take,
   so an interaction against an empty partner counts like any other. Counted over the

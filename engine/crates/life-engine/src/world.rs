@@ -498,6 +498,7 @@ impl World {
         let (distinct_lineages, top_lineage_share) = metrics::lineage_census(&self.lineages);
         let census = self.replicator_census(&ranked);
         let core = self.conserved_core();
+        let lineage = self.lineage_complexity();
 
         Metrics {
             compress_ratio,
@@ -522,7 +523,19 @@ impl World {
             steal_rate: self.steal_rate,
             replicator_pass_rate: census.pass_rate(),
             replicator_count_mean: census.count_mean(),
+            lineage_compressed_len: lineage.map(|read| read.compressed_len),
+            lineage_instruction_count: lineage.map(|read| read.instruction_count),
         }
+    }
+
+    /// How much tape the largest lineage is, read off its modal tape. Life cells carry no
+    /// tape and no lineage. Like the conserved core, the reading walks tapes the sample
+    /// already holds and draws nothing: no RNG stream moves.
+    fn lineage_complexity(&self) -> Option<metrics::Complexity> {
+        if self.params.substrate != Substrate::Soup {
+            return None;
+        }
+        metrics::lineage_complexity(self.tapes(), &self.lineages, self.params.op_set())
     }
 
     /// What the largest lineage holds invariant across its members. Life cells carry no
@@ -927,6 +940,12 @@ mod tests {
          replicator_count_mean=Some(0.0)";
     const PINNED_SEEDED_CENSUS_DRAWS: &str = "replicator_pass_rate=Some(1.0) \
          replicator_count_mean=Some(196.0)";
+    /// And the two fields #175 added, pinned apart once more: the complexity of the
+    /// largest lineage's representative, beside the dominant tape's above.
+    const PINNED_LINEAGE_COMPLEXITY: &str =
+        "lineage_compressed_len=Some(75) lineage_instruction_count=Some(4)";
+    const PINNED_SEEDED_LINEAGE_COMPLEXITY: &str =
+        "lineage_compressed_len=Some(39) lineage_instruction_count=Some(15)";
 
     fn observable_digest(measured: &Metrics) -> String {
         format!(
@@ -977,6 +996,13 @@ mod tests {
         format!(
             "replicator_pass_rate={:?} replicator_count_mean={:?}",
             measured.replicator_pass_rate, measured.replicator_count_mean,
+        )
+    }
+
+    fn lineage_complexity_digest(measured: &Metrics) -> String {
+        format!(
+            "lineage_compressed_len={:?} lineage_instruction_count={:?}",
+            measured.lineage_compressed_len, measured.lineage_instruction_count,
         )
     }
 
@@ -1347,6 +1373,10 @@ mod tests {
         assert_eq!(dominant_tape_digest(&measured), PINNED_DOMINANT_TAPE);
         assert_eq!(conserved_core_digest(&measured), PINNED_CONSERVED_CORE);
         assert_eq!(census_digest(&measured), PINNED_CENSUS_DRAWS);
+        assert_eq!(
+            lineage_complexity_digest(&measured),
+            PINNED_LINEAGE_COMPLEXITY
+        );
     }
 
     #[test]
@@ -1362,6 +1392,10 @@ mod tests {
             PINNED_SEEDED_CONSERVED_CORE
         );
         assert_eq!(census_digest(&measured), PINNED_SEEDED_CENSUS_DRAWS);
+        assert_eq!(
+            lineage_complexity_digest(&measured),
+            PINNED_SEEDED_LINEAGE_COMPLEXITY
+        );
     }
 
     /// The census only reads the world: it draws on streams of its own, moves no cell and
@@ -1620,6 +1654,96 @@ mod tests {
         world.metrics().lineage_variation
     }
 
+    /// A world of two lineages whose largest lineage's representative is not the tape most
+    /// cells hold: nine cells of lineage 1 — five of them on a tape half made of
+    /// instructions, four on a run of one byte — beside seven cells of lineage 2 on a run
+    /// of another. Lineage 1 is the largest and its modal tape is the five-cell one; the
+    /// world's most populous tape is lineage 2's seven, and it holds no instruction and
+    /// compresses further.
+    fn two_lineage_world() -> World {
+        const TAPE_LEN: u32 = 32;
+
+        let params = Params {
+            tape_len: TAPE_LEN,
+            mutation_rate: 0.0,
+            ..soup(4, 4)
+        };
+        let representative: Vec<u8> = (0..TAPE_LEN as usize)
+            .map(|at| {
+                if at % 2 == 0 {
+                    bff::OPS[at / 2 % bff::OPS.len()]
+                } else {
+                    b'A' + at as u8
+                }
+            })
+            .collect();
+        let minority = vec![b'b'; TAPE_LEN as usize];
+        let populous = vec![b'a'; TAPE_LEN as usize];
+
+        let mut world = World::new(&params, 5).unwrap();
+        let cells = [
+            [
+                &representative,
+                &representative,
+                &representative,
+                &representative,
+            ],
+            [&representative, &minority, &minority, &minority],
+            [&minority, &populous, &populous, &populous],
+            [&populous, &populous, &populous, &populous],
+        ];
+        for (y, row) in cells.iter().enumerate() {
+            for (x, tape) in row.iter().enumerate() {
+                world.set_cell(x as u32, y as u32, tape);
+            }
+        }
+        world.lineages = (0..params.cell_count())
+            .map(|cell| if cell < 9 { 1 } else { 2 })
+            .collect();
+        world
+    }
+
+    /// The point of the lineage reading: the dominant tape is whichever tape most cells
+    /// hold at this sample, so a lineage whose modal tape is not that one is invisible
+    /// through it (`docs/design_record.md`, 2026-09-19).
+    #[test]
+    fn the_lineage_complexity_reads_a_different_tape_than_the_dominant_one() {
+        let mut world = two_lineage_world();
+        let measured = world.metrics();
+
+        assert_eq!(measured.distinct_lineages, 2);
+        assert!(!measured.dominant_replicates);
+        assert_eq!(measured.dominant_instruction_count, Some(0));
+        assert_eq!(measured.lineage_instruction_count, Some(16));
+        assert_ne!(
+            measured.lineage_compressed_len,
+            measured.dominant_compressed_len
+        );
+    }
+
+    /// The representative is a function of the world alone, so a run resumed from a
+    /// snapshot reads the tape the run that wrote it read.
+    #[test]
+    fn a_resumed_world_reads_the_same_lineage_complexity() {
+        let mut world = two_lineage_world();
+        let measured = world.metrics();
+
+        let mut restored =
+            World::from_snapshot(world.params(), world.seed(), &world.snapshot()).unwrap();
+        let reread = restored.metrics();
+
+        assert_eq!(
+            (
+                measured.lineage_compressed_len,
+                measured.lineage_instruction_count
+            ),
+            (
+                reread.lineage_compressed_len,
+                reread.lineage_instruction_count
+            )
+        );
+    }
+
     #[test]
     fn a_life_world_carries_no_lineages() {
         let mut world = World::new(&life(4, 4), 1).unwrap();
@@ -1643,6 +1767,8 @@ mod tests {
         assert_eq!(measured.dominant_tape_hash, None);
         assert_eq!(measured.replicator_pass_rate, None);
         assert_eq!(measured.replicator_count_mean, None);
+        assert_eq!(measured.lineage_compressed_len, None);
+        assert_eq!(measured.lineage_instruction_count, None);
         assert!(!measured.dominant_replicates);
     }
 

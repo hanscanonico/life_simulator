@@ -24,7 +24,9 @@ module Runs
       "conserved_core_ops" => "Instructions in that conserved core",
       "steal_rate" => "Steal rate",
       "replicator_pass_rate" => "Census pass rate",
-      "replicator_count_mean" => "Mean census count"
+      "replicator_count_mean" => "Mean census count",
+      "lineage_compressed_len" => "Compressed length of the largest lineage's tape (bytes)",
+      "lineage_instruction_count" => "Instructions in the largest lineage's tape"
     }.freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"

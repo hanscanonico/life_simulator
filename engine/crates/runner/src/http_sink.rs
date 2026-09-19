@@ -167,6 +167,8 @@ mod tests {
             steal_rate: 0.0,
             replicator_pass_rate: None,
             replicator_count_mean: None,
+            lineage_compressed_len: None,
+            lineage_instruction_count: None,
         }
     }
 

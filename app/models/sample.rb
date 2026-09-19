@@ -9,6 +9,7 @@ class Sample < ApplicationRecord
     distinct_lineages top_lineage_share lineage_variation copy_cost dominant_compressed_len
     dominant_instruction_count dominant_replicates dominant_raw_len dominant_tape_hash
     conserved_core_bytes conserved_core_ops steal_rate replicator_pass_rate replicator_count_mean
+    lineage_compressed_len lineage_instruction_count
   ].freeze
 
   # The observables that are not numbers: exported like the rest, but there is no series a

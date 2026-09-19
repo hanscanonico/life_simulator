@@ -25,7 +25,12 @@ module Experiments
                  title: "Compressed length of the dominant tape (bytes)",
                  average: "AVG((values ->> 'dominant_compressed_len')::numeric)"),
       Series.new(metric: "dominant_instruction_count", title: "Instructions in the dominant tape",
-                 average: "AVG((values ->> 'dominant_instruction_count')::numeric)")
+                 average: "AVG((values ->> 'dominant_instruction_count')::numeric)"),
+      Series.new(metric: "lineage_compressed_len",
+                 title: "Compressed length of the largest lineage's tape (bytes)",
+                 average: "AVG((values ->> 'lineage_compressed_len')::numeric)"),
+      Series.new(metric: "lineage_instruction_count", title: "Instructions in the largest lineage's tape",
+                 average: "AVG((values ->> 'lineage_instruction_count')::numeric)")
     ].freeze
 
     def self.build(axis:, runs:) = new(axis: axis, runs: runs)

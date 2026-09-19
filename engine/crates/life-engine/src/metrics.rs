@@ -90,6 +90,15 @@ pub struct Metrics {
     /// The mean of those draws' counts: how many cells hold a passing tape on an average
     /// draw, where `replicator_count` is what one draw read. `None` on the life substrate.
     pub replicator_count_mean: Option<f64>,
+    /// Bytes of the largest lineage's representative tape once zlib has had it: the same
+    /// reading `dominant_compressed_len` makes, of a tape chosen by descent rather than by
+    /// population. The dominant tape is whichever tape most cells hold at this sample, and
+    /// a lineage that keeps getting more complicated while its modal tape turns over reads
+    /// flat through it (`docs/design_record.md`, 2026-09-19). `None` where no lineage holds
+    /// two cells, and on the life substrate.
+    pub lineage_compressed_len: Option<u32>,
+    /// How many of that same representative's bytes the run's instruction set executes.
+    pub lineage_instruction_count: Option<u32>,
 }
 
 impl Metrics {
@@ -421,17 +430,7 @@ pub fn conserved_core(
     lineages: &[u64],
     ops: bff::OpSet,
 ) -> Option<ConservedCore> {
-    if lineages.is_empty() || tapes.stride() == 0 {
-        return None;
-    }
-    let (top, _) = *ranked_lineages(lineages).first()?;
-    let members: Vec<&[u8]> = lineages
-        .iter()
-        .copied()
-        .zip(tapes.iter())
-        .filter(|(id, _)| *id == top)
-        .map(|(_, tape)| tape)
-        .collect();
+    let members = largest_lineage_members(tapes, lineages)?;
 
     let width = members.iter().map(|tape| tape.len()).max().unwrap_or(0);
     // The 256 counts of every position, laid out flat so each member's tape is read in one
@@ -454,6 +453,59 @@ pub fn conserved_core(
         }
     }
     Some(core)
+}
+
+/// How much tape the largest lineage is, read off one representative of it: the same two
+/// readings `Complexity` makes of the dominant tape, taken of a tape chosen by descent.
+/// The lineage is the one `conserved_core` and `lineage_variation` already rank — the
+/// largest that holds at least two cells, ties by lowest id — and the representative is
+/// its modal tape, ties by the lowest tape value, the rule `lineage_variation` already
+/// reads a lineage's modal tape by. Both halves are functions of the world alone, so a run
+/// resumed from a snapshot reads the same representative the run that wrote it read.
+/// `None` where no lineage holds two cells, and on a world with no tapes.
+pub fn lineage_complexity(
+    tapes: Tapes<'_>,
+    lineages: &[u64],
+    ops: bff::OpSet,
+) -> Option<Complexity> {
+    let members = largest_lineage_members(tapes, lineages)?;
+
+    Some(Complexity::of(modal_tape(&members)?, ops))
+}
+
+/// The tapes of the lineage `conserved_core` and `lineage_complexity` both read, in cell
+/// order: the members of the largest lineage `ranked_lineages` ranks. `None` where no
+/// lineage holds two cells, and on a world with no tapes.
+fn largest_lineage_members<'a>(tapes: Tapes<'a>, lineages: &[u64]) -> Option<Vec<&'a [u8]>> {
+    if lineages.is_empty() || tapes.stride() == 0 {
+        return None;
+    }
+    let (top, _) = *ranked_lineages(lineages).first()?;
+    Some(
+        lineages
+            .iter()
+            .copied()
+            .zip(tapes.iter())
+            .filter(|(id, _)| *id == top)
+            .map(|(_, tape)| tape)
+            .collect(),
+    )
+}
+
+/// The most common tape of a lineage's members, and the lowest tape of the ones that tie.
+fn modal_tape<'a>(members: &[&'a [u8]]) -> Option<&'a [u8]> {
+    let mut sorted = members.to_vec();
+    sorted.sort_unstable();
+
+    let mut modal = *sorted.first()?;
+    let mut best = 0usize;
+    for run in sorted.chunk_by(|one, other| one == other) {
+        if run.len() > best {
+            best = run.len();
+            modal = run[0];
+        }
+    }
+    Some(modal)
 }
 
 fn conserved(agreeing: u64, members: u64) -> bool {
@@ -780,6 +832,45 @@ mod tests {
         );
         assert_eq!(
             conserved_core(Tapes::uniform(b"", 0), &[], bff::OpSet::ALL),
+            None
+        );
+    }
+
+    #[test]
+    fn the_lineage_complexity_reads_the_modal_tape_of_the_largest_lineage() {
+        // `+[ +[ +a` under lineage 1 and `zz zz` under lineage 2: the larger lineage's
+        // modal tape is `+[`, whichever tape the world holds most of.
+        let cells = b"+[+[+azzzz";
+        let read = lineage_complexity(Tapes::uniform(cells, 2), &[1, 1, 1, 2, 2], bff::OpSet::ALL)
+            .expect("a lineage of three");
+
+        assert_eq!(read.tape_hash, hash::fnv1a64(b"+["));
+        assert_eq!(read.instruction_count, 2);
+        assert_eq!(read.raw_len, 2);
+    }
+
+    #[test]
+    fn a_tie_for_the_modal_tape_keeps_the_lowest_tape() {
+        for cells in [b"+[ab", b"ab+["] {
+            let read = lineage_complexity(Tapes::uniform(cells, 2), &[1, 1], bff::OpSet::ALL)
+                .expect("a lineage of two");
+
+            assert_eq!(
+                read.tape_hash,
+                hash::fnv1a64(b"+["),
+                "`+[` sorts below `ab`, whichever cell holds it"
+            );
+        }
+    }
+
+    #[test]
+    fn a_world_with_no_lineage_of_two_reads_no_lineage_complexity() {
+        assert_eq!(
+            lineage_complexity(Tapes::uniform(b"aaabacbbbb", 5), &[1, 2], bff::OpSet::ALL),
+            None
+        );
+        assert_eq!(
+            lineage_complexity(Tapes::uniform(b"", 0), &[], bff::OpSet::ALL),
             None
         );
     }
@@ -1115,6 +1206,8 @@ mod tests {
             steal_rate: 0.0,
             replicator_pass_rate: None,
             replicator_count_mean: None,
+            lineage_compressed_len: None,
+            lineage_instruction_count: None,
         }
     }
 
