@@ -71,6 +71,12 @@ RSpec.describe Experiments::ComplexityArmsService do
       expect(arms.sole).to have_attributes(emerged_count: 2, measured_count: 1, rising_count: 0)
     end
 
+    it "reads a run whose conserved core is zero over the whole span as measured" do
+      emerged(instructions: ([10] * 10) + ([30] * 10), core: [0] * 20)
+
+      expect(arms.sole).to have_attributes(measured_count: 1, rising_count: 1)
+    end
+
     it "leaves a run whose instruction count is zero throughout unmeasured" do
       emerged(instructions: [10] * 20)
       emerged(instructions: [0] * 20)
@@ -111,6 +117,13 @@ RSpec.describe Experiments::ComplexityArmsService do
       2.times { emerged(instructions: ([10] * 10) + ([5] * 10)) }
 
       expect(arms.sole).to have_attributes(reading: :neither, rising_count: 1, plateau_count: 0)
+    end
+
+    it "counts the measured runs the pre-registered rule would have dropped" do
+      emerged(instructions: ([10] * 10) + ([30] * 10), core: [0] * 20)
+      emerged(instructions: ([10] * 10) + ([30] * 10))
+
+      expect(arms.sole).to have_attributes(measured_count: 2, pre_registered_unmeasured_count: 1)
     end
 
     it "reads a blank block of ten as an arm holding no replicator to read" do

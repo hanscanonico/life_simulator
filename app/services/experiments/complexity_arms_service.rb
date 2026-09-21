@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Experiments
-  # The pre-registered complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm: does
+  # The complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm: does
   # the dominant tape keep getting more complicated where energy is a contested stock or
   # where only one partner's code runs, or does it plateau as it did on every substrate
   # before it?
@@ -9,9 +9,12 @@ module Experiments
   # Taken on emerged runs only — a crossing the census or the copy rate confirmed, not
   # every crossing the detector flagged. Per run it compares the median of the last decile
   # of the post-crossing samples against the median of the first decile: a rise of at least
-  # RISE_MARGIN in `dominant_instruction_count` with the conserved core not falling over the
-  # same span is a run that keeps rising, and a last decile within PLATEAU_BAND of the first
-  # is a run that plateaued. `dominant_compressed_len` is carried beside them and decides
+  # RISE_MARGIN in `dominant_instruction_count` with the conserved core not falling in bytes
+  # over the same span is a run that keeps rising, and a last decile within PLATEAU_BAND of
+  # the first is a run that plateaued. The core clause is absolute, and a run is measured on
+  # its instruction count alone — the post-hoc amendment of `docs/design_record.md`,
+  # 2026-09-21 — so every arm row carries `pre_registered_unmeasured_count` beside it: the
+  # runs the pre-registered rule would have dropped. `dominant_compressed_len` is carried beside them and decides
   # nothing: it saturates at the tape cap plus zlib's envelope (`docs/design_record.md`,
   # 2026-09-16). An arm reads with MIN_ARM_RUNS measured runs, or with a blank block of
   # MIN_BARREN_RUNS; a steal arm whose `steal_rate` never left zero reads as theft that
@@ -44,7 +47,7 @@ module Experiments
     MIN_BARREN_RUNS = 10
 
     COLUMNS = %w[
-      arm emerged measured instructions_first instructions_last core_first core_last
+      arm emerged measured pre_registered_unmeasured instructions_first instructions_last core_first core_last
       compressed_first compressed_last lineages_first lineages_last rising plateau
       peak_steal_rate theft reading
     ].freeze
@@ -55,24 +58,31 @@ module Experiments
     # The two decile medians of one observable over one run's post-crossing samples.
     Span = Data.define(:first, :last) do
       # A span starting at zero has no ratio at all: nothing rose or plateaued by a
-      # percentage of nothing, so it is unmeasured rather than flat or infinite.
-      def measured? = !first.zero?
+      # percentage of nothing, so a percentage of it is unread rather than flat or infinite.
+      def ratio? = !first.zero?
 
       def growth = last / first.to_f
 
-      def rose_by?(margin) = measured? && growth >= 1 + margin
+      def rose_by?(margin) = ratio? && growth >= 1 + margin
 
-      def fell? = measured? && growth < 1.0
+      # Absolute, not a ratio: a core of zero bytes that stays at zero has not fallen
+      # (`docs/design_record.md`, 2026-09-21).
+      def fell? = last < first
 
-      def flat_within?(band) = measured? && growth.between?(1 - band, 1 + band)
+      def flat_within?(band) = ratio? && growth.between?(1 - band, 1 + band)
     end
 
-    # The pre-registered rule reads the instruction count and the conserved core over the
-    # same span, so a run carrying only one of the two is unread rather than counted on the
-    # instruction count alone: without a core span the "core did not fall" clause is
-    # vacuous and the run could only ever be a plateau.
+    # The amended rule of 2026-09-21 reads a run on its instruction count: a run whose
+    # first-decile median of `dominant_instruction_count` is nonzero is measured, and its
+    # conserved core is compared in bytes rather than as a ratio, so a core that reads zero
+    # at both ends satisfies "the core did not fall". A run carrying no core sample at all
+    # over the span is still unread: there the clause cannot be read at all, and the run
+    # could only ever be a plateau. `pre_registered_measured?` keeps the pre-registered
+    # reading beside the amended one, as that entry requires.
     Reading = Data.define(:instructions, :core, :compressed, :lineages) do
-      def measured? = spanned?(instructions) && spanned?(core)
+      def measured? = spanned?(instructions) && instructions.ratio? && spanned?(core)
+
+      def pre_registered_measured? = measured? && core.ratio?
 
       def rising? = measured? && instructions.rose_by?(RISE_MARGIN) && !core.fell?
 
@@ -80,7 +90,7 @@ module Experiments
 
       private
 
-      def spanned?(span) = span.present? && span.measured?
+      def spanned?(span) = span.present?
     end
 
     Arm = Data.define(:label, :terminal_count, :readings, :steals, :peak_steal_rate) do
@@ -93,6 +103,11 @@ module Experiments
       def rising_count = measured.count(&:rising?)
 
       def plateau_count = measured.count(&:plateau?)
+
+      # What the pre-registered rule of DESIGN §1.3 read here: the runs it would have
+      # dropped as unmeasured because their conserved core starts at zero bytes, so the
+      # amended reading is never printed without it (`docs/design_record.md`, 2026-09-21).
+      def pre_registered_unmeasured_count = measured.count { |reading| !reading.pre_registered_measured? }
 
       def readable? = measured_count >= MIN_ARM_RUNS
 
@@ -150,7 +165,8 @@ module Experiments
       def theft_label = theft == :no_steal_op ? nil : theft.to_s.tr("_", " ")
 
       def cells
-        [label, emerged_count, measured_count, *span_cells(instructions), *span_cells(core),
+        [label, emerged_count, measured_count, pre_registered_unmeasured_count,
+         *span_cells(instructions), *span_cells(core),
          *span_cells(compressed), *span_cells(lineages), rising_count, plateau_count,
          peak_steal_rate, theft_label, reading_label]
       end

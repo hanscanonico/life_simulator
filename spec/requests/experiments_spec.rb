@@ -421,6 +421,17 @@ RSpec.describe "Experiments", type: :request do
         expect(response.body.squish).to include("12 → 40", "30 → 30", "139 → 139")
       end
 
+      it "says how many of an arm's measured runs the pre-registered rule would have dropped" do
+        experiment.runs.each { |run| run.samples.update_all("values = values || '{\"conserved_core_bytes\": 0}'::jsonb") }
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Pre-registered unmeasured")
+        reading = response.body.squish.split("complexity-reading").last
+
+        expect(reading).to include("keeps rising", %(<td class="numeric">2</td> <td class="numeric">2</td>))
+      end
+
       it "reads a steal arm nothing ever stole in as theft that never evolved" do
         get experiment_path(experiment)
 
