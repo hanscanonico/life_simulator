@@ -377,19 +377,8 @@ RSpec.describe Experiments::TransitionReportService do
     run
   end
 
-  # The rows every statement that reads sample values brought back: the one number that
-  # says how much of the sweep the report held at once.
   def value_reads_of_report
-    reads = []
-    collect = lambda do |*, payload|
-      reads << payload[:row_count] if payload[:name] != "SCHEMA" && payload[:sql].include?("values")
-    end
-
-    ActiveSupport::Notifications.subscribed(collect, "sql.active_record") do
-      described_class.call(experiment: experiment).to_text
-    end
-
-    reads
+    value_reads_during { described_class.call(experiment: experiment).to_text }
   end
 
   def sample(compress_ratio, entropy:, replicators:, copy_rate:, tapes:, top_share:)

@@ -181,6 +181,27 @@ RSpec.describe Experiments::ComplexityArmsService do
     expect(arms).to be_empty
   end
 
+  # The host-parasite sweep is 1 260 runs of hundreds of samples each; a corpus where every
+  # one of them emerged is the one this reading holds the most of at once (issue #226).
+  describe "reading a sweep where every run emerged" do
+    let(:runs) { 200 }
+    let(:samples_per_run) { 200 }
+
+    before do
+      insert_sweep(experiment, runs: runs, samples_per_run: samples_per_run, emergence_epoch: 100,
+                               params: control_params) do |index|
+        { "dominant_instruction_count" => 10 + index, "conserved_core_bytes" => 40 }
+      end
+    end
+
+    it "reads the post-crossing samples one run at a time, in a statement count linear in the runs" do
+      reads = value_reads_during { arms.map(&:cells) }
+
+      expect(reads.max).to be <= samples_per_run
+      expect(reads.size).to be_between(runs, (runs + 10) * 2)
+    end
+  end
+
   def control_params = Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0)
 
   # A flat conserved core by default: the reading needs one over the same span, and a run
