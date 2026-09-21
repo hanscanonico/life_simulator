@@ -187,7 +187,7 @@ module Experiments
     end
 
     def reading_of(run)
-      series = series_by_run.fetch(run.id, {})
+      series = series_of(run)
 
       Reading.new(instructions: span_of(series[INSTRUCTIONS]), core: span_of(series[CORE]),
                   compressed: span_of(series[COMPRESSED]), lineages: span_of(series[LINEAGES]))
@@ -220,28 +220,19 @@ module Experiments
                                                   .group(:run_id).maximum(value_of(STEAL_RATE))
     end
 
-    # One query for every arm's series: the four readings are written into the same
-    # sample, and a sample the engine reported a null for drops out of that observable's
-    # series while staying in the others'.
-    def series_by_run
-      @series_by_run ||=
-        Sample.joins(:run).where(run_id: emerged_run_ids)
-              .where("samples.epoch >= runs.emergence_epoch")
-              .order(:run_id, :epoch)
-              .pluck(:run_id, *SERIES.map { |observable| value_of(observable) })
-              .group_by(&:first)
-              .transform_values { |rows| series_of(rows) }
-    end
+    # One query for one run's series, and one run's samples held at a time: the four
+    # readings are written into the same sample, and a sample the engine reported a null
+    # for drops out of that observable's series while staying in the others'. The
+    # post-crossing samples of every emerged run read at once were most of the 400 MiB
+    # lab:transition_report peaked at on an all-emerged corpus (issue #226).
+    def series_of(run)
+      rows = run.samples.where(epoch: run.emergence_epoch..).order(:epoch)
+                .pluck(*SERIES.map { |observable| value_of(observable) })
 
-    # The run id leads every plucked row, so an observable's column sits one past its rank
-    # in SERIES.
-    def series_of(rows)
       SERIES.each_with_index.to_h do |observable, index|
-        [observable, rows.filter_map { |row| row[index + 1]&.to_i }]
+        [observable, rows.filter_map { |row| row[index]&.to_i }]
       end
     end
-
-    def emerged_run_ids = sampled_runs.select(&:emerged?).map(&:id)
 
     # jsonb sorts numbers above strings and nulls, so a reading stored as anything but a
     # number is no reading here and the cast behind the guard is safe.
