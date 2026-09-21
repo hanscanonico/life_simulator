@@ -1,4 +1,4 @@
-<%# The pre-registered complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm: `arms` are
+<%# The complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm: `arms` are
     Experiments::ComplexityArmsService::Arm. %>
 <figure class="table-figure mt-4">
   <%# The caption sits outside .table-scroll: inside it, it is laid out at the table's width
@@ -10,8 +10,12 @@
     <span class="mono">dominant_instruction_count</span> by <%= percent_value rise_margin %>
     or more without their conserved core falling, and plateaus where at least half sit
     within <%= percent_value plateau_band %> of where they started. An arm clearing both
-    bars reads mixed and one clearing neither reads neither; a run carrying no conserved
-    core over the span is unmeasured, since the rule reads both observables.
+    bars reads mixed and one clearing neither reads neither. A run is measured on its
+    instruction count, and its conserved core is compared in bytes, so a core that reads
+    zero at both ends counts as a core that did not fall — the post-hoc amendment of
+    2026-09-21; the pre-registered rule dropped those runs as unmeasured, and the column
+    beside the count says how many of each arm's measured runs it dropped. A run carrying
+    no conserved core at all over the span is unmeasured.
     <span class="mono">dominant_compressed_len</span> is printed beside them and decides
     nothing: it saturates at the tape cap plus zlib's envelope, and
     <span class="mono">distinct_lineages</span> is the secondary reading of sweep 10, where
@@ -28,6 +32,7 @@
           <th>Arm</th>
           <th class="numeric">Emerged</th>
           <th class="numeric">Measured</th>
+          <th class="numeric">Pre-registered unmeasured</th>
           <th class="numeric">Instructions</th>
           <th class="numeric">Conserved core</th>
           <th class="numeric">Compressed length</th>
@@ -44,6 +49,7 @@
             <td class="mono"><%= arm.label %></td>
             <td class="numeric"><%= arm.emerged_count %> / <%= arm.terminal_count %></td>
             <td class="numeric"><%= arm.measured_count %></td>
+            <td class="numeric"><%= arm.pre_registered_unmeasured_count %></td>
             <td class="numeric"><%= render "experiments/complexity_span", span: arm.instructions %></td>
             <td class="numeric"><%= render "experiments/complexity_span", span: arm.core %></td>
             <td class="numeric"><%= render "experiments/complexity_span", span: arm.compressed %></td>

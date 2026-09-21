@@ -346,13 +346,17 @@ a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
    **Pre-registered reading**, on emerged runs only — a crossing the replicator census or
    `copy_rate` confirmed, any crossing of the run, not the detector's first alone. Per run,
    take the samples at or after that crossing and compare the **median of the last decile**
-   of them against the median of the first decile. A run is **measured** only where both
-   halves of the rule can be read over that span: a run carrying no `conserved_core_bytes`
-   sample, or whose first-decile median of either observable is zero (no ratio to take),
-   is unmeasured rather than counted on the instruction count alone. A measured run **keeps
-   rising** when its `dominant_instruction_count` median rises by at least **20%** and its
-   `conserved_core_bytes` median does not fall over the same span; it **plateaus** when the
-   last decile sits within **±10%** of the first. An arm keeps rising when at least half of
+   of them against the median of the first decile. A run is **measured** where its
+   `dominant_instruction_count` first-decile median is nonzero over that span; a run
+   carrying no `conserved_core_bytes` sample at all is unmeasured, since the core clause
+   cannot be read. A measured run **keeps rising** when its `dominant_instruction_count`
+   median rises by at least **20%** and its `conserved_core_bytes` median does not fall over
+   the same span — an **absolute** comparison in bytes, so a core at zero on both ends did
+   not fall; it **plateaus** when the last decile sits within **±10%** of the first. The
+   measured rule and the core clause are the post-hoc amendment of `docs/design_record.md`,
+   2026-09-21, made after this sweep's data were seen; the pre-registered rule required a
+   nonzero first-decile median of both observables and read 25 of the 26 emerged runs as
+   unmeasured, and every finding taken under the amended rule says so. An arm keeps rising when at least half of
    its measured emerged runs do, and plateaus when at least half plateau; an arm clearing
    **both** bars — one run rising against one plateauing — reads **mixed**, never rising,
    and an arm clearing **neither** bar, its runs having mostly fallen, reads **neither**.
@@ -384,10 +388,12 @@ a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
     pair, with `dominant_compressed_len` and `distinct_lineages` beside them.
     **Pre-registered reading**, identical to sweep 9's: on emerged runs only, the median of
     the last decile of a run's post-crossing samples against the median of its first
-    decile; a run is **measured** only where both halves of the rule can be read over that
-    span; a measured run **keeps rising** when `dominant_instruction_count` rises by at
-    least **20%** with `conserved_core_bytes` not falling, and **plateaus** when the last
-    decile sits within **±10%** of the first; an arm keeps rising or plateaus when at least
+    decile; a run is **measured** where its `dominant_instruction_count` first-decile median
+    is nonzero over that span; a measured run **keeps rising** when
+    `dominant_instruction_count` rises by at least **20%** with `conserved_core_bytes` not
+    falling in bytes — the absolute clause amended post hoc in `docs/design_record.md`,
+    2026-09-21, and read beside what the pre-registered rule read — and **plateaus** when
+    the last decile sits within **±10%** of the first; an arm keeps rising or plateaus when at least
     half of its measured runs do, reads **mixed** where it clears both bars and **neither**
     where it clears none, and reads at all only on two measured emerged runs or a blank
     block of ten. `dominant_compressed_len` is reported beside them and never decides.

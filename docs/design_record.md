@@ -899,3 +899,26 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   compared arm by arm. **Whether to relock the detector on the relative rule is not decided
   here**: that waits for the rescore, and until then every finding keeps reading
   `transition_epoch`.
+- 2026-09-21 — **A run whose conserved core is zero is read as measured; the conserved-core
+  clause of §1.3 sweeps 9 and 10 becomes absolute.** **This is a post-hoc amendment made
+  after the sweep's data were seen.** The reason: under the pre-registered rule a run is
+  measured only where the first-decile median of *both* `dominant_instruction_count` and
+  `conserved_core_bytes` is nonzero, because the rule is stated as ratios — and in the
+  finished host–parasite sweep the conserved core reads 0 in the first decile (and nearly
+  always in the last) of **25 of the 26 confirmed emerged runs**, so 25 runs drop out as
+  unmeasured, no arm reaches two measured runs, and every non-barren arm reads "unread". The
+  core is zero for a real reason: the dominant lineage's members diverge across most of their
+  bytes, so no byte is conserved. That is a reading, not a missing reading. **The amended
+  rule**: a run is **measured** when its `dominant_instruction_count` first-decile median is
+  nonzero over the post-crossing span, and the conserved-core clause is an **absolute**
+  comparison — the core "does not fall" when the last-decile median is not below the
+  first-decile median in bytes, so 0 → 0 satisfies it. A run carrying no `conserved_core_bytes`
+  sample at all over the span stays unmeasured: there the clause cannot be read at all.
+  Everything else is unchanged — rising (+20 % instructions with the core not falling),
+  plateau (±10 %), mixed, neither, barren, the two-measured-run threshold and the theft
+  readings. **Every finding that uses the amended rule must state what the pre-registered
+  rule read**, which was: unmeasured. So each arm row carries the count of its measured runs
+  the pre-registered rule would have dropped, in the sweep page's table and in the transition
+  report CSV (`pre_registered_unmeasured`), beside the amended reading it is never printed
+  without. Nothing about the engine, the samples or any locked observable moves: this is a
+  rule for reading stored samples, applied in `Experiments::ComplexityArmsService`.
