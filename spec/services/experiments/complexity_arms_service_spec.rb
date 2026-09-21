@@ -186,6 +186,7 @@ RSpec.describe Experiments::ComplexityArmsService do
   describe "reading a sweep where every run emerged" do
     let(:runs) { 200 }
     let(:samples_per_run) { 200 }
+    let(:steal_rate_aggregate_reads) { 1 }
 
     before do
       insert_sweep(experiment, runs: runs, samples_per_run: samples_per_run, emergence_epoch: 100,
@@ -194,11 +195,13 @@ RSpec.describe Experiments::ComplexityArmsService do
       end
     end
 
+    # One statement per emerged run for its post-crossing span, beside the single
+    # experiment-wide aggregate the peak steal rate is read with.
     it "reads the post-crossing samples one run at a time, in a statement count linear in the runs" do
       reads = value_reads_during { arms.map(&:cells) }
 
       expect(reads.max).to be <= samples_per_run
-      expect(reads.size).to be_between(runs, (runs + 10) * 2)
+      expect(reads.size).to eq(runs + steal_rate_aggregate_reads)
     end
   end
 

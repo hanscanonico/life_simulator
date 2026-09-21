@@ -351,20 +351,25 @@ RSpec.describe Experiments::TransitionReportService do
   describe "reading a sweep too large to hold at once" do
     let(:runs) { 400 }
     let(:samples_per_run) { 200 }
+    let(:steal_rate_aggregate_reads) { 1 }
 
     before do
-      insert_sweep(experiment, runs: runs, samples_per_run: samples_per_run,
+      insert_sweep(experiment, runs: runs, samples_per_run: samples_per_run, emergence_epoch: 10_000,
                                params: { "mutation_rate" => 0.000244 }) do |index|
         sample(index > 100 ? 0.4 : 0.9, entropy: 6.0 - (index / 50.0), replicators: index > 120 ? 3 : 0,
                                         copy_rate: 0.001, tapes: 900 - index, top_share: 0.02)
+          .merge("dominant_instruction_count" => 10 + index, "conserved_core_bytes" => 40)
       end
     end
 
+    # Each sampled run's samples are read once for its own row and each emerged run's
+    # post-crossing samples once more for the complexity reading, beside the single
+    # experiment-wide aggregate the peak steal rate is read with.
     it "reads the sample values one run at a time, in a statement count linear in the runs" do
       reads = value_reads_of_report
 
       expect(reads.max).to be <= samples_per_run
-      expect(reads.size).to be_between(runs, (runs + 10) * 2)
+      expect(reads.size).to eq(experiment.runs.count + runs + steal_rate_aggregate_reads)
     end
   end
 
