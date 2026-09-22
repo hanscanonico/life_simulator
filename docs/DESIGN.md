@@ -277,9 +277,9 @@ claim rests on it.
   constant threshold the observable was defined by before the relock — the first sampled
   epoch at which `compress_ratio < 0.6` and the next 3 samples do too, under the same two
   collapse guards. A **companion** reading, reported beside `transition_epoch` in the
-  transition report and on every finding that states a crossing count: every finding
-  stated before the relock was stated in it, and it is known to be cap-confounded above
-  `max_tape_len` 256 (docs/design_record.md, 2026-09-19).
+  transition report and on the room-to-grow finding, which states both counts: every
+  finding stated before the relock was stated in it, and it is known to be cap-confounded
+  above `max_tape_len` 256 (docs/design_record.md, 2026-09-19).
 
 **Replicator test**: a tape `T` is a replicator if executing `T ++ R` for a random tape
 `R` (fresh, seeded) yields `T` in the second half for at least 3 of 4 trials. Run on the

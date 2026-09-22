@@ -30,6 +30,18 @@ RSpec.describe Runs::PersistenceSummaryService do
     expect(described_class.call(run: run)).to be_nil
   end
 
+  # A run that sampled nothing inside the baseline window has nothing for the rule to
+  # measure its fall against, so it has no summary at all rather than one read by a rule
+  # it cannot answer.
+  it "reports nothing for a run whose samples hold no baseline" do
+    run.update!(transition_epoch: first_epoch)
+    (0..40).each do |index|
+      create(:sample, run: run, epoch: first_epoch + (index * 10), values: { "compress_ratio" => 0.3 })
+    end
+
+    expect(described_class.call(run: run)).to be_nil
+  end
+
   it "counts the epochs from the transition to the last sample of a run that holds" do
     record([0.94, 0.94, 0.5, 0.4, 0.3, 0.2])
 
