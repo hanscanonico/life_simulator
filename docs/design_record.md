@@ -940,12 +940,20 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   | 256 | 0.788 | 0.677 | 90 | 4 | 4 | 4 |
   | 512 | 0.754 | 0.618 | 30 | 30 | 1 | 1 |
 
-  The two rules agree in every one of the 35 arms of the other six experiments as well;
-  there is no relative-only crossing anywhere in the corpus; a surviving relative crossing
-  lands on its constant counterpart's epoch or 0–30 epochs after it, never before; and at
-  cap 512 the one crossing the relative rule keeps is the one the replicator census
-  confirms. **So every finding stated at cap `<= 256` stands unchanged**, and the only
-  reading that moves is the cap-512 arm of `max-tape-len`, from 30 of 30 flagged to 1 of 30.
+  Two distinct claims rest on that rescore, and they do not cover the same experiments:
+
+  | claim | what it covers |
+  |---|---|
+  | the two rules read the same crossings, arm by arm, in all 35 arms tabulated on 2026-09-19 | `energy-per-epoch`, `environmental-structure`, `mutation-rate`, `world-size`, `bff-control`, `host-parasite` |
+  | over the whole rescored corpus of 1 729 terminal runs the cap-512 arm is the only place the two rules part, and there is no crossing the relative rule finds and the constant one misses (#224) | everything, `max-tape-len`, `radius`, `max-steps` and `mutation-rate-long` included |
+
+  The corpus-wide sentence is the one the `radius`, `max-steps` and `mutation-rate-long`
+  finding pages cite, because the arm-by-arm tabulation never reached them. Beyond those
+  two claims: a surviving relative crossing lands on its constant counterpart's epoch or
+  0–30 epochs after it, never before; and at cap 512 the one crossing the relative rule
+  keeps is the one the replicator census confirms. **So every finding stated at cap
+  `<= 256` stands unchanged**, and the only reading that moves is the cap-512 arm of
+  `max-tape-len`, from 30 of 30 flagged to 1 of 30.
 
   **Why relock rather than keep the constant rule with a permanent footnote.** The
   confound is on `max_tape_len`, which is the axis the room-to-grow sweep varies: a primary
@@ -976,8 +984,13 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   both under the rule that made each (`transition_epoch_relative`, `transition_epoch_constant`)
   rather than under a role name, so the app — which deploys before the runners — reads an
   older runner's `transition_epoch` correctly as its constant reading. The `crossing`
-  snapshot reason (2026-09-19) follows the primary rule: a sample inside the baseline
-  window stores no crossing world, because until the window closes nothing can be judged.
+  snapshot reason follows the primary rule, and what it names has shifted with it: it is now
+  the first sample the tracker can *judge* as qualifying — the epoch `transition_epoch`
+  names when the fall happens past the baseline window, and the first qualifying sample
+  after the window closes when the fall began inside it, since nothing inside the window can
+  be judged until the baseline is known. So a run whose transition falls inside its own
+  window stores its `crossing` world later than the epoch the observable names, on top of
+  the cadence gap GitHub #185 already records. DESIGN §2's snapshot list says this.
   In Rails the two columns **swap names, not contents** — `runs.transition_epoch` becomes
   `transition_epoch_constant` and `runs.transition_epoch_relative` becomes
   `transition_epoch`, each column keeping the numbers its rule made, which is what keeps
@@ -986,13 +999,49 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   (`Runs::TransitionEpochService`, `Runs::ConstantTransitionEpochService`) and refreshes the
   persistence summary; `lab:backfill_relative_transitions` is gone into it.
 
-  **What does not move.** `emergence_epoch` and every reading of a state over time —
-  `Runs::CrossingsService`, `Runs::PersistenceSummaryService` — keep the constant rule, and
-  the corpus's stored emergences and persistence summaries are unchanged. The reason is
-  limit (2) above: the relative rule judges no crossing inside its own window, and a second
-  crossing would be judged against a baseline the first one contaminated, so a *series* of
-  crossings can only be read by the rule that needs no baseline. What makes an emergence is
-  the witness, not the threshold, so the candidate list stays as wide as it was.
+  **What keeps the constant rule, and the gate that leaves open.** The crossing *series* —
+  `Runs::CrossingsService`, and `emergence_epoch` through it — stays on the constant
+  threshold. The reason is limit (2) above: the relative rule judges no crossing inside its
+  own window, and a second crossing would be judged against a baseline the first one
+  contaminated, so a series of crossings can only be read by the rule that needs no
+  baseline. What makes an emergence is the witness, not the threshold, so the candidate list
+  stays as wide as it was and every stored emergence in the corpus is unchanged. The price
+  is stated plainly: **the gate on emergence therefore remains the cap-confounded rule**. A
+  future run that transitions on the relocked rule while never falling below 0.6 holds no
+  crossing `Runs::CrossingsService` can put a witness against, and cannot be confirmed as
+  emerged until that gate is revisited. No run in the corpus is in that position today; the
+  first one that is, is the trigger for the next entry.
+
+  **The persistence summary relocks with the transition — the decision to approve or
+  overturn.** The column swap left `Runs::PersistenceSummaryService` a hybrid: it anchors on
+  `runs.transition_epoch`, which is the relative reading from now on, while its
+  sample-by-sample predicate was still the constant one. That misreads twice. On one series
+  whose constant crossing is 510 and whose relative crossing is 560, the hybrid counts
+  `epochs_persisted` 340 where the stored summary says 390 — and `lab:backfill_transitions`
+  did not correct it, because the swap leaves both stored epochs equal to what a recompute
+  finds, so the run was never revisited. Worse, a run whose baseline is 1.0 and whose series
+  holds at 0.605 — transitioned under the relocked rule, never under the constant one —
+  reads `epochs_persisted` 0 and `relapsed` true for a world that held the state for 390
+  epochs, which is precisely the regime the relock exists to make measurable. **Decided:
+  the summary is anchored on the relocked `transition_epoch` and qualifies each sample by
+  the relative predicate**, `compress_ratio <= 0.61 x baseline` under the same two collapse
+  guards. Every sample at or after a relocked transition lies outside the baseline window by
+  construction, so the predicate is well defined over the whole span the summary reads, and
+  "in the transitioned state" means one rule everywhere a run is read after its transition.
+  A run whose samples hold no baseline has no summary, as it has no transition.
+  **The corpus's stored persistence summaries therefore do move**, and
+  `lab:backfill_transitions` now refreshes the summary of *every* run it visits rather than
+  only the ones whose epochs changed.
+
+  **Deploying it.** The app deploys before the runners, so there is a window in which a
+  pre-relock runner posts to a relocked app. Nothing is mis-stored — the wire keys are
+  rule-named and an older runner's `transition_epoch` is mapped to the constant column — but
+  an in-flight run under a pre-relock runner **reads as untransitioned on the primary
+  column** until `lab:backfill_transitions` rescores it. Post-deploy, in this order:
+  `lab:backfill_transitions` (both readings, and the persistence summary of every run it
+  visits), then `lab:backfill_emergence`, since a crossing that moved is a different
+  candidate. `lab:backfill_persistence` is the standalone for a run that needs the summary
+  alone rescored.
 
   **Pinned hashes.** No simulation byte moves: no RNG stream is drawn from, no `Metrics`
   field changes, the snapshot format is untouched (the relative block versions 6–8 already
@@ -1002,7 +1051,28 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   against its own start: a pinned reading of that observable is the one thing a reader must
   re-read, and the backfill is what re-reads the stored corpus.
 
-  **The findings.** `complexity-keeps-rising` already reads both rules side by side (#224);
-  its table now names the relocked reading as the primary one and the constant one as the
-  companion. No verdict on any finding page moves: they are all read from emerged runs, and
-  emergence is unchanged.
+  **The findings that only change their footing.** `complexity-keeps-rising` already reads
+  both rules side by side (#224); its table now names the relocked reading as the primary
+  one and the constant one as the companion, and no verdict on it moves — its peaks are read
+  from emerged runs, and emergence is unchanged. Five sweep pages — `mutation-rate`,
+  `mutation-rate-long`, `radius`, `world-size`, `max-steps` — state a verdict reached under
+  the constant threshold while their tables and phase diagrams read `runs.transition_epoch`
+  live, which is the relocked column. Each now says exactly that, and cites the claim above
+  that covers it. No verdict on those five moves either.
+
+  **The two findings whose population moves.** `emergence-can-be-left` and
+  `copy-cost-adaptation` are surveys of `Run.transitioned`, which is `transition_epoch` not
+  null — the relocked reading from now on — and they join samples at or after
+  `runs.transition_epoch`. So **29 rows leave both** (the cap-512 arm, 30 flagged by the
+  constant threshold, 1 kept by the relative rule), and none enters, since the corpus holds
+  no crossing the relative rule finds and the constant one misses. Both pages count from the
+  database at render time, so the headline counts fall by those 29; every surviving row
+  re-anchors on a crossing 0 to 30 epochs later, so its epochs persisted and its first
+  post-transition copy cost are read from there, and the persistence rule above moves the
+  spans again. The **relapse verdict of `emergence-can-be-left` does not turn on the
+  departing runs**: the two relapses the record names — the radius-2 run of 2026-09-11 and
+  `mutation-rate-long` 2^-12 seed 10 — are 64-byte-tape runs in arms where the two rules
+  read the same crossings, so "a transitioned world is not safe" survives the change of
+  population. The exact split after the backfill is what the page prints; it is not asserted
+  here. Both method paragraphs now name the rule they read by and say that the population
+  moved.

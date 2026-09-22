@@ -3,12 +3,19 @@
 require "rails_helper"
 
 RSpec.describe Runs::PersistenceSummaryService do
-  let(:run) { create(:run, status: "finished", transition_epoch: 20) }
+  # The rule reads a fall against the run's own baseline and no transition can fall inside
+  # the baseline window, so a series worth reading opens with a flat block of samples
+  # inside the window and says what it has to say after it. At a baseline of 0.94 the
+  # transitioned state is compress_ratio at or below 0.573.
+  let(:window) { Lab::TransitionRule::BASELINE_EPOCHS }
+  let(:first_epoch) { window + 10 }
+  let(:run) { create(:run, status: "finished", transition_epoch: first_epoch + 20) }
 
-  def record(series)
+  def record(series, baseline: 0.94)
+    (0..window).step(10) { |epoch| create(:sample, run: run, epoch: epoch, values: { "compress_ratio" => baseline }) }
     series.each_with_index do |values, index|
       values = { "compress_ratio" => values } if values.is_a?(Numeric)
-      create(:sample, run: run, epoch: index * 10, values: values)
+      create(:sample, run: run, epoch: first_epoch + (index * 10), values: values)
     end
   end
 
@@ -43,7 +50,7 @@ RSpec.describe Runs::PersistenceSummaryService do
 
   it "stops the count at the last sample the rule accepted, not at the series' end" do
     record([0.5, 0.4, 0.3, 0.94, 0.94])
-    run.update!(transition_epoch: 0)
+    run.update!(transition_epoch: first_epoch)
 
     summary = described_class.call(run: run)
 
@@ -56,7 +63,7 @@ RSpec.describe Runs::PersistenceSummaryService do
   context "with fewer samples from the crossing than an exit takes" do
     it "cannot flag a relapse" do
       record([0.5] + ([0.94] * (Runs::Persistence::EXIT_SAMPLES - 2)))
-      run.update!(transition_epoch: 0)
+      run.update!(transition_epoch: first_epoch)
 
       summary = described_class.call(run: run)
 
@@ -69,7 +76,7 @@ RSpec.describe Runs::PersistenceSummaryService do
     it "waits for one sample more than the hold before calling a relapse" do
       hold = Lab::TransitionRule::HOLD_SAMPLES
       record([0.5, 0.4] + ([0.94] * hold) + [0.3, 0.2])
-      run.update!(transition_epoch: 0)
+      run.update!(transition_epoch: first_epoch)
 
       summary = described_class.call(run: run)
 
@@ -79,7 +86,7 @@ RSpec.describe Runs::PersistenceSummaryService do
 
     it "calls the relapse on the very next sample" do
       record([0.5, 0.4] + ([0.94] * (Lab::TransitionRule::HOLD_SAMPLES + 1)))
-      run.update!(transition_epoch: 0)
+      run.update!(transition_epoch: first_epoch)
 
       summary = described_class.call(run: run)
 
@@ -139,20 +146,65 @@ RSpec.describe Runs::PersistenceSummaryService do
     summary = described_class.call(run: run)
 
     expect(summary.census_peak).to eq(123)
-    expect(summary.peak_epoch).to eq(20)
+    expect(summary.peak_epoch).to eq(first_epoch + 20)
     expect(summary).to be_counted
   end
 
   it "leaves the peak epoch blank for a census that never left zero" do
     record([{ "compress_ratio" => 0.5, "replicator_count" => 0 },
             { "compress_ratio" => 0.4, "replicator_count" => 0 }])
-    run.update!(transition_epoch: 0)
+    run.update!(transition_epoch: first_epoch)
 
     summary = described_class.call(run: run)
 
     expect(summary.census_peak).to eq(0)
     expect(summary.peak_epoch).to be_nil
     expect(summary).not_to be_counted
+  end
+
+  # The two readings can part on one series, and the summary hangs off the relocked one:
+  # the epochs are counted from the epoch `transition_epoch` names, not from the earlier
+  # epoch the constant companion named (docs/design_record.md, 2026-09-21).
+  context "with a constant crossing earlier than the relocked one" do
+    let(:series) do
+      (0..window).step(10).map { |epoch| [epoch, 0.94] } +
+        (510..550).step(10).map { |epoch| [epoch, 0.59] } +
+        (560..900).step(10).map { |epoch| [epoch, 0.50] } +
+        (910..950).step(10).map { |epoch| [epoch, 0.95] }
+    end
+
+    before do
+      series.each { |epoch, ratio| create(:sample, run: run, epoch: epoch, values: { "compress_ratio" => ratio }) }
+      run.update!(transition_epoch: 560, transition_epoch_constant: 510)
+    end
+
+    it "parts the two readings on this series" do
+      samples = run.samples.order(:epoch).pluck(:epoch, :values)
+
+      expect(Runs::TransitionEpochService.call(samples: samples)).to eq(560)
+      expect(Runs::ConstantTransitionEpochService.call(samples: samples)).to eq(510)
+    end
+
+    it "counts the epochs from the relocked crossing" do
+      summary = described_class.call(run: run)
+
+      expect(summary.epochs_persisted).to eq(340)
+      expect(summary).to be_relapsed
+    end
+  end
+
+  # A fall the constant threshold never sees at all — the regime the relock exists to make
+  # measurable — is a transitioned state the summary must read as held, not as left at once.
+  context "with a crossing only the relocked rule reads" do
+    it "counts the state as held to the last sample" do
+      record([0.605] * 40, baseline: 1.0)
+      run.update!(transition_epoch: first_epoch)
+
+      summary = described_class.call(run: run)
+
+      expect(summary.epochs_persisted).to eq(390)
+      expect(summary).not_to be_relapsed
+    end
   end
 
   it "reads the alphabet guard the way the tracker does" do
@@ -162,7 +214,7 @@ RSpec.describe Runs::PersistenceSummaryService do
             { "compress_ratio" => 0.2, "op_density" => 1.0 },
             { "compress_ratio" => 0.1, "op_density" => 1.0 },
             { "compress_ratio" => 0.1, "op_density" => 1.0 }])
-    run.update!(transition_epoch: 0)
+    run.update!(transition_epoch: first_epoch)
 
     summary = described_class.call(run: run)
 

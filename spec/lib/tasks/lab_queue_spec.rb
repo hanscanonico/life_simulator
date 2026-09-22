@@ -178,13 +178,26 @@ RSpec.describe "the lab queue tasks" do
       expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_constant: nil)
     end
 
-    it "leaves a run whose recorded epochs already match its samples alone" do
+    it "leaves a run whose epochs and summary already match its samples alone" do
       run = run_with_drop(transition_epoch: 510, transition_epoch_constant: 510)
+      Runs::PersistenceRefreshService.call(run: run)
       output = nil
 
       expect { output = invoke("lab:backfill_transitions", "bff-control") }
         .not_to(change { run.reload.updated_at })
       expect(output).to eq("backfilled 0 of 1 terminal runs\n")
+    end
+
+    # The relock renamed the columns rather than moving their contents, so a run can carry
+    # the epochs the rule now says it has and a summary read by the rule it replaced.
+    it "resummarises a run whose epochs did not move" do
+      run = run_with_drop(transition_epoch: 510, transition_epoch_constant: 510,
+                          persistence: { "census_peak" => nil, "peak_epoch" => nil,
+                                         "epochs_persisted" => 390, "relapsed" => false })
+
+      expect(invoke("lab:backfill_transitions", "bff-control"))
+        .to include("run #{run.id}: persistence", "backfilled 1 of 1 terminal runs")
+      expect(run.reload.persistence_summary.epochs_persisted).to eq(290)
     end
 
     it "leaves the runs still in the queue alone" do

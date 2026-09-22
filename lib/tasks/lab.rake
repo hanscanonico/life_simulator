@@ -109,14 +109,21 @@ namespace :lab do
       samples = run.samples.order(:epoch).pluck(:epoch, :values)
       recomputed = { transition_epoch: Runs::TransitionEpochService.call(samples: samples),
                      transition_epoch_constant: Runs::ConstantTransitionEpochService.call(samples: samples) }
-      next false if recomputed.all? { |reading, epoch| run.public_send(reading) == epoch }
+      moved = recomputed.any? { |reading, epoch| run.public_send(reading) != epoch }
+      if moved
+        puts "run #{run.id}: #{run.transition_epoch || 'none'} → #{recomputed[:transition_epoch] || 'none'}, " \
+             "constant #{run.transition_epoch_constant || 'none'} → " \
+             "#{recomputed[:transition_epoch_constant] || 'none'}"
+        run.update!(recomputed)
+      end
+      # Every run is resummarised, not only the ones whose epochs moved: the summary is
+      # read by the same rule as `transition_epoch`, so a run stored under an older reading
+      # of that rule is stale at an epoch that did not move (docs/design_record.md,
+      # 2026-09-21).
+      resummarised = Runs::PersistenceRefreshService.call(run: run)
+      puts "run #{run.id}: persistence #{run.persistence.presence || 'no transition'}" if resummarised && !moved
 
-      puts "run #{run.id}: #{run.transition_epoch || 'none'} → #{recomputed[:transition_epoch] || 'none'}, " \
-           "constant #{run.transition_epoch_constant || 'none'} → " \
-           "#{recomputed[:transition_epoch_constant] || 'none'}"
-      run.update!(recomputed)
-      Runs::PersistenceRefreshService.call(run: run)
-      true
+      moved || resummarised
     end
 
     puts "backfilled #{backfilled} of #{terminal.size} terminal runs"

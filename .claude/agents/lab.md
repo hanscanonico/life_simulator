@@ -51,8 +51,12 @@ removed; quote the whole task name in zsh, brackets and commas included.
 `lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes both
 transition readings from the stored samples of terminal runs — `transition_epoch`, read
 against the run's own baseline, and `transition_epoch_constant`, the constant-threshold
-companion (`docs/design_record.md`, 2026-09-21) — and refreshes each run's persistence
-summary against the epoch it has just rewritten. `"lab:backfill_emergence[<slug>]"` (or with no slug,
+companion (`docs/design_record.md`, 2026-09-21) — and refreshes the persistence summary of
+every run it visits, whether or not its epochs moved. **Run it after any deploy that
+crosses the 2026-09-21 relock**, then `lab:backfill_emergence`: until it has run, a run
+in flight under a pre-relock runner reads as untransitioned on `transition_epoch`.
+`"lab:backfill_persistence[<slug>]"` is the standalone that rewrites the summaries alone,
+for a run that needs nothing else rescored. `"lab:backfill_emergence[<slug>]"` (or with no slug,
 every experiment) confirms those crossings: it stores `emergence_epoch` /
 `emergence_witness` on every terminal run whose crossing the replicator census or the copy
 rate backs within the confirmation window — the detector's stored crossing or any later one

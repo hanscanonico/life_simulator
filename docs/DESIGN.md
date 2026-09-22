@@ -266,9 +266,12 @@ claim rests on it.
   crossing its samples hold (`Runs::CrossingsService`) — the replicator census or
   `copy_rate` positive within the confirmation window (`Runs::EmergenceEpochService`,
   docs/design_record.md 2026-09-15) — and it, not `transition_epoch`, is what the
-  open-endedness findings read. The crossing *series* every reading of a state over time
-  uses — `Runs::CrossingsService`, `emergence_epoch` and `Runs::PersistenceSummaryService`
-  — is read by the constant companion below, which needs no baseline
+  open-endedness findings read. The crossing *series* — `Runs::CrossingsService`, and
+  `emergence_epoch` through it — is read by the constant companion below, which needs no
+  baseline: the relative rule judges no crossing inside its own window, and a second
+  crossing would be judged against a baseline the first one contaminated. Everything read
+  *after* a transition, `Runs::PersistenceSummaryService` included, is read by the rule
+  above, whose window every such sample lies outside by construction
   (docs/design_record.md, 2026-09-21).
 - `transition_epoch_constant` (per run, once): the same measurement read against the
   constant threshold the observable was defined by before the relock — the first sampled
@@ -447,9 +450,12 @@ docs/              this file, design_record.md, findings
   `snapshots` (compressed world bytes + a PNG thumbnail rendered by the engine). Each
   snapshot records why the run loop took it: `cadence` (an epoch multiple of
   `snapshot_every`), `age` (the runner's wall-clock ceiling on snapshot age),
-  `crossing` (the first sample qualifying under the transition rule — the epoch
-  `transition_epoch` names, stored
-  before the next 3 samples confirm it; at most one per `snapshot_every` epochs),
+  `crossing` (the first sample the tracker can *judge* as qualifying under the transition
+  rule: the epoch `transition_epoch` names when the fall happens past the baseline window,
+  and the first qualifying sample after the window closes when the fall began inside it,
+  since nothing inside the window can be judged until the baseline is known — stored before
+  the next 3 samples confirm it, at most one per `snapshot_every` epochs, which is why the
+  world stored can sit well after the epoch the observable names, GitHub #185),
   `transition` (the sample that settled the transition) or `census` (the replicator census
   rising off zero, at most one per `snapshot_every` epochs).
 - **The runner is a stateless worker.** In lab mode it polls `POST /api/runs/claim` with
