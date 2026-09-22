@@ -48,9 +48,11 @@ and `"lab:discard_duplicates[<slug>]"` deletes the pending duplicates an older,
 non-idempotent seeding created, keeping one run per (params, seed). Both delete pending
 runs only — a claimed, running or terminal run is left where it is — and print the ids they
 removed; quote the whole task name in zsh, brackets and commas included.
-`lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes
-`transition_epoch` from the stored samples of terminal runs, for runs measured before the
-tracker survived a snapshot resume. `"lab:backfill_emergence[<slug>]"` (or with no slug,
+`lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes both
+transition readings from the stored samples of terminal runs — `transition_epoch`, read
+against the run's own baseline, and `transition_epoch_constant`, the constant-threshold
+companion (`docs/design_record.md`, 2026-09-21) — and refreshes each run's persistence
+summary against the epoch it has just rewritten. `"lab:backfill_emergence[<slug>]"` (or with no slug,
 every experiment) confirms those crossings: it stores `emergence_epoch` /
 `emergence_witness` on every terminal run whose crossing the replicator census or the copy
 rate backs within the confirmation window — the detector's stored crossing or any later one
@@ -59,11 +61,7 @@ its second (`docs/design_record.md`, 2026-09-15) — and prints per flagged run 
 emerged and by which witness, shouting when it clears a stored emergence. Run it after
 `lab:backfill_transitions`, since a crossing that moved is a different candidate; the
 open-endedness findings read only the confirmed ones.
-`"lab:backfill_relative_transitions[<slug>]"` (or with no slug, every experiment) fills
-`transition_epoch_relative`, the companion reading measured against a run's own baseline
-rather than the constant threshold (`docs/design_record.md`, 2026-09-19), from the stored
-samples of terminal runs. It leaves `transition_epoch` — the locked reading every finding
-is stated in — untouched, and it is how the corpus gets rescored for the relock decision. `"lab:transition_report[<slug>]"` reads the detector
+`"lab:transition_report[<slug>]"` reads the detector
 and the replicator census side by side over the stored samples — per run the flagged
 epoch, the bare threshold crossing, the entropy minimum, the replicator and copy-rate
 peaks and the final observables, then a per-arm count of the runs the two observables

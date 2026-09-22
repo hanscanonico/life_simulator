@@ -246,10 +246,10 @@ impl LabClient {
     ) -> Result<()> {
         let mut body = json!({ "samples": samples });
         if let Some(epoch) = transitions.epoch {
-            body["transition_epoch"] = json!(epoch);
-        }
-        if let Some(epoch) = transitions.relative {
             body["transition_epoch_relative"] = json!(epoch);
+        }
+        if let Some(epoch) = transitions.constant {
+            body["transition_epoch_constant"] = json!(epoch);
         }
         self.member(run, runner_id, "samples", body)
     }
@@ -283,10 +283,10 @@ impl LabClient {
     ) -> Result<()> {
         let mut body = json!({});
         if let Some(epoch) = transitions.epoch {
-            body["transition_epoch"] = json!(epoch);
-        }
-        if let Some(epoch) = transitions.relative {
             body["transition_epoch_relative"] = json!(epoch);
+        }
+        if let Some(epoch) = transitions.constant {
+            body["transition_epoch_constant"] = json!(epoch);
         }
         if let Some(summary) = summary {
             body["summary"] = serde_json::to_value(summary)?;

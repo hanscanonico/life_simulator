@@ -187,11 +187,18 @@ impl World {
         self.transition.epoch()
     }
 
-    /// The transition read against this run's own baseline rather than the constant
-    /// threshold, a companion to the locked `transition_epoch` above and never a
-    /// replacement for it (`docs/design_record.md`, 2026-09-19).
-    pub fn transition_epoch_relative(&self) -> Option<u64> {
-        self.transition.relative_epoch()
+    /// The transition read against the constant threshold the observable was defined by
+    /// before the 2026-09-21 relock: the companion to `transition_epoch` above, kept so
+    /// every finding stated on the constant rule can still be read
+    /// (`docs/design_record.md`, 2026-09-21).
+    pub fn transition_epoch_constant(&self) -> Option<u64> {
+        self.transition.constant_epoch()
+    }
+
+    /// Whether the sample last measured crossed under the transition rule — the world the
+    /// run loop stores under the `crossing` reason.
+    pub fn crossed_at_last_sample(&self) -> bool {
+        self.transition.crossed()
     }
 
     /// The hash of every byte the world holds, padding included — and after them, where
@@ -3494,20 +3501,70 @@ mod tests {
         assert_eq!(rescored.copy_rate, 0.0);
     }
 
+    /// The companion reading, which needs no baseline and so settles on the run's first
+    /// samples. `transition_epoch` itself is read against the run's own start and cannot
+    /// fire before that window closes — the test below it.
     #[test]
-    fn the_transition_epoch_is_the_start_of_a_sustained_drop() {
+    fn the_constant_reading_is_the_start_of_a_sustained_drop() {
         let params = Params {
             init: Init::Zero,
             mutation_rate: 0.0,
             ..soup(16, 16)
         };
         let mut world = quiet_diverse_soup(&params);
-        assert_eq!(world.transition_epoch(), None);
+        assert_eq!(world.transition_epoch_constant(), None);
         for _ in 0..4 {
             world.metrics();
             world.step();
         }
-        assert_eq!(world.transition_epoch(), Some(0));
+        assert_eq!(world.transition_epoch_constant(), Some(0));
+        assert_eq!(
+            world.transition_epoch(),
+            None,
+            "every sample so far is inside the baseline window"
+        );
+    }
+
+    /// `transition_epoch` is the fall read against the run's own baseline, so a world
+    /// only transitions past the baseline window — carrying, as a resumed run does, the
+    /// mean of the samples taken inside it. This one starts far below a baseline of 0.98
+    /// and crosses on its first sample past the window.
+    #[test]
+    fn a_world_past_its_baseline_window_transitions_against_its_own_start() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(16, 16)
+        };
+        let world = quiet_diverse_soup(&params);
+        let restored = snapshot::decode(&params, &world.snapshot()).unwrap();
+        let header = snapshot::Header {
+            epoch: 600,
+            transition: metrics::TransitionState {
+                relative: metrics::RelativeState {
+                    baseline_sum: 0.98,
+                    baseline_count: 1,
+                    ..metrics::RelativeState::default()
+                },
+                ..metrics::TransitionState::default()
+            },
+            ..restored.header
+        };
+        let blob = snapshot::encode(
+            &header,
+            &restored.cells,
+            &restored.lineages.unwrap_or_default(),
+            &restored.lens.unwrap_or_default(),
+            &restored.stock.unwrap_or_default(),
+        );
+        let mut world = World::from_snapshot(&params, 3, &blob).unwrap();
+
+        for _ in 0..4 {
+            world.metrics();
+            assert!(world.crossed_at_last_sample());
+            world.step();
+        }
+        assert_eq!(world.transition_epoch(), Some(600));
     }
 
     #[test]
@@ -3522,11 +3579,15 @@ mod tests {
             world.metrics();
             world.step();
         }
-        assert_eq!(world.transition_epoch(), None, "the drop has not held yet");
+        assert_eq!(
+            world.transition_epoch_constant(),
+            None,
+            "the drop has not held yet"
+        );
 
         let mut restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
         restored.metrics();
-        assert_eq!(restored.transition_epoch(), Some(0));
+        assert_eq!(restored.transition_epoch_constant(), Some(0));
     }
 
     /// A resumed run samples its snapshot's own epoch again, so the restored tracker has
@@ -3548,14 +3609,14 @@ mod tests {
         let mut restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
         restored.metrics();
         assert_eq!(
-            restored.transition_epoch(),
+            restored.transition_epoch_constant(),
             None,
             "epoch 2 had already been observed"
         );
 
         restored.step();
         restored.metrics();
-        assert_eq!(restored.transition_epoch(), Some(0));
+        assert_eq!(restored.transition_epoch_constant(), Some(0));
     }
 
     /// Production run 183's shape: with no mutation only `+`/`-` can mint a byte value,
@@ -3593,11 +3654,11 @@ mod tests {
             assert!(measured.compress_ratio < 0.6, "{measured:?}");
             world.step();
         }
-        assert_eq!(world.transition_epoch(), None);
+        assert_eq!(world.transition_epoch_constant(), None);
     }
 
     #[test]
-    fn a_soup_seeded_with_replicators_still_transitions() {
+    fn a_soup_seeded_with_replicators_still_crosses_the_constant_threshold() {
         let params = Params {
             tape_len: replicator::handwritten_replicator().len() as u32,
             mutation_rate: 0.0,
@@ -3619,7 +3680,7 @@ mod tests {
         let measured = world.metrics();
         assert!(measured.alphabet_size >= 16, "{measured:?}");
         assert!(measured.op_density <= 0.9, "{measured:?}");
-        assert!(world.transition_epoch().is_some(), "{measured:?}");
+        assert!(world.transition_epoch_constant().is_some(), "{measured:?}");
     }
 
     #[test]

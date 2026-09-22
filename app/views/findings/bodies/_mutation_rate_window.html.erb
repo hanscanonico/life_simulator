@@ -14,10 +14,13 @@
   A 128×128 torus of 64-byte tapes, 20 000 epochs per run, ten mutation rates from
   <span class="mono">0</span> up to <span class="mono">2<sup>-8</sup></span>, ten seeds
   each. Every other parameter is at its default. The dependent variable is
-  <em>transition epoch</em> as defined in DESIGN §1.2: the first sampled epoch at which
+  <em>transition epoch</em> as DESIGN §1.2 defined it until 2026-09-21, the constant
+  threshold: the first sampled epoch at which
   <span class="mono">compress_ratio</span> falls below 0.6 and stays below it for the next
   three samples. A run that never crosses that line is censored, not zero, and appears as
-  a hollow marker along the top of the phase diagram.
+  a hollow marker along the top of the phase diagram. The relative rule it was relocked on
+  reads the same crossings in every arm of this sweep (<span class="mono">docs/design_record.md</span>,
+  2026-09-21).
 </p>
 
 <h2>Result</h2>

@@ -5,8 +5,12 @@ module Runs
   # peak and the epoch it stood at, how many epochs the world held the transitioned state,
   # and whether it left that state before its last sample.
   #
-  # "In the transitioned state" is the engine's own rule, sample by sample
-  # (Lab::TransitionRule). Leaving it is read with the tracker's hold in reverse: the state
+  # "In the transitioned state" is read sample by sample by the constant companion rule
+  # (Lab::TransitionRule), which the 2026-09-21 relock left where it was: the relative rule
+  # judges no sample inside the baseline window, and a world that leaves the state and
+  # returns would be judged against a baseline its own fall contaminated. It is the rule
+  # the crossing series and `Runs::EmergenceEpochService` are read by, for the same reason.
+  # Leaving it is read with the tracker's hold in reverse: the state
   # ends at the first of `hold_samples + 1` consecutive samples the rule rejects, so a
   # single sample flickering back above the threshold is no more a relapse than a single
   # sample below it is a transition. A state that never ends persisted to the last sample.
@@ -30,6 +34,8 @@ module Runs
 
     def samples = @samples ||= @run.samples.order(:epoch).pluck(:epoch, :values)
 
+    def transitioned?(values) = Lab::TransitionRule.qualifies_constant?(values)
+
     def transitioned_samples
       @transitioned_samples ||= samples.drop_while { |epoch, _| epoch < @run.transition_epoch }
     end
@@ -40,7 +46,7 @@ module Runs
     # rule accepts before the exit, or before the end of the series when there is none.
     def persisted_through
       held = exit_index ? transitioned_samples.take(exit_index) : transitioned_samples
-      last = held.reverse.find { |_, values| Lab::TransitionRule.qualifies?(values) }
+      last = held.reverse.find { |_, values| transitioned?(values) }
 
       (last || transitioned_samples.first).first
     end
@@ -48,7 +54,7 @@ module Runs
     def exit_index
       return @exit_index if defined?(@exit_index)
 
-      qualifying = transitioned_samples.map { |_, values| Lab::TransitionRule.qualifies?(values) }
+      qualifying = transitioned_samples.map { |_, values| transitioned?(values) }
       exit_samples = Persistence::EXIT_SAMPLES
       @exit_index = (0..(qualifying.size - exit_samples)).find { |index| qualifying[index, exit_samples].none? }
     end

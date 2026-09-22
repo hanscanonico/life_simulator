@@ -3,86 +3,81 @@
 require "rails_helper"
 
 RSpec.describe Runs::TransitionEpochService do
-  let(:run) { create(:run, status: "finished") }
+  subject(:epoch) { described_class.call(samples: samples) }
 
-  def record(series)
-    series.each_with_index do |ratio, index|
-      create(:sample, run: run, epoch: index * 10, values: { "compress_ratio" => ratio })
+  # A cap-64 arm: the soup starts near 0.98, where the constant threshold was chosen, and
+  # the two rules read the same crossing — the series the engine's tracker reads as 510
+  # too (`a_run_that_starts_high_and_falls_reads_the_same_epoch_on_both_rules`, metrics.rs).
+  context "with a run that starts high and falls" do
+    let(:samples) { series(0.98, 0.5) }
+
+    it "reads the epoch the companion rule reads" do
+      expect(epoch).to eq(510)
+      expect(Runs::ConstantTransitionEpochService.call(samples: samples)).to eq(510)
     end
   end
 
-  it "reports the first sample of a drop that holds" do
-    record([0.94, 0.94, 0.5, 0.4, 0.3, 0.2])
+  # A cap-512 arm: the soup starts in the constant threshold's neighbourhood and never
+  # falls far from its own start, so it crosses the companion rule and nothing else
+  # (`a_run_that_starts_at_the_threshold_flags_on_the_constant_rule_alone`, metrics.rs).
+  context "with a run that starts low and drifts" do
+    let(:samples) { series(0.75, 0.46) }
 
-    expect(described_class.call(run: run)).to eq(20)
+    it "reads no crossing where the companion rule reads one" do
+      expect(epoch).to be_nil
+      expect(Runs::ConstantTransitionEpochService.call(samples: samples)).to eq(510)
+    end
   end
 
-  it "reports nothing for a drop that recovers before the hold is up" do
-    record([0.94, 0.5, 0.4, 0.4, 0.94])
+  context "with a run that fell inside the baseline window and sampled no further" do
+    let(:samples) { early_fall }
 
-    expect(described_class.call(run: run)).to be_nil
+    it "reads nothing, the baseline never having closed" do
+      expect(epoch).to be_nil
+    end
+
+    context "with one sample past the window" do
+      let(:samples) { early_fall + [[510, values(0.1)]] }
+
+      it "reads the crossing the closed window holds" do
+        expect(epoch).to eq(210)
+      end
+    end
   end
 
-  it "reports nothing for a run with no samples" do
-    expect(described_class.call(run: run)).to be_nil
+  context "with a run whose first sample comes after the baseline window" do
+    let(:samples) { series(0.98, 0.1).reject { |sample_epoch, _| sample_epoch <= 500 } }
+
+    it "reads nothing, there being no baseline to read against" do
+      expect(epoch).to be_nil
+    end
   end
 
-  it "reports the earliest drop that holds, not a later one" do
-    record([0.5, 0.4, 0.9, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05])
+  context "with a run read off its stored samples" do
+    let(:run) { create(:run) }
 
-    expect(described_class.call(run: run)).to eq(30)
-  end
-
-  it "drops the candidate at a sample that carries no compress_ratio" do
-    record([0.5, 0.4, 0.3])
-    create(:sample, run: run, epoch: 5, values: { "distinct_tapes" => 3 })
-
-    expect(described_class.call(run: run)).to be_nil
-  end
-
-  # The shape of production run 41: noise for 500 samples, then a fall that holds low.
-  it "reads run 41's series the way the engine's tracker does" do
-    ratios = ([0.94] * 500) + [0.725, 0.526, 0.052] + ([0.05] * 20)
-    record(ratios)
-
-    expect(described_class.call(run: run)).to eq(5010)
-  end
-
-  it "reports nothing while the drop is one sample short of the hold" do
-    record([0.5, 0.4, 0.3])
-
-    expect(described_class.call(run: run)).to be_nil
-  end
-
-  # Run 183's shape: compressible because the byte alphabet collapsed onto two
-  # instructions, not because anything replicates.
-  context "with a drop whose samples are all instructions" do
-    it "reports nothing" do
-      6.times do |index|
-        create(:sample, run: run, epoch: index * 10, values: { "compress_ratio" => 0.143, "op_density" => 1.0 })
+    it "reads the same epoch the samples give" do
+      series(0.98, 0.5).each do |sample_epoch, values|
+        create(:sample, run: run, epoch: sample_epoch, values: values)
       end
 
-      expect(described_class.call(run: run)).to be_nil
+      expect(described_class.call(run: run)).to eq(510)
     end
   end
 
-  context "with a sample that carries the alphabet it was read on" do
-    it "reads the collapse straight off it" do
-      6.times do |index|
-        create(:sample, run: run, epoch: index * 10,
-                        values: { "compress_ratio" => 0.2, "op_density" => 0.3, "alphabet_size" => 2 })
-      end
+  # A run that falls at epoch 210, well inside the window its own baseline is drawn from.
+  def early_fall
+    (0..20).map { |sample| [sample * 10, values(0.98)] } +
+      (21..50).map { |sample| [sample * 10, values(0.1)] }
+  end
 
-      expect(described_class.call(run: run)).to be_nil
-    end
+  # A baseline window of samples at `start`, then a run of samples at `fallen`.
+  def series(start, fallen)
+    (0..50).map { |sample| [sample * 10, values(start)] } +
+      (51..80).map { |sample| [sample * 10, values(fallen)] }
+  end
 
-    it "keeps a drop whose alphabet is alive" do
-      6.times do |index|
-        create(:sample, run: run, epoch: index * 10,
-                        values: { "compress_ratio" => 0.2, "op_density" => 0.3, "alphabet_size" => 200 })
-      end
-
-      expect(described_class.call(run: run)).to eq(0)
-    end
+  def values(ratio)
+    { "compress_ratio" => ratio, "op_density" => 0.5, "alphabet_size" => 200 }
   end
 end

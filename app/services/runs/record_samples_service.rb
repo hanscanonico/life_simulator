@@ -7,11 +7,11 @@ module Runs
   class RecordSamplesService
     include Callable
 
-    def initialize(run:, samples:, transition_epoch: nil, transition_epoch_relative: nil)
+    def initialize(run:, samples:, transition_epoch: nil, transition_epoch_constant: nil)
       @run = run
       @samples = samples
       @transition_epoch = transition_epoch
-      @transition_epoch_relative = transition_epoch_relative
+      @transition_epoch_constant = transition_epoch_constant
     end
 
     def call
@@ -36,8 +36,8 @@ module Runs
       attributes = {}
       attributes[:summary] = metrics(newest) if newest["epoch"].to_i >= newest_recorded
       attributes[:transition_epoch] = @transition_epoch if @run.earlier_transition_epoch?(@transition_epoch)
-      if @run.earlier_transition_epoch_relative?(@transition_epoch_relative)
-        attributes[:transition_epoch_relative] = @transition_epoch_relative
+      if @run.earlier_transition_epoch_constant?(@transition_epoch_constant)
+        attributes[:transition_epoch_constant] = @transition_epoch_constant
       end
       attributes
     end

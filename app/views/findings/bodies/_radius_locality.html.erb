@@ -35,9 +35,12 @@
   <%= sweep.fetch(:seeds).size %> seeds per arm and <%= epochs %> epochs per run, with the
   radius taking <span class="mono"><%= radii.to_sentence(last_word_connector: " and ") %></span>
   and every other parameter at its default. The dependent variable is the transition epoch
-  of DESIGN §1.2 — the first sampled epoch at which <span class="mono">compress_ratio</span>
+  of DESIGN §1.2, read here under the constant threshold that defined it until 2026-09-21 —
+  the first sampled epoch at which <span class="mono">compress_ratio</span>
   falls below 0.6 and stays below it for three further samples. A run that never crosses is
-  censored at <%= epochs %> epochs, not zero.
+  censored at <%= epochs %> epochs, not zero. The relative rule it was relocked on
+  reads the same crossings in every arm of this sweep (<span class="mono">docs/design_record.md</span>,
+  2026-09-21).
 </p>
 
 <h2>Result</h2>

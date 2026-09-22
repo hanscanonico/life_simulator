@@ -922,3 +922,87 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   report CSV (`pre_registered_unmeasured`), beside the amended reading it is never printed
   without. Nothing about the engine, the samples or any locked observable moves: this is a
   rule for reading stored samples, applied in `Experiments::ComplexityArmsService`.
+- 2026-09-21 — **`transition_epoch` relocks on the relative rule; the constant threshold
+  becomes the companion reading.** This closes the decision the 2026-09-19 entry deferred
+  (GitHub #174, #229). The primary dependent variable of every sweep is now the first
+  sampled epoch at which `compress_ratio <= 0.61 x baseline` and the next 3 samples do too,
+  under the same two collapse guards, where `baseline` is the mean `compress_ratio` of the
+  run's samples at epoch `<= 500`. The constant `compress_ratio < 0.6` reading is kept and
+  reported beside it as **`transition_epoch_constant`**.
+
+  **The evidence** — measured, not re-measured here, with `lab:detector_baseline` and the
+  `lab:backfill_relative_transitions` rescore of 1 729 terminal runs (2026-09-19):
+
+  | `max_tape_len` | mean over the first 500 epochs | min | n terminal | constant | relative | both |
+  |---|---|---|---|---|---|---|
+  | 64 | 0.984 | 0.973 | 30 | 3 | 3 | 3 |
+  | 128 | 0.853 | 0.796 | 90 | 5 | 5 | 5 |
+  | 256 | 0.788 | 0.677 | 90 | 4 | 4 | 4 |
+  | 512 | 0.754 | 0.618 | 30 | 30 | 1 | 1 |
+
+  The two rules agree in every one of the 35 arms of the other six experiments as well;
+  there is no relative-only crossing anywhere in the corpus; a surviving relative crossing
+  lands on its constant counterpart's epoch or 0–30 epochs after it, never before; and at
+  cap 512 the one crossing the relative rule keeps is the one the replicator census
+  confirms. **So every finding stated at cap `<= 256` stands unchanged**, and the only
+  reading that moves is the cap-512 arm of `max-tape-len`, from 30 of 30 flagged to 1 of 30.
+
+  **Why relock rather than keep the constant rule with a permanent footnote.** The
+  confound is on `max_tape_len`, which is the axis the room-to-grow sweep varies: a primary
+  dependent variable that reads the initial condition rather than the world is not a
+  dependent variable, and a footnote does not stop a future sweep from reading it. The
+  relative rule asks every run to fall as far, in its own terms, as a cap-64 run had to
+  fall under the constant threshold, which is what `0.6 / 0.984 = 0.61` is derived to do.
+
+  **Its structural limits, stated so they are never rediscovered as a surprise.** (1) It
+  **cannot fire before its baseline window closes at epoch 500**: a run has no reading
+  until then, where the constant rule reads from the first sample. (2) A crossing **inside
+  the window contaminates its own baseline** — the samples inside it are held back and
+  judged once the window closes, against a mean their own fall pulled down. (3) A run with
+  **no sample inside the window, or none past it, has no reading at all**; runs shorter
+  than 500 epochs are unmeasurable by it. (4) **Cross-cap comparisons remain the census's
+  job**: the relative rule removes the starting bias, it does not make a crossing a
+  replicator.
+
+  **The option not taken** was to keep the constant rule primary and report the relative
+  reading beside it forever. Its consequences would have been: no hash and no stored value
+  moves; every finding's transition table carries both rules permanently; and DESIGN §1.2
+  says the primary observable is known to be cap-confounded above `max_tape_len` 256 — a
+  known-broken instrument kept for continuity, which the record would have had to repeat at
+  every future sweep that varies the cap. It was rejected on that.
+
+  **What moves.** The engine's `TransitionTracker::epoch` is the relative reading and
+  `constant_epoch` the companion; `World::transition_epoch` follows, and the runner posts
+  both under the rule that made each (`transition_epoch_relative`, `transition_epoch_constant`)
+  rather than under a role name, so the app — which deploys before the runners — reads an
+  older runner's `transition_epoch` correctly as its constant reading. The `crossing`
+  snapshot reason (2026-09-19) follows the primary rule: a sample inside the baseline
+  window stores no crossing world, because until the window closes nothing can be judged.
+  In Rails the two columns **swap names, not contents** — `runs.transition_epoch` becomes
+  `transition_epoch_constant` and `runs.transition_epoch_relative` becomes
+  `transition_epoch`, each column keeping the numbers its rule made, which is what keeps
+  the migration reversible and the corpus readable at every point of it.
+  `lab:backfill_transitions[slug]` now recomputes **both** readings from the stored samples
+  (`Runs::TransitionEpochService`, `Runs::ConstantTransitionEpochService`) and refreshes the
+  persistence summary; `lab:backfill_relative_transitions` is gone into it.
+
+  **What does not move.** `emergence_epoch` and every reading of a state over time —
+  `Runs::CrossingsService`, `Runs::PersistenceSummaryService` — keep the constant rule, and
+  the corpus's stored emergences and persistence summaries are unchanged. The reason is
+  limit (2) above: the relative rule judges no crossing inside its own window, and a second
+  crossing would be judged against a baseline the first one contaminated, so a *series* of
+  crossings can only be read by the rule that needs no baseline. What makes an emergence is
+  the witness, not the threshold, so the candidate list stays as wide as it was.
+
+  **Pinned hashes.** No simulation byte moves: no RNG stream is drawn from, no `Metrics`
+  field changes, the snapshot format is untouched (the relative block versions 6–8 already
+  carry the baseline), and the pinned `(params, seed) -> hash` of both substrates and every
+  pinned observable string in `world.rs` are **unmoved**. What moves is the *observable*
+  `transition_epoch` itself, for the cap-512 arm and for any future run whose fall is small
+  against its own start: a pinned reading of that observable is the one thing a reader must
+  re-read, and the backfill is what re-reads the stored corpus.
+
+  **The findings.** `complexity-keeps-rising` already reads both rules side by side (#224);
+  its table now names the relocked reading as the primary one and the constant one as the
+  companion. No verdict on any finding page moves: they are all read from emerged runs, and
+  emergence is unchanged.

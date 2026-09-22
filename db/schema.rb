@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_19_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_21_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -70,10 +70,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_120000) do
     t.string "status", default: "pending", null: false
     t.jsonb "summary", default: {}, null: false
     t.integer "transition_epoch"
-    t.integer "transition_epoch_relative"
+    t.integer "transition_epoch_constant"
     t.datetime "updated_at", null: false
     t.index ["experiment_id"], name: "index_runs_on_experiment_id"
-    t.index ["finished_at"], name: "index_runs_on_finished_at_terminal", where: "((status)::text = ANY (ARRAY[('finished'::character varying)::text, ('failed'::character varying)::text]))"
+    t.index ["finished_at"], name: "index_runs_on_finished_at_terminal", where: "((status)::text = ANY ((ARRAY['finished'::character varying, 'failed'::character varying])::text[]))"
     t.index ["heartbeat_at"], name: "index_runs_on_heartbeat_at"
     t.index ["status", "id"], name: "index_runs_on_status_and_id"
     t.index ["status", "priority", "id"], name: "index_runs_on_status_and_priority_and_id", order: { priority: :desc }

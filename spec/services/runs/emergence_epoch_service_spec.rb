@@ -3,7 +3,7 @@
 require "rails_helper"
 
 RSpec.describe Runs::EmergenceEpochService do
-  let(:run) { create(:run, status: "finished", transition_epoch: 100) }
+  let(:run) { create(:run, status: "finished", transition_epoch: 100, transition_epoch_constant: 100) }
 
   def record(values_by_epoch)
     values_by_epoch.each { |epoch, values| create(:sample, run: run, epoch: epoch, values: values) }
@@ -30,7 +30,7 @@ RSpec.describe Runs::EmergenceEpochService do
   end
 
   it "confirms nothing for a run the detector never flagged" do
-    run.update!(transition_epoch: nil)
+    run.update!(transition_epoch: nil, transition_epoch_constant: nil)
     record(100 => { "replicator_count" => 12 })
 
     expect(described_class.call(run: run)).to have_attributes(epoch: nil, witness: nil)
@@ -52,6 +52,16 @@ RSpec.describe Runs::EmergenceEpochService do
 
   it "confirms nothing for a flagged run nothing was ever sampled from" do
     expect(described_class.call(run: run)).to have_attributes(epoch: nil, witness: nil)
+  end
+
+  # The relocked `transition_epoch` reads the run's own baseline, which judges no crossing
+  # inside that window and no later one against an uncontaminated baseline, so the
+  # candidates stay the constant rule's (docs/design_record.md, 2026-09-21).
+  it "reads the crossing series the companion rule holds, not the relocked epoch" do
+    run.update!(transition_epoch: nil)
+    record(100 => { "replicator_count" => 12 })
+
+    expect(described_class.call(run: run)).to have_attributes(epoch: 100, witness: "census")
   end
 
   it "reads the samples a caller has already loaded rather than the database" do

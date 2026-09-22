@@ -39,6 +39,7 @@ RSpec.describe Experiments::TransitionReportService do
   context "with a run whose samples hold a second crossing" do
     let!(:two_crossings) do
       run = create(:run, experiment: experiment, status: "finished", transition_epoch: 600,
+                         transition_epoch_constant: 600,
                          params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
       (0..20_000).step(100) do |epoch|
         create(:sample, run: run, epoch: epoch, values: late_emergence_values(epoch))
@@ -69,6 +70,7 @@ RSpec.describe Experiments::TransitionReportService do
   context "with a run whose fall is large against its own start" do
     let!(:relative_crosser) do
       run = create(:run, experiment: experiment, status: "finished", transition_epoch: 510,
+                         transition_epoch_constant: 510,
                          params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
       (0..800).step(10) do |epoch|
         create(:sample, run: run, epoch: epoch, values: fallen_values(epoch))
@@ -76,16 +78,16 @@ RSpec.describe Experiments::TransitionReportService do
       run
     end
 
-    it "reads the relative epoch off its samples beside the stored one" do
-      expect(row_for(relative_crosser)).to have_attributes(transition_epoch: 510, transition_epoch_relative: 510)
+    it "reads the companion epoch off its samples beside the stored one" do
+      expect(row_for(relative_crosser)).to have_attributes(transition_epoch: 510, transition_epoch_constant: 510)
     end
 
-    it "counts it under the relative rule and under both rules" do
-      expect(report.arms.sole).to have_attributes(relative: 1, both_rules: 1)
+    it "counts it under the companion rule and under both rules" do
+      expect(report.arms.sole).to have_attributes(constant: 1, both_rules: 1)
     end
 
-    it "leaves the runs that never left their own start out of the relative count" do
-      expect(row_for(true_positive).transition_epoch_relative).to be_nil
+    it "leaves a run whose samples settle no companion crossing out of that count" do
+      expect(row_for(true_positive).transition_epoch_constant).to be_nil
     end
 
     def fallen_values(epoch)
@@ -311,7 +313,7 @@ RSpec.describe Experiments::TransitionReportService do
       lines = report.to_text.lines.map(&:strip)
 
       expect(lines.first).to match(
-        /\Arun_id\s+seed\s+status\s+mutation_rate\s+transition_epoch\s+transition_epoch_relative\s+collapse_epoch/
+        /\Arun_id\s+seed\s+status\s+mutation_rate\s+transition_epoch\s+transition_epoch_constant\s+collapse_epoch/
       )
     end
 
@@ -375,8 +377,11 @@ RSpec.describe Experiments::TransitionReportService do
 
   def row_for(run) = report.rows.find { |row| row.run_id == run.id }
 
+  # A run whose two readings agree, which is every run of the corpus outside the widest
+  # tape cap (docs/design_record.md, 2026-09-21).
   def sampled(transition_epoch:, samples:, status: "finished")
     run = create(:run, experiment: experiment, status: status, transition_epoch: transition_epoch,
+                       transition_epoch_constant: transition_epoch,
                        params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
     samples.each_with_index { |values, index| create(:sample, run: run, epoch: (index + 1) * 100, values: values) }
     run
