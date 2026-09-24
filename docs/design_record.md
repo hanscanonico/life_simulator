@@ -922,8 +922,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   report CSV (`pre_registered_unmeasured`), beside the amended reading it is never printed
   without. Nothing about the engine, the samples or any locked observable moves: this is a
   rule for reading stored samples, applied in `Experiments::ComplexityArmsService`.
-- 2026-09-24 — **The host–parasite finding states its claim: one priced arm keeps rising,
-  on two measured runs, and the controls read neither.** Sweep 9 finished on 2026-09-20,
+- 2026-09-24 — **The host–parasite finding states its claim: one priced arm keeps rising, on
+  one of its two measured runs, and the controls read neither.** Sweep 9 finished on 2026-09-20,
   1 260 runs, every one terminal, 90 per arm. Read under the amended measured-run rule of
   2026-09-21 (`FORMAT=csv lab:transition_report[host-parasite]`, 2026-09-24):
 

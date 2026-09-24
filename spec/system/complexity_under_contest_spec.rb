@@ -39,9 +39,12 @@ RSpec.describe "The complexity-under-contest finding", type: :system do
     expect(page).to have_text("0×512 128 (0 of 10) emerged in none of its runs and reads barren")
   end
 
-  it "states the pre-registered rule's result beside the amended reading" do
-    expect(page).to have_text("Under the pre-registered rule 3 of the 4 emerged runs are unmeasured and no arm reads.")
+  it "states the pre-registered rule's result beside the amended claim and its arm table" do
+    statement = "Under the pre-registered rule 3 of the 4 emerged runs are unmeasured and no arm reads."
+
+    within("#complexity-arms-verdict") { expect(page).to have_text(statement) }
     expect(page).to have_css("#complexity-reading")
+    expect(page).to have_text(statement, count: 2)
   end
 
   it "reads the theft the steal arm evolved" do
