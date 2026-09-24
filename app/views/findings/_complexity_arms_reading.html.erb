@@ -1,0 +1,25 @@
+<%# The complexity verdict per arm under the amended measured-run rule, never printed
+    without what the pre-registered rule read (`docs/design_record.md`, 2026-09-21), then
+    the per-run counts pooled across arms, which decide nothing. %>
+<h3>Does complexity keep rising, arm by arm</h3>
+<%= render "experiments/complexity_report", arms: reading.complexity_arms,
+                                            rise_margin: Experiments::ComplexityArmsService::RISE_MARGIN,
+                                            plateau_band: Experiments::ComplexityArmsService::PLATEAU_BAND %>
+<p>
+  <strong><%= reading.pre_registered_sentence %></strong>
+  Every reading above is taken under the measured-run rule as amended after this data was
+  seen: the pre-registered rule wanted a nonzero first-decile median of the conserved core as
+  well, and dropped every run whose dominant lineage conserved no byte.
+  <% if reading.pre_registered_readable_arms.empty? %>
+    Read under the rule as it was registered, no arm of this sweep says anything at all.
+  <% end %>
+</p>
+<p>
+  <strong>Pooled over runs, descriptive only.</strong>
+  <%= reading.treated_rising_count %> of the <%= reading.treated_measured_count %> measured
+  runs of the <%= reading.treated_name.pluralize %> keep rising, against
+  <%= reading.control_rising_count %> of the <%= reading.control_measured_count %> of the
+  <%= reading.control_name.pluralize %>. This count is not part of the pre-registered
+  reading, which is made arm by arm, and decides nothing: it is printed so a rising arm can
+  be weighed against the runs around it.
+</p>

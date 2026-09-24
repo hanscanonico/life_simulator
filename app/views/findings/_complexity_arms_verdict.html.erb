@@ -1,0 +1,9 @@
+<%# The claim of a sweep read arm by arm against a control at the same cap: `reading` is a
+    Findings::ComplexityArmsReading. %>
+<p>
+  <span class="badge <%= reading.badge_class %>"><%= reading.verdict_label %></span>
+  <strong><%= reading.headline %></strong>
+</p>
+<% reading.rising_notes.each do |note| %>
+  <p><%= note %></p>
+<% end %>

@@ -189,6 +189,15 @@ RSpec.describe Findings::Registry do
     expect(described_class.for_experiment("unwritten")).to be_empty
   end
 
+  it "holds the host-parasite finding at partial while its one rising arm stands on the fewest runs" do
+    finding = described_class.find("complexity-under-contest")
+
+    expect(finding).to have_attributes(experiment_slug: "host-parasite", status: :partial)
+    expect(finding.summary).to include("a single priced arm keeps rising, on the fewest measured runs the rule reads",
+                                       "amended after the data were seen")
+    expect(finding.summary).not_to include("No arm has read yet")
+  end
+
   it "holds the finished max-steps sweep at partial, censored rather than complete" do
     finding = described_class.find("interaction-budget")
 

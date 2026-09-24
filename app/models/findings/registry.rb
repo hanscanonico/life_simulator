@@ -12,17 +12,21 @@ module Findings
         date: Date.new(2026, 9, 18),
         experiment_slug: "host-parasite",
         related_finding_slugs: %w[complexity-keeps-rising replicator-complexity-plateau],
-        status: :open,
+        status: :partial,
         summary: "Complexity rises at emergence and then stops rising on every substrate " \
                  "the programme has tested, because a byte off the copy path costs its " \
                  "tape nothing and no quantity in the world is worth taking. DESIGN §1.3 " \
-                 "sweep 9 prices that: instruction energy becomes a stock that carries " \
-                 "across epochs, bounded by a cap, and with the steal op on a tape can " \
-                 "take what a neighbour saved. The reading is pre-registered on " \
-                 "dominant_instruction_count and the conserved core, never on compressed " \
-                 "length, and it is taken on the last decile of a run's post-crossing " \
-                 "samples against its first. No arm has read yet: this page states the " \
-                 "question, the arms and the rule the claim will be made by."
+                 "sweep 9 priced that — instruction energy as a stock, with a steal op " \
+                 "that takes what a neighbour saved — and the sweep has finished. Pricing " \
+                 "energy did not make life more common: no priced arm emerged more often " \
+                 "than the economy-off control at its cap, and the poorest economy held no " \
+                 "replicator at all. Theft evolved wherever it was offered. Read arm by arm " \
+                 "on dominant_instruction_count and the conserved core, a single priced " \
+                 "arm keeps rising, on the fewest measured runs the rule reads, while the " \
+                 "others plateau, read neither or hold too few runs to read — and that " \
+                 "reading stands on a measured-run rule amended after the data were seen; " \
+                 "as registered, the rule reads almost every emerged run as unmeasured and " \
+                 "no arm at all."
       ),
       Finding.new(
         slug: "complexity-under-asymmetry",
