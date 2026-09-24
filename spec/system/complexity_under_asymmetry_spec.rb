@@ -37,7 +37,10 @@ RSpec.describe "The complexity-under-asymmetry finding", type: :system do
   end
 
   it "reads the concat control under both rules as the reference" do
-    expect(page).to have_text("Under the pre-registered rule 2 of the 2 emerged runs are unmeasured and no arm reads.")
+    statement = "Under the pre-registered rule 2 of the 2 emerged runs are unmeasured and no arm reads."
+
+    within("#complexity-arms-verdict") { expect(page).to have_text(statement) }
+    expect(page).to have_text(statement, count: 2)
     expect(page).to have_text("Read under the amended rule, concat 128 has 0 rising and 1 plateauing of " \
                               "2 measured runs and reads plateau.")
     expect(page).to have_css("#complexity-reading")
