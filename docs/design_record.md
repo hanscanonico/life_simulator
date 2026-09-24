@@ -967,3 +967,44 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   arms and pairs each treated arm with the control at its `max_tape_len`, so it is built to
   serve sweep 10 with its own control predicate. Nothing about the engine, the rules or any
   observable moves.
+- 2026-09-24 — **The asymmetric-execution finding states its claim: every host arm is
+  barren, so the refutation condition cannot be evaluated.** Sweep 10 finished on
+  2026-09-21, 360 runs, every one terminal, 90 per arm. Read under the amended measured-run
+  rule of 2026-09-21 (`FORMAT=csv lab:transition_report[asymmetric-execution]`, 2026-09-24):
+
+  | arm | emerged / 90 | measured | pre-registered unmeasured | rising | plateau | reading |
+  |---|---|---|---|---|---|---|
+  | `concat 128` (control) | 5 | 5 | 5 | 1 | 2 | neither |
+  | `concat 256` (control) | 4 | 4 | 4 | 1 | 1 | neither |
+  | `host 128` | 0 | 0 | 0 | 0 | 0 | barren |
+  | `host 256` | 0 | 0 | 0 | 0 | 0 | barren |
+
+  **The claim**: nothing emerged under `host` — 0 of 90 at each cap against 5 and 4 of 90 in
+  the `concat` controls at the same caps (two-sided Fisher exact p = 0.059 at 128 and 0.12 at
+  256; pooled over both caps, descriptive only, 0 of 180 against 9 of 180, p = 0.0035).
+  Under the 2026-09-15 rule a blank block of ten reads as an arm holding no replicator; here
+  the blank block is every run of both arms. Running only the first tape's code did not lower
+  the plateau, it kept replication from arising at all, which is the mode's own null the
+  finding named in advance ("halving a pair's code stops abiogenesis"). So the
+  **pre-registered refutation** — the `host` arms plateau where their `concat` controls
+  plateau — **cannot be evaluated**: it needs a `host` plateau to set beside a control's, and
+  a control read alone says nothing about asymmetry. The **secondary reading** on
+  `distinct_lineages` is unreadable for the same reason: no host arm has a measured run and
+  so no lineage span. The controls read **neither** under the amended rule (last-decile
+  `distinct_lineages` medians 2 and 1, against 37 and 77 at the start), and **under the
+  pre-registered measured rule** every one of the 9 emerged control runs is unmeasured, for a
+  conserved core at zero, and no arm reads; the page prints both as reference readings of the
+  same worlds. Those worlds are, seed for seed, sweep 9's economy-off control (`host-parasite`
+  arms `0 128` and `0 256`): the same nine seeds emerged at the same epochs, because both
+  sweeps ran the default substrate as their control and the engine is deterministic in
+  `(params, seed)`. They are separate runs in the database, but the two findings' controls are
+  one control read twice, not independent evidence.
+
+  **Registry status `negative`**: the sweep finished and the effect was not there — the
+  asymmetric mode produced no replicator to carry any effect, in 180 seeds. The page renders
+  every count from the stored runs through `Findings::ComplexityArmsReading` with a `concat`
+  control predicate (a run carrying no `interaction` reads the engine schema's default,
+  `concat`), and gains an every-treated-arm-barren branch in its headline, verdict and
+  refutation sentence. What the barren asymmetry bet means for the programme is not decided
+  here; a later entry weighs it (#233). Nothing about the engine, the rules or any
+  observable moves.

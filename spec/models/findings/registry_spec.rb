@@ -198,6 +198,14 @@ RSpec.describe Findings::Registry do
     expect(finding.summary).not_to include("No arm has read yet")
   end
 
+  it "holds the asymmetric-execution finding at negative, its host arms barren" do
+    finding = described_class.find("complexity-under-asymmetry")
+
+    expect(finding).to have_attributes(experiment_slug: "asymmetric-execution", status: :negative)
+    expect(finding.summary).to include("the host arms are barren at both caps", "cannot be evaluated")
+    expect(finding.summary).not_to include("No arm has read yet")
+  end
+
   it "holds the finished max-steps sweep at partial, censored rather than complete" do
     finding = described_class.find("interaction-budget")
 

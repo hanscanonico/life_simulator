@@ -1393,11 +1393,11 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
-    context "with the asymmetric-execution skeleton" do
-      let(:pending_finding) { Findings::Registry.find("complexity-under-asymmetry") }
+    context "with the asymmetric-execution finding" do
+      let(:asymmetry_finding) { Findings::Registry.find("complexity-under-asymmetry") }
 
-      it "states the question, the arms and the rule the claim will be made by" do
-        get finding_path(pending_finding)
+      it "states the question, the arms and the rule the claim is made by" do
+        get finding_path(asymmetry_finding)
 
         expect(response.body.squish)
           .to include("does complexity keep rising when only one partner's code runs?",
@@ -1405,21 +1405,23 @@ RSpec.describe "Findings", type: :request do
                       "the two room-to-grow caps whose plateau sweep 8 measured")
       end
 
-      it "states the secondary reading and what would refute the sweep" do
-        get finding_path(pending_finding)
+      it "states the amended measured rule as post hoc, the secondary reading and what would refute the sweep" do
+        get finding_path(asymmetry_finding)
 
         expect(response.body.squish)
-          .to include("last decile holds more lineages than the",
+          .to include("since the core clause cannot be read on it", "<strong>post-hoc amendment</strong>",
+                      "last decile holds more lineages than the",
                       "controls plateau — same caps, same rate, same world")
-        expect(response.body).to include(%(<span class="badge badge-info">open</span>))
+        expect(response.body).to include(%(<span class="badge badge-error">negative</span>))
       end
 
-      it "says no arm has read yet and points at the sweep the lab will fill it from" do
+      it "says there is no arm to read and points at the sweep" do
         create(:experiment, name: "Asymmetric execution", slug: "asymmetric-execution")
 
-        get finding_path(pending_finding)
+        get finding_path(asymmetry_finding)
 
-        expect(response.body.squish).to include("No claim yet: 0 runs of the sweep have finished")
+        expect(response.body.squish).to include("has reported a sample in this database, so there is no arm")
+        expect(response.body).not_to include("No claim yet")
         expect(response.body).to include(experiment_path("asymmetric-execution"))
       end
     end

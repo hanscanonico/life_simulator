@@ -66,6 +66,14 @@ module Findings
                                 control: ->(params) { params["energy_influx"].to_i.zero? })
     end
 
+    # Sweep 10 read the same way, each host arm against the concat control at its cap. A run
+    # carrying no interaction ran the engine's default, which is the control.
+    def complexity_under_asymmetry
+      @complexity_under_asymmetry ||=
+        complexity_arms_reading(treated_name: "host arm", control_name: "concat control",
+                                control: ->(params) { interaction_of(params) == "concat" })
+    end
+
     def diagrams = evidence ? evidence.diagrams : []
 
     def runs_done = evidence ? evidence.finished_count : 0
@@ -84,6 +92,8 @@ module Findings
     def arm_column = evidence&.arm_columns&.first || "Arm"
 
     private
+
+    def interaction_of(params) = params.fetch("interaction") { Lab::Schema.defaults.fetch("interaction") }
 
     def complexity_arms_reading(**sweep)
       ComplexityArmsReading.build(experiment: experiment, complexity_arms: evidence ? evidence.complexity_arms : [],
