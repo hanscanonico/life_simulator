@@ -66,7 +66,7 @@ module Findings
 
     attr_reader :complexity_arms, :treated_name, :control_name
 
-    def arms = @arms ||= experiment ? arms_of(sampled_runs) : []
+    def arms = @arms ||= arms_of(sampled_runs)
 
     delegate :any?, to: :arms
 
@@ -155,7 +155,9 @@ module Findings
       "#{lead}. #{theft_null_sentence}"
     end
 
-    def emerged_count = complexity_arms.sum(&:emerged_count)
+    # Every emerged run, the ones in arms the complexity reading publishes no row for
+    # included: an arm whose emerged runs are all unmeasured still has them to account for.
+    def emerged_count = sampled_runs.count(&:emerged?)
 
     # The emerged runs the pre-registered rule read no ratio on: those unmeasured under the
     # amended rule too, and the measured ones it would have dropped for a core at zero.
@@ -200,8 +202,10 @@ module Findings
     # A run that reported no sample never ran a world anyone can read, the same runs the
     # complexity reading leaves out.
     def sampled_runs
-      experiment.runs.where("EXISTS (SELECT 1 FROM samples WHERE samples.run_id = runs.id)")
-                .order(:id).select(:id, :params, :status, :emergence_epoch).to_a
+      return [] unless experiment
+
+      @sampled_runs ||= experiment.runs.where("EXISTS (SELECT 1 FROM samples WHERE samples.run_id = runs.id)")
+                                  .order(:id).select(:id, :params, :status, :emergence_epoch).to_a
     end
 
     def rising_verdict = rising_arms.size * 2 > treated.size ? :mostly_rising : :keeps_rising

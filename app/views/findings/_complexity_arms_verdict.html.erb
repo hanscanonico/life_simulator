@@ -1,9 +1,17 @@
 <%# The claim of a sweep read arm by arm against a control at the same cap: `reading` is a
-    Findings::ComplexityArmsReading. %>
-<p>
-  <span class="badge <%= reading.badge_class %>"><%= reading.verdict_label %></span>
-  <strong><%= reading.headline %></strong>
-</p>
-<% reading.rising_notes.each do |note| %>
-  <p><%= note %></p>
-<% end %>
+    Findings::ComplexityArmsReading. The claim stands on the amended measured-run rule, so
+    what the pre-registered rule read is stated with it (`docs/design_record.md`, 2026-09-21). %>
+<div id="complexity-arms-verdict">
+  <p>
+    <span class="badge <%= reading.badge_class %>"><%= reading.verdict_label %></span>
+    <strong><%= reading.headline %></strong>
+  </p>
+  <% reading.rising_notes.each do |note| %>
+    <p><%= note %></p>
+  <% end %>
+  <p>
+    That reading is taken under the measured-run rule as amended after the data were seen
+    (<span class="mono">docs/design_record.md</span>, 2026-09-21).
+    <strong><%= reading.pre_registered_sentence %></strong>
+  </p>
+</div>

@@ -179,6 +179,17 @@ RSpec.describe Findings::ComplexityArmsReading do
         .to eq("Under the pre-registered rule 5 of the 8 emerged runs are unmeasured and 1 arm reads.")
     end
 
+    context "with an emerged run in an arm the complexity reading carries no row for" do
+      let(:complexity_arms) { [arm(off, 128, runs: %i[neither neither])] }
+
+      before { seed_runs(priced, 128, terminal: 3, emerged: 1) }
+
+      it "counts that run among the emerged runs the rule reads no ratio on" do
+        expect(reading.pre_registered_sentence)
+          .to eq("Under the pre-registered rule 1 of the 3 emerged runs are unmeasured and 1 arm reads.")
+      end
+    end
+
     context "with every emerged run's core at zero" do
       let(:complexity_arms) { [arm(off, 128, runs: %i[neither neither], zero_core: 2)] }
 
