@@ -195,11 +195,10 @@ RSpec.describe Experiments::ComplexityArmsService do
   end
 
   # The host-parasite sweep is 1 260 runs of hundreds of samples each; a corpus where every
-  # one of them emerged is the one this reading holds the most of at once (issue #226).
+  # one of them emerged is the one this reading holds the most of at once (issues #226, #236).
   describe "reading a sweep where every run emerged" do
     let(:runs) { 200 }
     let(:samples_per_run) { 200 }
-    let(:steal_rate_aggregate_reads) { 1 }
 
     before do
       insert_sweep(experiment, runs: runs, samples_per_run: samples_per_run, emergence_epoch: 100,
@@ -208,13 +207,106 @@ RSpec.describe Experiments::ComplexityArmsService do
       end
     end
 
-    # One statement per emerged run for its post-crossing span, beside the single
-    # experiment-wide aggregate the peak steal rate is read with.
-    it "reads the post-crossing samples one run at a time, in a statement count linear in the runs" do
+    # The spans are reduced in the database — four rows a run, never a sample — beside the
+    # single experiment-wide aggregate the peak steal rate is read with.
+    it "reads the post-crossing spans in one statement, holding no sample in Ruby" do
       reads = value_reads_during { arms.map(&:cells) }
 
-      expect(reads.max).to be <= samples_per_run
-      expect(reads.size).to eq(runs + steal_rate_aggregate_reads)
+      expect(reads.size).to eq(2)
+      expect(reads.max).to be <= runs * described_class::SERIES.size
+    end
+  end
+
+  # The spans moved from Ruby into one SQL statement (issue #236). Every value below was
+  # worked by hand from the rule as the Ruby reading applied it — nulls and strings drop out
+  # of their own series, a float reading truncates, the decile is ceil(n / 10) and its
+  # median the lower middle — and checked against that Ruby reading before it was retired.
+  describe "the reading of a mixed sweep, pinned" do
+    let(:experiment) do
+      create(:experiment, param_grid: { "economy" => [{ "energy_influx" => 0, "steal_amount" => 0 },
+                                                      { "energy_influx" => 512, "steal_amount" => 1_024 },
+                                                      { "energy_influx" => 2_048, "steal_amount" => 0 }] })
+    end
+    let(:thief_params) { Lab::Schema.run_defaults.merge("energy_influx" => 512, "steal_amount" => 1_024) }
+    let(:blank_params) { Lab::Schema.run_defaults.merge("energy_influx" => 2_048, "steal_amount" => 0) }
+
+    before do
+      rising_through_noise
+      plateau_on_a_zero_core
+      emerged_run(control_params, [{ "dominant_instruction_count" => 10, "conserved_core_bytes" => 40 }])
+      zero_start = [0] + ([5] * 8) + [7]
+      emerged_run(control_params, zero_start.map { |count| { "dominant_instruction_count" => count, "conserved_core_bytes" => 40 } })
+      thieves
+      10.times { sampled_run(blank_params, { "dominant_instruction_count" => 5 }) }
+    end
+
+    it "reads every arm as the Ruby reading did" do
+      expect(arms.map(&:cells)).to eq(
+        [["0", 4, 2, 1, 10, 19, 0, 0, 100, 100, 5, 5, 1, 1, nil, nil, "mixed"],
+         ["512×1024", 2, 2, 0, 8, 8, 40, 40, nil, nil, nil, nil, 1, 1, 0.5, "evolved", "mixed"],
+         ["2048×0", 0, 0, 0, nil, nil, nil, nil, nil, nil, nil, nil, 0, 0, nil, nil, "barren"]]
+      )
+    end
+
+    it "reads each run's spans as the Ruby reading did" do
+      readings = arms.first.readings.map { |reading| reading.to_h.transform_values { |span| span&.to_h } }
+
+      expect(readings).to eq(
+        [{ instructions: { first: 10, last: 19 }, core: { first: 40, last: 40 },
+           compressed: { first: 100, last: 100 }, lineages: nil },
+         { instructions: { first: 20, last: 21 }, core: { first: 0, last: 0 }, compressed: nil,
+           lineages: { first: 5, last: 5 } },
+         { instructions: nil, core: nil, compressed: nil, lineages: nil },
+         { instructions: { first: 0, last: 7 }, core: { first: 40, last: 40 }, compressed: nil, lineages: nil }]
+      )
+    end
+
+    # Thirteen numeric instruction counts once a null, a string and the samples before the
+    # crossing drop out, so an even decile of two: 10 first, 19 last, a rise. The float
+    # reading 12.7 counts as 12, and the core's one null leaves it fourteen readings long.
+    def rising_through_noise
+      counts = [10, nil, 14, "12", 11, 13, 12, 15, 16, 12.7, 18, 20, 17, 22, 19]
+      run = emerged_run(control_params, counts.each_with_index.map do |count, index|
+        { "dominant_instruction_count" => count, "conserved_core_bytes" => index == 5 ? nil : 40,
+          "dominant_compressed_len" => 100 }
+      end)
+      3.times { |index| create(:sample, run: run, epoch: index * 10, values: { "dominant_instruction_count" => 900 }) }
+    end
+
+    # Twenty-five readings, an odd decile of three: 20 first, 21 last, within a tenth. Its
+    # core reads zero bytes throughout, which the amended rule measures and the
+    # pre-registered one would have dropped.
+    def plateau_on_a_zero_core
+      counts = [30, 10, 20] + ([20] * 19) + [21, 19, 40]
+      emerged_run(control_params, counts.map do |count|
+        { "dominant_instruction_count" => count, "conserved_core_bytes" => 0, "distinct_lineages" => 5 }
+      end)
+    end
+
+    # The peak steal rate is the arm's, over runs that never emerged too, and a steal rate
+    # stored as a string is no reading, however high it reads.
+    def thieves
+      emerged_run(thief_params, Array.new(20) do |index|
+        { "dominant_instruction_count" => index < 10 ? 10 : 13, "conserved_core_bytes" => 40,
+          "steal_rate" => { 3 => "0.9", 7 => 0.25 }.fetch(index, 0.1) }
+      end)
+      emerged_run(thief_params, Array.new(20) do
+        { "dominant_instruction_count" => 8, "conserved_core_bytes" => 40, "steal_rate" => 0.0 }
+      end)
+      run = sampled_run(thief_params, { "steal_rate" => 0.5 })
+      create(:sample, run: run, epoch: 200, values: { "steal_rate" => nil })
+    end
+
+    def emerged_run(params, samples)
+      run = create(:run, :emerged, experiment: experiment, params: params, transition_epoch: 100, emergence_epoch: 100)
+      samples.each_with_index { |values, index| create(:sample, run: run, epoch: 100 + (index * 10), values: values) }
+      run
+    end
+
+    def sampled_run(params, values)
+      run = create(:run, experiment: experiment, status: "finished", params: params)
+      create(:sample, run: run, epoch: 100, values: values)
+      run
     end
   end
 
