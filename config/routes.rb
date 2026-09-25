@@ -13,6 +13,7 @@ Rails.application.routes.draw do
     get :transitions, on: :member, defaults: { format: :csv }
     get :rescores, on: :member, defaults: { format: :csv }
     get :readings, on: :member, defaults: { format: :csv }
+    get :oriented, on: :member, defaults: { format: :csv }
   end
   resources :findings, only: %i[index show]
   resources :runs, only: :show do

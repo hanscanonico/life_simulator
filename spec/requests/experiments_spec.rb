@@ -499,6 +499,58 @@ RSpec.describe "Experiments", type: :request do
         expect(response).to have_http_status(:ok)
         expect(response.body.squish).to include("continuation", "host")
       end
+
+      context "with the children sampled" do
+        before do
+          # 100 own samples a child, so each decile holds the 10 a child is measured on.
+          experiment.runs.each do |run|
+            rising = run.params["energy_influx"] == 2**11
+            insert_own_samples(run, Array.new(100) do |index|
+              { "replicator_share" => 0.9, "dominant_self_replicates" => true,
+                "dominant_instruction_count" => rising && index >= 90 ? 60 : 40 }
+            end, every: 50)
+          end
+        end
+
+        it "reads the sweep as pre-registered, labelled interim while its children run" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#descendant-reading").text.squish
+          expect(section).to include("The pre-registered reading interim",
+                                     "continuation", "economy 2048", "economy 8192", "host mode",
+                                     "H-economy, economy 2048 against the continuation: not shown",
+                                     "3 pairs measured on both sides: 3 favour the treatment, 0 the continuation, " \
+                                     "0 tie; one-sided sign test p = 0.125",
+                                     "H-host, host mode against the continuation: refuted",
+                                     "H-persistence, the continuation children hold: held")
+        end
+
+        it "draws the median share per treatment" do
+          get experiment_path(experiment)
+
+          expect(response.body).to include("Median replicator share per 1000 epochs past the parent")
+        end
+
+        it "never prints the raw bundle label as a treatment's name" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#descendant-reading").text).not_to include("2048×1024")
+        end
+
+        it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+        end
+      end
+    end
+
+    context "with a sweep that starts from no parent" do
+      it "shows no descendant reading" do
+        get experiment_path(experiment)
+
+        expect(response.body).not_to include("descendant-reading")
+      end
     end
 
     context "with a corpus pass over the sweep" do
@@ -540,6 +592,46 @@ RSpec.describe "Experiments", type: :request do
         get experiment_path(experiment)
 
         expect(response.body).not_to include("Replicator census vs", "Download rescores (CSV)")
+      end
+    end
+
+    context "with finished runs the orientation-aware pass has read" do
+      before do
+        run = create(:run, experiment: experiment, status: "finished", epochs: 2_000, transition_epoch: 500,
+                           params: Lab::Schema.run_defaults.merge("radius" => 2))
+        create(:snapshot_reading, run: run, epoch: 2_000, source_epoch: 2_000,
+                                  values: { "replicator_share" => 0.8 })
+      end
+
+      it "tables the arms by the orientation-aware detector" do
+        get experiment_path(experiment)
+
+        section = response.parsed_body.at_css("section[aria-labelledby='oriented-arms-heading']")
+        expect(section.at_css("h2").text).to eq("Replicators by the orientation-aware detector")
+        expect(section.css("tbody tr").map { |row| row.css("td").map { |cell| cell.text.squish } })
+          .to eq([["2", "1", "1", "1", "0", "1", "1", "1", "0", "~2,000"]])
+      end
+
+      it "says what the detector reads and that it relocks nothing" do
+        get experiment_path(experiment)
+
+        expect(response.body.squish).to include("random sample of 256 cells", "chain of 5 runs", "majority of 5 trials",
+                                                "16 commonest tapes", "about every 1000 epochs",
+                                                "it relocks neither the census nor the emergence rule")
+        expect(response.body).to include("https://github.com/hanscanonico/life_simulator/issues/245",
+                                         oriented_experiment_path(experiment))
+      end
+    end
+
+    context "with finished runs the orientation-aware pass has not read" do
+      it "says the pass has not read the sweep" do
+        create(:run, experiment: experiment, status: "finished", params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Replicators by the orientation-aware detector",
+                                         "The corpus pass has not read every stored world of any run in this sweep")
+        expect(response.body).not_to include(oriented_experiment_path(experiment))
       end
     end
 
@@ -962,6 +1054,26 @@ RSpec.describe "Experiments", type: :request do
 
         expect(response).to have_http_status(:bad_request)
       end
+    end
+  end
+
+  describe "GET /experiments/:slug/oriented" do
+    it "streams the per-run orientation-aware summary as CSV" do
+      run = create(:run, experiment: experiment, seed: 7, status: "finished", epochs: 2_000, transition_epoch: 500,
+                         params: Lab::Schema.run_defaults.merge("radius" => 2))
+      create(:snapshot_reading, run: run, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.5 })
+      create(:snapshot_reading, run: run, epoch: 2_000, source_epoch: 2_000, values: { "replicator_share" => 0.25 })
+      create(:snapshot_reading, run: run, epoch: 2_010, source_epoch: 2_000, values: { "replicator_share" => 0.9 })
+      unread = create(:run, experiment: experiment, seed: 8, status: "finished", params: run.params)
+
+      get oriented_experiment_path(experiment)
+
+      lines = response.body.lines.map(&:chomp)
+      expect(response.media_type).to eq("text/csv")
+      expect(response.headers["Content-Disposition"]).to include("attachment", "radius-oriented.csv")
+      expect(lines).to eq([Experiments::OrientedCsvService::COLUMNS.join(","),
+                           "#{run.id},7,radius 2,500,,true,2,0,0.25,0.5,1000,1000,false",
+                           "#{unread.id},8,radius 2,,,false,0,0,,,,,"])
     end
   end
 end
