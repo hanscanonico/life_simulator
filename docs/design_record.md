@@ -1008,3 +1008,107 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   refutation sentence. What the barren asymmetry bet means for the programme is not decided
   here; a later entry weighs it (#233). Nothing about the engine, the rules or any
   observable moves.
+- 2026-09-24 — **Where the programme stands after sweeps 9 and 10: every pre-registered
+  sweep has run, five substrate bets are spent, and the next substrate is an open
+  decision.** This entry is a reading of the record, not a plan: it seeds no sweep, adds no
+  §1.3 entry and changes no rule, sweep definition or observable. All ten sweeps of §1.3 are
+  terminal (2 516 finished runs lab-wide, none pending), and the mini-pc run queue has been
+  empty since 2026-09-20; it stays empty until the decision this entry ends on is taken.
+
+  **The five bets on rung 4** ("does complexity keep rising"), each read by the finding that
+  carries it. Emergence is the confirmed-crossing count (2026-09-15) against the arm's own
+  control; complexity is read on `dominant_instruction_count`, never on compressed length
+  (2026-09-16).
+
+  | bet | sweep | emergence against its control | complexity reading | secondary | finding |
+  |---|---|---|---|---|---|
+  | Instruction cost | 6, `energy-per-epoch` | every priced arm lower (2, 2, 0 of 30 against 3 of 30); `2048` barren | decided on lineages as DESIGN states it: **not supported**; instructions printed without a verdict | — | `complexity-keeps-rising`, hypothesis 1 |
+  | Environmental structure | 7, `environmental-structure` | both shapes lower (6 and 2 of 90 against 3 of 30) | **unresolved**: `gradient`'s median peak equals the control's (16 ops), `patchwork` untestable on one measured run | lineages **supported** (8 715 and 8 971 against 8 424) | `complexity-keeps-rising`, hypothesis 2 |
+  | Room to grow | 8, `max-tape-len` | 5 and 4 of 90 at caps 128 and 256, 1 of 30 at 512, against 3 of 30 at 64 | **supported as a level**: median peak 26 and 33 ops at caps 128 and 256 against 10 at 64; `512` untestable | compressed length is the cap plus 11 bytes and decides nothing | `complexity-keeps-rising`, hypothesis 3 |
+  | Contested energy | 9, `host-parasite` | every priced arm at or below the control at its cap; the four 512-influx arms barren | 1 of 12 priced arms **keeps rising**, on 1 of 2 measured runs; 2 plateau, 3 neither, 2 unread; both controls **neither**; the pre-registered rule reads 25 of 26 emerged runs unmeasured and no arm | theft evolved in all six steal arms (peak `steal_rate` 0.32–0.94) | `complexity-under-contest` (`partial`) |
+  | Asymmetric execution | 10, `asymmetric-execution` | both `host` arms **barren**, 0 of 90 each, against 5 and 4 of 90 (pooled, descriptive: 0 of 180 against 9 of 180, p = 0.0035) | **not evaluable**: no replicator arose to read | lineages unreadable for the same reason | `complexity-under-asymmetry` (`negative`) |
+
+  **What the corpus says about "does complexity keep rising".** Across every substrate
+  tested, nothing makes complexity keep climbing in a way the record can stand on. Room to
+  grow raised the **height** of the plateau — the dominant tape of an emerged world reaches
+  more ops when it has more bytes — but the within-run reading of sweeps 9 and 10, applied
+  to the **very same worlds** (below), reads the cap-128 and cap-256 controls as neither: 1
+  rising run of 5 and 1 of 4. The one priced arm that clears the pre-registered bar does so
+  at the smallest n the rule reads, beside a control that holds a rising run too, and pooled
+  over runs the priced arms rise no more often than the controls (3 of 17 against 2 of 9,
+  descriptive). Every one of the five bets lowered the emergence rate against its own
+  control, and three treatments abolished it outright (the `2048` cost, the 512 influx, the
+  host mode); since the complexity reading is taken on emerged runs only, each arm's reading
+  rests on 0 to 6 runs, and in sweep 9 the post-crossing span those runs are read over has a
+  median of 9 460 epochs (80 to 16 660) inside a 20 000-epoch budget. The mechanism the
+  2026-09-16 investigation found — a drift–selection balance in which a byte off the copy
+  path costs nothing — is not contradicted by anything sweeps 9 and 10 read.
+
+  **The same 180 worlds, read three times.** Sweep 8's cap-128 and cap-256 arms, sweep 9's
+  economy-off arms and sweep 10's `concat` arms are the default substrate at the same caps,
+  rate, size and seeds 1–90, so the engine's determinism makes them the same runs computed
+  three times — the same nine seeds emerge at the same epochs in all three (cap 128: 8, 14,
+  31, 55, 71; cap 256: 3, 61, 63, 77). Sweep 8 reads them as treated arms against its cap-64
+  control, sweeps 9 and 10 as their controls: the two later findings share one control, not
+  two independent ones, and about 360 runs of compute went to reproducing worlds the lab
+  already held.
+
+  **The literature #191 weighed, against what sweeps 9 and 10 actually showed.** #191 took
+  the energy-stock-plus-steal result on a Z80 soup (arXiv 2609.10817) and Tierra's parasite
+  arms race as the best fitness-free evidence that a contested quantity drives structure.
+  Sweep 9 reproduced the first half of that here — theft evolved wherever it was offered —
+  and not the second: complexity did not rise with it. Sweep 10's host mode is the
+  Tierra-shaped asymmetry, and it never produced a replicator at all; Tierra's parasites
+  evolve from a hand-written ancestor, so that literature never asked the host–parasite
+  mechanism to also produce the first replicator, which is what this programme's design
+  couples it to. The BFF group's 2026 paper (arXiv 2607.01483), which predicts a plateau for
+  the pairing dynamic, stands; the task-modulated pairing result (arXiv 2607.09211) remains
+  the only one cited with a rising capability ladder, and it imports an objective.
+
+  **The open decision.** Which substrate, or which question, the next sweep takes. The
+  options, with the evidence for and against each; costs are from sweeps 9 and 10's measured
+  `compute_seconds` (about 21 minutes a run at cap 128, 30 at cap 256, 12 runs at a time).
+
+  1. **Decide the one rising arm.** More seeds on `1024×2048 128` and its control `0 128`.
+     *For*: it is the only arm in the corpus that clears the pre-registered bar, and the
+     machinery exists. *Against*: it stands on 1 rising run of 2; the control rises at a
+     similar per-run rate; at the rates the two arms showed (2 and 5 of 90), 180 more seeds
+     each add roughly four emerged runs to the priced arm and ten to the control. About half
+     a day of the mini-pc for 360 runs.
+  2. **A longer horizon on the worlds that emerged.** *For*: the post-crossing spans are
+     short (median 9 460 epochs in sweep 9, one run read over 80) and `mutation-rate-long`
+     confirmed five of its eight emergences after epoch 20 000, so a slow climb could be
+     hiding under the budget. *Against*: nothing in the stored series shows one, and the
+     drift–selection mechanism does not depend on the horizon. A longer budget replays the
+     first 20 000 epochs deterministically, so each run costs its whole length unless a run
+     can be resumed past its original budget.
+  3. **Start the treatments from an emerged world.** Take the post-crossing snapshots of the
+     nine emerged control worlds and turn the economy or the host mode on from there. *For*:
+     every bet lowered emergence and host mode abolished it, so sweeps 9 and 10 read the
+     complexity question on 0 to 5 runs an arm and asymmetry is unreadable rather than
+     refuted; the host–parasite literature starts from an ancestor. *Against*: it is a new
+     start condition that changes what a run's `(params, seed)` identity means (a parent
+     snapshot becomes an input), needs engine support and a record entry, and answers a
+     narrower question — does an existing replicator keep complicating under X — than
+     spontaneous emergence.
+  4. **A second, labelled substrate with an exogenous task** (arXiv 2607.09211). *For*: the
+     only cited line of work with a rising capability ladder. *Against*: it imports an
+     objective the programme has so far kept out, so it has to be a second substrate beside
+     Soup, not a change to it.
+  5. **A richer instruction set.** *For*: the energy-and-theft result is on a Z80 soup and
+     sweep 9 reproduced only its first half on BFF, so what a tape can express may be the
+     binding difference. *Against*: a new substrate's engineering cost, and no measurement
+     here isolates the instruction set as the constraint — sweep 5 only removed ops.
+  6. **Close rung 4 on Soup and spend compute below it.** The evolution programme entry
+     (2026-09-11) defined the `persistence`, `lineage-diversity` and `adaptation` sweeps for
+     rungs 1–3, and none has been seeded: what the site says about those rungs is read off
+     surveys of runs assembled by having transitioned. *For*: five bets have run on rung 4
+     and the plateau's mechanism is explained, while the rungs below it have never had their
+     own designed sweep. *Against*: it leaves the programme's headline question answered
+     only in the negative, and only for this substrate.
+
+  Independently of which is chosen: the pending relock of `transition_epoch` (#229, #237)
+  moves no reading above — emergence here is census- or copy-confirmed, and the 2026-09-19
+  rescore left every arm at cap ≤ 256 unchanged — and any future sweep whose control is the
+  default substrate at caps 128/256 on seeds 1–90 can read the 180 stored worlds rather than
+  run them a fourth time.
