@@ -306,8 +306,8 @@ a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
 `T` itself in the partner, so a tape that writes `reverse(T)` fails it however exactly it
 copies; it stays locked as it is, and the orientation-aware detector below reads beside it.
 
-**Orientation-aware detector** (`replicator::self_replicates`, the 2026 BFF paper's
-Algorithm 1 and cubff's `CheckSelfRep`): a chain of **5** runs, each the soup's own
+**Orientation-aware detector** (`replicator::self_replicates`, modelled on the 2026 BFF
+paper's Algorithm 1 and cubff's `CheckSelfRep`): a chain of **5** runs, each the soup's own
 interaction — the tape of the moment and fresh seeded noise of its length on the fixed
 `2·len` buffer, `max_steps` as the run's. After each run the partner half carries forward
 into the first half and fresh noise refills the second; after the fifth, the first half —
@@ -318,12 +318,18 @@ when a strict majority of them hold the original byte there, and the tape passes
 **aligned** when at least **3 of every 4** positions agree (the paper's 48 of 64 bytes, as
 a ratio of integers so it scales to any length). It passes **rotated** when some cyclic
 rotation of the comparison, one rotation for all five chains, passes the same bar — a
-separate boolean, so the aligned reading stays the paper's. The census companions run it
-on **256** cells a sample. The chain length, the trials, the 3/4 and the 256 are constants
-of the engine (`replicator::SELF_REP_*`), exported through `runner schema` under
-`self_replication`; they are not parameters. Measured on the terminal world of run 1007
-(128×128, cap 128, every interaction running out the step budget), one sample's companions
-cost 3.7% of the ten epochs they sample.
+separate boolean, so the aligned reading stays the paper's. It departs from the paper in
+three places, each toward a stricter or plainer reading: 5 chains where the paper runs 9
+(cubff 13), and a position agrees on a strict majority of them where the paper asks for 3
+of its 9 (cubff more than 3 of 13); only the carried first half is scored, where both also
+score how far the chains' second halves agree with one another and keep the smaller score;
+and every run draws fresh noise, where cubff reuses one chain's noise down its runs. The
+census companions run it on **256** cells a sample. The chain length, the trials, the 3/4
+and the 256 are constants of the engine (`replicator::SELF_REP_*`), exported through
+`runner schema` under `self_replication`; they are not parameters. Measured on the
+terminal worlds of runs 1007, 1029 and 1087 (128×128, every interaction running out the
+step budget), one sample's companions cost about 4% (3.7–4.1%) of the ten epochs they
+sample.
 
 ### 1.3 The sweeps (in order; each is one `Experiment`)
 

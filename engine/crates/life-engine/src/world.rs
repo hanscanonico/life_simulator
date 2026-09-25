@@ -335,9 +335,9 @@ impl World {
     }
 
     /// One epoch of the soup, and — on the epochs a sample will read — the `copy_rate`
-    /// of those interactions. The pre-execution pair is kept every epoch — the lineage
-    /// rule reads it — and counting copies adds at most three comparisons per interaction,
-    /// so it stays off on every other epoch.
+    /// and `reverse_copy_rate` of those interactions. The pre-execution pair is kept every
+    /// epoch — the lineage rule reads it — and counting copies adds a few comparisons
+    /// per interaction for each rate, so it stays off on every other epoch.
     fn step_soup(&mut self, rng: &mut Rng) {
         let stride = self.params.stride();
         let cap = self.params.tape_cap() as usize;

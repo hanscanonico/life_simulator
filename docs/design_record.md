@@ -1303,23 +1303,30 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   short seeded cubff runs, 36–37% of tapes pass cubff's own detector at the transition and
   every one writes `reverse(parent)` (preliminary; stopped early). The 2026 paper's detector
   (arXiv 2607.01483, Algorithm 1; cubff's `CheckSelfRep`) sees them because it runs an odd
-  chain of five runs against noise and compares the final first half with the original,
-  per position by majority, passing at 48 of 64 bytes.
+  chain of five runs against noise and compares the final first half with the original:
+  over nine chains it counts the positions that hold the original byte in at least three
+  of them (cubff: more than three of thirteen), scores the second halves' agreement with
+  one another the same way, keeps the smaller score and passes at 48 of 64 bytes.
 
   **Decision: add orientation-aware companions, relocking nothing.** DESIGN §1.2 gains the
   orientation-aware detector (`replicator::self_replicates`: the paper's chain of 5, 5
-  trials, per-position majority, 3/4 of positions, and a separate rotated verdict) and four
-  sampled observables: `replicator_share` and `replicator_share_rotated`, the share of 256
-  cells drawn uniformly with replacement whose tape passes aligned and under rotation;
+  trials, a strict majority of them per position — stricter than the paper's three of
+  nine — 3/4 of positions, the carried first half alone, and a separate rotated verdict)
+  and four sampled observables: `replicator_share` and `replicator_share_rotated`, the share
+  of 256 cells drawn uniformly with replacement whose tape passes aligned and under rotation;
   `dominant_self_replicates`; and `reverse_copy_rate`, `copy_rate` with the image reversed.
   They draw only from streams of their own and write nothing back: every pinned hash and
   every pinned observable string of the engine passes unmodified, and `replicator_count`,
   `copy_rate` and every other observable read what they read before. The per-sample cost is
-  3.7% of the ten epochs a sample reads, measured on run 1007's terminal world, the worst
-  case (every interaction runs out the step budget). On that world the new readings give
-  `replicator_share` 0.96 and `reverse_copy_rate` 0.73 where the census reads 0; on run
-  1087's, whose single copy lands two bytes round, the five-run chain passes aligned
-  anyway, `replicator_share` 0.91 and rotated 0.94.
+  about 4% (3.7–4.1%) of the ten epochs a sample reads, measured on the terminal worlds of
+  runs 1007, 1029 and 1087, the worst case (every interaction runs out the step budget). On
+  run 1007's world the new readings give `replicator_share` 0.96 and `reverse_copy_rate`
+  0.73 where the census reads 0. Run 1087's copy reflects about an axis one byte off the
+  pair's centre (the pilot's rotation of 2, `B[(254 − i) mod 256] = A[i]`), so its
+  `reverse_copy_rate` stays near 0; but the next copy reflects about the same axis and
+  undoes the offset, so the five-run chain passes it aligned, `replicator_share` 0.91 and
+  rotated 0.94. Random tapes, a fresh soup a few hundred epochs in, and the dominant
+  tapes of runs 1007, 967 and 1087 with their `.` removed or their bytes shuffled all fail.
 
   **For the user to decide.** Whether `replicator_count`, the emergence confirmation
   (2026-09-15, #172/#189) and the persistence and relapse readings relock on the
