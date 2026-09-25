@@ -5,12 +5,13 @@
 //! doubling, capped backoff until the grace window runs out, or fatal — a 4xx other than
 //! 408/429, a malformed or oversized answer — and returned to the caller at once.
 
-use crate::sink::SnapshotReason;
+use crate::sink::{SnapshotReason, Transitions};
 use anyhow::{anyhow, bail, Context, Result};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use life_engine::{Metrics, Params};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -67,6 +68,17 @@ pub struct ClaimedRun {
     pub seed: u64,
     pub epochs: u64,
     pub epochs_done: u64,
+    /// The stored world a descendant run starts from; `None` for a run that starts from
+    /// `(params, seed)`.
+    pub parent: Option<ParentWorld>,
+}
+
+/// Where a descendant run starts: its parent's world at `epoch`, read under the child's
+/// own params and seed (`World::descend`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParentWorld {
+    pub run: i64,
+    pub epoch: u64,
 }
 
 /// A world the lab has stored, with everything needed to read it again: `runner rescore`
@@ -91,11 +103,14 @@ pub struct Snapshot<'a> {
 /// One run of an experiment's corpus: which stored worlds it holds. `epochs` is ascending,
 /// as the lab orders it. The corpus answer also carries each run's params and seed, but a
 /// rescore reads them off the world it then fetches — parsing them here would let one run
-/// the current `Params` cannot describe cost the whole pass.
+/// the current `Params` cannot describe cost the whole pass. `read_epochs` names, per
+/// instrument, the epochs already read off the run's stored worlds; an app older than
+/// snapshot readings answers none.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorpusRun {
     pub id: i64,
     pub epochs: Vec<u64>,
+    pub read_epochs: BTreeMap<String, Vec<u64>>,
 }
 
 /// A binary answer: the bytes and the epoch its header named.
@@ -208,6 +223,7 @@ impl LabClient {
             seed: number(&claimed, "seed")?,
             epochs: number(&claimed, "epochs")?,
             epochs_done: number(&claimed, "epochs_done")?,
+            parent: parent_world(&claimed)?,
         }))
     }
 
@@ -242,11 +258,14 @@ impl LabClient {
         run: i64,
         runner_id: &str,
         samples: &[Value],
-        transition_epoch: Option<u64>,
+        transitions: Transitions,
     ) -> Result<()> {
         let mut body = json!({ "samples": samples });
-        if let Some(epoch) = transition_epoch {
+        if let Some(epoch) = transitions.epoch {
             body["transition_epoch"] = json!(epoch);
+        }
+        if let Some(epoch) = transitions.relative {
+            body["transition_epoch_relative"] = json!(epoch);
         }
         self.member(run, runner_id, "samples", body)
     }
@@ -274,13 +293,16 @@ impl LabClient {
         &self,
         run: i64,
         runner_id: &str,
-        transition_epoch: Option<u64>,
+        transitions: Transitions,
         summary: Option<&Metrics>,
         error: Option<&str>,
     ) -> Result<()> {
         let mut body = json!({});
-        if let Some(epoch) = transition_epoch {
+        if let Some(epoch) = transitions.epoch {
             body["transition_epoch"] = json!(epoch);
+        }
+        if let Some(epoch) = transitions.relative {
+            body["transition_epoch_relative"] = json!(epoch);
         }
         if let Some(summary) = summary {
             body["summary"] = serde_json::to_value(summary)?;
@@ -341,9 +363,13 @@ impl LabClient {
 
     /// The finished runs of an experiment and the worlds they stored — what
     /// `runner rescore-corpus` walks. Empty when the experiment finished no run yet.
-    pub fn corpus(&self, slug: &str) -> Result<Vec<CorpusRun>> {
+    /// `instrument` narrows each run's `read_epochs` to the one instrument a pass runs.
+    pub fn corpus(&self, slug: &str, instrument: Option<&str>) -> Result<Vec<CorpusRun>> {
         let path = format!("/api/experiments/{slug}/corpus");
-        let (status, body) = self.get(&path, &[], MAX_CORPUS_BODY)?;
+        let query: Vec<(&str, String)> = instrument
+            .map(|instrument| vec![("instrument", instrument.to_string())])
+            .unwrap_or_default();
+        let (status, body) = self.get(&path, &query, MAX_CORPUS_BODY)?;
         let body = accepted(status, body, &format!("GET {path}"))?;
         let corpus: Value = serde_json::from_str(&body).context("parsing the corpus")?;
         let runs = corpus["runs"]
@@ -357,6 +383,16 @@ impl LabClient {
     pub fn post_rescores(&self, run: i64, rescores: &[Value]) -> Result<()> {
         let path = format!("/api/runs/{run}/rescores");
         let (status, response) = self.post(&path, &json!({ "rescores": rescores }))?;
+        accepted(status, response, &format!("POST {path}"))?;
+        Ok(())
+    }
+
+    /// Stores one instrument's readings of a run's stored worlds, all or none. The rows key
+    /// on `[run, instrument, epoch]` in the app, so a repeat pass rewrites them.
+    pub fn post_readings(&self, run: i64, instrument: &str, readings: &[Value]) -> Result<()> {
+        let path = format!("/api/runs/{run}/readings");
+        let body = json!({ "instrument": instrument, "readings": readings });
+        let (status, response) = self.post(&path, &body)?;
         accepted(status, response, &format!("POST {path}"))?;
         Ok(())
     }
@@ -670,7 +706,25 @@ fn corpus_run(run: &Value) -> Result<CorpusRun> {
                     .ok_or_else(|| anyhow!("a stored epoch is not a number"))
             })
             .collect::<Result<Vec<u64>>>()?,
+        read_epochs: match &run["read_epochs"] {
+            Value::Null => BTreeMap::new(),
+            read => serde_json::from_value(read.clone())
+                .with_context(|| format!("run {} has unreadable read_epochs", run["id"]))?,
+        },
     })
+}
+
+/// The claim's `parent_run_id` and `parent_epoch`: both absent or null for an ordinary run,
+/// which is every claim an app older than descendants answers. One without the other is a
+/// claim the runner cannot start honestly, so it is refused rather than read as no parent.
+fn parent_world(claimed: &Value) -> Result<Option<ParentWorld>> {
+    match (&claimed["parent_run_id"], &claimed["parent_epoch"]) {
+        (Value::Null, Value::Null) => Ok(None),
+        _ => Ok(Some(ParentWorld {
+            run: number(claimed, "parent_run_id")? as i64,
+            epoch: number(claimed, "parent_epoch")?,
+        })),
+    }
 }
 
 fn number(value: &Value, key: &str) -> Result<u64> {
@@ -716,6 +770,50 @@ mod tests {
             lab.request("POST /api/runs/claim")["runner_id"],
             json!("runner-1")
         );
+    }
+
+    #[test]
+    fn a_claim_without_parent_fields_starts_from_its_params_and_seed() {
+        let lab = MockLab::start();
+
+        let claimed = client(&lab).claim("runner-1").unwrap().unwrap();
+
+        assert_eq!(claimed.parent, None);
+    }
+
+    #[test]
+    fn a_claim_with_null_parent_fields_starts_from_its_params_and_seed() {
+        let lab = MockLab::start();
+        lab.set_null_parent();
+
+        let claimed = client(&lab).claim("runner-1").unwrap().unwrap();
+
+        assert_eq!(claimed.parent, None);
+    }
+
+    #[test]
+    fn a_descendant_claim_carries_its_parents_world() {
+        let lab = MockLab::start();
+        lab.set_parent(41, 20_000);
+
+        let claimed = client(&lab).claim("runner-1").unwrap().unwrap();
+
+        assert_eq!(
+            claimed.parent,
+            Some(ParentWorld {
+                run: 41,
+                epoch: 20_000
+            })
+        );
+    }
+
+    #[test]
+    fn a_parent_run_without_its_epoch_is_refused() {
+        let claimed = json!({ "parent_run_id": 41, "parent_epoch": null });
+
+        let error = parent_world(&claimed).unwrap_err().to_string();
+
+        assert!(error.contains("parent_epoch"), "{error}");
     }
 
     #[test]
@@ -920,7 +1018,9 @@ mod tests {
         for reason in [
             SnapshotReason::Cadence,
             SnapshotReason::Age,
+            SnapshotReason::Crossing,
             SnapshotReason::Transition,
+            SnapshotReason::Census,
         ] {
             client(&lab)
                 .snapshot(1, "runner-1", snapshot(30, reason), &mut Vec::new())
@@ -931,7 +1031,13 @@ mod tests {
         let reasons: Vec<_> = posted.iter().map(|body| body["reason"].clone()).collect();
         assert_eq!(
             reasons,
-            vec![json!("cadence"), json!("age"), json!("transition")]
+            vec![
+                json!("cadence"),
+                json!("age"),
+                json!("crossing"),
+                json!("transition"),
+                json!("census")
+            ]
         );
     }
 
@@ -1077,13 +1183,14 @@ mod tests {
             }],
         }));
 
-        let corpus = client(&lab).corpus("radius").unwrap();
+        let corpus = client(&lab).corpus("radius", None).unwrap();
 
         assert_eq!(
             corpus,
             vec![CorpusRun {
                 id: 45,
                 epochs: vec![100, 300],
+                read_epochs: BTreeMap::new(),
             }]
         );
     }
@@ -1106,9 +1213,48 @@ mod tests {
             }],
         }));
 
-        let corpus = client(&lab).corpus("radius").unwrap();
+        let corpus = client(&lab).corpus("radius", None).unwrap();
 
         assert_eq!(corpus[0].epochs, vec![100]);
+    }
+
+    #[test]
+    fn a_corpus_names_the_epochs_each_instrument_has_read() {
+        let lab = MockLab::start();
+        lab.set_corpus(json!({
+            "slug": "radius",
+            "runs": [{
+                "id": 45,
+                "epochs": [100, 300],
+                "read_epochs": { "oriented_census/1": [100, 110] },
+            }],
+        }));
+
+        let corpus = client(&lab)
+            .corpus("radius", Some("oriented_census/1"))
+            .unwrap();
+
+        assert_eq!(
+            corpus[0].read_epochs,
+            BTreeMap::from([("oriented_census/1".to_string(), vec![100, 110])])
+        );
+    }
+
+    #[test]
+    fn snapshot_readings_travel_under_their_instrument() {
+        let lab = MockLab::start();
+
+        client(&lab)
+            .post_readings(
+                45,
+                "oriented_census/1",
+                &[json!({ "epoch": 110, "source_epoch": 100, "values": {} })],
+            )
+            .unwrap();
+
+        let posted = lab.request("POST /api/runs/45/readings");
+        assert_eq!(posted["instrument"], json!("oriented_census/1"));
+        assert_eq!(posted["readings"][0]["source_epoch"], json!(100));
     }
 
     #[test]

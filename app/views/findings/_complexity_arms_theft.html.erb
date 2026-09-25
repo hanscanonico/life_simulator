@@ -1,0 +1,26 @@
+<%# Whether theft evolved in the steal arms of a sweep read arm by arm. %>
+<% if reading.steal_arms? %>
+  <h3>Theft</h3>
+  <div class="table-scroll" tabindex="0" role="region" id="complexity-arms-theft"
+       aria-label="Peak steal_rate and the theft reading of each steal arm">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Steal arm</th>
+          <th class="numeric">Peak <span class="mono">steal_rate</span></th>
+          <th>Theft</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% reading.steal_arms.each do |arm| %>
+          <tr>
+            <td class="mono"><%= arm.label %></td>
+            <td class="numeric mono"><%= metric_value arm.peak_steal_rate %></td>
+            <td><%= arm.theft_label %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  <p><strong><%= reading.theft_sentence %></strong></p>
+<% end %>

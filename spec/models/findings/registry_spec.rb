@@ -23,8 +23,8 @@ RSpec.describe Findings::Registry do
     slugs = described_class.all.map(&:slug)
 
     expect(slugs.first(5))
-      .to eq(%w[complexity-keeps-rising copy-cost-adaptation replicator-complexity-plateau
-                emergence-can-be-left mutation-rate-long-horizon])
+      .to eq(%w[complexity-under-contest complexity-under-asymmetry complexity-keeps-rising
+                copy-cost-adaptation replicator-complexity-plateau])
   end
 
   it "keeps the order of findings sharing a date fixed across calls" do
@@ -129,12 +129,13 @@ RSpec.describe Findings::Registry do
     expect(described_class.find("bff-control").experiment_slug).to eq("bff-control")
   end
 
-  it "holds the positive control at partial while its census peak cannot be rescored" do
+  it "holds the positive control at partial while no stored world brackets its census peak" do
     finding = described_class.find("bff-control")
 
     expect(finding.status).to eq(:partial)
     expect(finding.summary).to include("largest replicator census in the lab",
-                                       "not yet resolved")
+                                       "rescore to the live count exactly",
+                                       "no stored world brackets the peak itself")
   end
 
   it "reads the long-horizon re-run as partial while three of its runs are still on the clock" do
@@ -186,6 +187,23 @@ RSpec.describe Findings::Registry do
 
   it "gathers nothing for a sweep nothing was written up from" do
     expect(described_class.for_experiment("unwritten")).to be_empty
+  end
+
+  it "holds the host-parasite finding at partial while its one rising arm stands on the fewest runs" do
+    finding = described_class.find("complexity-under-contest")
+
+    expect(finding).to have_attributes(experiment_slug: "host-parasite", status: :partial)
+    expect(finding.summary).to include("a single priced arm keeps rising, on the fewest measured runs the rule reads",
+                                       "amended after the data were seen")
+    expect(finding.summary).not_to include("No arm has read yet")
+  end
+
+  it "holds the asymmetric-execution finding at negative, its host arms barren" do
+    finding = described_class.find("complexity-under-asymmetry")
+
+    expect(finding).to have_attributes(experiment_slug: "asymmetric-execution", status: :negative)
+    expect(finding.summary).to include("the host arms are barren at both caps", "cannot be evaluated")
+    expect(finding.summary).not_to include("No arm has read yet")
   end
 
   it "holds the finished max-steps sweep at partial, censored rather than complete" do

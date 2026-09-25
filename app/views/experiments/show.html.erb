@@ -12,7 +12,7 @@
   <dt>Transition rate</dt>
   <dd>
     <% if @show.transition_rate.fraction %>
-      <%= @show.transitioned_finished %> of <%= @show.finished_count %> finished runs flagged
+      <%= @show.transitioned_finished %> of <%= @show.founding_finished_count %> finished runs flagged
       by the detector (<%= percent_value @show.transition_rate.fraction %>),
       <%= @show.emerged_finished %> confirmed by a replicator
     <% else %>
@@ -39,7 +39,7 @@
 <% if @show.axes.any? %>
   <% @show.arms.each do |axis, arms| %>
     <%= render @show.diagram_for(axis) %>
-    <% if @show.finished_count.positive? %>
+    <% if @show.founding_finished_count.positive? %>
       <%= render "experiments/arms_table", axis: axis, arms: arms %>
     <% end %>
     <% survival = @show.survivals.fetch(axis) %>
@@ -67,8 +67,26 @@
   </div>
 <% end %>
 
+<% if @show.complexity_reading? %>
+  <%= render "experiments/complexity_report", arms: @show.complexity_arms,
+                                              rise_margin: @show.rise_margin,
+                                              plateau_band: @show.plateau_band %>
+<% end %>
+
+<% if @show.descendant_reading %>
+  <%= render "experiments/descendant_reading", reading: @show.descendant_reading %>
+<% end %>
+
+<% if @show.lineage_diversity_reading %>
+  <%= render "experiments/lineage_diversity_reading", reading: @show.lineage_diversity_reading %>
+<% end %>
+
 <% if @show.rescores? %>
   <%= render "experiments/rescores_table", summary: @show.rescore_summary %>
+<% end %>
+
+<% if @show.founding_finished_count.positive? %>
+  <%= render "experiments/oriented_arms", report: @show.oriented_arms, experiment: @show.experiment %>
 <% end %>
 
 <h2>Runs</h2>

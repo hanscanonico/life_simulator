@@ -7,6 +7,48 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "complexity-under-contest",
+        title: "Does complexity keep rising when energy is contested?",
+        date: Date.new(2026, 9, 18),
+        experiment_slug: "host-parasite",
+        related_finding_slugs: %w[complexity-keeps-rising replicator-complexity-plateau],
+        status: :partial,
+        summary: "Complexity rises at emergence and then stops rising on every substrate " \
+                 "the programme has tested, because a byte off the copy path costs its " \
+                 "tape nothing and no quantity in the world is worth taking. DESIGN §1.3 " \
+                 "sweep 9 priced that — instruction energy as a stock, with a steal op " \
+                 "that takes what a neighbour saved — and the sweep has finished. Pricing " \
+                 "energy did not make life more common: no priced arm emerged more often " \
+                 "than the economy-off control at its cap, and the poorest economy held no " \
+                 "replicator at all. Theft evolved wherever it was offered. Read arm by arm " \
+                 "on dominant_instruction_count and the conserved core, a single priced " \
+                 "arm keeps rising, on the fewest measured runs the rule reads, while the " \
+                 "others plateau, read neither or hold too few runs to read — and that " \
+                 "reading stands on a measured-run rule amended after the data were seen; " \
+                 "as registered, the rule reads almost every emerged run as unmeasured and " \
+                 "no arm at all."
+      ),
+      Finding.new(
+        slug: "complexity-under-asymmetry",
+        title: "Does complexity keep rising when only one partner's code runs?",
+        date: Date.new(2026, 9, 18),
+        experiment_slug: "asymmetric-execution",
+        related_finding_slugs: %w[complexity-under-contest complexity-keeps-rising
+                                  replicator-complexity-plateau],
+        status: :negative,
+        summary: "Complexity rises at emergence and then stops rising on every substrate " \
+                 "the programme has tested, and each bet so far changed what a tape can " \
+                 "hold or spend rather than what it is to its partner. DESIGN §1.3 " \
+                 "sweep 10 changed that — under a host interaction only the first tape's " \
+                 "code runs — and the sweep has finished. Under it nothing emerged at all: " \
+                 "the host arms are barren at both caps while the concat controls beside " \
+                 "them held replicators, so the asymmetry did not lower the plateau, it " \
+                 "kept replication from arising. With no host run to read, the " \
+                 "pre-registered refutation and the distinct_lineages secondary cannot be " \
+                 "evaluated; the concat controls, the same worlds sweep 9's control ran, " \
+                 "are read as the reference."
+      ),
+      Finding.new(
         slug: "complexity-keeps-rising",
         title: "Does complexity keep rising?",
         date: Date.new(2026, 9, 14),
@@ -122,10 +164,12 @@ module Findings
                  "soup of 2^17 tapes, the shape the published BFF work used. It shows the " \
                  "transition in tape statistics in one mutated seed and the largest " \
                  "replicator census in the lab in another, so the interpreter and the " \
-                 "pairing rule are not what the sweeps were measuring. But no stored " \
-                 "world brackets that census peak at this experiment's snapshot cadence, " \
-                 "so the count cannot yet be rescored and the census here is not yet " \
-                 "resolved. A zero-mutation control collapses entropy with a census of " \
+                 "pairing rule are not what the sweeps were measuring. Two of its stored " \
+                 "worlds sit on census-positive samples and rescore to the live count " \
+                 "exactly, 316 replicating cells and 112, so the census is real; but no " \
+                 "stored world brackets the peak itself at this experiment's snapshot " \
+                 "cadence, so its height is still read from in-run samples alone. A " \
+                 "zero-mutation control collapses entropy with a census of " \
                  "zero: compression alone is not a replicator."
       ),
       Finding.new(

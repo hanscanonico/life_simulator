@@ -7,6 +7,7 @@ mod http_sink;
 mod lab;
 #[cfg(test)]
 mod mock_lab;
+mod readings;
 mod rescore;
 mod run;
 mod sink;
@@ -135,6 +136,36 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Read the orientation-aware observables off every stored world of an experiment and
+    /// store them as snapshot readings under the instrument named, skipping the worlds an
+    /// earlier pass of that instrument already read.
+    ReadingsCorpus {
+        /// Base URL of the app, e.g. `http://app:8080`.
+        #[arg(long, env = "RUNNER_API")]
+        api: String,
+        /// The shared secret the API expects as a bearer token.
+        #[arg(long, env = "RUNNER_TOKEN")]
+        token: String,
+        /// The experiment whose terminal runs to read, by slug.
+        #[arg(long)]
+        experiment: String,
+        /// The instrument to read with and store under: `oriented_census/2` reads the
+        /// oriented lineage readings and `copy_latency` beside everything `/1` reads.
+        #[arg(long, value_enum, default_value_t = readings::Instrument::OrientedCensus1)]
+        instrument: readings::Instrument,
+        /// Which stored worlds of each run to read.
+        #[arg(long, value_enum, default_value_t = rescore::Epochs::All)]
+        epochs: rescore::Epochs,
+        /// Start from at most this many unread worlds.
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Read and print, store nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Runs read at once, one thread each.
+        #[arg(long, default_value_t = 1)]
+        jobs: usize,
+    },
     /// Report epochs per second for a short run.
     Bench {
         #[arg(long)]
@@ -242,6 +273,27 @@ fn main() -> Result<()> {
                 epochs,
                 limit,
                 dry_run,
+            })?;
+        }
+        Command::ReadingsCorpus {
+            api,
+            token,
+            experiment,
+            instrument,
+            epochs,
+            limit,
+            dry_run,
+            jobs,
+        } => {
+            readings::execute_corpus(readings::Options {
+                api,
+                token,
+                experiment,
+                instrument,
+                epochs,
+                limit,
+                dry_run,
+                jobs,
             })?;
         }
         Command::Bench {

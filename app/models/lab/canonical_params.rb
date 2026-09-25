@@ -8,6 +8,9 @@ module Lab
   # sides of a jsonb round trip — hash and compare as one value.
   module CanonicalParams
     NUMERIC_ARGUMENT = /\A[-+]?\d+(\.\d+)?([eE][-+]?\d+)?\z/
+    # The parameters that shape a world's bytes. A descendant run restores its parent's
+    # world, so it may change any other parameter but none of these.
+    STRUCTURAL_KEYS = %w[substrate width height tape_len max_tape_len ops].freeze
 
     class << self
       def for(params)
@@ -16,6 +19,11 @@ module Lab
 
       def resolve(params)
         Schema.run_defaults.merge(params.to_h.transform_keys(&:to_s)).sort.to_h
+      end
+
+      # The substrate is the experiment's unless the run carries its own.
+      def structure_of(params, substrate:)
+        self.for({ "substrate" => substrate }.merge(params.to_h.transform_keys(&:to_s))).slice(*STRUCTURAL_KEYS)
       end
 
       def normalise(value)

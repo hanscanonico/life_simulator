@@ -1,0 +1,133 @@
+<h2>Question</h2>
+<p>
+  <%= link_to "Complexity rises at emergence and then stops rising", finding_path("complexity-keeps-rising") %>
+  on every substrate the programme has tested: an instruction cost, a structured world, a
+  tape free to lengthen, and <%= link_to "a contested energy stock", finding_path("complexity-under-contest") %>. Every bet so far changed what a tape can hold or spend. None
+  changed what a tape <em>is</em> to its partner: under the default interaction the two
+  tapes are concatenated and the program that runs is the pair, so neither tape is the
+  other's environment for longer than one interaction.
+</p>
+<p>
+  Sweep 10 changes that. Under <span class="mono">interaction = host</span> the instruction
+  pointer ranges over the first tape's bytes only, while both heads still range over the
+  whole pair: the second tape never runs a byte of its own and is pure read/write
+  substrate. A tape's fate then depends on how the tapes that host it treat it as data,
+  which is a pressure on what a tape <em>looks like</em> and not only on what it does — the
+  asymmetry every host–parasite system in the literature rests on. The question this page
+  will answer: <strong>does complexity keep rising when only one partner's code runs?</strong>
+</p>
+
+<h2>Method</h2>
+<p>
+  The sweep crosses the interaction mode — <span class="mono">concat</span>, the
+  whole-concatenation interaction every earlier sweep ran, as the control, against
+  <span class="mono">host</span> — with the two room-to-grow caps whose plateau sweep 8
+  measured, <span class="mono">max_tape_len</span> 128 and 256, since an asymmetry is only
+  readable where the dominant tape has room to get more complicated. Every arm runs 90
+  seeds, the control included, at 128×128 for 20 000 epochs at the emergent mutation rate,
+  from a 64-byte initial tape.
+</p>
+<p>
+  The reading is <strong>pre-registered</strong> (DESIGN §1.3 sweep 10) and identical to
+  sweep 9's, taken on emerged runs only — a crossing the replicator census or the copy rate
+  confirmed, not every crossing the detector flagged. Per run, the median of the last decile
+  of the post-crossing samples against the median of the first decile. A run counts as
+  <em>measured</em> where the first decile of <span class="mono">dominant_instruction_count</span>
+  medians above zero, so there is a ratio to take; a run carrying no
+  <span class="mono">conserved_core_bytes</span> sample at all over that span is unmeasured,
+  since the core clause cannot be read on it. That measured rule is a
+  <strong>post-hoc amendment</strong> (<span class="mono">docs/design_record.md</span>,
+  2026-09-21), made after sweep 9's data were seen: as registered, the rule also wanted a
+  nonzero first-decile median of the conserved core, and the Result below states what that
+  rule read beside every reading taken under the amended one. A measured run
+  <em>keeps rising</em> when <span class="mono">dominant_instruction_count</span> rises by
+  at least 20% and <span class="mono">conserved_core_bytes</span> does not fall in bytes over
+  the same span, so a core at zero at both ends has not fallen; it
+  <em>plateaus</em> when the last decile sits within ±10% of the first. An arm keeps rising
+  where at least half its measured runs do and plateaus where at least half plateau; an arm
+  clearing both bars reads <em>mixed</em>, never rising, and one clearing neither, its runs
+  having mostly fallen, reads <em>neither</em>. An arm reads at all on two measured emerged
+  runs, or on a blank block of ten, which reads as an arm holding no replicator to read
+  rather than as an arm still to be tested.
+  <span class="mono">dominant_compressed_len</span> is printed beside them and decides
+  nothing: it saturates at the cap plus zlib's 11-byte envelope.
+</p>
+<p>
+  The <strong>secondary reading</strong> is on
+  <span class="mono">distinct_lineages</span>: a <span class="mono">host</span> arm whose
+  last decile holds more lineages than the <span class="mono">concat</span> control at the
+  same cap is an arms race preventing fixation, which is the mechanism an asymmetry is
+  supposed to supply. It supports the primary reading and never stands in for it.
+</p>
+
+<% reading = @show.complexity_under_asymmetry %>
+<h2>Result</h2>
+<% if reading.any? %>
+  <%= render "findings/complexity_arms_verdict", reading: reading %>
+  <p>
+    Every count on this page is read from the sweep's stored runs at render time, and the
+    per-arm reading is the one
+    <%= link_to "the sweep page", experiment_path("asymmetric-execution") %> and its
+    transition report draw.
+    <% if reading.every_treated_barren? %>
+      A blank block of ten reads as an arm holding no replicator (DESIGN §1.3,
+      <span class="mono">docs/design_record.md</span> 2026-09-15); here the blank block is
+      every run of every <span class="mono">host</span> arm.
+      <% if reading.barren_beside_emerged_controls? %>
+        Running only the first tape's code did not lower the plateau: beside controls that
+        held replicators it kept replication from arising at all, which is the mode's own
+        null named under <a href="#refutation">What would refute it</a>.
+      <% end %>
+      So the hypothesis is <strong>not refuted by a plateau</strong> and not supported either — the
+      pre-registered test needs a <span class="mono">host</span> plateau to set beside a
+      <span class="mono">concat</span> one, and there is none.
+    <% end %>
+  </p>
+  <%= render "findings/complexity_arms_emergence", reading: reading %>
+  <% if (pooled = reading.pooled_emergence_sentence) %>
+    <p>
+      <strong>Pooled over caps, descriptive only.</strong> <%= pooled %>
+      This pooling is not part of the pre-registered reading, which sets each arm against
+      the control at its own cap.
+    </p>
+  <% end %>
+  <%= render "findings/complexity_arms_theft", reading: reading %>
+  <%= render "findings/complexity_arms_reading", reading: reading %>
+
+  <h3>The concat controls, as reference readings</h3>
+  <p><strong><%= reading.control_readings_sentence %></strong></p>
+  <% if reading.controls.any? %>
+    <p>
+      The <span class="mono">concat</span> controls read as the reference for these worlds,
+      with the pre-registered rule's result above them. They are, seed for seed, the worlds
+      <%= link_to "sweep 9's economy-off control", finding_path("complexity-under-contest") %>
+      ran: both sweeps ran the default substrate as their control at the same caps, rate,
+      size and seeds, and the engine is deterministic in its parameters and seed, so the
+      same seeds emerged at the same epochs. They are separate runs in the database, but the
+      two findings' controls are one control read twice, not independent evidence.
+    </p>
+  <% end %>
+
+  <h3>The secondary reading</h3>
+  <p><strong><%= reading.lineages_sentence %></strong></p>
+<% else %>
+  <p class="text-muted">
+    No run of <%= link_to "the sweep", experiment_path("asymmetric-execution") %> has
+    reported a sample in this database, so there is no arm to read here. This page reads the
+    arms at render time and states the claim from them.
+  </p>
+<% end %>
+
+<h2 id="refutation">What would refute it</h2>
+<p>
+  An asymmetric interaction is the programme's bet that what complexity was missing is a
+  partner worth reading, not room or energy. It is refuted if the
+  <span class="mono">host</span> arms plateau where their own <span class="mono">concat</span>
+  controls plateau — same caps, same rate, same world — which would say that being hosted
+  buys this substrate no structure. The mode carries its own null too: if nothing emerges at
+  all under <span class="mono">host</span> across a full block of seeds, the arms say that
+  halving a pair's code stops abiogenesis, not that asymmetry fails to raise the plateau.
+</p>
+<% if reading.any? %>
+  <p><strong><%= reading.refutation_sentence %></strong></p>
+<% end %>

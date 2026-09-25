@@ -42,6 +42,18 @@ RSpec.describe Runs::RecordSamplesService do
       expect(run.samples.sole.values).to include("conserved_core_bytes" => 36, "conserved_core_ops" => 15)
     end
 
+    it "stores the share of interactions that stole" do
+      described_class.call(run: run, samples: [{ "epoch" => 100, "compress_ratio" => 0.5, "steal_rate" => 0.25 }])
+
+      expect(run.samples.sole.values).to include("steal_rate" => 0.25)
+    end
+
+    it "still touches the run" do
+      described_class.call(run: run, samples: batch(300, 400))
+
+      expect { described_class.call(run: run, samples: batch(100, 200)) }.to(change { run.reload.updated_at })
+    end
+
     it "stores no duplicate rows" do
       described_class.call(run: run, samples: batch(100, 200))
 
@@ -74,6 +86,16 @@ RSpec.describe Runs::RecordSamplesService do
     end
   end
 
+  context "with a relative transition epoch already recorded" do
+    it "keeps the earliest of the two" do
+      run.update!(transition_epoch_relative: 300)
+
+      described_class.call(run: run, samples: batch(900), transition_epoch_relative: 900)
+
+      expect(run.reload.transition_epoch_relative).to eq(300)
+    end
+  end
+
   context "with a batch that carries no transition epoch" do
     it "leaves the epoch already recorded alone" do
       run.update!(transition_epoch: 300)
@@ -87,6 +109,16 @@ RSpec.describe Runs::RecordSamplesService do
   context "with an empty batch" do
     it "records nothing" do
       expect { described_class.call(run: run, samples: []) }.not_to change(Sample, :count)
+    end
+  end
+
+  context "with a descendant" do
+    let(:run) { create(:run, :descendant, :claimed) }
+
+    it "records neither transition reading its runner reports" do
+      described_class.call(run: run, samples: batch(1_100), transition_epoch: 1_100, transition_epoch_relative: 1_100)
+
+      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_relative: nil)
     end
   end
 end

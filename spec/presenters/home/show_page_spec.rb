@@ -28,6 +28,15 @@ RSpec.describe Home::ShowPage do
     expect(soup["mutation_rate"]).to eq(Lab::Schema.defaults.fetch("mutation_rate"))
   end
 
+  it "writes out the parameters each substrate is running with" do
+    expect(page.param_lines.keys).to eq(page.substrates)
+
+    soup = page.param_lines.fetch("soup")
+    expect(soup).to include("width #{described_class::VIEWER_SIZE}")
+    expect(soup).to include("steal_amount #{Lab::Schema.defaults.fetch('steal_amount')}")
+    expect(soup).to include("steal_loss #{Lab::Schema.defaults.fetch('steal_loss')}")
+  end
+
   it "runs the life substrate without mutation" do
     expect(page.worlds.fetch("life")["mutation_rate"]).to eq(0.0)
   end

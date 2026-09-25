@@ -9,14 +9,17 @@ module Runs
   # carries a witness need not be the one the detector stored (docs/design_record.md,
   # 2026-09-15).
   #
-  # `samples` is [epoch, values] in epoch order; it reads them and changes nothing.
+  # `samples` is [epoch, values] in epoch order; it reads them and changes nothing. Given
+  # a `baseline`, the same hold machine runs over the relative rule instead of the
+  # constant one (`docs/design_record.md`, 2026-09-19).
   class CrossingsService
     include Callable
 
     HOLD_SAMPLES = Lab::TransitionRule::HOLD_SAMPLES
 
-    def initialize(samples:)
+    def initialize(samples:, baseline: nil)
       @samples = samples
+      @baseline = baseline
     end
 
     def call
@@ -25,7 +28,7 @@ module Runs
       held = 0
 
       @samples.each do |epoch, values|
-        unless Lab::TransitionRule.qualifies?(values)
+        unless qualifies?(values)
           candidate = nil
           held = 0
           next
@@ -41,6 +44,14 @@ module Runs
       end
 
       crossings
+    end
+
+    private
+
+    def qualifies?(values)
+      return Lab::TransitionRule.qualifies?(values) if @baseline.nil?
+
+      Lab::TransitionRule.qualifies_relative?(values, baseline: @baseline)
     end
   end
 end

@@ -9,19 +9,33 @@ module Runs
       "distinct_tapes" => "Distinct tapes",
       "top_share" => "Share of the most common tape",
       "replicator_count" => "Replicator count",
+      "replicator_share" => "Self-replicator share",
+      "replicator_share_rotated" => "Self-replicators, rotated",
       "op_density" => "Instruction density",
       "entropy_bits" => "Entropy (bits)",
       "alphabet_size" => "Alphabet size",
       "copy_rate" => "Copy rate",
+      "reverse_copy_rate" => "Reverse copy rate",
       "distinct_lineages" => "Distinct lineages",
       "top_lineage_share" => "Share of the largest lineage",
+      "lineage_effective_count" => "Effective number of lineages",
+      "lineages_over_one_percent" => "Lineages holding 1% of cells or more",
       "lineage_variation" => "Variation within a lineage",
+      "lineage_variation_oriented" => "Variation within a lineage, oriented",
       "copy_cost" => "Copy cost (steps)",
+      "copy_latency" => "Copy latency (steps)",
       "dominant_compressed_len" => "Compressed length of the dominant tape (bytes)",
       "dominant_instruction_count" => "Instructions in the dominant tape",
       "dominant_raw_len" => "Length of the dominant tape (bytes)",
       "conserved_core_bytes" => "Conserved core of the largest lineage (bytes)",
-      "conserved_core_ops" => "Instructions in that conserved core"
+      "conserved_core_ops" => "Instructions in that conserved core",
+      "conserved_core_bytes_oriented" => "Conserved core, oriented (bytes)",
+      "conserved_core_ops_oriented" => "Instructions in that oriented core",
+      "steal_rate" => "Steal rate",
+      "replicator_pass_rate" => "Census pass rate",
+      "replicator_count_mean" => "Mean census count",
+      "lineage_compressed_len" => "Compressed length of the largest lineage's tape (bytes)",
+      "lineage_instruction_count" => "Instructions in the largest lineage's tape"
     }.freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
@@ -38,6 +52,7 @@ module Runs
     # measurement: dividing by it reports megaepochs a second. A minute of observed time is
     # the floor under which this page says nothing rather than something impossible.
     MIN_MEASURED_SECONDS = 60
+    DESCENDANTS_SHOWN = 20
 
     def self.build(run:) = new(run: run)
 
@@ -71,6 +86,14 @@ module Runs
                                       .map { |(_, before), (epoch, after)| [epoch, after == before ? 0 : 1] }
     end
 
+    # Which way round the dominant tape's copy lay at the last sample that read a
+    # `copy_latency`: a word, so it has no chart of its own and is read beside that one.
+    def copy_latency_orientation
+      @copy_latency_orientation ||= dominant_readings.reverse_each.lazy
+                                                     .map { |_, values| values["copy_latency_orientation"] }
+                                                     .find { |orientation| orientation.is_a?(String) }
+    end
+
     def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)
 
     # Only a run the detector flagged has one, and only once its finish — or
@@ -79,10 +102,21 @@ module Runs
 
     def census_peak_label = persistence.census_label
 
+    def parent = run.parent_run
+
+    def descendants
+      @descendants ||= run.descendants.order(:id).limit(DESCENDANTS_SHOWN).select(:id, :seed, :status).to_a
+    end
+
+    def descendant_count = @descendant_count ||= run.descendants.count
+
+    def more_descendants? = descendant_count > descendants.size
+
     def charts_empty? = charts.all?(&:empty?)
 
     def transition_label
       return delimited(run.transition_epoch) if run.transition_epoch
+      return "none of its own (a descendant)" if run.descendant?
 
       run.terminal? ? "no emergence" : "no emergence yet"
     end
@@ -116,7 +150,7 @@ module Runs
     def epochs_per_compute_second
       return nil unless run.compute_seconds.positive?
 
-      (run.epochs_done / run.compute_seconds).round(2)
+      (run.own_epochs_done / run.compute_seconds).round(2)
     end
 
     def compute_hours = (run.compute_seconds / 3600).round(2)
@@ -137,9 +171,9 @@ module Runs
     def params = run.params.sort.to_h
 
     def progress
-      return 0.0 if run.epochs.zero?
+      return 0.0 unless run.own_epochs.positive?
 
-      (run.epochs_done.fdiv(run.epochs) * 100).round(1)
+      (run.own_epochs_done.fdiv(run.own_epochs) * 100).round(1)
     end
 
     private

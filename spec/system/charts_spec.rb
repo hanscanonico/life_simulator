@@ -75,13 +75,15 @@ RSpec.describe "A chart on a narrow screen", :js, type: :system do
   # The data line runs through the transition label on any metric that rises to a plateau,
   # so the label is painted with a halo of the plot's background instead of on top of it.
   def marker_label_halo
-    page.evaluate_script(<<~JS)
+    script = <<~JS
       (() => {
         const label = document.querySelector('svg.chart-svg .chart-marker text');
         const style = window.getComputedStyle(label);
         return [style.paintOrder, style.stroke, parseFloat(style.strokeWidth)];
       })()
     JS
+
+    settled_script(script) { |(order)| order != "normal" }
   end
 
   # The x tick labels share one row under the plot and the y ones a column beside it, so
@@ -113,6 +115,8 @@ RSpec.describe "A chart on a narrow screen", :js, type: :system do
 
     it "cuts the transition label out of the line drawn across it" do
       visit run_path(run)
+
+      expect(page).to have_css("svg.chart-svg .chart-marker text", visible: :all)
 
       order, colour, stroke_width = marker_label_halo
 

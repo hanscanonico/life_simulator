@@ -389,6 +389,57 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  # The two readings that pass over every sample of the sweep are held per experiment
+  # (issue #236); the test environment's null store would hide that, so these use a real one.
+  describe "the readings over every sample" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let!(:run) do
+      finished_run(radius: 1, transition_epoch: 100).tap do |run|
+        20.times do |index|
+          create(:sample, run: run, epoch: 100 + (index * 10),
+                          values: { "dominant_instruction_count" => index < 10 ? 10 : 30,
+                                    "conserved_core_bytes" => 40, "distinct_lineages" => 3 })
+        end
+      end
+    end
+
+    before { allow(Rails).to receive(:cache).and_return(cache) }
+
+    def read_page
+      reads = []
+      collect = ->(*, payload) { reads << payload[:sql] if payload[:sql].include?("values") }
+      fresh = described_class.build(experiment: experiment, paginate: paginate)
+
+      ActiveSupport::Notifications.subscribed(collect, "sql.active_record") do
+        [fresh.series.values.flat_map(&:lineage_charts).map { |chart| chart.arms.map(&:points) },
+         fresh.complexity_arms.map(&:cells), reads]
+      end
+    end
+
+    it "reads the samples once, and serves the same readings after" do
+      *first, first_reads = read_page
+      *again, again_reads = read_page
+
+      expect(first_reads).not_to be_empty
+      expect(again_reads).to be_empty
+      expect(again).to eq(first)
+    end
+
+    it "reads them afresh once a run of the sweep changes status" do
+      read_page
+      run.update!(status: "failed")
+
+      expect(read_page.last).not_to be_empty
+    end
+
+    it "reads them afresh once a deploy changes the code" do
+      read_page
+      stub_const("#{described_class}::CODE_VERSION", "the next deploy's")
+
+      expect(read_page.last).not_to be_empty
+    end
+  end
+
   describe "#agreement_chart" do
     it "draws the arm rows the transition report prints" do
       create(:sample, run: finished_run(radius: 1, transition_epoch: 700), epoch: 700,
@@ -401,6 +452,35 @@ RSpec.describe Experiments::ShowPage do
 
       expect(page.agreement_chart.arms).to eq(page.transition_arms)
       expect([arm.flagged_only, arm.replicated_only, arm.both]).to eq([1, 1, 1])
+    end
+  end
+
+  # A descendant carries its parent's emergence and no crossing of its own: it is a
+  # finished run, but neither a transition nor a run without one.
+  context "with a finished descendant" do
+    before do
+      finished_run(radius: 1, transition_epoch: 100)
+      finished_run(radius: 2)
+      create(:run, :descendant, experiment: experiment, status: "finished",
+                                params: Lab::Schema.run_defaults.merge("radius" => 2))
+    end
+
+    it "counts it among the runs finished" do
+      expect(page.finished_count).to eq(3)
+    end
+
+    it "reads the transition rate over the founding runs alone" do
+      expect([page.transition_rate.fraction, page.founding_finished_count, page.emerged_finished]).to eq([0.5, 2, 1])
+    end
+
+    it "leaves it out of the arm it would have emerged in" do
+      arm = page.arms.values.sole.find { |candidate| candidate.label == "2" }
+
+      expect([arm.emerged, arm.runs_finished]).to eq([0, 1])
+    end
+
+    it "leaves it out of the time to emergence" do
+      expect(page.survivals.values.sole.pooled.runs).to eq(1)
     end
   end
 end

@@ -15,6 +15,12 @@ module Experiments
       def census_only? = counted? && !transitioned
     end
 
+    # The readings held in the cache are the code's as much as the runs', and the cache
+    # outlives a deploy: a deploy that changes how a reading is taken, or a Data it is held
+    # in (whose Marshal no longer loads once a member is added), reads it afresh rather than
+    # serve the last deploy's. Digested once per boot.
+    CODE_VERSION = Digest::SHA256.hexdigest(Rails.root.glob("app/**/*.rb").sort.map(&:binread).join)
+
     def self.build(experiment:, paginate:)
       new(experiment: experiment, paginate: paginate)
     end
@@ -42,7 +48,7 @@ module Experiments
     # One lineage and complexity series set per axis: what the sweep's parameter did to
     # descent and to the dominant replicator, arm against arm. A sweep whose runs carry no
     # such sample shows none of it.
-    def series = @series ||= axes.index_with { |axis| ArmSeries.build(axis: axis, runs: observed_runs) }
+    def series = @series ||= ArmSeries.for_axes(axes: axes, means: arm_means)
 
     # One column per swept axis, headed and filled with the same label the phase diagram
     # and the arm table use, so a row of the runs table can be matched to an arm.
@@ -65,14 +71,18 @@ module Experiments
 
     def findings = @findings ||= Findings::Registry.for_experiment(experiment.slug)
 
-    def finished_count = finished_runs.size
+    def finished_count = @finished_count ||= experiment.runs.where(status: "finished").count
 
-    def transitioned_finished = finished_runs.count { |run| run.transition_epoch.present? }
+    # A descendant inherits its parent's reading and crosses nothing of its own, so every
+    # transition and emergence count below is over the founding runs alone.
+    def founding_finished_count = founding_finished_runs.size
+
+    def transitioned_finished = founding_finished_runs.count { |run| run.transition_epoch.present? }
 
     # The detector flags a candidate crossing on `compress_ratio` alone; a run emerged when
     # the census or the copy rate backed it (docs/design_record.md, 2026-09-15). The page
     # prints both counts, never the flagged one alone.
-    def emerged_finished = finished_runs.count(&:emerged?)
+    def emerged_finished = founding_finished_runs.count(&:emerged?)
 
     # Runs still under way can already carry a transition epoch, and they are not in the
     # rate's denominator: the page reports them separately rather than diluting the share.
@@ -91,11 +101,29 @@ module Experiments
                                                       title: "Detector against replicator census, per arm")
     end
 
-    def transition_report? = finished_count.positive? && transition_arms.any?
+    def transition_report? = founding_finished_count.positive? && transition_arms.any?
+
+    # The pre-registered complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm, so a sweep
+    # whose runs carry no such sample shows none of it.
+    def complexity_arms
+      @complexity_arms ||= cached("complexity_arms") { ComplexityArmsService.call(experiment: experiment) }
+    end
+
+    # A descendant sweep is read under its own rule (`descendant_reading`): this one would
+    # read its children under the conserved-core clause that sweep's entry drops.
+    # The lineage-diversity sweep is read under its own rule (`lineage_diversity_reading`):
+    # this one would read its emerged runs without that entry's share clause.
+    def complexity_reading?
+      experiment.parents.blank? && !LineageDiversityReadingService.applies_to?(experiment) && complexity_arms.any?
+    end
+
+    def rise_margin = ComplexityArmsService::RISE_MARGIN
+
+    def plateau_band = ComplexityArmsService::PLATEAU_BAND
 
     def transition_threshold = TransitionReportService::THRESHOLD
 
-    def transition_rate = TransitionRate.new(transitioned: transitioned_finished, finished: finished_count)
+    def transition_rate = TransitionRate.new(transitioned: transitioned_finished, finished: founding_finished_count)
 
     # Only a sweep a corpus pass has read carries this section: without rescores there is
     # nothing to say about `top_k`.
@@ -103,11 +131,55 @@ module Experiments
 
     def rescores? = rescore_summary.any?
 
+    # The orientation-aware census (#245) beside the detector and the emergence rule. Read
+    # afresh, not cached: a corpus pass writes its readings without touching the run.
+    def oriented_arms = @oriented_arms ||= OrientedArmsService.call(experiment: experiment)
+
+    # The from-emerged sweep's pre-registered reading, on a sweep with a parent rule only.
+    # Whether it is final also turns on the parent pool, whose runs belong to another
+    # experiment and so are not in the cache key: it is read afresh on every request.
+    def descendant_reading
+      return nil if experiment.parents.blank?
+
+      @descendant_reading ||= cached("descendant_reading") { FromEmergedReadingService.call(experiment: experiment) }
+                              .with(final: DescendantSweepSettledService.call(experiment))
+    end
+
+    # The lineage-diversity sweep's pre-registered reading, on that sweep only. The service
+    # holds each finished run's reading and the trend's p in the cache itself.
+    def lineage_diversity_reading
+      return nil unless LineageDiversityReadingService.applies_to?(experiment)
+
+      @lineage_diversity_reading ||= LineageDiversityReadingService.call(experiment: experiment)
+    end
+
     private
+
+    def arm_means
+      cached("arm_means") { ArmMeans.read(axes: axes, runs: observed_runs, series: ArmSeries::EVERY) }
+    end
+
+    # The two readings that pass over every sample of the sweep, held per experiment: a pass
+    # is seconds of disk on the lab's database at the host-parasite sweep's 2.5 M samples,
+    # and a finished sweep's samples never change (issue #236). Every write behind them
+    # goes through a run — its samples are recorded with an update of its summary, its
+    # crossing and its status are columns of it, and a grid change moves the axes — so the
+    # key moves with any run of the experiment, with its grid and with the code.
+    def cached(name, &)
+      Rails.cache.fetch(["experiments/show_page", CODE_VERSION, experiment.id, name, runs_version], &)
+    end
+
+    def runs_version = @runs_version ||= Digest::SHA256.hexdigest([experiment.param_grid, run_versions].to_json)
+
+    def run_versions
+      experiment.runs.order(:id).pluck(:id, :status, :updated_at)
+                .map { |id, status, updated_at| [id, status, updated_at.iso8601(6)] }
+    end
 
     def survival_for(axis)
       arms = axis.values.map do |value|
-        observations = observed_runs.select { |run| axis.matches?(run.params, value) }.map { |run| observation(run) }
+        observations = founding_observed_runs.select { |run| axis.matches?(run.params, value) }
+                                             .map { |run| observation(run) }
         Charts::Survival::Arm.new(label: axis.label_of(value), observations: observations.compact)
       end
       Charts::Survival.new(arms: arms, title: "Time to emergence vs #{axis.name.to_s.humanize.downcase}")
@@ -134,8 +206,13 @@ module Experiments
 
     def observed_runs
       @observed_runs ||= experiment.runs.where.not(status: "pending")
-                                   .select(:id, :params, :status, :epochs_done, :emergence_epoch, :persistence).to_a
+                                   .select(:id, :params, :status, :epochs_done, :emergence_epoch, :persistence,
+                                           :parent_run_id).to_a
     end
+
+    # A descendant's emergence is its parent's, which it never waited for: time to
+    # emergence is read over founding runs alone.
+    def founding_observed_runs = observed_runs.reject(&:descendant?)
 
     # One grouped query for the whole page, never one per row, served by
     # `index_samples_on_run_id_replicated` — whose predicate this `where` has to keep
@@ -162,7 +239,7 @@ module Experiments
 
     def arms_for(axis)
       axis.values.map do |value|
-        runs = finished_runs.select { |run| axis.matches?(run.params, value) }
+        runs = founding_finished_runs.select { |run| axis.matches?(run.params, value) }
         emerged, rest = runs.partition(&:emerged?)
         flagged_only, unflagged = rest.partition { |run| run.transition_epoch.present? }
         ArmSummary.new(label: axis.label_of(value), emergence_epochs: emerged.map(&:emergence_epoch),
@@ -172,9 +249,9 @@ module Experiments
 
     def page = @page ||= @paginate.call(experiment.runs.order(:id))
 
-    def finished_runs
-      @finished_runs ||= experiment.runs.where(status: "finished")
-                                   .select(:id, :params, :transition_epoch, :emergence_epoch).to_a
+    def founding_finished_runs
+      @founding_finished_runs ||= experiment.runs.founding.where(status: "finished")
+                                            .select(:id, :params, :transition_epoch, :emergence_epoch).to_a
     end
 
     def groups_for(axis)

@@ -71,7 +71,8 @@ RSpec.describe Experiments::IndexPage do
 
       expect(page.planned.map(&:slug))
         .to eq(%w[mutation-rate-long world-size radius max-steps ops energy-per-epoch environmental-structure
-                  max-tape-len bff-control])
+                  max-tape-len host-parasite asymmetric-execution from-emerged lineage-diversity
+                  bff-control])
     end
 
     context "with a sweep built by hand under another slug" do
@@ -85,6 +86,17 @@ RSpec.describe Experiments::IndexPage do
     it "describes each planned sweep from its programme entry" do
       expect(page.planned.first).to have_attributes(slug: "mutation-rate", name: "Mutation rate",
                                                     description: Lab::SWEEPS.fetch("mutation_rate")[:description])
+    end
+  end
+
+  context "with a finished descendant" do
+    it "counts it done but reads the rate over the founding runs" do
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 400)
+      create(:run, experiment: experiment, status: "finished")
+      create(:run, :descendant, experiment: experiment, status: "finished")
+
+      expect(page.rows.find { |row| row.experiment == experiment })
+        .to have_attributes(runs_done: 3, transition_rate: have_attributes(fraction: 0.5))
     end
   end
 end

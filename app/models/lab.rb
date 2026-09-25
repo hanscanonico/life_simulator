@@ -180,6 +180,169 @@ module Lab
       seeds_by_arm: { "max_tape_len" => { 128 => (1..90).to_a, 256 => (1..90).to_a } },
       epochs: 20_000
     },
+    "host_parasite" => {
+      name: "Host–parasite economy",
+      description: "Does complexity keep rising when energy is a contested stock? Every " \
+                   "cell holds instruction energy that carries across epochs, so what one " \
+                   "cell spends is gone until the influx pays it back; with the steal op " \
+                   "on, a tape can take what a neighbour saved. That gives one tape " \
+                   "something to gain from another's state beyond overwriting it and the " \
+                   "other something to defend, which is the arms race the literature ties " \
+                   "to rising structural complexity in fitness-free soups.",
+      # One bundle per economy rather than two axes, because the grid's cartesian product
+      # would otherwise pair theft with no stock to steal from, which the engine refuses.
+      # The first bundle is the economy off — no stock, no theft — the substrate every
+      # earlier sweep ran, so the priced arms are read against a control inside the same
+      # experiment. The three influx levels are one full-length interaction's worth per
+      # epoch (`max_steps` is 2^13), a quarter of one and a sixteenth: a cell pairs about
+      # twice an epoch, so even the richest arm cannot pay for everything it could run.
+      param_grid: {
+        "economy" => [
+          { "energy_influx" => 0, "steal_amount" => 0 },
+          { "energy_influx" => 2**13, "steal_amount" => 0 },
+          { "energy_influx" => 2**13, "steal_amount" => 2**10 },
+          { "energy_influx" => 2**11, "steal_amount" => 0 },
+          { "energy_influx" => 2**11, "steal_amount" => 2**10 },
+          { "energy_influx" => 2**9, "steal_amount" => 0 },
+          { "energy_influx" => 2**9, "steal_amount" => 2**10 }
+        ],
+        # Four full interactions of hoard, the same ceiling in every arm, so the influx is
+        # the only energy quantity the sweep varies. Inert in the control, which has no
+        # influx to stock. At the engine's default loss of 0.5 one steal delivers 2^9 —
+        # a whole epoch's influx in the poorest arm, an eighth of one in the richest.
+        "energy_stock_cap" => [4 * (2**13)],
+        "steal_loss" => [0.5],
+        # Both arms of sweep 8 whose plateau was measured, since a contested economy is
+        # only readable where the dominant tape has room to get more complicated.
+        "max_tape_len" => [128, 256],
+        "tape_len" => [64],
+        "width" => [128],
+        "height" => [128],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE]
+      },
+      # Ninety seeds in every arm, the control included: every priced arm so far lowered the
+      # emergence rate, the reading needs two emerged runs in an arm, and thirty seeds of
+      # this very substrate — sweep 8's 128 and 256 arms — left one emerged run under each
+      # cap, one short of a reading.
+      seeds: (1..90).to_a,
+      # Two hundred and seventy for the one priced arm that read keeps rising, on one of its
+      # two measured runs, and for its control, so the arm is decided against the control at
+      # its cap; and for the control at cap 256, whose emerged worlds join cap 128's as the
+      # parent pool of runs started from an emerged world (`docs/design_record.md`,
+      # 2026-09-25). An arm is a bundle and a cap together, so each is named by all three of
+      # its parameters.
+      seeds_by_arm: [
+        { "params" => { "energy_influx" => 2**11, "steal_amount" => 2**10, "max_tape_len" => 128 },
+          "seeds" => (1..270).to_a },
+        { "params" => { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128 },
+          "seeds" => (1..270).to_a },
+        { "params" => { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 256 },
+          "seeds" => (1..270).to_a }
+      ],
+      epochs: 20_000
+    },
+    "asymmetric_execution" => {
+      name: "Asymmetric execution",
+      description: "Does complexity keep rising when only one partner's code runs? Under " \
+                   "a host interaction the instruction pointer stays inside the first " \
+                   "tape while both heads still range over the pair, so the second tape " \
+                   "is pure read/write substrate and never runs a byte of its own. A " \
+                   "tape's fate then depends on how the tapes that host it treat it as " \
+                   "data, which is a pressure on what a tape looks like rather than only " \
+                   "on what it does — the asymmetry host–parasite systems are built on.",
+      # The control is `concat`, the whole-concatenation interaction every earlier sweep
+      # ran, so the asymmetric arms are read against it inside the same experiment. Crossed
+      # with the two room-to-grow caps whose plateau sweep 8 measured, since an asymmetry
+      # is only readable where the dominant tape has room to get more complicated.
+      param_grid: {
+        "interaction" => %w[concat host],
+        "max_tape_len" => [128, 256],
+        "tape_len" => [64],
+        "width" => [128],
+        "height" => [128],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE]
+      },
+      # Ninety seeds in every arm, the control included: the reading needs two emerged runs
+      # in an arm, thirty seeds of this very substrate — sweep 8's 128 and 256 arms — left
+      # one emerged run under each cap, and a host interaction runs only half of a
+      # pair as code, so its emergence rate can only be lower.
+      seeds: (1..90).to_a,
+      epochs: 20_000
+    },
+    "from_emerged" => {
+      name: "From an emerged world",
+      description: "Does an existing replicator keep getting more complicated once a " \
+                   "treatment is switched on, and does it hold at all? Each run starts " \
+                   "from the last stored world of a host–parasite control that is at least " \
+                   "half replicators, and carries on under its parent's own dynamics, the " \
+                   "one priced economy that read keeps rising, a rich economy, or host mode.",
+      # A descendant sweep (`docs/design_record.md`, 2026-09-25, "Runs that start from an
+      # emerged world"): no run starts from a random fill. The parents are sweep 9's two
+      # economy-off controls, each at its last stored world — the terminal snapshot pruning
+      # always keeps — qualified on the orientation-aware census of that world, since the
+      # engine's census cannot see the reverse copiers emerged worlds are made of (#245).
+      # A parent with no such reading yet is skipped until the readings pass reaches it.
+      parents: {
+        "experiment" => slug_for("host_parasite"),
+        "arms" => [
+          { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128 },
+          { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 256 }
+        ],
+        "instrument" => DescendantReading::INSTRUMENT,
+        "share_key" => DescendantReading::SHARE_KEY,
+        "min_share" => DescendantReading::QUALIFYING_SHARE
+      },
+      # Each bundle is merged over its parent's params, so the empty one is the exact
+      # continuation and the control every treatment is paired against. The priced bundles
+      # restate sweep 9's hoard ceiling and loss, which the parents already carry.
+      param_grid: {
+        "treatment" => [
+          {},
+          { "energy_influx" => 2**11, "steal_amount" => 2**10, "energy_stock_cap" => 4 * (2**13), "steal_loss" => 0.5 },
+          { "energy_influx" => 2**13, "steal_amount" => 2**10, "energy_stock_cap" => 4 * (2**13), "steal_loss" => 0.5 },
+          { "interaction" => "host" }
+        ]
+      },
+      # The same continuation seeds under every treatment, so each (parent, seed) is read
+      # under all four, and none a parent's own seed (sweep 9's run 1–270).
+      seeds: [1001, 1002, 1003],
+      # A descendant sweep's `epochs` is each child's own budget past its parent epoch: a
+      # child of a 20 000-epoch parent stops at 40 000.
+      epochs: 20_000,
+      # Ahead of sweep 9's extension, which runs seed-major at 0 − seed.
+      priority: 50
+    },
+    "lineage_diversity" => {
+      name: "Lineage diversity",
+      description: "After a transition, does a world stay polyphyletic, and do more " \
+                   "lineages survive as a cell's reach shrinks? The radius sweep's " \
+                   "diversity half, re-run at the emergent rate with lineages that follow " \
+                   "descent through reverse copies, read on the effective number of " \
+                   "lineages rather than a count of every tag a cell still holds.",
+      # Rung 2 of the evolution programme (`docs/design_record.md`, 2026-09-11), pre-
+      # registered on 2026-09-25, "Lineage diversity after a transition", whose numbers live
+      # in `Lab::LineageDiversityReading`. The arms are the radius sweep's. `oriented` is
+      # the point of the sweep: the replicators of every emerged world copy themselves in
+      # reverse, and under the aligned rule a reverse copy passes no tag on, so the tags
+      # would count survivors of the takeover rather than descent from it. Tapes are held
+      # at a fixed 64 bytes so the lineage comparisons are the plain whole-tape case.
+      param_grid: {
+        "radius" => [1, 2, 4, 0],
+        "width" => [128],
+        "height" => [128],
+        "tape_len" => [64],
+        "max_tape_len" => [64],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE],
+        "lineage_rule" => ["oriented"]
+      },
+      # Ninety seeds in every arm: the radius sweep saw six transitions in forty runs, and
+      # the reading needs at least two emerged runs in each arm, the well-mixed one
+      # included, before the trend across them can be read.
+      seeds: (1..90).to_a,
+      epochs: 20_000,
+      # After the from-emerged children, ahead of sweep 9's extension.
+      priority: 20
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

@@ -19,11 +19,14 @@ export default class extends Controller {
     "compressRatio",
     "replicatorCount",
     "distinctTapes",
-    "copyRate"
+    "copyRate",
+    "stealRate",
+    "params"
   ]
 
   static values = {
     worlds: Object,
+    paramLines: Object,
     substrate: String,
     seed: Number,
     stepsPerFrame: Number,
@@ -124,6 +127,7 @@ export default class extends Controller {
     this.pixels = new Uint8Array(width * height * 4)
     this.image = new ImageData(new Uint8ClampedArray(this.pixels.buffer), width, height)
     this.metricsEpoch = null
+    this.paramsTarget.textContent = this.paramLinesValue[this.substrateValue]
     this.clearStatus()
 
     this.draw()
@@ -170,6 +174,7 @@ export default class extends Controller {
     this.replicatorCountTarget.textContent = metrics.replicator_count.toLocaleString(LOCALE)
     this.distinctTapesTarget.textContent = metrics.distinct_tapes.toLocaleString(LOCALE)
     this.copyRateTarget.textContent = metrics.copy_rate.toFixed(3)
+    this.stealRateTarget.textContent = metrics.steal_rate.toFixed(3)
   }
 
   clearStatus() {

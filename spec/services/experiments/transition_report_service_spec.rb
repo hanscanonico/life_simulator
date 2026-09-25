@@ -66,6 +66,33 @@ RSpec.describe Experiments::TransitionReportService do
     end
   end
 
+  context "with a run whose fall is large against its own start" do
+    let!(:relative_crosser) do
+      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 510,
+                         params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
+      (0..800).step(10) do |epoch|
+        create(:sample, run: run, epoch: epoch, values: fallen_values(epoch))
+      end
+      run
+    end
+
+    it "reads the relative epoch off its samples beside the stored one" do
+      expect(row_for(relative_crosser)).to have_attributes(transition_epoch: 510, transition_epoch_relative: 510)
+    end
+
+    it "counts it under the relative rule and under both rules" do
+      expect(report.arms.sole).to have_attributes(relative: 1, both_rules: 1)
+    end
+
+    it "leaves the runs that never left their own start out of the relative count" do
+      expect(row_for(true_positive).transition_epoch_relative).to be_nil
+    end
+
+    def fallen_values(epoch)
+      sample(epoch > 500 ? 0.5 : 0.98, entropy: 4.0, replicators: 0, copy_rate: 0.0, tapes: 900, top_share: 0.02)
+    end
+  end
+
   it "confirms the crossing of a true positive against the census" do
     expect(row_for(true_positive)).to have_attributes(confirmed_epoch: 200, confirmed_by: "census")
   end
@@ -211,7 +238,7 @@ RSpec.describe Experiments::TransitionReportService do
     end
 
     it "writes the terminal-only counts the text prints to the arm section of the CSV" do
-      expect(CSV.parse(report.to_csv).last).to eq(%w[0.000244 10 8 7 7 6 2])
+      expect(CSV.parse(report.to_csv).last).to eq(%w[0.000244 10 8 7 0 0 7 6 2])
     end
 
     context "with the in-flight runs counted in" do
@@ -235,12 +262,56 @@ RSpec.describe Experiments::TransitionReportService do
     end
   end
 
+  describe "the complexity reading" do
+    before do
+      2.times do
+        run = create(:run, :emerged, experiment: experiment, transition_epoch: 100, emergence_epoch: 100,
+                                     params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
+        (([12] * 10) + ([40] * 10)).each_with_index do |count, index|
+          create(:sample, run: run, epoch: 100 + (index * 10),
+                          values: { "compress_ratio" => 0.4, "dominant_instruction_count" => count,
+                                    "conserved_core_bytes" => 30, "dominant_compressed_len" => 139,
+                                    "distinct_lineages" => index < 10 ? 900 : 120 })
+        end
+      end
+    end
+
+    it "reads the arm the way the sweep page does" do
+      expect(report.readings.sole).to have_attributes(reading: :keeps_rising, measured_count: 2)
+    end
+
+    it "prints the reading under the arm summary" do
+      expect(report.to_text).to include("instructions_first", "keeps rising")
+    end
+
+    it "writes the reading as a third section of the CSV" do
+      table = CSV.parse(report.to_csv)
+
+      expect(table[-2]).to eq(Experiments::ComplexityArmsService::COLUMNS)
+      expect(table.last.first).to eq("0.000244")
+    end
+
+    it "carries the late-run lineage count of sweep 10's secondary reading" do
+      table = CSV.parse(report.to_csv)
+      columns = table[-2].zip(table.last).to_h
+
+      expect(columns.values_at("lineages_first", "lineages_last")).to eq(%w[900 120])
+    end
+  end
+
+  context "with no arm carrying a complexity reading" do
+    it "leaves the report as it was" do
+      expect(report.readings).to be_empty
+      expect(CSV.parse(report.to_csv).last).to eq(["0.000244", "3", "3", "2", "0", "0", "2", "1", "2"])
+    end
+  end
+
   describe "#to_text" do
     it "aligns a header and one line per run over the fixed columns" do
       lines = report.to_text.lines.map(&:strip)
 
       expect(lines.first).to match(
-        /\Arun_id\s+seed\s+status\s+mutation_rate\s+transition_epoch\s+collapse_epoch\s+crossings\s+confirmed_epoch/
+        /\Arun_id\s+seed\s+status\s+mutation_rate\s+transition_epoch\s+transition_epoch_relative\s+collapse_epoch/
       )
     end
 
@@ -271,7 +342,48 @@ RSpec.describe Experiments::TransitionReportService do
     it "writes the arm summary as a second section" do
       table = CSV.parse(report.to_csv)
 
-      expect(table.last).to eq(["0.000244", "3", "3", "2", "2", "1", "2"])
+      expect(table.last).to eq(["0.000244", "3", "3", "2", "0", "0", "2", "1", "2"])
+    end
+  end
+
+  # The host-parasite sweep is 1 260 runs of hundreds of samples each, and reading them all
+  # at once is what the 2 GiB app container was OOM-killed for at 848 of them (issue #223).
+  describe "reading a sweep too large to hold at once" do
+    let(:runs) { 400 }
+    let(:samples_per_run) { 200 }
+
+    before do
+      insert_sweep(experiment, runs: runs, samples_per_run: samples_per_run, emergence_epoch: 10_000,
+                               params: { "mutation_rate" => 0.000244 }) do |index|
+        sample(index > 100 ? 0.4 : 0.9, entropy: 6.0 - (index / 50.0), replicators: index > 120 ? 3 : 0,
+                                        copy_rate: 0.001, tapes: 900 - index, top_share: 0.02)
+          .merge("dominant_instruction_count" => 10 + index, "conserved_core_bytes" => 40)
+      end
+    end
+
+    # Each sampled run's samples are read once for its own row. The complexity reading
+    # comes back reduced — a row per emerged run and observable, never a sample — in one
+    # statement, beside the single experiment-wide aggregate the peak steal rate is read with.
+    it "reads the sample values one run at a time, in a statement count linear in the runs" do
+      *per_run, spans, steal_peaks = value_reads_of_report
+
+      expect(per_run.size).to eq(experiment.runs.count)
+      expect(per_run.max).to be <= samples_per_run
+      expect([spans, steal_peaks]).to all(be <= runs * Experiments::ComplexityArmsService::SERIES.size)
+    end
+  end
+
+  context "with a descendant, which crosses nothing of its own" do
+    let!(:child) do
+      create(:run, :descendant, experiment: experiment, status: "finished",
+                                params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244)).tap do |run|
+        create(:sample, run: run, epoch: 1_100,
+                        values: sample(0.4, entropy: 2.0, replicators: 9, copy_rate: 0.005, tapes: 120, top_share: 0.4))
+      end
+    end
+
+    it "reads no row for it" do
+      expect(row_for(child)).to be_nil
     end
   end
 
@@ -282,6 +394,10 @@ RSpec.describe Experiments::TransitionReportService do
                        params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
     samples.each_with_index { |values, index| create(:sample, run: run, epoch: (index + 1) * 100, values: values) }
     run
+  end
+
+  def value_reads_of_report
+    value_reads_during { described_class.call(experiment: experiment).to_text }
   end
 
   def sample(compress_ratio, entropy:, replicators:, copy_rate:, tapes:, top_share:)

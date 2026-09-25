@@ -20,6 +20,19 @@ pub const TRANSITION_HOLD_SAMPLES: u32 = 3;
 pub const TRANSITION_MAX_OP_DENSITY: f64 = 0.9;
 pub const TRANSITION_MIN_ALPHABET_SIZE: u32 = 16;
 
+/// The companion rule, read against the run's own start instead of the constant above: a
+/// fresh soup's `compress_ratio` depends on `max_tape_len` — measured 2026-09-19, the mean
+/// over the first `TRANSITION_BASELINE_EPOCHS` epochs falls 0.984 → 0.853 → 0.788 → 0.754
+/// as the cap goes 64 → 128 → 256 → 512, so a wide-tape soup starts at the constant
+/// threshold and crosses it with nothing replicating. The fraction is that constant
+/// expressed against the cap-64 start, 0.6 / 0.984 ≈ 0.61, so the arms the threshold was
+/// chosen on read the crossings they always did (`docs/design_record.md`, 2026-09-19).
+/// `transition_epoch` stays the locked observable; this is a second reading beside it.
+pub const TRANSITION_RELATIVE_FRACTION: f64 = 0.61;
+/// The last epoch counted into a run's baseline. A run whose first sample comes later has
+/// no baseline, and so no relative reading at all.
+pub const TRANSITION_BASELINE_EPOCHS: u64 = 500;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Metrics {
     pub compress_ratio: f64,
@@ -76,14 +89,89 @@ pub struct Metrics {
     /// How many of those conserved positions hold a byte the run's instruction set
     /// executes: the part of the core that is program rather than junk held still.
     pub conserved_core_ops: Option<u32>,
+    /// Share of the sampled epoch's interactions in which a steal op executed — theft
+    /// caught in situ, whichever half of the pair ran it and whatever it managed to take.
+    /// 0 wherever the op is off, which is every run at the defaults, and on the life
+    /// substrate.
+    pub steal_rate: f64,
+    /// Share of the census's independent assay draws in which at least one tape passed the
+    /// replicator test. The assay is four Bernoulli trials against random partners, so a
+    /// marginal tape passes or fails at random between adjacent epochs and a single draw is
+    /// unreadable on its own (`docs/design_record.md`, 2026-09-18). `None` on the life
+    /// substrate, which has no tapes to assay.
+    pub replicator_pass_rate: Option<f64>,
+    /// The mean of those draws' counts: how many cells hold a passing tape on an average
+    /// draw, where `replicator_count` is what one draw read. `None` on the life substrate.
+    pub replicator_count_mean: Option<f64>,
+    /// Bytes of the largest lineage's representative tape once zlib has had it: the same
+    /// reading `dominant_compressed_len` makes, of a tape chosen by descent rather than by
+    /// population. The dominant tape is whichever tape most cells hold at this sample, and
+    /// a lineage that keeps getting more complicated while its modal tape turns over reads
+    /// flat through it (`docs/design_record.md`, 2026-09-19). `None` where no lineage holds
+    /// two cells, and on the life substrate.
+    pub lineage_compressed_len: Option<u32>,
+    /// How many of that same representative's bytes the run's instruction set executes.
+    pub lineage_instruction_count: Option<u32>,
+    /// `copy_rate` with the image reversed: the share of the sampled epoch's interactions
+    /// that ended with one half holding the byte-exact reverse of the tape its partner
+    /// arrived with, among the pairs that did not arrive that way. `copy_rate` is locked and
+    /// orientation-blind, and the dominant replicators of the corpus copy in reverse
+    /// (`docs/design_record.md`, 2026-09-25). A palindrome's copy counts in both. 0 on the
+    /// life substrate.
+    pub reverse_copy_rate: f64,
+    /// The share of `replicator::SELF_REP_SAMPLE_CELLS` cells, drawn uniformly with
+    /// replacement, whose tape passes the orientation-aware detector aligned: a companion
+    /// of `replicator_count`, which asks for a same-orientation copy of one of the `top_k`
+    /// tapes. `None` on the life substrate.
+    pub replicator_share: Option<f64>,
+    /// The same draw read under the detector's best rotation, so never below
+    /// `replicator_share`.
+    pub replicator_share_rotated: Option<f64>,
+    /// Whether the dominant tape — the one `dominant_replicates` describes — passes the
+    /// orientation-aware detector aligned. `None` on the life substrate.
+    pub dominant_self_replicates: Option<bool>,
+    /// `lineage_variation` with each member put the way round — its live bytes as they
+    /// are, or reversed — that is Hamming-closer to its lineage's modal tape, a tie keeping
+    /// them as they are. A world of `X` and `reverse(X)` reads a lineage of near-clones as
+    /// a cloud a whole tape wide on the aligned reading (`docs/design_record.md`,
+    /// 2026-09-25). 0 on the life substrate.
+    pub lineage_variation_oriented: f64,
+    /// `conserved_core_bytes` of the largest lineage's members put the same way round.
+    pub conserved_core_bytes_oriented: Option<u32>,
+    /// `conserved_core_ops` of those same oriented members.
+    pub conserved_core_ops_oriented: Option<u32>,
+    /// Interpreter steps until the dominant tape — the one `dominant_replicates` describes
+    /// — first leaves a complete byte-exact image of itself in the partner half, in either
+    /// orientation: the median of `replicator::copy_latency`'s trials. `copy_cost` stays
+    /// the locked reading and is undefined for a copier whose loop never exits, which is
+    /// every dominant copier of the emerged corpus. `None` where fewer than half the trials
+    /// complete an image, and on the life substrate.
+    pub copy_latency: Option<u32>,
+    /// Which way round that median trial's image lies: `forward`, `reverse`, or `both` for
+    /// a palindrome. `None` wherever `copy_latency` is.
+    pub copy_latency_orientation: Option<bff::Orientation>,
+    /// The inverse Simpson index of the lineage shares, 1 / Σ p², over the lineage ids the
+    /// cells hold: how many equal lineages would split the world the way it is split. It
+    /// reads 1 for a monophyletic world and k for k equal lineages, and the relic tags of
+    /// cells nothing ever overwrote barely move it, where they are most of
+    /// `distinct_lineages`. The rung-2 diversity reading (`docs/design_record.md`,
+    /// 2026-09-25). 0 on the life substrate.
+    pub lineage_effective_count: f64,
+    /// How many lineage ids each hold at least `LINEAGE_FLOOR_PERCENT` percent of the cells.
+    /// 0 on the life substrate.
+    pub lineages_over_one_percent: u64,
 }
 
 impl Metrics {
     /// Whether this sample counts towards a transition: a compressible world that is not
     /// simply an alphabet that collapsed onto a handful of instruction bytes.
     pub fn transition_candidate(&self) -> bool {
-        self.compress_ratio < TRANSITION_THRESHOLD
-            && self.op_density <= TRANSITION_MAX_OP_DENSITY
+        self.compress_ratio < TRANSITION_THRESHOLD && self.uncollapsed()
+    }
+
+    /// The collapse half of the rule on its own, which the relative reading applies too.
+    fn uncollapsed(&self) -> bool {
+        self.op_density <= TRANSITION_MAX_OP_DENSITY
             && self.alphabet_size >= TRANSITION_MIN_ALPHABET_SIZE
     }
 }
@@ -322,6 +410,34 @@ pub fn lineage_census(lineages: &[u64]) -> (u64, f64) {
     (distinct, top as f64 / lineages.len() as f64)
 }
 
+/// The share of the world, in percent, a lineage must hold to count towards
+/// `lineages_over_one_percent`.
+pub const LINEAGE_FLOOR_PERCENT: u64 = 1;
+
+/// `lineage_effective_count` and `lineages_over_one_percent` of one world's tags, read off
+/// the same sorted runs `lineage_census` reads. The index is `N² / Σ nᵢ²` over the
+/// lineages' cell counts, summed in integers so the one division is the only rounding.
+pub fn lineage_diversity(lineages: &[u64]) -> (f64, u64) {
+    if lineages.is_empty() {
+        return (0.0, 0);
+    }
+    let mut sorted = lineages.to_vec();
+    sorted.sort_unstable();
+
+    let cells = lineages.len() as u64;
+    let mut squares: u128 = 0;
+    let mut over_floor: u64 = 0;
+    for run in sorted.chunk_by(|a, b| a == b) {
+        let size = run.len() as u64;
+        squares += u128::from(size) * u128::from(size);
+        if size * 100 >= LINEAGE_FLOOR_PERCENT * cells {
+            over_floor += 1;
+        }
+    }
+    let total = u128::from(cells) * u128::from(cells);
+    (total as f64 / squares as f64, over_floor)
+}
+
 /// How many of the largest lineages `lineage_variation` reads. A soup is a crowd of
 /// small lineages until a colony spreads through it, and the mean over all of them would
 /// read the crowd rather than the colonies; a handful of the largest reads the
@@ -349,9 +465,53 @@ pub fn lineage_variation(tapes: Tapes<'_>, lineages: &[u64]) -> f64 {
         return 0.0;
     }
 
-    let mut members: Vec<(u64, &[u8])> = tagged()
+    let members: Vec<(u64, &[u8])> = tagged()
         .filter(|(id, _)| read.iter().any(|(read, _)| read == id))
         .collect();
+    pooled_variation(members)
+}
+
+/// `lineage_variation` read after each member is put the way round that is Hamming-closer
+/// to its own lineage's modal tape (`orient`): the same lineages, the same modal rule and
+/// the same pooled mean, over tapes that may have been reversed. A population of `X` and
+/// `reverse(X)` is one tape copied two ways round, and the aligned reading counts every
+/// reversed member as a tape's width of variation.
+pub fn lineage_variation_oriented(tapes: Tapes<'_>, lineages: &[u64]) -> f64 {
+    if lineages.is_empty() || tapes.stride() == 0 {
+        return 0.0;
+    }
+    let mut read = ranked_lineages(lineages);
+    read.truncate(VARIATION_TOP_LINEAGES);
+    if read.is_empty() {
+        return 0.0;
+    }
+
+    let mut members: Vec<(u64, &[u8])> = lineages
+        .iter()
+        .copied()
+        .zip(tapes.iter())
+        .filter(|(id, _)| read.iter().any(|(read, _)| read == id))
+        .collect();
+    members.sort_unstable();
+    let oriented: Vec<(u64, Cow<'_, [u8]>)> = members
+        .chunk_by(|(one, _), (other, _)| one == other)
+        .flat_map(|members| {
+            let modal = Lineage { members }.modal_tape();
+            members
+                .iter()
+                .map(move |(id, tape)| (*id, orient(tape, modal)))
+        })
+        .collect();
+    pooled_variation(
+        oriented
+            .iter()
+            .map(|(id, tape)| (*id, tape.as_ref()))
+            .collect(),
+    )
+}
+
+/// The mean distance of `members` to their own lineage's modal tape, pooled over them all.
+fn pooled_variation(mut members: Vec<(u64, &[u8])>) -> f64 {
     // Ordered by lineage then by tape, so each lineage is a contiguous run and the tapes
     // inside it are run-length countable; a tie for the modal tape keeps the lowest tape.
     members.sort_unstable();
@@ -361,6 +521,17 @@ pub fn lineage_variation(tapes: Tapes<'_>, lineages: &[u64]) -> f64 {
         .map(|members| Lineage { members }.distance_to_modal_tape())
         .sum();
     distance as f64 / members.len() as f64
+}
+
+/// A tape the way round that is Hamming-closer to `modal`: its live bytes as they are, or
+/// the same bytes last to first, a tie keeping them as they are. A tape that grew is
+/// reversed over its own live length, never over its slot.
+fn orient<'a>(tape: &'a [u8], modal: &[u8]) -> Cow<'a, [u8]> {
+    let reversed: Vec<u8> = tape.iter().rev().copied().collect();
+    match hamming_distance(&reversed, modal) < hamming_distance(tape, modal) {
+        true => Cow::Owned(reversed),
+        false => Cow::Borrowed(tape),
+    }
 }
 
 /// The lineages that hold more than one cell, largest first and the lowest id of any that
@@ -407,23 +578,31 @@ pub fn conserved_core(
     lineages: &[u64],
     ops: bff::OpSet,
 ) -> Option<ConservedCore> {
-    if lineages.is_empty() || tapes.stride() == 0 {
-        return None;
-    }
-    let (top, _) = *ranked_lineages(lineages).first()?;
-    let members: Vec<&[u8]> = lineages
-        .iter()
-        .copied()
-        .zip(tapes.iter())
-        .filter(|(id, _)| *id == top)
-        .map(|(_, tape)| tape)
-        .collect();
+    let members = largest_lineage_members(tapes, lineages)?;
+    Some(core_of(&members, ops))
+}
 
+/// `conserved_core` over the largest lineage's members put the way round that is
+/// Hamming-closer to that lineage's modal tape, as `lineage_variation_oriented` puts them.
+pub fn conserved_core_oriented(
+    tapes: Tapes<'_>,
+    lineages: &[u64],
+    ops: bff::OpSet,
+) -> Option<ConservedCore> {
+    let members = largest_lineage_members(tapes, lineages)?;
+    let modal = modal_tape(&members)?;
+    let oriented: Vec<Cow<'_, [u8]>> = members.iter().map(|tape| orient(tape, modal)).collect();
+    let oriented: Vec<&[u8]> = oriented.iter().map(|tape| tape.as_ref()).collect();
+    Some(core_of(&oriented, ops))
+}
+
+/// The positions `members` agree on, and how many of them hold an instruction.
+fn core_of(members: &[&[u8]], ops: bff::OpSet) -> ConservedCore {
     let width = members.iter().map(|tape| tape.len()).max().unwrap_or(0);
     // The 256 counts of every position, laid out flat so each member's tape is read in one
     // sequential pass: the whole reading costs members × tape length.
     let mut counts = vec![0u32; width * 256];
-    for tape in &members {
+    for tape in members {
         for (position, byte) in tape.iter().enumerate() {
             counts[position * 256 + *byte as usize] += 1;
         }
@@ -439,7 +618,60 @@ pub fn conserved_core(
             core.ops += u32::from(ops.enables(byte as u8));
         }
     }
-    Some(core)
+    core
+}
+
+/// How much tape the largest lineage is, read off one representative of it: the same two
+/// readings `Complexity` makes of the dominant tape, taken of a tape chosen by descent.
+/// The lineage is the one `conserved_core` and `lineage_variation` already rank — the
+/// largest that holds at least two cells, ties by lowest id — and the representative is
+/// its modal tape, ties by the lowest tape value, the rule `lineage_variation` already
+/// reads a lineage's modal tape by. Both halves are functions of the world alone, so a run
+/// resumed from a snapshot reads the same representative the run that wrote it read.
+/// `None` where no lineage holds two cells, and on a world with no tapes.
+pub fn lineage_complexity(
+    tapes: Tapes<'_>,
+    lineages: &[u64],
+    ops: bff::OpSet,
+) -> Option<Complexity> {
+    let members = largest_lineage_members(tapes, lineages)?;
+
+    Some(Complexity::of(modal_tape(&members)?, ops))
+}
+
+/// The tapes of the lineage `conserved_core` and `lineage_complexity` both read, in cell
+/// order: the members of the largest lineage `ranked_lineages` ranks. `None` where no
+/// lineage holds two cells, and on a world with no tapes.
+fn largest_lineage_members<'a>(tapes: Tapes<'a>, lineages: &[u64]) -> Option<Vec<&'a [u8]>> {
+    if lineages.is_empty() || tapes.stride() == 0 {
+        return None;
+    }
+    let (top, _) = *ranked_lineages(lineages).first()?;
+    Some(
+        lineages
+            .iter()
+            .copied()
+            .zip(tapes.iter())
+            .filter(|(id, _)| *id == top)
+            .map(|(_, tape)| tape)
+            .collect(),
+    )
+}
+
+/// The most common tape of a lineage's members, and the lowest tape of the ones that tie.
+fn modal_tape<'a>(members: &[&'a [u8]]) -> Option<&'a [u8]> {
+    let mut sorted = members.to_vec();
+    sorted.sort_unstable();
+
+    let mut modal = *sorted.first()?;
+    let mut best = 0usize;
+    for run in sorted.chunk_by(|one, other| one == other) {
+        if run.len() > best {
+            best = run.len();
+            modal = run[0];
+        }
+    }
+    Some(modal)
 }
 
 fn conserved(agreeing: u64, members: u64) -> bool {
@@ -451,7 +683,7 @@ struct Lineage<'a> {
     members: &'a [(u64, &'a [u8])],
 }
 
-impl Lineage<'_> {
+impl<'a> Lineage<'a> {
     fn distance_to_modal_tape(&self) -> u64 {
         let modal = self.modal_tape();
         self.members
@@ -462,7 +694,7 @@ impl Lineage<'_> {
 
     /// The most common tape of the members, which arrive sorted by tape: the longest run
     /// of equal tapes, and the lowest tape of the runs that tie.
-    fn modal_tape(&self) -> &[u8] {
+    fn modal_tape(&self) -> &'a [u8] {
         let mut modal = self.members[0].1;
         let mut best = 0usize;
         for run in self.members.chunk_by(|(_, one), (_, other)| one == other) {
@@ -491,69 +723,192 @@ pub(crate) fn hamming_distance(one: &[u8], other: &[u8]) -> u64 {
 /// The first sampled epoch at which a qualifying sample appears and holds — the primary
 /// dependent variable of every sweep. A sample qualifies on `Metrics::transition_candidate`:
 /// `compress_ratio` below the threshold, and neither of the two collapse guards tripped.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransitionTracker {
-    candidate: Option<u64>,
-    held: u32,
-    settled: Option<u64>,
+    constant: Hold,
     last_epoch: Option<u64>,
+    relative: RelativeTracker,
 }
 
 /// The tracker's whole state, so a snapshot can carry it and a resumed run keeps the
-/// measurement it had already made.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// measurement it had already made — the relative reading's baseline included.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransitionState {
     pub candidate: Option<u64>,
     pub held: u32,
     pub settled: Option<u64>,
     pub last_epoch: Option<u64>,
+    pub relative: RelativeState,
+}
+
+/// The relative reading's state: the baseline as the sum and count it is a mean of, the
+/// samples inside the baseline window that cannot be judged until it closes, and the hold
+/// machine that judges them.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RelativeState {
+    pub baseline_sum: f64,
+    pub baseline_count: u32,
+    pub pending: Vec<PendingSample>,
+    pub candidate: Option<u64>,
+    pub held: u32,
+    pub settled: Option<u64>,
+}
+
+/// A sample inside the baseline window, kept until the window closes and the baseline it
+/// is to be judged against is known.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PendingSample {
+    pub epoch: u64,
+    pub ratio: f64,
+    pub uncollapsed: bool,
+}
+
+impl PendingSample {
+    fn qualifies(&self, baseline: f64) -> bool {
+        self.uncollapsed && self.ratio <= TRANSITION_RELATIVE_FRACTION * baseline
+    }
+}
+
+/// The candidate-and-hold machine both readings run: a qualifying sample opens a
+/// candidate, `TRANSITION_HOLD_SAMPLES` further qualifying samples settle it on the epoch
+/// it opened, and one that does not qualify drops it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Hold {
+    candidate: Option<u64>,
+    held: u32,
+    settled: Option<u64>,
+}
+
+impl Hold {
+    fn observe(&mut self, epoch: u64, qualifies: bool) {
+        if self.settled.is_some() {
+            return;
+        }
+        if !qualifies {
+            self.candidate = None;
+            self.held = 0;
+            return;
+        }
+        match self.candidate {
+            None => {
+                self.candidate = Some(epoch);
+                self.held = 0;
+            }
+            Some(candidate) => {
+                self.held += 1;
+                if self.held >= TRANSITION_HOLD_SAMPLES {
+                    self.settled = Some(candidate);
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+struct RelativeTracker {
+    baseline_sum: f64,
+    baseline_count: u32,
+    pending: Vec<PendingSample>,
+    hold: Hold,
+}
+
+impl RelativeTracker {
+    fn from_state(state: RelativeState) -> Self {
+        Self {
+            baseline_sum: state.baseline_sum,
+            baseline_count: state.baseline_count,
+            pending: state.pending,
+            hold: Hold {
+                candidate: state.candidate,
+                held: state.held,
+                settled: state.settled,
+            },
+        }
+    }
+
+    fn state(&self) -> RelativeState {
+        RelativeState {
+            baseline_sum: self.baseline_sum,
+            baseline_count: self.baseline_count,
+            pending: self.pending.clone(),
+            candidate: self.hold.candidate,
+            held: self.hold.held,
+            settled: self.hold.settled,
+        }
+    }
+
+    fn observe(&mut self, epoch: u64, measured: &Metrics) {
+        if self.hold.settled.is_some() {
+            return;
+        }
+        let sample = PendingSample {
+            epoch,
+            ratio: measured.compress_ratio,
+            uncollapsed: measured.uncollapsed(),
+        };
+        if epoch <= TRANSITION_BASELINE_EPOCHS {
+            self.baseline_sum += sample.ratio;
+            self.baseline_count += 1;
+            self.pending.push(sample);
+            return;
+        }
+        let Some(baseline) = self.baseline() else {
+            return;
+        };
+        for held in std::mem::take(&mut self.pending)
+            .into_iter()
+            .chain(std::iter::once(sample))
+        {
+            self.hold.observe(held.epoch, held.qualifies(baseline));
+        }
+    }
+
+    fn baseline(&self) -> Option<f64> {
+        (self.baseline_count > 0).then(|| self.baseline_sum / f64::from(self.baseline_count))
+    }
 }
 
 impl TransitionTracker {
     pub fn from_state(state: TransitionState) -> Self {
         Self {
-            candidate: state.candidate,
-            held: state.held,
-            settled: state.settled,
+            constant: Hold {
+                candidate: state.candidate,
+                held: state.held,
+                settled: state.settled,
+            },
             last_epoch: state.last_epoch,
+            relative: RelativeTracker::from_state(state.relative),
         }
     }
 
     pub fn state(&self) -> TransitionState {
         TransitionState {
-            candidate: self.candidate,
-            held: self.held,
-            settled: self.settled,
+            candidate: self.constant.candidate,
+            held: self.constant.held,
+            settled: self.constant.settled,
             last_epoch: self.last_epoch,
+            relative: self.relative.state(),
         }
     }
 
     pub fn observe(&mut self, epoch: u64, measured: &Metrics) {
-        if self.settled.is_some() || self.last_epoch == Some(epoch) {
+        if self.last_epoch == Some(epoch) {
             return;
         }
         self.last_epoch = Some(epoch);
-        if measured.transition_candidate() {
-            match self.candidate {
-                None => {
-                    self.candidate = Some(epoch);
-                    self.held = 0;
-                }
-                Some(candidate) => {
-                    self.held += 1;
-                    if self.held >= TRANSITION_HOLD_SAMPLES {
-                        self.settled = Some(candidate);
-                    }
-                }
-            }
-        } else {
-            self.candidate = None;
-            self.held = 0;
-        }
+        self.constant
+            .observe(epoch, measured.transition_candidate());
+        self.relative.observe(epoch, measured);
     }
 
     pub fn epoch(&self) -> Option<u64> {
-        self.settled
+        self.constant.settled
+    }
+
+    /// The same measurement made against the run's own baseline rather than the constant
+    /// threshold. Locked nothing: `epoch` above is the observable every finding reads.
+    pub fn relative_epoch(&self) -> Option<u64> {
+        self.relative.hold.settled
     }
 }
 
@@ -771,6 +1126,45 @@ mod tests {
     }
 
     #[test]
+    fn the_lineage_complexity_reads_the_modal_tape_of_the_largest_lineage() {
+        // `+[ +[ +a` under lineage 1 and `zz zz` under lineage 2: the larger lineage's
+        // modal tape is `+[`, whichever tape the world holds most of.
+        let cells = b"+[+[+azzzz";
+        let read = lineage_complexity(Tapes::uniform(cells, 2), &[1, 1, 1, 2, 2], bff::OpSet::ALL)
+            .expect("a lineage of three");
+
+        assert_eq!(read.tape_hash, hash::fnv1a64(b"+["));
+        assert_eq!(read.instruction_count, 2);
+        assert_eq!(read.raw_len, 2);
+    }
+
+    #[test]
+    fn a_tie_for_the_modal_tape_keeps_the_lowest_tape() {
+        for cells in [b"+[ab", b"ab+["] {
+            let read = lineage_complexity(Tapes::uniform(cells, 2), &[1, 1], bff::OpSet::ALL)
+                .expect("a lineage of two");
+
+            assert_eq!(
+                read.tape_hash,
+                hash::fnv1a64(b"+["),
+                "`+[` sorts below `ab`, whichever cell holds it"
+            );
+        }
+    }
+
+    #[test]
+    fn a_world_with_no_lineage_of_two_reads_no_lineage_complexity() {
+        assert_eq!(
+            lineage_complexity(Tapes::uniform(b"aaabacbbbb", 5), &[1, 2], bff::OpSet::ALL),
+            None
+        );
+        assert_eq!(
+            lineage_complexity(Tapes::uniform(b"", 0), &[], bff::OpSet::ALL),
+            None
+        );
+    }
+
+    #[test]
     fn a_lineage_that_drifted_apart_keeps_only_the_bytes_it_held_still() {
         let mut cells: Vec<u8> = Vec::new();
         for member in 0..10u8 {
@@ -804,6 +1198,126 @@ mod tests {
             lineage_variation(Tapes::uniform(&cells, 2), &lineages),
             2.0 / 17.0
         );
+    }
+
+    /// One lineage of 27 cells: the hand-written reverse copier `X` twelve times and its
+    /// reverse ten times, three copies of `X` and two of `reverse(X)` with one byte
+    /// mutated each — the shape of a world whose replicators copy themselves in reverse.
+    /// Unmirrored, every one of those members is a copy of `X` instead.
+    fn copier_lineage(mirrored: bool) -> Vec<u8> {
+        let tape = crate::replicator::handwritten_reverse_replicator(64);
+        let other: Vec<u8> = match mirrored {
+            true => tape.iter().rev().copied().collect(),
+            false => tape.clone(),
+        };
+        let mut members: Vec<Vec<u8>> = Vec::new();
+        members.extend(std::iter::repeat_n(tape.clone(), 12));
+        members.extend(std::iter::repeat_n(other.clone(), 10));
+        for at in [3, 30, 50] {
+            let mut mutant = tape.clone();
+            mutant[at] = 0;
+            members.push(mutant);
+        }
+        for at in [10, 40] {
+            let mut mutant = other.clone();
+            mutant[at] = 0;
+            members.push(mutant);
+        }
+        members.concat()
+    }
+
+    /// The contrast the oriented readings exist for: a lineage of near-clones copied two
+    /// ways round reads most of a tape of variation aligned, and a core of only the six
+    /// program bytes `X` and its reverse happen to share; oriented, it reads a whole-tape
+    /// core and a byte's variation in five of 27 members.
+    #[test]
+    fn a_lineage_of_a_tape_and_its_reverse_reads_as_near_clones_oriented() {
+        let cells = copier_lineage(true);
+        let lineages = [7; 27];
+        let tapes = Tapes::uniform(&cells, 64);
+        let ops = bff::OpSet::ALL;
+        let program_ops = crate::replicator::handwritten_reverse_replicator(64)
+            .iter()
+            .filter(|byte| ops.enables(**byte))
+            .count() as u32;
+
+        assert_eq!(lineage_variation(tapes, &lineages), 699.0 / 27.0);
+        assert_eq!(
+            conserved_core(tapes, &lineages, ops),
+            Some(ConservedCore { bytes: 6, ops: 6 })
+        );
+        assert_eq!(lineage_variation_oriented(tapes, &lineages), 5.0 / 27.0);
+        assert_eq!(
+            conserved_core_oriented(tapes, &lineages, ops),
+            Some(ConservedCore {
+                bytes: 64,
+                ops: program_ops
+            })
+        );
+    }
+
+    /// Where no member is closer reversed, orienting changes nothing: the oriented readings
+    /// are the aligned ones, lineage by lineage.
+    #[test]
+    fn a_population_copied_forward_reads_the_same_oriented_and_aligned() {
+        let forward = copier_lineage(false);
+        let lineages: Vec<u64> = (0..27).map(|cell| 1 + cell % 3).collect();
+        let tapes = Tapes::uniform(&forward, 64);
+        let ops = bff::OpSet::ALL;
+
+        assert!(lineage_variation(tapes, &lineages) > 0.0);
+        assert_eq!(
+            lineage_variation_oriented(tapes, &lineages),
+            lineage_variation(tapes, &lineages)
+        );
+        assert_eq!(
+            conserved_core_oriented(tapes, &lineages, ops),
+            conserved_core(tapes, &lineages, ops)
+        );
+    }
+
+    /// A tie keeps the member as it is: `d+-a` sits two bytes from the modal `a+-d` read
+    /// either way round, and kept, it agrees with the modal on the two instructions where
+    /// reversed it would agree on the two letters instead.
+    #[test]
+    fn a_member_as_close_either_way_round_is_kept_as_it_is() {
+        let cells = [b"a+-d".repeat(8), b"d+-a".repeat(2)].concat();
+        let lineages = [1; 10];
+        let tapes = Tapes::uniform(&cells, 4);
+
+        assert_eq!(
+            conserved_core_oriented(tapes, &lineages, bff::OpSet::ALL),
+            Some(ConservedCore { bytes: 2, ops: 2 })
+        );
+    }
+
+    /// A tape that grew is reversed over its live bytes: reversing the whole slot would
+    /// carry its zero padding to the front and leave it far from the tape it mirrors.
+    #[test]
+    fn a_grown_tape_is_reversed_over_its_live_bytes_only() {
+        let cells = b"abcd\0\0dcba\0\0abcd\0\0";
+        let lens = [4, 4, 4];
+        let lineages = [1, 1, 1];
+        let tapes = Tapes::ragged(cells, 6, &lens);
+
+        assert_eq!(lineage_variation(tapes, &lineages), 4.0 / 3.0);
+        assert_eq!(lineage_variation_oriented(tapes, &lineages), 0.0);
+        assert_eq!(
+            conserved_core_oriented(tapes, &lineages, bff::OpSet::ALL),
+            Some(ConservedCore { bytes: 4, ops: 0 })
+        );
+    }
+
+    #[test]
+    fn the_oriented_readings_read_nothing_without_a_lineage_of_two() {
+        let cells = b"abcd";
+        let tapes = Tapes::uniform(cells, 2);
+        assert_eq!(lineage_variation_oriented(tapes, &[1, 2]), 0.0);
+        assert_eq!(
+            conserved_core_oriented(tapes, &[1, 2], bff::OpSet::ALL),
+            None
+        );
+        assert_eq!(lineage_variation_oriented(tapes, &[]), 0.0);
     }
 
     /// The definition of `docs/DESIGN.md` §1.2 written out without the counting pass the
@@ -956,6 +1470,40 @@ mod tests {
     }
 
     #[test]
+    fn the_effective_lineage_count_reads_how_many_equal_lineages_split_the_world() {
+        assert_eq!(lineage_diversity(&[]), (0.0, 0));
+        assert_eq!(lineage_diversity(&[7, 7, 7, 7]), (1.0, 1));
+        assert_eq!(lineage_diversity(&[0, 1, 2, 3]), (4.0, 4));
+        assert_eq!(lineage_diversity(&[5, 9, 5, 9]), (2.0, 2));
+        assert_eq!(lineage_diversity(&[5, 9, 5, 2]), (16.0 / 6.0, 3));
+    }
+
+    /// A monophyletic world with a crowd of relic singletons: `distinct_lineages` reads
+    /// the crowd, the effective count barely leaves 1, and no singleton clears the floor.
+    #[test]
+    fn relic_singletons_barely_move_the_effective_lineage_count() {
+        let mut lineages = vec![0u64; 9_900];
+        lineages.extend(1..=100);
+        let (effective, over_floor) = lineage_diversity(&lineages);
+        assert_eq!(lineage_census(&lineages).0, 101);
+        assert!((1.0..1.021).contains(&effective), "{effective}");
+        assert_eq!(over_floor, 1);
+    }
+
+    /// The floor is inclusive: a lineage of exactly one percent counts, one cell fewer
+    /// does not.
+    #[test]
+    fn a_lineage_of_exactly_one_percent_clears_the_floor() {
+        let mut lineages = vec![0u64; 99];
+        lineages.push(1);
+        assert_eq!(lineage_diversity(&lineages).1, 2);
+
+        let mut lineages = vec![0u64; 199];
+        lineages.push(1);
+        assert_eq!(lineage_diversity(&lineages).1, 1);
+    }
+
+    #[test]
     fn tapes_are_counted_and_ranked_by_population() {
         let cells = [1, 1, 2, 2, 1, 1, 3, 3, 1, 1];
         let ranked = ranked_tapes(Tapes::uniform(&cells, 2));
@@ -1061,9 +1609,11 @@ mod tests {
             &payload,
             &[],
             &[],
+            &[],
         );
         assert_eq!(
-            &encoded[crate::snapshot::HEADER_LEN..crate::snapshot::HEADER_LEN + payload.len()],
+            &encoded[crate::snapshot::HEADER_LEN_RELATIVE
+                ..crate::snapshot::HEADER_LEN_RELATIVE + payload.len()],
             &payload[..]
         );
         assert_eq!(
@@ -1097,6 +1647,22 @@ mod tests {
             dominant_tape_hash: None,
             conserved_core_bytes: None,
             conserved_core_ops: None,
+            steal_rate: 0.0,
+            replicator_pass_rate: None,
+            replicator_count_mean: None,
+            lineage_compressed_len: None,
+            lineage_instruction_count: None,
+            reverse_copy_rate: 0.0,
+            replicator_share: None,
+            replicator_share_rotated: None,
+            dominant_self_replicates: None,
+            lineage_variation_oriented: 0.0,
+            conserved_core_bytes_oriented: None,
+            conserved_core_ops_oriented: None,
+            copy_latency: None,
+            copy_latency_orientation: None,
+            lineage_effective_count: 128.0,
+            lineages_over_one_percent: 0,
         }
     }
 
@@ -1186,6 +1752,188 @@ mod tests {
         let all: Vec<u8> = (0..=255).collect();
         assert_eq!(alphabet_size(&all), 256);
         assert_eq!(alphabet_size(&[]), 0);
+    }
+
+    /// A tape cap wide enough to start near the constant threshold: the run slips under
+    /// 0.6 and the constant rule flags it, while against its own start of 0.62 it has
+    /// barely moved and the relative rule reads nothing.
+    #[test]
+    fn a_run_that_starts_at_the_threshold_flags_on_the_constant_rule_alone() {
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..=50u64 {
+            tracker.observe(sample * 10, &reading(0.62));
+        }
+        for sample in 51..200u64 {
+            tracker.observe(sample * 10, &reading(0.58));
+        }
+
+        assert_eq!(tracker.epoch(), Some(510));
+        assert_eq!(
+            tracker.relative_epoch(),
+            None,
+            "0.58 is 94% of its baseline"
+        );
+    }
+
+    /// A run that starts where the threshold was chosen — cap 64, mean 0.984 — and falls
+    /// to 0.55 crosses both rules, on the same epoch: that is what
+    /// `TRANSITION_RELATIVE_FRACTION` is derived to do.
+    #[test]
+    fn a_run_that_starts_high_and_falls_reads_the_same_epoch_on_both_rules() {
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..=50u64 {
+            tracker.observe(sample * 10, &reading(0.98));
+        }
+        for sample in 51..200u64 {
+            tracker.observe(sample * 10, &reading(0.55));
+        }
+
+        assert_eq!(tracker.epoch(), Some(510));
+        assert_eq!(tracker.relative_epoch(), Some(510));
+    }
+
+    /// The baseline is the run's own start, so a crossing inside the baseline window is
+    /// judged once the window closes rather than against a mean of a handful of samples.
+    #[test]
+    fn a_crossing_inside_the_baseline_window_is_read_once_the_window_closes() {
+        let mut tracker = TransitionTracker::default();
+        tracker.observe(0, &reading(0.98));
+        tracker.observe(100, &reading(0.98));
+        for sample in 2..=5u64 {
+            tracker.observe(sample * 100, &reading(0.2));
+        }
+        assert_eq!(
+            tracker.relative_epoch(),
+            None,
+            "the window has not closed yet"
+        );
+
+        tracker.observe(600, &reading(0.2));
+        assert_eq!(tracker.relative_epoch(), Some(200));
+    }
+
+    /// A run whose first sample comes after the window has no baseline to be read
+    /// against, and so no relative reading at all.
+    #[test]
+    fn a_run_with_no_sample_inside_the_baseline_window_reads_no_relative_epoch() {
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..20u64 {
+            tracker.observe(600 + sample * 10, &reading(0.05));
+        }
+
+        assert_eq!(tracker.epoch(), Some(600));
+        assert_eq!(tracker.relative_epoch(), None);
+    }
+
+    /// A collapsed world is compressible against any baseline, so the relative reading
+    /// applies the same guard the constant one does and settles on neither.
+    #[test]
+    fn a_collapsed_alphabet_settles_neither_reading() {
+        let collapsed = Metrics {
+            op_density: 1.0,
+            alphabet_size: 2,
+            ..reading(0.143)
+        };
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..=50u64 {
+            tracker.observe(sample * 10, &reading(0.98));
+        }
+        for sample in 51..200u64 {
+            tracker.observe(sample * 10, &collapsed);
+        }
+
+        assert_eq!(tracker.epoch(), None);
+        assert_eq!(
+            tracker.relative_epoch(),
+            None,
+            "0.143 is a seventh of the baseline and still not a transition"
+        );
+    }
+
+    /// The relative reading is measured against the run's own start, so a run snapshotted
+    /// inside its baseline window and resumed has to read the epoch the uninterrupted run
+    /// reads — baseline, pending samples and all.
+    #[test]
+    fn a_resumed_tracker_reads_the_relative_epoch_the_uninterrupted_one_reads() {
+        let series: Vec<(u64, f64)> = (0..=50)
+            .map(|sample| (sample * 10, 0.98))
+            .chain((51..200).map(|sample| (sample * 10, 0.55)))
+            .collect();
+
+        let mut uninterrupted = TransitionTracker::default();
+        for (epoch, ratio) in &series {
+            uninterrupted.observe(*epoch, &reading(*ratio));
+        }
+
+        let mut resumed = TransitionTracker::default();
+        for (epoch, ratio) in &series[..20] {
+            resumed.observe(*epoch, &reading(*ratio));
+        }
+        let mut resumed = through_a_snapshot(&resumed, 190);
+        for (epoch, ratio) in &series[20..] {
+            resumed.observe(*epoch, &reading(*ratio));
+        }
+
+        assert_eq!(uninterrupted.relative_epoch(), Some(510));
+        assert_eq!(resumed.relative_epoch(), uninterrupted.relative_epoch());
+        assert_eq!(resumed.epoch(), uninterrupted.epoch());
+    }
+
+    /// A run that fell inside its baseline window and was snapshotted before the window
+    /// closed: the samples held back are in the blob too, so the resumed run reads the
+    /// crossing it held rather than the first sample after the resume.
+    #[test]
+    fn a_tracker_resumed_inside_its_baseline_window_reads_the_crossing_it_held_back() {
+        let series: Vec<(u64, f64)> = (0..=20)
+            .map(|sample| (sample * 10, 0.98))
+            .chain((21..80).map(|sample| (sample * 10, 0.1)))
+            .collect();
+
+        let mut uninterrupted = TransitionTracker::default();
+        for (epoch, ratio) in &series {
+            uninterrupted.observe(*epoch, &reading(*ratio));
+        }
+
+        let mut resumed = TransitionTracker::default();
+        for (epoch, ratio) in &series[..31] {
+            resumed.observe(*epoch, &reading(*ratio));
+        }
+        let mut resumed = through_a_snapshot(&resumed, 300);
+        for (epoch, ratio) in &series[31..] {
+            resumed.observe(*epoch, &reading(*ratio));
+        }
+
+        assert_eq!(uninterrupted.relative_epoch(), Some(210));
+        assert_eq!(resumed.relative_epoch(), uninterrupted.relative_epoch());
+    }
+
+    /// The tracker's state as a snapshot carries it: written into a blob at `epoch` and
+    /// read back out of it.
+    fn through_a_snapshot(tracker: &TransitionTracker, epoch: u64) -> TransitionTracker {
+        let params = crate::params::Params {
+            width: 8,
+            height: 4,
+            tape_len: 16,
+            ..crate::params::Params::default()
+        };
+        let cells = vec![0u8; params.cell_count() * params.stride()];
+        let bytes = crate::snapshot::encode(
+            &crate::snapshot::Header {
+                substrate: params.substrate,
+                width: params.width,
+                height: params.height,
+                tape_len: params.tape_len,
+                tape_cap: params.tape_cap(),
+                epoch,
+                transition: tracker.state(),
+            },
+            &cells,
+            &vec![0u64; params.lineage_count()],
+            &[],
+            &[],
+        );
+        let restored = crate::snapshot::decode(&params, &bytes).unwrap();
+        TransitionTracker::from_state(restored.header.transition)
     }
 
     #[test]
