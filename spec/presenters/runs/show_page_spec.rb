@@ -20,7 +20,8 @@ RSpec.describe Runs::ShowPage do
       expect(described_class::METRICS.keys)
         .to eq(%w[compress_ratio distinct_tapes top_share replicator_count replicator_share
                   replicator_share_rotated op_density entropy_bits alphabet_size
-                  copy_rate reverse_copy_rate distinct_lineages top_lineage_share lineage_variation
+                  copy_rate reverse_copy_rate distinct_lineages top_lineage_share
+                  lineage_effective_count lineages_over_one_percent lineage_variation
                   lineage_variation_oriented copy_cost copy_latency
                   dominant_compressed_len dominant_instruction_count dominant_raw_len
                   conserved_core_bytes conserved_core_ops conserved_core_bytes_oriented

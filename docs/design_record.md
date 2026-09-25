@@ -1685,3 +1685,112 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   hypothesis is about lineages sharing ancestry and drifting apart, and the aligned tag
   is the one reading that cannot follow ancestry through the reverse copies that dominate
   emerged worlds. Nothing is relocked.
+- 2026-09-25 — **Lineage diversity after a transition: rung 2's `lineage-diversity` sweep,
+  pre-registered, with a lineage census that can see it.** The evolution-programme entry
+  (2026-09-11) locked rung 2's sweep and its hypothesis: **after a transition a world stays
+  polyphyletic, and the number of surviving lineage ids grows as a cell's reach shrinks** —
+  locality keeps lineages apart — refuted if every transitioned world collapses to one
+  lineage id whatever the radius. It is the diversity half of §1.3 item 3 that the radius
+  sweep entry left open. It was never seeded, because the instrument could not see it: the
+  census is blind to the reverse copiers emerged worlds are made of (#245), and the lineage
+  tags stopped following descent at a reverse copy. `replicator_share` (#247) now says
+  whether a world holds replicators, and `lineage_rule = oriented` (entry above) makes the
+  tags follow descent through reverse copies. This entry adds the last piece, a reading of
+  "polyphyletic", and locks the sweep. It is §1.3 item 12, experiment `lineage-diversity`
+  (sweep key `lineage_diversity`), and its numbers live in `Lab::LineageDiversityReading`.
+
+  **The observables.** `distinct_lineages` is a poor reading of "polyphyletic". It counts
+  every tag any cell holds, and every cell starts with a tag of its own, so the relics of
+  cells no copy ever reached inflate it: a colony holding 99% of a world beside 100 relic
+  singletons reads 101. `top_lineage_share` reads the largest lineage and nothing about the
+  rest. DESIGN §1.2 gains two engine observables, appended at the end of `Metrics`:
+  - `lineage_effective_count`, the **inverse Simpson index** of the lineage shares,
+    `1 / Σ pᵢ²` over the tags the cells hold, computed as `N² / Σ nᵢ²` in integers. It reads
+    1 for a monophyletic world and k for k equal lineages; the colony above reads 1.02;
+  - `lineages_over_one_percent`, the number of tags each holding at least 1% of the cells.
+
+  Both read the tags alone, draw nothing and write nothing, so every existing observable,
+  run and pinned hash is unchanged; new pins lock them on the pinned worlds. The 32×32 soup
+  at seed 42, epoch 50, reads 1 020.0 effective lineages of 1 022, and 0 over 1%. The
+  mutating reverse colony of the entry above reads 17.7 and 23 aligned, 9.5 and 12 oriented.
+  They are **live-only**: `oriented_census/2` does not read them, because rows may already be
+  stored under it and an instrument version never changes what it reads once they are. This
+  sweep samples them as it runs.
+
+  **The sweep.** The radius sweep's arms, radius **{1, 2, 4, 0 = well-mixed}**, at 128²,
+  with `mutation_rate` 2^-13 (`Lab::EMERGENT_MUTATION_RATE`, where the later sweeps hold
+  it), `tape_len` = `max_tape_len` = 64 so every tape keeps its length and the lineage
+  comparisons are the plain whole-tape case, and **`lineage_rule = oriented`**. `oriented`
+  is the point of the sweep: under `aligned` a reverse copy passes no tag on, so after a
+  takeover by a reverse copier the tags count the survivors of the takeover rather than
+  descent from it. **Seeds 1–90 in every arm**, 20 000 epochs, 360 runs, priority 20: after
+  the from-emerged children (50), ahead of sweep 9's extension (0 − seed). Why 90: the radius
+  sweep saw 6 transitions in 40 runs, one or two an arm, and the reading needs at least two
+  measured emerged runs in every arm. At 2^-13 on this world `mutation-rate-long` confirmed
+  2 emergences of 10 inside 20 000 epochs. At a rate of 1 in 10 an arm of 90 expects about
+  9 emerged runs, and the chance of fewer than 2 is below 0.1%.
+
+  **Emergence, for this sweep.** A run is **emerged** when it has the record's confirmed
+  `emergence_epoch` (2026-09-15: the detector's crossing confirmed by the census or
+  `copy_rate`) **and** reads `replicator_share ≥ 0.5` at some sample at or after that epoch.
+  The confirmed rule found the right worlds on sweep 9: the nine economy-off worlds it
+  confirmed are, read by #245's pilot, 74–99% working reverse copiers. The share clause is
+  needed because the census that confirms a crossing is blind to reverse copiers (#245):
+  its positives on record are palindromes, which can be transient in a world that is not
+  mostly replicators. The share sees the reverse copiers and asks that the world, at some
+  point after its crossing, was one.
+
+  **The reading, per emerged run**, over its own samples from `emergence_epoch` to the end.
+  Its last decile is the last `ceil(n / 10)` of those `n` samples in epoch order, and a
+  median is the lower middle (`Findings::Median`), as the from-emerged reading cuts them.
+  - **Polyphyletic**: the last-decile median of `lineage_effective_count` is **≥ 2**.
+  - **Monophyletic**: it is **< 1.5**.
+  - **Between** otherwise.
+  - A run with fewer than **10** samples in its last decile is **unmeasured**. At the
+    default `sample_every` of 10, that is a run that emerged after about epoch 19 000.
+
+  **Per arm**, the counts of emerged, measured, polyphyletic, between and monophyletic runs,
+  and the median last-decile `lineage_effective_count` over the measured runs. An arm with
+  fewer than **2** measured emerged runs is **unread**, as sweeps 9 and 10 require.
+
+  **The hypothesis and its test.** The number of surviving lineages grows as reach shrinks.
+  It is read as a **one-sided Jonckheere–Terpstra trend test** of the runs' last-decile
+  `lineage_effective_count` across the arms in the order well-mixed < 4 < 2 < 1, predicting
+  higher values toward radius 1. The test runs over the measured emerged runs of the read
+  arms, and needs at least two read arms. Its p comes from the normal approximation with the
+  tie-corrected variance.
+  - **Shown** at p < 0.05.
+  - **Refuted**, per the locked wording, when all four arms are read and every measured
+    emerged run of every arm reads monophyletic.
+  - **Neither shown nor refuted** otherwise, with the per-arm counts printed. An unread arm
+    is named as unread; it is not counted as a monophyletic one.
+
+  **Secondary and descriptive only.** `lineages_over_one_percent` over the same last decile;
+  the oriented core and variation (#255: `lineage_variation_oriented`,
+  `conserved_core_bytes_oriented`, `conserved_core_ops_oriented`); `copy_latency` over the
+  run, a rung-3 look at whether the dominant copier gets faster; and the emergence count per
+  arm against the radius sweep's. That last comparison is not a replication: the rate, the
+  seeds and the lineage rule all differ.
+
+  **Cost.** Most runs are random soup to the end. Measured on this machine, single thread
+  under a load of about 6, the sweep's radius-1 params at seed 1 ran the first 2 000 epochs
+  at 107 epochs/s, samples and snapshots included. #256 measured a fresh 128² soup at 129.
+  So a run that never emerges costs about 3 CPU-minutes. An emerged world spends every
+  interaction's step budget and is several times dearer: #256's emerged BFF control ran at
+  2.1 epochs/s over 2^17 cells, about 17 at this sweep's 2^14. Taking about 10 minutes for
+  the emerged part of a run, 360 runs are about 25 CPU-hours. On the mini-pc, sweep 9's
+  measured 21 minutes a cap-128 run at 12 at a time, halved by #256, gives a planning
+  figure of about 10 minutes a run: 60 run-hours, about 5 hours of the mini-pc. The first
+  finished runs' `compute_seconds` replace the estimate.
+
+  **When it is read.** When all 360 runs are terminal; a reading printed before that is
+  labelled **interim**. The reading service is a later slice. It reads the constants in
+  `Lab::LineageDiversityReading` and nothing else.
+
+  **What is not claimed.** Lineage tags approximate descent: a cell takes its partner's tag
+  when its final tape is closer to what the partner brought than to what it brought itself.
+  They are not a phylogeny. Two lineages that converge on one tape stay two, and a copy
+  overwritten by a stranger's partial write may keep or lose its tag on a byte count. The
+  sweep reads how the tags split a world, not a tree. It also says nothing about why a world
+  stays split: a spatial world can hold several colonies that never meet, and "locality
+  keeps lineages apart" is that reading, not a mechanism.

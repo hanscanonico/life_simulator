@@ -563,6 +563,8 @@ impl World {
         let top_share = ranked.first().map_or(0.0, |(_, n)| *n as f64 / cells);
         let histogram = metrics::ByteHistogram::of(&self.tapes().bytes());
         let (distinct_lineages, top_lineage_share) = metrics::lineage_census(&self.lineages);
+        let (lineage_effective_count, lineages_over_one_percent) =
+            metrics::lineage_diversity(&self.lineages);
         let census = self.replicator_census(&ranked);
         let core = self.conserved_core();
         let core_oriented = self.conserved_core_oriented();
@@ -606,6 +608,8 @@ impl World {
             conserved_core_ops_oriented: core_oriented.map(|read| read.ops),
             copy_latency: census.copy_latency.map(|image| image.steps),
             copy_latency_orientation: census.copy_latency.map(|image| image.orientation),
+            lineage_effective_count,
+            lineages_over_one_percent,
         }
     }
 
@@ -1173,6 +1177,24 @@ mod tests {
          conserved_core_bytes_oriented=Some(253) conserved_core_ops_oriented=Some(15) \
          copy_latency=Some(1790) copy_latency_orientation=Some(Forward)";
 
+    /// And the two diversity readings of the lineage tags (`docs/design_record.md`,
+    /// 2026-09-25), pinned apart once more.
+    const PINNED_DIVERSITY: &str =
+        "lineage_effective_count=1020.0155642023346 lineages_over_one_percent=0";
+    const PINNED_SEEDED_DIVERSITY: &str =
+        "lineage_effective_count=27.55929352396972 lineages_over_one_percent=37";
+    const PINNED_REVERSE_COLONY_ALIGNED_DIVERSITY: &str =
+        "lineage_effective_count=17.69330453563715 lineages_over_one_percent=23";
+    const PINNED_REVERSE_COLONY_ORIENTED_DIVERSITY: &str =
+        "lineage_effective_count=9.525581395348837 lineages_over_one_percent=12";
+
+    fn diversity_digest(measured: &Metrics) -> String {
+        format!(
+            "lineage_effective_count={:?} lineages_over_one_percent={}",
+            measured.lineage_effective_count, measured.lineages_over_one_percent,
+        )
+    }
+
     fn oriented_digest(measured: &Metrics) -> String {
         format!(
             "lineage_variation_oriented={:?} conserved_core_bytes_oriented={:?} \
@@ -1628,6 +1650,7 @@ mod tests {
         );
         assert_eq!(self_rep_digest(&measured), PINNED_SELF_REP);
         assert_eq!(oriented_digest(&measured), PINNED_ORIENTED);
+        assert_eq!(diversity_digest(&measured), PINNED_DIVERSITY);
     }
 
     #[test]
@@ -1649,6 +1672,7 @@ mod tests {
         );
         assert_eq!(self_rep_digest(&measured), PINNED_SEEDED_SELF_REP);
         assert_eq!(oriented_digest(&measured), PINNED_SEEDED_ORIENTED);
+        assert_eq!(diversity_digest(&measured), PINNED_SEEDED_DIVERSITY);
     }
 
     /// The census only reads the world: it draws on streams of its own, moves no cell and
@@ -2124,6 +2148,8 @@ mod tests {
         assert_eq!(measured.lineage_variation, 0.0);
         assert_eq!(measured.conserved_core_bytes, None);
         assert_eq!(measured.conserved_core_ops, None);
+        assert_eq!(measured.lineage_effective_count, 0.0);
+        assert_eq!(measured.lineages_over_one_percent, 0);
     }
 
     #[test]
@@ -3198,6 +3224,14 @@ mod tests {
         assert_eq!(
             lineage_digest(&oriented.metrics()),
             PINNED_REVERSE_COLONY_ORIENTED_LINEAGES
+        );
+        assert_eq!(
+            diversity_digest(&aligned.metrics()),
+            PINNED_REVERSE_COLONY_ALIGNED_DIVERSITY
+        );
+        assert_eq!(
+            diversity_digest(&oriented.metrics()),
+            PINNED_REVERSE_COLONY_ORIENTED_DIVERSITY
         );
     }
 

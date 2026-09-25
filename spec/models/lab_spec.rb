@@ -278,6 +278,45 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the lineage-diversity sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
+      let(:reading) { Lab::LineageDiversityReading }
+
+      it "runs the radius sweep's arms at the rate that first produced emergence" do
+        expect(definition[:param_grid].fetch("radius")).to eq(Lab::SWEEPS.fetch("radius")[:param_grid]["radius"])
+        expect(definition[:param_grid].values_at("width", "height", "mutation_rate"))
+          .to eq([[128], [128], [Lab::EMERGENT_MUTATION_RATE]])
+      end
+
+      it "holds tapes at a fixed 64 bytes" do
+        expect(definition[:param_grid].values_at("tape_len", "max_tape_len")).to eq([[64], [64]])
+      end
+
+      it "inherits lineage tags through reverse copies" do
+        expect(definition[:param_grid].fetch("lineage_rule")).to eq(["oriented"])
+        expect(Lab::Schema.values_for("lineage_rule")).to include("oriented")
+      end
+
+      it "gives every arm ninety seeds of twenty thousand epochs, 360 runs in all" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..90).to_a, 20_000])
+        expect(definition[:param_grid].fetch("radius").size * definition[:seeds].size).to eq(360)
+      end
+
+      it "runs after the from-emerged children and ahead of sweep 9's extension" do
+        expect(definition[:priority]).to be_between(1, Lab::SWEEPS.fetch("from_emerged")[:priority] - 1)
+      end
+
+      it "orders the trend test's arms from the well-mixed world to the shortest reach" do
+        expect(reading::RADIUS_ORDER).to match_array(definition[:param_grid].fetch("radius"))
+        expect(reading::RADIUS_ORDER).to eq([0, 4, 2, 1])
+      end
+
+      it "reads polyphyly on an observable the engine records" do
+        expect(Sample::OBSERVABLES).to include(reading::DIVERSITY_KEY, reading::SHARE_KEY, *reading::DESCRIPTIVE_KEYS)
+        expect(reading::MONOPHYLETIC).to be < reading::POLYPHYLETIC
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 

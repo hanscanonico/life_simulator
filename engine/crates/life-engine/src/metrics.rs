@@ -150,6 +150,16 @@ pub struct Metrics {
     /// Which way round that median trial's image lies: `forward`, `reverse`, or `both` for
     /// a palindrome. `None` wherever `copy_latency` is.
     pub copy_latency_orientation: Option<bff::Orientation>,
+    /// The inverse Simpson index of the lineage shares, 1 / Σ p², over the lineage ids the
+    /// cells hold: how many equal lineages would split the world the way it is split. It
+    /// reads 1 for a monophyletic world and k for k equal lineages, and the relic tags of
+    /// cells nothing ever overwrote barely move it, where they are most of
+    /// `distinct_lineages`. The rung-2 diversity reading (`docs/design_record.md`,
+    /// 2026-09-25). 0 on the life substrate.
+    pub lineage_effective_count: f64,
+    /// How many lineage ids each hold at least `LINEAGE_FLOOR_PERCENT` percent of the cells.
+    /// 0 on the life substrate.
+    pub lineages_over_one_percent: u64,
 }
 
 impl Metrics {
@@ -398,6 +408,34 @@ pub fn lineage_census(lineages: &[u64]) -> (u64, f64) {
         top = top.max(run);
     }
     (distinct, top as f64 / lineages.len() as f64)
+}
+
+/// The share of the world, in percent, a lineage must hold to count towards
+/// `lineages_over_one_percent`.
+pub const LINEAGE_FLOOR_PERCENT: u64 = 1;
+
+/// `lineage_effective_count` and `lineages_over_one_percent` of one world's tags, read off
+/// the same sorted runs `lineage_census` reads. The index is `N² / Σ nᵢ²` over the
+/// lineages' cell counts, summed in integers so the one division is the only rounding.
+pub fn lineage_diversity(lineages: &[u64]) -> (f64, u64) {
+    if lineages.is_empty() {
+        return (0.0, 0);
+    }
+    let mut sorted = lineages.to_vec();
+    sorted.sort_unstable();
+
+    let cells = lineages.len() as u64;
+    let mut squares: u128 = 0;
+    let mut over_floor: u64 = 0;
+    for run in sorted.chunk_by(|a, b| a == b) {
+        let size = run.len() as u64;
+        squares += u128::from(size) * u128::from(size);
+        if size * 100 >= LINEAGE_FLOOR_PERCENT * cells {
+            over_floor += 1;
+        }
+    }
+    let total = u128::from(cells) * u128::from(cells);
+    (total as f64 / squares as f64, over_floor)
 }
 
 /// How many of the largest lineages `lineage_variation` reads. A soup is a crowd of
@@ -1432,6 +1470,40 @@ mod tests {
     }
 
     #[test]
+    fn the_effective_lineage_count_reads_how_many_equal_lineages_split_the_world() {
+        assert_eq!(lineage_diversity(&[]), (0.0, 0));
+        assert_eq!(lineage_diversity(&[7, 7, 7, 7]), (1.0, 1));
+        assert_eq!(lineage_diversity(&[0, 1, 2, 3]), (4.0, 4));
+        assert_eq!(lineage_diversity(&[5, 9, 5, 9]), (2.0, 2));
+        assert_eq!(lineage_diversity(&[5, 9, 5, 2]), (16.0 / 6.0, 3));
+    }
+
+    /// A monophyletic world with a crowd of relic singletons: `distinct_lineages` reads
+    /// the crowd, the effective count barely leaves 1, and no singleton clears the floor.
+    #[test]
+    fn relic_singletons_barely_move_the_effective_lineage_count() {
+        let mut lineages = vec![0u64; 9_900];
+        lineages.extend(1..=100);
+        let (effective, over_floor) = lineage_diversity(&lineages);
+        assert_eq!(lineage_census(&lineages).0, 101);
+        assert!((1.0..1.021).contains(&effective), "{effective}");
+        assert_eq!(over_floor, 1);
+    }
+
+    /// The floor is inclusive: a lineage of exactly one percent counts, one cell fewer
+    /// does not.
+    #[test]
+    fn a_lineage_of_exactly_one_percent_clears_the_floor() {
+        let mut lineages = vec![0u64; 99];
+        lineages.push(1);
+        assert_eq!(lineage_diversity(&lineages).1, 2);
+
+        let mut lineages = vec![0u64; 199];
+        lineages.push(1);
+        assert_eq!(lineage_diversity(&lineages).1, 1);
+    }
+
+    #[test]
     fn tapes_are_counted_and_ranked_by_population() {
         let cells = [1, 1, 2, 2, 1, 1, 3, 3, 1, 1];
         let ranked = ranked_tapes(Tapes::uniform(&cells, 2));
@@ -1589,6 +1661,8 @@ mod tests {
             conserved_core_ops_oriented: None,
             copy_latency: None,
             copy_latency_orientation: None,
+            lineage_effective_count: 128.0,
+            lineages_over_one_percent: 0,
         }
     }
 
