@@ -20,6 +20,8 @@ struct State {
     requests: Vec<(String, Value)>,
     queue_empty: bool,
     claim_epochs_done: u64,
+    claim_parent: Option<(i64, u64)>,
+    claim_parent_null: bool,
     fail_next: u32,
     fail_next_at: BTreeMap<String, u32>,
     latest_snapshot: Option<(u64, Vec<u8>)>,
@@ -104,6 +106,17 @@ impl MockLab {
     /// it released to pending when its runner went silent.
     pub fn set_released_run(&self, epochs_done: u64) {
         self.state.lock().unwrap().claim_epochs_done = epochs_done;
+    }
+
+    /// The claim answers a descendant run: `parent_run_id` and `parent_epoch` are set.
+    pub fn set_parent(&self, run: i64, epoch: u64) {
+        self.state.lock().unwrap().claim_parent = Some((run, epoch));
+    }
+
+    /// The claim carries the two parent fields as nulls, as the app answers an ordinary
+    /// run once it knows descendants.
+    pub fn set_null_parent(&self) {
+        self.state.lock().unwrap().claim_parent_null = true;
     }
 
     pub fn set_latest_snapshot(&self, epoch: u64, blob: Vec<u8>) {
@@ -257,13 +270,23 @@ fn answer(mut request: Request, state: &Arc<Mutex<State>>) {
 
     let response = match (&method, path.as_str()) {
         (Method::Post, "/api/runs/claim") if state.queue_empty => None,
-        (Method::Post, "/api/runs/claim") => Some(json!({
-            "id": 1,
-            "params": MockLab::params(),
-            "seed": 7,
-            "epochs": EPOCHS,
-            "epochs_done": state.claim_epochs_done,
-        })),
+        (Method::Post, "/api/runs/claim") => {
+            let mut claim = json!({
+                "id": 1,
+                "params": MockLab::params(),
+                "seed": 7,
+                "epochs": EPOCHS,
+                "epochs_done": state.claim_epochs_done,
+            });
+            if let Some((run, epoch)) = state.claim_parent {
+                claim["parent_run_id"] = json!(run);
+                claim["parent_epoch"] = json!(epoch);
+            } else if state.claim_parent_null {
+                claim["parent_run_id"] = Value::Null;
+                claim["parent_epoch"] = Value::Null;
+            }
+            Some(claim)
+        }
         (Method::Get, _) if path.ends_with("/world") => run_of(&path).and_then(|run| {
             let worlds = state.worlds.get(&run).cloned().unwrap_or_default();
             world(&url, run, &worlds)
