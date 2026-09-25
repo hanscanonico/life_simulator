@@ -482,3 +482,23 @@ ul.chart-legend li {
   gap: var(--space-3);
   margin: 0;
 }
+
+.instrument-note {
+  margin: var(--space-5) 0;
+}
+
+.instrument-note p {
+  margin: 0 0 var(--space-2);
+}
+
+.instrument-note p:last-child {
+  margin-bottom: 0;
+}
+
+.instrument-note a {
+  color: inherit;
+}
+
+.instrument-note-badge {
+  text-decoration: none;
+}
