@@ -258,23 +258,37 @@ RSpec.describe Lab do
 
     it "overrides the seeds of arms its own grid carries" do
       Lab::SWEEPS.each_value do |definition|
-        arm_params(definition.fetch(:seeds_by_arm, {})).each do |name, value|
-          expect(grid_values(definition.fetch(:param_grid), name)).to include(value)
+        points = grid_points(definition.fetch(:param_grid))
+
+        arms(definition.fetch(:seeds_by_arm, {})).each do |arm|
+          expect(points).to include(a_hash_including(arm))
         end
       end
     end
 
-    # Every (parameter, value) an override names, in either of the two shapes
-    # Experiments::SweepBuilderService reads.
-    def arm_params(seeds_by_arm)
-      return seeds_by_arm.flat_map { |arm| arm.fetch("params").to_a } if seeds_by_arm.is_a?(Array)
+    # The builder gives a grid point the seeds of the first arm it matches, so two arms
+    # sharing a point would hand the second its seeds silently.
+    it "names no grid point by two arms" do
+      Lab::SWEEPS.each_value do |definition|
+        named = arms(definition.fetch(:seeds_by_arm, {}))
 
-      seeds_by_arm.flat_map { |name, seeds_by_value| seeds_by_value.keys.map { |value| [name, value] } }
+        grid_points(definition.fetch(:param_grid)).each do |point|
+          expect(named.count { |arm| point >= arm }).to be <= 1
+        end
+      end
     end
 
-    def grid_values(param_grid, name)
-      param_grid.values.flat_map { |values| values.grep(Hash).filter_map { |bundle| bundle[name] } } +
-        param_grid.fetch(name, [])
+    # Every arm an override names, as the parameters it must match, in either of the two
+    # shapes Experiments::SweepBuilderService reads.
+    def arms(seeds_by_arm)
+      return seeds_by_arm.map { |arm| arm.fetch("params") } if seeds_by_arm.is_a?(Array)
+
+      seeds_by_arm.flat_map { |name, seeds_by_value| seeds_by_value.keys.map { |value| { name => value } } }
+    end
+
+    def grid_points(param_grid)
+      head, *tail = param_grid.map { |name, values| values.map { |value| value.is_a?(Hash) ? value : { name => value } } }
+      head.product(*tail).map { |parts| parts.reduce({}, :merge) }
     end
 
     # An axis whose values are hashes is a bundle of parameters travelling together, so it
