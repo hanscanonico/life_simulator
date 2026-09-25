@@ -1238,6 +1238,21 @@ mod tests {
         );
     }
 
+    /// A tie keeps the member as it is: `d+-a` sits two bytes from the modal `a+-d` read
+    /// either way round, and kept, it agrees with the modal on the two instructions where
+    /// reversed it would agree on the two letters instead.
+    #[test]
+    fn a_member_as_close_either_way_round_is_kept_as_it_is() {
+        let cells = [b"a+-d".repeat(8), b"d+-a".repeat(2)].concat();
+        let lineages = [1; 10];
+        let tapes = Tapes::uniform(&cells, 4);
+
+        assert_eq!(
+            conserved_core_oriented(tapes, &lineages, bff::OpSet::ALL),
+            Some(ConservedCore { bytes: 2, ops: 2 })
+        );
+    }
+
     /// A tape that grew is reversed over its live bytes: reversing the whole slot would
     /// carry its zero padding to the front and leave it far from the tape it mirrors.
     #[test]

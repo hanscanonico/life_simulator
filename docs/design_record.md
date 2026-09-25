@@ -1535,9 +1535,11 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
 
   **Heredity, rung 2.** `lineage_variation` and `conserved_core_bytes` / `_ops` compare
   aligned bytes, so a lineage of near-clones copied two ways round reads most of a tape of
-  variation and a core of only the positions `X` and its reverse happen to share: the
-  pilot's run 1007 continued at mutation 0 reads `lineage_variation` 100.6 with 22 distinct
-  tapes left. `lineage_variation_oriented` and `conserved_core_bytes_oriented` /
+  variation and a core of only the positions `X` and its reverse happen to share. The
+  entry "The replicator census is blind to replicators that copy in reverse" gave the
+  pilot's run 1007 continued at mutation 0 as the instance — `lineage_variation` 100.6 over
+  "22 near-clones" — and that description is corrected below.
+  `lineage_variation_oriented` and `conserved_core_bytes_oriented` /
   `conserved_core_ops_oriented` put each member of a lineage the way round — its live bytes
   as they are, or last to first — that is Hamming-closer to its lineage's modal tape, a tie
   keeping it as it is, and then read exactly as the aligned definitions do. A tape that grew
@@ -1571,8 +1573,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   against 0, with `copy_latency` 5 099, `reverse`. The oriented reading does what it is for
   — 4 018 cells sit at distance 0 from the modal tape oriented, 2 030 aligned — and shows
   what the pilot's summary missed: the 22 tapes are **eleven** tapes and their reverses,
-  eleven different programs 20 to 127 bytes apart even under the best rotation, all under
-  one lineage tag. The variation that remains is the tag's, not the orientation's (below).
+  eleven different programs, not near-clones. Put the way round, they sit 20 to 127 bytes
+  from the modal tape, and even under the best rotation 20 to 116 from it and 20 to 120 from
+  one another, all under one lineage tag. The variation that remains is the tag's, not the
+  orientation's (below).
 
   **The readings pass.** The new keys are not added to `oriented_census/1`: rows are
   already stored under it without them, its resume skip treats a world read under `/1` as
