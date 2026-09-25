@@ -541,7 +541,7 @@ RSpec.describe "Experiments", type: :request do
       before do
         source = create(:experiment, slug: "host-parasite")
         params = Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128)
-        parent = create(:run, experiment: source, params: params, status: "finished", epochs: 1_000)
+        parent = create(:run, experiment: source, params: params, seed: 12, status: "finished", epochs: 1_000)
         create(:snapshot, run: parent, epoch: 1_000)
         create(:snapshot_reading, run: parent, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.9 })
         Experiments::SweepBuilderService.call(experiment)
@@ -552,6 +552,13 @@ RSpec.describe "Experiments", type: :request do
 
         expect(response).to have_http_status(:ok)
         expect(response.body.squish).to include("continuation", "host")
+      end
+
+      it "titles the held-out confirmatory reading and says no held-out child exists yet" do
+        get experiment_path(experiment)
+
+        expect(response.parsed_body.at_css("#heldout-reading").text.squish)
+          .to include("A held-out confirmatory reading, pre-registered 2026-09-25", "No held-out child yet.")
       end
 
       context "with the children sampled" do
@@ -595,6 +602,34 @@ RSpec.describe "Experiments", type: :request do
           get experiment_path(experiment)
 
           expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+        end
+      end
+
+      context "with the children of an extension parent sampled past the settling window" do
+        before do
+          params = Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128)
+          parent = create(:run, experiment: Experiment.find_by(slug: "host-parasite"), params: params, seed: 150,
+                                status: "finished", epochs: 1_000)
+          create(:snapshot, run: parent, epoch: 1_000)
+          create(:snapshot_reading, run: parent, epoch: 1_000, source_epoch: 1_000,
+                                    values: { "replicator_share" => 0.9 })
+          Experiments::SweepBuilderService.call(experiment)
+          parent.descendants.each do |run|
+            faster = run.params["energy_influx"] == 2**13
+            insert_own_samples(run, Array.new(200) do |index|
+              { "replicator_share" => 0.9, "copy_latency" => faster && index >= 190 ? 2_000 : 4_000 }
+            end)
+          end
+        end
+
+        it "reads the held-out children's tests, labelled interim while they run" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#heldout-reading").text.squish)
+            .to include("interim", "H3-latency, economy 8192 against the continuation: not shown",
+                        "3 pairs measured on both sides: 3 favour the treatment, 0 the continuation, 0 tie; " \
+                        "one-sided sign test p = 0.125",
+                        "H4-survivors, economy 2048 against the continuation: no measured pairs")
         end
       end
     end

@@ -1,0 +1,89 @@
+<%# The from-emerged sweep's held-out confirmatory reading (docs/design_record.md, 2026-09-25,
+    "The from-emerged economy arms, confirmed on held-out parents"): `reading` is the sweep's
+    Lab::DescendantReading::Report, whose `heldout` this section prints and whose `final` it
+    shares. The per-child rows stay in `lab:from_emerged_heldout_report`. %>
+<% heldout = reading.heldout %>
+<section class="mt-6" id="heldout-reading">
+  <h2>
+    A held-out confirmatory reading, pre-registered 2026-09-25
+    <% if heldout.any? %>
+      <span class="badge <%= reading.interim? ? 'badge-warning' : 'badge-success' %>">
+        <%= reading.interim? ? "interim" : "final" %>
+      </span>
+    <% end %>
+  </h2>
+  <p class="text-sm text-muted">
+    Its rules were written after the reading above and an exploratory look at the same children,
+    so they are read only on the children of parents from sweep 9's extension (seeds above
+    <%= Lab::FromEmergedHeldout::LAST_SEEN_SEED %>) none of whose children had been seen.
+    Past a settling window of <%= number_with_delimiter Lab::FromEmergedHeldout::SETTLING_WINDOW %> epochs,
+    a child relapsed where its share sat below
+    <%= percent_value Lab::FromEmergedHeldout::RELAPSE_SHARE %> for
+    <%= Lab::FromEmergedHeldout::RELAPSE_RUN %> samples running; it is extinct where its last-decile
+    median share is below <%= percent_value Lab::FromEmergedHeldout::EXTINCT_SHARE %>.
+    H3-latency pairs the economy child against the continuation child on the ratio of their
+    last-decile to first-decile median <span class="mono">copy_latency</span>, a lower ratio
+    favouring its side; H4-survivors reads the original complexity rule on pairs whose two children
+    both survived. Host mode is not re-tested.
+  </p>
+
+  <% if heldout.any? %>
+    <figure class="table-figure mt-4">
+      <figcaption class="table-caption text-sm text-muted" id="heldout-treatments">
+        Held-out children per treatment, read so far.
+      </figcaption>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="heldout-treatments">
+        <table class="data-table" aria-labelledby="heldout-treatments">
+          <thead>
+            <tr>
+              <th>Treatment</th>
+              <th class="numeric">Children</th>
+              <th class="numeric">Finished</th>
+              <th class="numeric">Settled relapses</th>
+              <th class="numeric">Extinct</th>
+              <th class="numeric">Latency measured</th>
+              <th class="numeric">Survivors</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% heldout.arms.each do |arm| %>
+              <tr>
+                <td><%= arm.name %></td>
+                <td class="numeric"><%= arm.children.size %></td>
+                <td class="numeric"><%= arm.finished_count %></td>
+                <td class="numeric"><%= arm.settled_relapse_count %></td>
+                <td class="numeric"><%= arm.extinct_count %></td>
+                <td class="numeric"><%= arm.latency_measured_count %></td>
+                <td class="numeric"><%= arm.survivor_count %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </figure>
+
+    <h3 class="mt-4">Hypotheses</h3>
+    <ul>
+      <% heldout.tests.each do |test| %>
+        <% comparison = test.comparison %>
+        <li class="mb-3">
+          <strong><%= test.hypothesis %></strong>, <%= test.treatment.name %> against the continuation:
+          <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>
+          <p class="text-sm text-muted">
+            <%= pluralize(comparison.measured_count, "pair") %> measured on both sides:
+            <%= comparison.favouring %> favour the treatment, <%= comparison.against %> the continuation,
+            <%= comparison.ties %> tie<% if comparison.p_value %>; one-sided sign test
+            p = <%= metric_value comparison.p_value.to_f %><% end %>.
+            <% if comparison.carried_by.any? %>
+              Carried by parents
+              <%= comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>:
+              without their pairs the test falls to p ≥ <%= Lab::FromEmergedHeldout::SIGN_TEST_LEVEL %>.
+            <% end %>
+          </p>
+        </li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="mt-4">No held-out child yet.</p>
+  <% end %>
+</section>

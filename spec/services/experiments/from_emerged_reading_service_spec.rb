@@ -17,9 +17,9 @@ RSpec.describe Experiments::FromEmergedReadingService do
   end
   let!(:parents) { [parent, parent] }
 
-  def parent(status: "finished")
+  def parent(status: "finished", seed: nil)
     run = create(:run, :emerged, experiment: source, params: control_params, status: status, epochs: 1_000,
-                                 emergence_epoch: 400)
+                                 emergence_epoch: 400, **{ seed: seed }.compact)
     create(:snapshot, run: run, epoch: run.epochs)
     create(:snapshot_reading, run: run, epoch: run.epochs, source_epoch: run.epochs,
                               values: { "replicator_share" => 0.9 })
@@ -200,6 +200,83 @@ RSpec.describe Experiments::FromEmergedReadingService do
 
       it "is interim until it is re-run: the entry reads every child finished" do
         expect(report).to be_interim
+      end
+    end
+  end
+
+  describe "the held-out confirmatory reading" do
+    # One parent of the first ninety seeds, whose children were seen, and two of the extension.
+    let!(:parents) { [parent(seed: 5), parent(seed: 120), parent(seed: 121)] }
+
+    let(:heldout) { report.heldout }
+
+    # 200 own samples every 10 epochs, so the last 100 are past the settling window: their
+    # first decile reads `first` for `copy_latency` and their last `last`.
+    def settled_sample(run, first: 4_000, last: 4_000, share: 0.9)
+      insert_own_samples(run, Array.new(200) do |index|
+        { "replicator_share" => share, "dominant_self_replicates" => true, "dominant_instruction_count" => 100,
+          "copy_latency" => index >= 190 ? last : first }
+      end)
+      run.update!(status: "finished")
+    end
+
+    context "with no child of a held-out parent" do
+      let!(:parents) { [parent(seed: 5)] }
+
+      it "holds no child and says so" do
+        expect(heldout.to_text(final: report.final)).to eq("held-out reading: no held-out child yet")
+      end
+    end
+
+    context "with every child sampled and the rich economy's copiers getting faster" do
+      before do
+        experiment.runs.each { |run| settled_sample(run) }
+        children(2).each { |run| run.samples.delete_all && settled_sample(run, last: 2_000) }
+      end
+
+      it "reads the extension parents' children only" do
+        expect(heldout.children.map(&:parent_id).uniq).to eq(parents.drop(1).map(&:id))
+      end
+
+      it "tests H3-latency and H4-survivors on the economy arms, not on host mode" do
+        expect(heldout.tests.map { |test| [test.hypothesis, test.treatment.name] })
+          .to eq([["H3-latency", "economy 2048"], ["H4-survivors", "economy 2048"],
+                  ["H3-latency", "economy 8192"], ["H4-survivors", "economy 8192"]])
+      end
+
+      it "shows H3-latency for the rich economy on six pairs, and refutes it where every pair ties" do
+        expect(heldout.tests.select { |test| test.hypothesis == "H3-latency" }.map(&:outcome_label))
+          .to eq(%w[refuted shown])
+      end
+
+      it "counts every held-out child's latency as measured" do
+        expect(heldout.arms.map(&:cells)).to all(match([anything, 6, 6, 0, 0, 6, 6]))
+      end
+
+      it "prints the held-out tables" do
+        expect(heldout.to_text(final: report.final)).to start_with("held-out reading, final\n")
+          .and match(/H3-latency\s+economy 8192\s+6\s+6\s+0\s+0\s+0\.0156\s+shown/)
+      end
+
+      it "writes the same tables as CSV" do
+        expect(CSV.parse(heldout.to_csv(final: report.final))).to include(Lab::FromEmergedHeldout::TEST_COLUMNS)
+      end
+    end
+
+    context "with a held-out economy child extinct" do
+      before do
+        experiment.runs.each { |run| settled_sample(run) }
+        extinct = children(1).find { |run| run.parent_run_id == parents.last.id }
+        extinct.samples.delete_all
+        settled_sample(extinct, share: 0.01)
+      end
+
+      it "counts it extinct and a settled relapse" do
+        expect(heldout.arms.second.cells).to eq(["economy 2048", 6, 6, 1, 1, 5, 5])
+      end
+
+      it "leaves its pair out of both tests" do
+        expect(heldout.tests.first(2).map { |test| test.comparison.measured_count }).to eq([5, 5])
       end
     end
   end
