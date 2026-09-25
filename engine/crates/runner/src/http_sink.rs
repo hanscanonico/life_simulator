@@ -176,6 +176,8 @@ mod tests {
             conserved_core_ops_oriented: None,
             copy_latency: None,
             copy_latency_orientation: None,
+            lineage_effective_count: 2.0,
+            lineages_over_one_percent: 2,
         }
     }
 

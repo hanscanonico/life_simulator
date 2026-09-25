@@ -172,6 +172,21 @@
     <dt class="mono">top_lineage_share</dt>
     <dd>The fraction of cells held by the largest lineage.</dd>
 
+    <dt class="mono">lineage_effective_count</dt>
+    <dd>
+      How many lineages the world is really split between: one over the sum of the squared
+      lineage shares, the inverse Simpson index. It reads 1 when one lineage holds every
+      cell and k when k lineages hold equal shares. A fresh soup reads about as many
+      lineages as it has cells, and the count falls as copies spread. Cells that nothing
+      ever overwrote each keep a lineage of their own, and
+      <span class="mono">distinct_lineages</span> counts every one of them. They barely move
+      this reading, so it can tell a world of several colonies from one colony with relics
+      left over. Null on every sample recorded before it existed.
+    </dd>
+
+    <dt class="mono">lineages_over_one_percent</dt>
+    <dd>How many lineages each hold at least one percent of the cells.</dd>
+
     <dt class="mono">lineage_variation</dt>
     <dd>
       Whether a colony is a clone or a drifting population, in bytes per cell. For each of

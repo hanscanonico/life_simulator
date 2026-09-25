@@ -312,6 +312,37 @@ module Lab
       # Ahead of sweep 9's extension, which runs seed-major at 0 − seed.
       priority: 50
     },
+    "lineage_diversity" => {
+      name: "Lineage diversity",
+      description: "After a transition, does a world stay polyphyletic, and do more " \
+                   "lineages survive as a cell's reach shrinks? The radius sweep's " \
+                   "diversity half, re-run at the emergent rate with lineages that follow " \
+                   "descent through reverse copies, read on the effective number of " \
+                   "lineages rather than a count of every tag a cell still holds.",
+      # Rung 2 of the evolution programme (`docs/design_record.md`, 2026-09-11), pre-
+      # registered on 2026-09-25, "Lineage diversity after a transition", whose numbers live
+      # in `Lab::LineageDiversityReading`. The arms are the radius sweep's. `oriented` is
+      # the point of the sweep: the replicators of every emerged world copy themselves in
+      # reverse, and under the aligned rule a reverse copy passes no tag on, so the tags
+      # would count survivors of the takeover rather than descent from it. Tapes are held
+      # at a fixed 64 bytes so the lineage comparisons are the plain whole-tape case.
+      param_grid: {
+        "radius" => [1, 2, 4, 0],
+        "width" => [128],
+        "height" => [128],
+        "tape_len" => [64],
+        "max_tape_len" => [64],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE],
+        "lineage_rule" => ["oriented"]
+      },
+      # Ninety seeds in every arm: the radius sweep saw six transitions in forty runs, and
+      # the reading needs at least two emerged runs in each arm, the well-mixed one
+      # included, before the trend across them can be read.
+      seeds: (1..90).to_a,
+      epochs: 20_000,
+      # After the from-emerged children, ahead of sweep 9's extension.
+      priority: 20
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

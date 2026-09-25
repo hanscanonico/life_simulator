@@ -207,6 +207,19 @@ claim rests on it.
   2 blob, written before the tags existed, restores with one id per cell. The life
   substrate reports 0.
 - `top_lineage_share`: fraction of cells held by the largest lineage.
+- `lineage_effective_count` / `lineages_over_one_percent`: how many lineages the world is
+  split between, read as diversity rather than as a count of tags. The first is the
+  **inverse Simpson index** of the lineage shares, `1 / Σ pᵢ²` over the tags the cells hold,
+  computed as `N² / Σ nᵢ²` in integers so the one division is the only rounding: 1 for a
+  monophyletic world, k for k equal lineages. `distinct_lineages` counts every tag, and
+  every cell starts with a tag of its own, so the relics of cells no copy ever reached
+  inflate it; they barely move the index. The second counts the tags that each hold **at
+  least 1%** of the cells (`metrics::LINEAGE_FLOOR_PERCENT`, inclusive). They are read off
+  the tags alone, draw nothing and move no byte; the life substrate reports 0, and every
+  sample recorded before they existed carries none. They are the reading of rung 2's
+  `lineage-diversity` sweep (docs/design_record.md 2026-09-25) and are **live-only**:
+  `oriented_census/2` does not read them, because an instrument version never changes
+  once readings exist under it, and that sweep samples them as it runs.
 - `lineage_variation`: heredity with variation, measured, in bytes per cell. Rank the
   lineages that hold **at least 2 cells** by population and take the 8 largest (ties by
   lowest lineage id). For each the reading takes that lineage's **modal tape** — the tape
@@ -529,6 +542,17 @@ sample.
     samples whose dominant tape self-replicates), with paired sign tests against the
     continuation. Pre-registered in `docs/design_record.md`, 2026-09-25, "Runs that start
     from an emerged world", whose numbers live in `Lab::DescendantReading`.
+12. **Lineage diversity** — rung 2's diversity half of item 3: after a transition, does a
+    world stay polyphyletic, and do more lineages survive as a cell's reach shrinks?
+    Radius `{1, 2, 4, 0 = well-mixed}` at 128², fixed 64-byte tapes, the emergent mutation
+    rate and `lineage_rule = oriented`, seeds 1–90 per arm, 20 000 epochs. Per emerged run
+    (census-confirmed emergence plus `replicator_share ≥ 0.5` after it), the last-decile
+    median `lineage_effective_count` reads polyphyletic (≥ 2), monophyletic (< 1.5) or
+    between; the trend across the arms is a one-sided Jonckheere–Terpstra test with a
+    permutation p, and the hypothesis is shown only where the shortest read reach is also
+    polyphyletic.
+    Pre-registered in `docs/design_record.md`, 2026-09-25, "Lineage diversity after a
+    transition", whose numbers live in `Lab::LineageDiversityReading`.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no

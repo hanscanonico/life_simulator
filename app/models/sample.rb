@@ -11,7 +11,7 @@ class Sample < ApplicationRecord
     conserved_core_bytes conserved_core_ops steal_rate replicator_pass_rate replicator_count_mean
     lineage_compressed_len lineage_instruction_count reverse_copy_rate replicator_share replicator_share_rotated
     dominant_self_replicates lineage_variation_oriented conserved_core_bytes_oriented conserved_core_ops_oriented
-    copy_latency copy_latency_orientation
+    copy_latency copy_latency_orientation lineage_effective_count lineages_over_one_percent
   ].freeze
 
   # The observables that are not numbers: exported like the rest, but there is no series a

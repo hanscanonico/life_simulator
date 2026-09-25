@@ -18,6 +18,8 @@ module Runs
       "reverse_copy_rate" => "Reverse copy rate",
       "distinct_lineages" => "Distinct lineages",
       "top_lineage_share" => "Share of the largest lineage",
+      "lineage_effective_count" => "Effective number of lineages",
+      "lineages_over_one_percent" => "Lineages holding 1% of cells or more",
       "lineage_variation" => "Variation within a lineage",
       "lineage_variation_oriented" => "Variation within a lineage, oriented",
       "copy_cost" => "Copy cost (steps)",
