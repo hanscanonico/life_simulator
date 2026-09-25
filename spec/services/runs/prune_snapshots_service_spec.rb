@@ -35,6 +35,15 @@ RSpec.describe Runs::PruneSnapshotsService do
     end
   end
 
+  it "keeps every reading taken from a world it deletes" do
+    run = snapshotted((100..1_000).step(100).to_a)
+    create(:snapshot_reading, run: run, epoch: 205, source_epoch: 200)
+
+    described_class.call(run: run, keep_every: 300)
+
+    expect(run.snapshot_readings.pluck(:source_epoch)).to eq([200])
+  end
+
   it "keeps the single snapshot of a run that only posted one" do
     run = snapshotted([100])
 
@@ -118,6 +127,19 @@ RSpec.describe Runs::PruneSnapshotsService do
       snapshotted([1_000, 2_000, 3_000])
 
       expect(described_class.prunable(since: 1.day.ago)).to be_empty
+    end
+  end
+
+  # A colony that relapsed is descended from the world where it stood highest, which need
+  # be neither the last snapshot nor a multiple of keep_every.
+  context "with a snapshot a descendant starts from" do
+    it "keeps it" do
+      run = snapshotted((100..1_000).step(100).to_a)
+      create(:run, :descendant, parent_run: run, parent_epoch: 700)
+
+      described_class.call(run: run, keep_every: 300)
+
+      expect(kept(run)).to eq([100, 300, 600, 700, 900, 1_000])
     end
   end
 end

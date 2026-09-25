@@ -148,4 +148,33 @@ RSpec.describe Runs::FinishService do
       expect(experiment.reload).to be_finished
     end
   end
+
+  context "with a descendant" do
+    let(:run) { create(:run, :descendant, :claimed, experiment: experiment) }
+
+    before do
+      [0.3, 0.3, 0.3, 0.9, 0.9, 0.9, 0.9].each_with_index do |ratio, index|
+        create(:sample, run: run, epoch: 1_000 + (index * 100),
+                        values: { "compress_ratio" => ratio, "replicator_count" => 0 })
+      end
+    end
+
+    it "keeps the emergence it inherited from its parent" do
+      described_class.call(run: run)
+
+      expect(run.reload.emergence).to eq(run.parent_run.emergence)
+    end
+
+    it "records neither transition reading its runner reports" do
+      described_class.call(run: run, transition_epoch: 1_000, transition_epoch_relative: 1_000)
+
+      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_relative: nil)
+    end
+
+    it "summarises what became of the colony from the parent epoch on" do
+      described_class.call(run: run)
+
+      expect(run.reload.persistence_summary).to have_attributes(epochs_persisted: 200, relapsed: true)
+    end
+  end
 end

@@ -3,8 +3,12 @@
 
 use crate::bff::OpSet;
 use crate::metrics::{
-    TRANSITION_HOLD_SAMPLES, TRANSITION_MAX_OP_DENSITY, TRANSITION_MIN_ALPHABET_SIZE,
-    TRANSITION_THRESHOLD,
+    TRANSITION_BASELINE_EPOCHS, TRANSITION_HOLD_SAMPLES, TRANSITION_MAX_OP_DENSITY,
+    TRANSITION_MIN_ALPHABET_SIZE, TRANSITION_RELATIVE_FRACTION, TRANSITION_THRESHOLD,
+};
+use crate::replicator::{
+    SELF_REP_AGREEMENT_DENOMINATOR, SELF_REP_AGREEMENT_NUMERATOR, SELF_REP_GENERATIONS,
+    SELF_REP_SAMPLE_CELLS, SELF_REP_TRIALS,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -32,6 +36,29 @@ pub enum Structure {
     Patchwork,
 }
 
+/// What an interaction executes (`docs/DESIGN.md` §1.1). `Concat` is the default and the
+/// substrate every earlier run lived in: the whole concatenation is the program. `Host`
+/// makes the pairing asymmetric — only the first tape's bytes are code, and the partner is
+/// substrate the program reads and writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Interaction {
+    Concat,
+    Host,
+}
+
+/// How a lineage tag follows descent (`docs/DESIGN.md` §1.2; why it is a parameter is the
+/// 2026-09-25 design-record entry). `Aligned` is the default and the rule every earlier
+/// run's tags were inherited by: a tape is compared with the two arriving tapes byte for
+/// byte. `Oriented` compares it with each arriving tape either way round, so a cell a
+/// reverse copier overwrote takes the copier's tag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineageRule {
+    Aligned,
+    Oriented,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Init {
@@ -55,6 +82,20 @@ pub struct Params {
     /// Instruction energy one cell may spend per epoch; `0` (the default) turns the cost
     /// off and the soup runs as it always has (DESIGN §1.3, sweep 6).
     pub energy_per_epoch: u32,
+    /// Instruction energy every cell is given at the start of every epoch, added to a
+    /// stock that carries across epochs up to `energy_stock_cap`; `0` (the default) turns
+    /// the stock economy off and no stock is allocated at all (DESIGN §1.1).
+    pub energy_influx: u32,
+    /// The most instruction energy one cell's stock may hold. Read only once an influx is
+    /// set, and never below it.
+    pub energy_stock_cap: u32,
+    /// Instruction energy one steal op moves out of the partner cell's stock; `0` (the
+    /// default) leaves the steal byte the no-op it is in the substrate of DESIGN §1.1 and
+    /// nothing is ever moved (DESIGN §1.1).
+    pub steal_amount: u32,
+    /// The share of what a steal moves that is destroyed in transit. Read only once a
+    /// `steal_amount` is set, so the default is no second off switch.
+    pub steal_loss: f64,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -68,6 +109,12 @@ pub struct Params {
     /// `1 + amplitude`. Read only once a `structure` is set, so the default is no second
     /// off switch.
     pub structure_amplitude: f64,
+    /// What an interaction executes: the whole concatenation (`concat`, the default and
+    /// the substrate of DESIGN §1.1), or the first tape's bytes only (`host`).
+    pub interaction: Interaction,
+    /// How a lineage tag follows descent: byte for byte (`aligned`, the default and the
+    /// rule of every earlier run), or either way round (`oriented`). Moves no byte.
+    pub lineage_rule: LineageRule,
     pub init: Init,
     pub sample_every: u32,
     pub top_k: u32,
@@ -85,10 +132,16 @@ impl Default for Params {
             radius: 1,
             max_steps: 8192,
             energy_per_epoch: 0,
+            energy_influx: 0,
+            energy_stock_cap: 0,
+            steal_amount: 0,
+            steal_loss: 0.5,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
             structure_amplitude: 0.5,
+            interaction: Interaction::Concat,
+            lineage_rule: LineageRule::Aligned,
             init: Init::Random,
             sample_every: 10,
             top_k: 16,
@@ -189,6 +242,49 @@ const FIELDS: &[Field] = &[
               0 turns the cost off, which is the substrate of DESIGN 1.1.",
     },
     Field {
+        name: "energy_influx",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "Instructions one cell is given per epoch, added to a stock that carries \
+              across epochs up to energy_stock_cap rather than being refilled to it. An \
+              interaction runs on what the poorer of its two cells holds, both are \
+              debited what ran, and a cell whose stock is empty is not executed until it \
+              has recharged. 0 turns the stock off, which is the substrate of DESIGN 1.1.",
+    },
+    Field {
+        name: "energy_stock_cap",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "The most instruction energy one cell's stock may hold, which is also the \
+              stock every cell starts the run with, so the world's total energy never \
+              exceeds cell count times this. Read only once energy_influx is set, and \
+              refused below it.",
+    },
+    Field {
+        name: "steal_amount",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "Instruction energy one steal op moves out of the partner cell's stock into \
+              the stock of the cell whose code is executing, less the steal_loss destroyed \
+              in transit. A steal takes what the partner holds when that is less, and \
+              nothing at all from an empty one. 0 turns the op off, which is the substrate \
+              of DESIGN 1.1, and any amount needs an energy_influx to have a stock to \
+              steal from.",
+    },
+    Field {
+        name: "steal_loss",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The share of what a run's steal ops move that is destroyed in transit: the \
+              thief receives the rest, rounded down, so theft is never worth more to the \
+              thief than it costs the world. Read only once steal_amount is set.",
+    },
+    Field {
         name: "ops",
         kind: Kind::Subset(&["<", ">", "{", "}", "+", "-", ".", ",", "[", "]"]),
         doc: "The BFF instructions this run executes, as a string of distinct op bytes. \
@@ -214,6 +310,26 @@ const FIELDS: &[Field] = &[
         doc: "How far a structured world's cells lean from mutation_rate, as a fraction \
               of it: the driest cell runs at 1 - amplitude times the rate and the wettest \
               at 1 + amplitude.",
+    },
+    Field {
+        name: "interaction",
+        kind: Kind::Choice(&["concat", "host"]),
+        doc: "What an interaction executes: concat runs the whole concatenation of the \
+              two tapes, which is the substrate of DESIGN 1.1; host runs the first tape's \
+              bytes only, leaving the partner as data the program reads and writes. Both \
+              heads range over the whole pair either way.",
+    },
+    Field {
+        name: "lineage_rule",
+        kind: Kind::Choice(&["aligned", "oriented"]),
+        doc: "How a soup cell's lineage tag follows descent. After an interaction a cell \
+              takes its partner's tag when its tape ends strictly closer, by Hamming \
+              distance, to the tape its partner arrived with than to its own. aligned \
+              compares byte for byte, which is the rule of DESIGN 1.2 every earlier run \
+              used; oriented takes each distance as the smaller of the arriving tape's and \
+              its reverse's, so a cell overwritten by a reverse copy takes the copier's \
+              tag. Moves no byte of the world: only the lineage tags and the readings \
+              made of them.",
     },
     Field {
         name: "init",
@@ -275,6 +391,18 @@ pub enum ParamError {
         max_tape_len: u32,
         tape_len: u32,
     },
+    /// A steal op with no stock to steal from moves nothing whatever its amount: the
+    /// parameter would be silently inert, which is the one thing a parameter must never be.
+    StealWithoutStock {
+        steal_amount: u32,
+    },
+    /// A stock that cannot hold one epoch's influx is no stock: the surplus would be
+    /// thrown away the moment it arrived, and the economy would be the per-epoch
+    /// allowance `energy_per_epoch` already is.
+    StockCapBelowInflux {
+        energy_stock_cap: u32,
+        energy_influx: u32,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -305,6 +433,19 @@ impl fmt::Display for ParamError {
                 f,
                 "max_tape_len is {max_tape_len}, below the tape_len of {tape_len}: \
                  0 turns growth off, and any cap must be at least the initial length"
+            ),
+            Self::StealWithoutStock { steal_amount } => write!(
+                f,
+                "steal_amount is {steal_amount} with no energy_influx: a steal op needs a \
+                 stock to take energy out of"
+            ),
+            Self::StockCapBelowInflux {
+                energy_stock_cap,
+                energy_influx,
+            } => write!(
+                f,
+                "energy_stock_cap is {energy_stock_cap}, below the energy_influx of \
+                 {energy_influx}: a stock must hold at least one epoch's influx"
             ),
         }
     }
@@ -343,6 +484,17 @@ impl Params {
             return Err(ParamError::MaxTapeLenBelowInitial {
                 max_tape_len: self.max_tape_len,
                 tape_len: self.tape_len,
+            });
+        }
+        if self.energy_influx > 0 && self.energy_stock_cap < self.energy_influx {
+            return Err(ParamError::StockCapBelowInflux {
+                energy_stock_cap: self.energy_stock_cap,
+                energy_influx: self.energy_influx,
+            });
+        }
+        if self.steal_amount > 0 && self.energy_influx == 0 {
+            return Err(ParamError::StealWithoutStock {
+                steal_amount: self.steal_amount,
             });
         }
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
@@ -398,6 +550,15 @@ impl Params {
                 "hold_samples": TRANSITION_HOLD_SAMPLES,
                 "max_op_density": TRANSITION_MAX_OP_DENSITY,
                 "min_alphabet_size": TRANSITION_MIN_ALPHABET_SIZE,
+                "relative_fraction": TRANSITION_RELATIVE_FRACTION,
+                "baseline_epochs": TRANSITION_BASELINE_EPOCHS,
+            },
+            "self_replication": {
+                "generations": SELF_REP_GENERATIONS,
+                "trials": SELF_REP_TRIALS,
+                "agreement": SELF_REP_AGREEMENT_NUMERATOR as f64
+                    / SELF_REP_AGREEMENT_DENOMINATOR as f64,
+                "sample_cells": SELF_REP_SAMPLE_CELLS,
             },
         }))
         .expect("schema always serialises")
@@ -441,6 +602,19 @@ impl Params {
     /// fixed-length world of DESIGN §1.1, exactly as `max_tape_len` 0 is.
     pub fn grows(&self) -> bool {
         self.substrate == Substrate::Soup && self.tape_cap() > self.tape_len
+    }
+
+    /// Whether this run's cells hold an energy stock at all. The influx is the switch: a
+    /// cap on its own stocks nothing, and life has no interactions to pay for.
+    pub fn stocked(&self) -> bool {
+        self.substrate == Substrate::Soup && self.energy_influx > 0
+    }
+
+    /// Whether this run's steal byte is an instruction at all. The amount is the switch,
+    /// as the influx is the stock's: a steal that moves nothing is not an economy, and
+    /// validation refuses an amount with no stock behind it.
+    pub fn steals(&self) -> bool {
+        self.stocked() && self.steal_amount > 0
     }
 
     /// Bytes of state one cell's slot holds: the tape cap in the soup, one byte in life.
@@ -611,6 +785,64 @@ mod tests {
             beyond.validate(),
             Err(ParamError::OutOfRange {
                 field: "energy_per_epoch",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn the_energy_stock_is_off_by_default_and_the_influx_is_its_switch() {
+        assert_eq!(Params::default().energy_influx, 0);
+        assert_eq!(Params::default().energy_stock_cap, 0);
+        assert!(!Params::default().stocked());
+
+        let capped_only = Params {
+            energy_stock_cap: 4096,
+            ..Params::default()
+        };
+        assert_eq!(capped_only.validate(), Ok(()));
+        assert!(!capped_only.stocked());
+
+        let stocked = Params {
+            energy_influx: 64,
+            energy_stock_cap: 4096,
+            ..Params::default()
+        };
+        assert_eq!(stocked.validate(), Ok(()));
+        assert!(stocked.stocked());
+
+        assert!(!Params {
+            substrate: Substrate::Life,
+            ..stocked
+        }
+        .stocked());
+    }
+
+    #[test]
+    fn rejects_a_stock_cap_below_one_epochs_influx() {
+        let params = Params {
+            energy_influx: 64,
+            energy_stock_cap: 32,
+            ..Params::default()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::StockCapBelowInflux {
+                energy_stock_cap: 32,
+                energy_influx: 64
+            })
+        );
+        assert!(params.validate().unwrap_err().to_string().contains("64"));
+
+        let beyond = Params {
+            energy_influx: 1_048_577,
+            energy_stock_cap: 1_048_576,
+            ..Params::default()
+        };
+        assert!(matches!(
+            beyond.validate(),
+            Err(ParamError::OutOfRange {
+                field: "energy_influx",
                 ..
             })
         ));
@@ -803,7 +1035,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 16);
+        assert_eq!(fields.len(), 22);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -824,6 +1056,14 @@ mod tests {
         assert_eq!(energy["default"], 0);
         assert_eq!(energy["min"], 0);
 
+        for name in ["energy_influx", "energy_stock_cap"] {
+            let stock = fields.iter().find(|f| f["name"] == name).unwrap();
+            assert_eq!(stock["type"], "integer", "{name}");
+            assert_eq!(stock["default"], 0, "{name}");
+            assert_eq!(stock["min"], 0, "{name}");
+            assert_eq!(stock["max"], 1_048_576, "{name}");
+        }
+
         let cap = fields.iter().find(|f| f["name"] == "max_tape_len").unwrap();
         assert_eq!(cap["type"], "integer");
         assert_eq!(cap["default"], 0);
@@ -837,6 +1077,16 @@ mod tests {
             structure["values"],
             serde_json::json!(["uniform", "gradient", "patchwork"])
         );
+
+        let interaction = fields.iter().find(|f| f["name"] == "interaction").unwrap();
+        assert_eq!(interaction["type"], "enum");
+        assert_eq!(interaction["default"], "concat");
+        assert_eq!(interaction["values"], serde_json::json!(["concat", "host"]));
+
+        let rule = fields.iter().find(|f| f["name"] == "lineage_rule").unwrap();
+        assert_eq!(rule["type"], "enum");
+        assert_eq!(rule["default"], "aligned");
+        assert_eq!(rule["values"], serde_json::json!(["aligned", "oriented"]));
 
         let substrate = fields.iter().find(|f| f["name"] == "substrate").unwrap();
         assert_eq!(substrate["type"], "enum");
@@ -855,6 +1105,25 @@ mod tests {
         assert_eq!(
             transition["min_alphabet_size"],
             TRANSITION_MIN_ALPHABET_SIZE
+        );
+        assert_eq!(
+            transition["relative_fraction"],
+            TRANSITION_RELATIVE_FRACTION
+        );
+        assert_eq!(transition["baseline_epochs"], TRANSITION_BASELINE_EPOCHS);
+    }
+
+    #[test]
+    fn schema_carries_the_orientation_aware_detector_the_census_companions_read_by() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        assert_eq!(
+            schema["self_replication"],
+            serde_json::json!({
+                "generations": 5,
+                "trials": 5,
+                "agreement": 0.75,
+                "sample_cells": 256,
+            })
         );
     }
 
@@ -905,5 +1174,34 @@ mod tests {
             }
         );
         assert!(serde_json::from_str::<Params>(r#"{"structure": "swirl"}"#).is_err());
+    }
+
+    /// The asymmetric execution mode of §1.1, off by default: an interaction runs the
+    /// whole concatenation unless the run asks for a host.
+    #[test]
+    fn an_interaction_runs_the_whole_concatenation_by_default() {
+        assert_eq!(Params::default().interaction, Interaction::Concat);
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"interaction": "host"}"#).unwrap(),
+            Params {
+                interaction: Interaction::Host,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"interaction": "duel"}"#).is_err());
+    }
+
+    /// The lineage rule of §1.2 is the aligned one unless a run asks for the other.
+    #[test]
+    fn a_lineage_tag_follows_aligned_descent_by_default() {
+        assert_eq!(Params::default().lineage_rule, LineageRule::Aligned);
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"lineage_rule": "oriented"}"#).unwrap(),
+            Params {
+                lineage_rule: LineageRule::Oriented,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"lineage_rule": "sideways"}"#).is_err());
     }
 }

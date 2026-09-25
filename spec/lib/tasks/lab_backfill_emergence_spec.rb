@@ -105,6 +105,17 @@ RSpec.describe "lab:backfill_emergence" do
     expect { invoke("lab:backfill_emergence", "colour") }.to raise_error(/Unknown experiment "colour"/)
   end
 
+  # Its own samples hold no crossing for a witness to back: the emergence it carries is
+  # its parent's, and the backfill must not clear it.
+  it "keeps the emergence a descendant inherited" do
+    child = create(:run, :descendant, experiment: experiment, status: "finished")
+    create(:sample, run: child, epoch: 1_000, values: { "replicator_count" => 0, "copy_rate" => 0.0 })
+
+    invoke("lab:backfill_emergence")
+
+    expect(child.reload).to have_attributes(emergence_epoch: 100, emergence_witness: "census")
+  end
+
   def invoke(name, *args)
     Rails.application.load_tasks if Rake::Task.tasks.empty?
     task = Rake::Task[name]

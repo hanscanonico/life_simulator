@@ -3,10 +3,12 @@
 module Experiments
   # The sweep list: how far each experiment has got and how often it saw a transition.
   class IndexPage
-    Row = Data.define(:experiment, :runs_done, :transitioned, :findings) do
+    # A descendant run neither transitions nor fails to — it inherits its parent's reading —
+    # so the rate is read over the founding runs done, beside every run done.
+    Row = Data.define(:experiment, :runs_done, :founding_done, :transitioned, :findings) do
       def runs_total = experiment.runs_count
 
-      def transition_rate = TransitionRate.new(transitioned: transitioned, finished: runs_done)
+      def transition_rate = TransitionRate.new(transitioned: transitioned, finished: founding_done)
     end
 
     Planned = Data.define(:slug, :name, :description)
@@ -16,6 +18,7 @@ module Experiments
     def rows
       @rows ||= experiments.map do |experiment|
         Row.new(experiment: experiment, runs_done: finished_counts[experiment.id].to_i,
+                founding_done: founding_finished_counts[experiment.id].to_i,
                 transitioned: transitioned_counts[experiment.id].to_i,
                 findings: Findings::Registry.for_experiment(experiment.slug))
       end
@@ -49,8 +52,12 @@ module Experiments
       @finished_counts ||= Run.where(status: "finished").group(:experiment_id).count
     end
 
+    def founding_finished_counts
+      @founding_finished_counts ||= Run.founding.where(status: "finished").group(:experiment_id).count
+    end
+
     def transitioned_counts
-      @transitioned_counts ||= Run.where(status: "finished").where.not(transition_epoch: nil)
+      @transitioned_counts ||= Run.founding.where(status: "finished").where.not(transition_epoch: nil)
                                   .group(:experiment_id).count
     end
   end

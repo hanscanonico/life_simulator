@@ -7,13 +7,13 @@ module Api
     SNAPSHOT_EPOCH_HEADER = "X-Snapshot-Epoch"
 
     before_action :set_run, except: :claim
-    before_action :authorize_runner!, except: %i[claim world rescores]
+    before_action :authorize_runner!, except: %i[claim world rescores readings]
 
     def claim
       run = Runs::ClaimService.call(runner_id: runner_id)
       return head :no_content if run.nil?
 
-      render json: run.slice(:id, :params, :seed, :epochs, :epochs_done)
+      render json: run.slice(:id, :params, :seed, :epochs, :epochs_done, :parent_run_id, :parent_epoch)
     end
 
     # The runner's heartbeat thread can have a request in flight when `finish` posts, so a
@@ -33,7 +33,8 @@ module Api
 
     def samples
       Runs::RecordSamplesService.call(run: @run, samples: body_params.fetch("samples", []),
-                                      transition_epoch: params[:transition_epoch])
+                                      transition_epoch: params[:transition_epoch],
+                                      transition_epoch_relative: params[:transition_epoch_relative])
       head :no_content
     end
 
@@ -79,8 +80,17 @@ module Api
       head :no_content
     end
 
+    # What a pass over stored worlds stores: one instrument's readings of them, never the
+    # run's samples or metrics. Not claim-gated, for the reason `rescores` is not.
+    def readings
+      Runs::RecordReadingsService.call(run: @run, instrument: params.require(:instrument),
+                                       readings: body_params.fetch("readings", []))
+      head :no_content
+    end
+
     def finish
       Runs::FinishService.call(run: @run, transition_epoch: params[:transition_epoch],
+                               transition_epoch_relative: params[:transition_epoch_relative],
                                summary: body_params["summary"], error: params[:error])
       head :no_content
     end

@@ -13,6 +13,10 @@
   <h1><%= @show.finding.title %></h1>
   <p class="text-muted"><%= @show.finding.summary %></p>
 
+  <% if @show.finding.instrument_note? %>
+    <%= render "findings/instrument_note", finding: @show.finding %>
+  <% end %>
+
   <%= render @show.finding.body_partial %>
 
   <h2>Evidence</h2>

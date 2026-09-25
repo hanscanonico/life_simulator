@@ -482,3 +482,31 @@ ul.chart-legend li {
   gap: var(--space-3);
   margin: 0;
 }
+
+.instrument-note {
+  margin: var(--space-5) 0;
+}
+
+.instrument-note p {
+  margin: 0 0 var(--space-2);
+}
+
+.instrument-note p:last-child {
+  margin-bottom: 0;
+}
+
+.instrument-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.instrument-note-badge,
+.instrument-note-badge:hover {
+  color: var(--paper);
+  text-decoration: none;
+}
+
+.instrument-note-badge:hover {
+  background: var(--ink-secondary);
+}

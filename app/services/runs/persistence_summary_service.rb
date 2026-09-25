@@ -11,6 +11,9 @@ module Runs
   # single sample flickering back above the threshold is no more a relapse than a single
   # sample below it is a transition. A state that never ends persisted to the last sample.
   #
+  # A descendant has no transition of its own: its colony was established when it started
+  # from its parent's world, so it is read from `parent_epoch` on.
+  #
   # It reads stored samples and changes nothing — not the detector, not a metric, not a run.
   class PersistenceSummaryService
     include Callable
@@ -20,7 +23,7 @@ module Runs
     end
 
     def call
-      return nil if @run.transition_epoch.nil? || transitioned_samples.empty?
+      return nil if anchor.nil? || transitioned_samples.empty?
 
       Persistence.new(census_peak: census_peak, peak_epoch: peak_epoch,
                       epochs_persisted: epochs_persisted, relapsed: exit_index.present?)
@@ -28,13 +31,15 @@ module Runs
 
     private
 
+    def anchor = @run.descendant? ? @run.parent_epoch : @run.transition_epoch
+
     def samples = @samples ||= @run.samples.order(:epoch).pluck(:epoch, :values)
 
     def transitioned_samples
-      @transitioned_samples ||= samples.drop_while { |epoch, _| epoch < @run.transition_epoch }
+      @transitioned_samples ||= samples.drop_while { |epoch, _| epoch < anchor }
     end
 
-    def epochs_persisted = [persisted_through.to_i - @run.transition_epoch, 0].max
+    def epochs_persisted = [persisted_through.to_i - anchor, 0].max
 
     # The last epoch the world was still in the transitioned state: the last sample the
     # rule accepts before the exit, or before the end of the series when there is none.

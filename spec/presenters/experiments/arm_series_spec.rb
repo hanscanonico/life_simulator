@@ -47,6 +47,22 @@ RSpec.describe Experiments::ArmSeries do
       expect(charts.map { |chart| chart.arms.last.points }).to eq([[[200.0, 32.0]], [[200.0, 700.0]]])
     end
 
+    # The dominant tape rotates, so a lineage reading of the same sample is a different
+    # series and never a copy of the per-tape one (docs/design_record.md, 2026-09-19).
+    it "draws the lineage readings beside the dominant ones" do
+      create(:sample, run: priced_run, epoch: 200,
+                      values: { "dominant_compressed_len" => 32, "dominant_instruction_count" => 700,
+                                "lineage_compressed_len" => 48, "lineage_instruction_count" => 900 })
+
+      charts = series_for([priced_run]).complexity_charts
+
+      expect(charts.map(&:y_label))
+        .to eq(["Compressed length of the dominant tape (bytes)", "Instructions in the dominant tape",
+                "Compressed length of the largest lineage's tape (bytes)",
+                "Instructions in the largest lineage's tape"])
+      expect(charts.last(2).map { |chart| chart.arms.last.points }).to eq([[[200.0, 48.0]], [[200.0, 900.0]]])
+    end
+
     # A sample the engine reported no replicator for carries a null length, which is a
     # reading the mean must not take for a zero.
     context "with a sample whose complexity was never measured" do

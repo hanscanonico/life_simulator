@@ -18,6 +18,7 @@ module Experiments
   # It reads stored rows and changes nothing — not the detector, not a metric, not a run.
   class TransitionArmsService
     include Callable
+    include GroupsRunsByArm
 
     COLUMNS = %w[arm n flagged replicators replicators_wide both either_but_not_both].freeze
 
@@ -48,7 +49,7 @@ module Experiments
       @experiment = experiment
     end
 
-    def call = sampled_runs.group_by { |run| arm_label(run) }.map { |label, runs| arm(label, runs) }
+    def call = arms_of(sampled_runs)
 
     private
 
@@ -72,31 +73,20 @@ module Experiments
     end
 
     def wide_peaks
-      @wide_peaks ||= Rescore.where(run_id: @experiment.runs.select(:id), top_k: WIDE_TOP_K)
+      @wide_peaks ||= Rescore.where(run_id: experiment.runs.select(:id), top_k: WIDE_TOP_K)
                              .group(:run_id).maximum(:replicator_count)
     end
 
-    # A run nothing has been sampled from yet is no row: the block is a reading of stored
-    # samples, not of the queue.
     def sampled_runs
-      @sampled_runs ||= @experiment.runs.where(id: sampled_run_ids.to_a).order(:id)
-                                   .select(:id, :params, :transition_epoch).to_a
+      @sampled_runs ||= experiment.runs.founding.where(id: sampled_run_ids).order(:id)
+                                  .select(:id, :params, :transition_epoch).to_a
     end
 
-    def sampled_run_ids = @sampled_run_ids ||= run_ids_of(Sample.all)
-
-    def replicated_run_ids = @replicated_run_ids ||= run_ids_of(Sample.where(REPLICATED))
-
-    def run_ids_of(samples)
-      samples.where(run_id: @experiment.runs.select(:id)).distinct.pluck(:run_id).to_set
+    def replicated_run_ids
+      @replicated_run_ids ||= Sample.where(REPLICATED).where(run_id: experiment.runs.select(:id))
+                                    .distinct.pluck(:run_id).to_set
     end
 
-    def arm_label(run)
-      labels = axes.filter_map { |axis| axis.label_of_run(run.params) }
-
-      labels.empty? ? @experiment.slug : labels.join(" ")
-    end
-
-    def axes = @axes ||= Axis.sweep(@experiment.param_grid)
+    attr_reader :experiment
   end
 end

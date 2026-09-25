@@ -3,16 +3,17 @@
 namespace :lab do
   desc "Build a sweep experiment from DESIGN.md 1.3 " \
        "(mutation_rate, world_size, radius, max_steps, ops, energy_per_epoch, " \
-       "environmental_structure, max_tape_len)"
+       "environmental_structure, max_tape_len, host_parasite, asymmetric_execution, from_emerged)"
   task :sweep, [:sweep] => :environment do |_task, args|
     definition = Lab::SWEEPS[args[:sweep]]
     raise "Unknown sweep #{args[:sweep].inspect}. Known sweeps: #{Lab::SWEEPS.keys.join(', ')}" if definition.nil?
 
     experiment = Experiment.find_or_initialize_by(slug: Lab.slug_for(args[:sweep]))
     experiment.update!(definition.merge(substrate: "soup"))
-    Experiments::SweepBuilderService.call(experiment)
+    built = Experiments::SweepBuilderService.call(experiment)
 
     puts "#{experiment.name}: #{experiment.reload.runs_count} runs"
+    puts "#{experiment.name}: #{built}" if experiment.descendant_sweep?
   end
 
   desc "Send the failed runs of an experiment back to the pending queue"
@@ -70,9 +71,33 @@ namespace :lab do
     puts "run #{run.id} (#{run.experiment.slug}, seed #{run.seed}): priority #{previous} → #{priority}"
   end
 
+  desc "Order an experiment's queue seed-major: every unfinished run at base - seed"
+  task :prioritise_seed_major, [:slug, :base] => :environment do |_task, args|
+    experiment = Experiment.find_by(slug: args[:slug])
+    raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+    raise "Priority #{args[:base].inspect} is not an integer." unless /\A-?\d+\z/.match?(args[:base].to_s)
+
+    base = args[:base].to_i
+    band = Experiments::SetSeedMajorPriorityService.call(experiment: experiment, base: base)
+
+    over = band.moved.zero? ? "" : " over priorities #{band.lowest}..#{band.highest}"
+    puts "#{experiment.name}: priority #{base}, #{band.moved} unfinished runs#{over}"
+  end
+
+  desc "Set the queue priority of a batch of unfinished runs, as lab:prioritise_runs[12:40;13:39]"
+  task :prioritise_runs, [:pairs] => :environment do |_task, args|
+    moves = Runs::SetPrioritiesService.call(pairs: args[:pairs])
+
+    moves.each do |move|
+      puts "run #{move.run.id} (#{move.run.experiment.slug}, seed #{move.run.seed}): " \
+           "priority #{move.previous} → #{move.priority}"
+    end
+    puts "#{moves.size} runs moved"
+  end
+
   desc "Recompute transition_epoch from the stored samples of terminal runs (one experiment, or all)"
   task :backfill_transitions, [:slug] => :environment do |_task, args|
-    runs = Run.terminal.order(:id)
+    runs = Run.founding.terminal.order(:id)
     if args[:slug].present?
       experiment = Experiment.find_by(slug: args[:slug])
       raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
@@ -94,9 +119,34 @@ namespace :lab do
     puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
   end
 
+  desc "Fill transition_epoch_relative from the stored samples of terminal runs (one experiment, or all). " \
+       "Leaves transition_epoch, the locked reading, alone"
+  task :backfill_relative_transitions, [:slug] => :environment do |_task, args|
+    runs = Run.founding.terminal.order(:id)
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+      runs = runs.where(experiment: experiment)
+    end
+
+    terminal = runs.to_a
+    backfilled = terminal.count do |run|
+      recomputed = Runs::RelativeTransitionEpochService.call(run: run)
+      next false if recomputed == run.transition_epoch_relative
+
+      puts "run #{run.id}: constant #{run.transition_epoch || 'none'}, " \
+           "relative #{run.transition_epoch_relative || 'none'} → #{recomputed || 'none'}"
+      run.update!(transition_epoch_relative: recomputed)
+      true
+    end
+
+    puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
+  end
+
   desc "Confirm the crossing of every terminal run against its stored census and copy rate (one experiment, or all)"
   task :backfill_emergence, [:slug] => :environment do |_task, args|
-    runs = Run.terminal.order(:id)
+    runs = Run.founding.terminal.order(:id)
     if args[:slug].present?
       experiment = Experiment.find_by(slug: args[:slug])
       raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
@@ -158,6 +208,21 @@ namespace :lab do
     puts ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
+  desc "Read the detector, the emergence rule and the orientation-aware census side by side, per arm " \
+       "(one experiment, or `all` for every experiment's totals). Prints them; changes nothing (FORMAT=csv)"
+  task :oriented_report, [:slug] => :environment do |_task, args|
+    report = if args[:slug] == "all"
+               Experiments::OrientedCorpusService.call
+             else
+               experiment = Experiment.find_by(slug: args[:slug])
+               raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+               Experiments::OrientedArmsService.call(experiment: experiment)
+             end
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
   desc "List the stored transitions the alphabet guard would no longer accept (one experiment, or all). " \
        "Prints them; changes nothing"
   task :transition_audit, [:slug] => :environment do |_task, args|
@@ -168,6 +233,20 @@ namespace :lab do
     end
 
     print Runs::TransitionAuditService.call(experiment: experiment).to_text
+  end
+
+  desc "Read how close each arm's initial condition already sits to the detector threshold (one experiment, " \
+       "or all). Prints them; changes nothing (FORMAT=csv)"
+  task :detector_baseline, [:slug] => :environment do |_task, args|
+    experiment = nil
+    if args[:slug].present?
+      experiment = Experiment.find_by(slug: args[:slug])
+      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+    end
+
+    report = Experiments::DetectorBaselineService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
   desc "Check that every run with a transition has a snapshot near it, and count snapshots by reason"
@@ -184,6 +263,28 @@ namespace :lab do
     raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
 
     print Experiments::CostReportService.call(experiment: experiment).to_text
+  end
+
+  desc "Read the from-emerged sweep as pre-registered: every child, every treatment, every hypothesis " \
+       "(FORMAT=csv); labelled interim until every child of every qualifying parent is terminal"
+  task from_emerged_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("from_emerged"))
+    raise "The from-emerged sweep is not seeded." if experiment.nil?
+
+    report = Experiments::FromEmergedReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
+  desc "Read the lineage-diversity sweep as pre-registered: every run, every arm, the hypothesis " \
+       "(FORMAT=csv for CSV)"
+  task lineage_diversity_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("lineage_diversity"))
+    raise "The lineage-diversity sweep is not seeded." if experiment.nil?
+
+    report = Experiments::LineageDiversityReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"

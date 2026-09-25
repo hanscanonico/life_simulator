@@ -11,7 +11,11 @@ module Programme
 
     def runs_finished = @runs_finished ||= Run.where(status: "finished").count
 
-    def epochs_simulated = @epochs_simulated ||= Run.sum(:epochs_done)
+    # A descendant's clock starts at its parent's epoch, and those epochs the parent
+    # already simulated.
+    def epochs_simulated
+      @epochs_simulated ||= Run.sum(Arel.sql("runs.epochs_done - COALESCE(runs.parent_epoch, 0)"))
+    end
 
     def seeds_transitioned
       @seeds_transitioned ||= Run.where(status: "finished").where.not(transition_epoch: nil).count

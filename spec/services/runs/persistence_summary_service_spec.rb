@@ -169,4 +169,26 @@ RSpec.describe Runs::PersistenceSummaryService do
     expect(summary.epochs_persisted).to eq(10)
     expect(summary).to be_relapsed
   end
+
+  context "with a descendant, which crossed nothing of its own" do
+    let(:child) { create(:run, :descendant, status: "finished") }
+
+    def record_child(ratios)
+      ratios.each_with_index do |ratio, index|
+        create(:sample, run: child, epoch: 1_000 + (index * 10), values: { "compress_ratio" => ratio })
+      end
+    end
+
+    it "reads the world from the parent epoch on" do
+      record_child([0.3, 0.3, 0.3, 0.3])
+
+      expect(described_class.call(run: child)).to have_attributes(epochs_persisted: 30, relapsed: false)
+    end
+
+    it "reads a colony that climbs back out as relapsed" do
+      record_child([0.3, 0.3, 0.9, 0.9, 0.9, 0.9, 0.9])
+
+      expect(described_class.call(run: child)).to have_attributes(epochs_persisted: 10, relapsed: true)
+    end
+  end
 end

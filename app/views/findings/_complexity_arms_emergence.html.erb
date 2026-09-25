@@ -1,0 +1,60 @@
+<%# How often life emerged in each arm, every treated arm against the control at its own
+    cap. It is the sweep's own outcome and decides nothing about the complexity reading. %>
+<h3>How often life emerged</h3>
+<div class="table-scroll" tabindex="0" role="region" id="complexity-arms-emergence"
+     aria-label="How often life emerged in each arm, against the control at the same cap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Arm</th>
+        <th class="numeric">Terminal runs</th>
+        <th class="numeric">Emerged</th>
+        <th class="numeric">Rate</th>
+        <th>Control at the same cap</th>
+        <th class="numeric">Against it</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% reading.arms.each do |arm| %>
+        <tr>
+          <td>
+            <span class="mono"><%= arm.label %></span>
+            <% if arm.control? %><span class="badge badge-info">control</span><% end %>
+            <% if arm.barren? %><span class="badge badge-error">barren</span><% end %>
+          </td>
+          <td class="numeric mono"><%= arm.terminal_count %></td>
+          <td class="numeric mono"><%= arm.emerged_count %></td>
+          <td class="numeric mono">
+            <% if arm.tested? %>
+              <%= arm.emergence_fraction %> (<%= percent_value arm.emergence_rate %>)
+            <% else %>
+              —
+            <% end %>
+          </td>
+          <td class="mono"><%= arm.control? ? "—" : reading.control_for(arm)&.label || "—" %></td>
+          <td class="numeric mono">
+            <% p_value = reading.emergence_p_value(arm) %>
+            <% if p_value.nil? %>
+              —
+            <% else %>
+              p = <%= number_with_precision(p_value, precision: 2, significant: true,
+                                            strip_insignificant_zeros: true) %>
+              <% if reading.emergence_significant?(arm) %>
+                <span class="badge badge-warning">p &lt; 0.05</span>
+              <% end %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
+<p><strong><%= reading.emergence_sentence %></strong></p>
+<p class="text-sm text-muted">
+  One row per arm. "Terminal runs" counts the runs of the arm that reached an end with at
+  least one sample, "Emerged" the confirmed crossings among them, and "Rate" the second over
+  the first. "Against it" is a two-sided Fisher exact test of the arm's emerged and
+  unemerged runs against those of the control at the same <span class="mono">max_tape_len</span>
+  — a dash for a control itself and for an arm with nothing terminal to test. It describes
+  how often life emerged and decides nothing about the complexity reading below.
+</p>

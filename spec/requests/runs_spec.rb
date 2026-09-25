@@ -81,6 +81,76 @@ RSpec.describe "Runs", type: :request do
       expect(response.body).to include("Compression ratio", "Copy rate", "<svg", "4242", "mutation_rate")
     end
 
+    context "with a descendant run" do
+      let(:child) { create(:run, :descendant, :claimed, epochs_done: 1_250) }
+
+      it "links the parent it started from, and the epoch it started at" do
+        get run_path(child)
+
+        expect(response.body).to include(%(href="#{run_path(child.parent_run)}"))
+        expect(response.body.squish).to include("world at epoch 1,000")
+      end
+
+      it "reads its progress over its own budget, from the parent epoch" do
+        get run_path(child)
+
+        expect(response.body.squish).to include("1,250 / 2,000 epochs (25.0%)")
+      end
+
+      it "records no transition of its own" do
+        get run_path(child)
+
+        expect(response.body).to include("none of its own (a descendant)")
+      end
+    end
+
+    context "with a run that has descendants" do
+      it "lists them" do
+        child = create(:run, :descendant)
+
+        get run_path(child.parent_run)
+
+        expect(response.body.squish).to include("1 descendant started from this run's world")
+        expect(response.body).to include(%(href="#{run_path(child)}"))
+      end
+    end
+
+    context "with a run under an energy stock" do
+      it "shows the influx and the stock cap it ran with" do
+        stocked = create(:run, params: Lab::Schema.run_defaults.merge("energy_influx" => 64,
+                                                                      "energy_stock_cap" => 4_096))
+
+        get run_path(stocked)
+
+        expect(response.body).to include("<dt>energy_influx</dt><dd>64</dd>",
+                                         "<dt>energy_stock_cap</dt><dd>4096</dd>")
+      end
+    end
+
+    context "with a run under an asymmetric interaction" do
+      it "shows the execution mode it ran with" do
+        hosted = create(:run, params: Lab::Schema.run_defaults.merge("interaction" => "host"))
+
+        get run_path(hosted)
+
+        expect(response.body).to include("<dt>interaction</dt><dd>host</dd>")
+      end
+    end
+
+    context "with a run whose cells could steal" do
+      it "shows the amount a steal moved and the share it destroyed" do
+        thieving = create(:run, params: Lab::Schema.run_defaults.merge("energy_influx" => 64,
+                                                                       "energy_stock_cap" => 4_096,
+                                                                       "steal_amount" => 16,
+                                                                       "steal_loss" => 0.25))
+
+        get run_path(thieving)
+
+        expect(response.body).to include("<dt>steal_amount</dt><dd>16</dd>",
+                                         "<dt>steal_loss</dt><dd>0.25</dd>")
+      end
+    end
+
     context "with a transitioned run whose world held the state" do
       it "shows the census peak, the epochs persisted and no relapse" do
         run.update!(persistence: { "census_peak" => 867, "peak_epoch" => 5_080,
@@ -205,7 +275,7 @@ RSpec.describe "Runs", type: :request do
                                          "Compressed length of the dominant tape (bytes)",
                                          "Instructions in the dominant tape",
                                          "Conserved core of the largest lineage (bytes)",
-                                         "Instructions in that conserved core")
+                                         "Instructions in that conserved core", "Steal rate")
       end
     end
 
@@ -304,6 +374,26 @@ RSpec.describe "Runs", type: :request do
         get run_path(create(:run, experiment: create(:experiment, slug: "nobody-cites-this")))
 
         expect(response.body).not_to include("Cited by")
+      end
+    end
+
+    context "with a sample that read a copy latency" do
+      it "says which way round the dominant tape copied itself" do
+        create(:sample, run: run, epoch: 100, values: { "copy_latency" => 511, "copy_latency_orientation" => "reverse" })
+
+        get run_path(run)
+
+        expect(response.body).to include("copy-latency-orientation", "<strong>reverse</strong>")
+      end
+    end
+
+    context "with samples recorded before the copy latency existed" do
+      it "says nothing about its orientation" do
+        create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794 })
+
+        get run_path(run)
+
+        expect(response.body).not_to include("copy-latency-orientation")
       end
     end
 

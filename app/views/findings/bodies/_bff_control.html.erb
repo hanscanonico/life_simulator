@@ -33,9 +33,9 @@
   Partial, and not yet the reading the hypothesis asked for. It is a reading and not a
   claim for three reasons: the runs are far from their epoch horizon, the mutated arm has
   moved in two of its three seeds and no more, and the census that would make the move mean
-  something is not yet resolved here. What follows states shapes; the per-run numbers behind
-  them drift with every sample and are in the evidence table below, which reads the runs
-  live.
+  something is confirmed in stored worlds off its peak but not yet at the peak itself. What
+  follows states shapes; the per-run numbers behind them drift with every sample and are in
+  the evidence table below, which reads the runs live.
 </p>
 
 <p>
@@ -57,14 +57,18 @@
   <span class="mono">replicator_count</span> in the lab — thousands of replicating cells at
   its peak, at a <span class="mono">copy_rate</span> of a few percent of all interactions
   where a soup that has not moved sits at zero — which is the shape the mutation-rate sweep
-  shows: a census peak near the transition rather than a level that holds. What is missing
-  is a stored world that brackets the peak. This control snapshots every 2 000 epochs, and
-  no snapshot falls inside the window where the count was high, so the peak rests on in-run
-  samples alone and cannot be rescored the way the mutation-rate peaks were — where a stored
-  world does bracket a peak, a rescore confirms the count and finds a tape passing the
-  trial. Truncation of the ranking is not ruled out here, and on this control it bites:
-  rescoring a mutated seed's stored world well after that seed's census peak reads a census
-  of zero at the top 16 tapes and 38 at both 64 and 256, with
+  shows: a census peak near the transition rather than a level that holds. That census is
+  not an artefact of the in-run assay. Two of this control's stored worlds do sit on
+  census-positive samples, and rescoring each reproduces the live count exactly — 316
+  replicating cells at epoch 9 900, 112 at epoch 16 000 — so what the samples report, the
+  worlds hold. What no stored world holds is the peak itself: this control snapshots every
+  2 000 epochs, the count runs into the thousands for a window shorter than that cadence,
+  and the nearest world stored on a positive census sits past the maximum on the way down.
+  The height of the peak therefore still rests on in-run samples alone, while the claim
+  that the count is real rests on worlds that were rescored. Truncation of the ranking is
+  not ruled out here either, and on this control it bites: rescoring a mutated seed's stored
+  world further past its census peak than either of those two reads a census of zero at the
+  top 16 tapes and 38 at both 64 and 256, with
   <span class="mono">compress_ratio</span> 0.476 and
   <span class="mono">entropy_bits</span> 5.52 — a lineage too diffuse for the top of the
   ranking, living in ranks 17 to 64. Widening the cut is not inflating a non-lineage: the
@@ -72,7 +76,7 @@
   worlds rescored at all three widths only two are zero at 16 and positive at 64. Nor is it
   a change of the instrument — <span class="mono">top_k</span> stays where DESIGN §1.2
   locks it, at 16, and what is reported above is a reading of a stored world at a wider cut,
-  not a new default. So the census here is not yet resolved rather than not evidence, and
+  not a new default. So the census here is confirmed off the peak and unresolved at it, and
   the falsifier above is neither triggered nor retired.
 </p>
 
@@ -89,11 +93,13 @@
   the compression, is what decides.
 </p>
 <p>
-  The measurement this experiment still owes is a stored world inside a census peak: a finer
-  <span class="mono">snapshot_every</span> for a world this size, and the snapshot forced on
-  the sample where a transition settles, so that every peak the samples report can be
-  rescored against the world that produced it. Until one of this control's peaks is rescored
-  that way, the emergence it shows is read from in-run observables only.
+  The measurement this experiment still owes is a stored world inside the census peak, and
+  the engine now takes it unasked: the run loop writes a snapshot whenever the census rises
+  off zero, at most one per <span class="mono">snapshot_every</span>, so a re-run of this
+  control would store the world at the epoch where the count lifts rather than wherever the
+  cadence next fell. These runs predate that reason. Until a re-run brackets the maximum,
+  the height of the peak is read from in-run observables and the lineage from the worlds
+  stored past it.
 </p>
 
 <p>
@@ -104,8 +110,10 @@
   released them a second time, and they resumed from their snapshots again.
 </p>
 <p>
-  The mutation-rate sweep's strongest transitions have since been confirmed in their stored
-  worlds, so the census is real and the instrument can see a lineage. What is still open is
-  this control's own census, and until it is resolved no sweep on this site is readable as a
-  clean negative result. The mutation-rate finding is held on that basis.
+  The mutation-rate sweep's strongest transitions have been confirmed in their stored
+  worlds, and so have two of this control's own census readings, so the census is real here
+  too and the instrument can see a lineage. What is still open is the height of this
+  control's peak and the third mutated seed, which has not moved. Until the arm is read out
+  at its horizon no sweep on this site is readable as a clean negative result, and the
+  mutation-rate finding is held on that basis.
 </p>

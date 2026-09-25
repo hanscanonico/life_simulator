@@ -67,6 +67,38 @@
       "type": "integer"
     },
     {
+      "default": 0,
+      "doc": "Instructions one cell is given per epoch, added to a stock that carries across epochs up to energy_stock_cap rather than being refilled to it. An interaction runs on what the poorer of its two cells holds, both are debited what ran, and a cell whose stock is empty is not executed until it has recharged. 0 turns the stock off, which is the substrate of DESIGN 1.1.",
+      "max": 1048576,
+      "min": 0,
+      "name": "energy_influx",
+      "type": "integer"
+    },
+    {
+      "default": 0,
+      "doc": "The most instruction energy one cell's stock may hold, which is also the stock every cell starts the run with, so the world's total energy never exceeds cell count times this. Read only once energy_influx is set, and refused below it.",
+      "max": 1048576,
+      "min": 0,
+      "name": "energy_stock_cap",
+      "type": "integer"
+    },
+    {
+      "default": 0,
+      "doc": "Instruction energy one steal op moves out of the partner cell's stock into the stock of the cell whose code is executing, less the steal_loss destroyed in transit. A steal takes what the partner holds when that is less, and nothing at all from an empty one. 0 turns the op off, which is the substrate of DESIGN 1.1, and any amount needs an energy_influx to have a stock to steal from.",
+      "max": 1048576,
+      "min": 0,
+      "name": "steal_amount",
+      "type": "integer"
+    },
+    {
+      "default": 0.5,
+      "doc": "The share of what a run's steal ops move that is destroyed in transit: the thief receives the rest, rounded down, so theft is never worth more to the thief than it costs the world. Read only once steal_amount is set.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "steal_loss",
+      "type": "float"
+    },
+    {
       "default": "<>{}+-.,[]",
       "doc": "The BFF instructions this run executes, as a string of distinct op bytes. A byte whose op is left out is a no-op, like any non-instruction byte.",
       "name": "ops",
@@ -112,6 +144,26 @@
       "type": "float"
     },
     {
+      "default": "concat",
+      "doc": "What an interaction executes: concat runs the whole concatenation of the two tapes, which is the substrate of DESIGN 1.1; host runs the first tape's bytes only, leaving the partner as data the program reads and writes. Both heads range over the whole pair either way.",
+      "name": "interaction",
+      "type": "enum",
+      "values": [
+        "concat",
+        "host"
+      ]
+    },
+    {
+      "default": "aligned",
+      "doc": "How a soup cell's lineage tag follows descent. After an interaction a cell takes its partner's tag when its tape ends strictly closer, by Hamming distance, to the tape its partner arrived with than to its own. aligned compares byte for byte, which is the rule of DESIGN 1.2 every earlier run used; oriented takes each distance as the smaller of the arriving tape's and its reverse's, so a cell overwritten by a reverse copy takes the copier's tag. Moves no byte of the world: only the lineage tags and the readings made of them.",
+      "name": "lineage_rule",
+      "type": "enum",
+      "values": [
+        "aligned",
+        "oriented"
+      ]
+    },
+    {
       "default": "random",
       "doc": "Initial world state: uniformly random bytes, or all zero (the control).",
       "name": "init",
@@ -146,10 +198,18 @@
       "type": "integer"
     }
   ],
+  "self_replication": {
+    "agreement": 0.75,
+    "generations": 5,
+    "sample_cells": 256,
+    "trials": 5
+  },
   "transition": {
+    "baseline_epochs": 500,
     "hold_samples": 3,
     "max_op_density": 0.9,
     "min_alphabet_size": 16,
+    "relative_fraction": 0.61,
     "threshold": 0.6
   }
 }
