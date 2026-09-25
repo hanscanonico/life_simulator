@@ -10,7 +10,7 @@
 //! stepped on to the next sample epoch E' and read there, which reproduces the live
 //! sample at E'. Those readings are labelled E' with `source_epoch` E.
 
-use crate::api::{CorpusRun, LabClient, StoredWorld};
+use crate::api::{CorpusRun, LabClient, StoredWorld, OUTAGE_GRACE};
 use crate::rescore::Epochs;
 use anyhow::{anyhow, bail, Result};
 use life_engine::{Metrics, Params, Substrate, World};
@@ -86,7 +86,7 @@ struct RunPlan<'a> {
 /// one corrupt snapshot must not cost the pass; only a pass where nothing at all could be
 /// read is a failure.
 pub fn execute_corpus(options: Options) -> Result<Summary> {
-    let client = LabClient::new(&options.api, &options.token);
+    let client = lab_client(&options);
     let runs = client.corpus(&options.experiment, Some(INSTRUMENT))?;
     let plans = plan(&runs, options.epochs, options.limit);
     let next = AtomicUsize::new(0);
@@ -95,7 +95,7 @@ pub fn execute_corpus(options: Options) -> Result<Summary> {
     thread::scope(|scope| {
         for _ in 0..options.jobs.max(1) {
             scope.spawn(|| {
-                let client = LabClient::new(&options.api, &options.token);
+                let client = lab_client(&options);
                 while let Some(plan) = plans.get(next.fetch_add(1, Ordering::Relaxed)) {
                     let done = read_run(&client, plan, options.dry_run);
                     total.lock().unwrap().add(done);
@@ -117,6 +117,13 @@ pub fn execute_corpus(options: Options) -> Result<Summary> {
         options.experiment, total.worlds, total.failed, total.skipped, total.stored
     );
     Ok(total)
+}
+
+/// A pass runs for hours beside a lab that auto-deploys, and a POST that gives up loses
+/// every reading of its run, so the calls wait a deploy out as lab mode does rather than
+/// giving up after a one-off command's half minute.
+fn lab_client(options: &Options) -> LabClient {
+    LabClient::new(&options.api, &options.token).with_grace(OUTAGE_GRACE)
 }
 
 /// The worlds to start from, in corpus order: each run's newest stored world or all of
@@ -524,6 +531,31 @@ mod tests {
 
         assert_eq!((summary.worlds, summary.skipped), (4, 2));
         assert_eq!(posted_epochs(&lab, 1), vec![(6, 6), (8, 6)]);
+    }
+
+    /// A stored world an earlier pass read where it stands has no copy rates: the walk
+    /// from the world before it rewrites its row with them, and restores it no more.
+    #[test]
+    fn a_world_read_one_sample_on_gains_its_copy_rates() {
+        let lab = corpus_lab(json!({ INSTRUMENT: [0, 2, 6, 8] }));
+
+        let summary = execute_corpus(options(&lab, Epochs::All)).unwrap();
+
+        assert_eq!((summary.worlds, summary.skipped), (4, 2));
+        assert_eq!(posted_epochs(&lab, 1), vec![(4, 4), (6, 4)]);
+        let rows = lab.request("POST /api/runs/1/readings")["readings"].clone();
+        assert!(rows[1]["values"]["reverse_copy_rate"].is_number(), "{rows}");
+    }
+
+    #[test]
+    fn a_post_the_app_fails_is_tried_again() {
+        let lab = corpus_lab(json!({}));
+        lab.fail_next_at("/api/runs/1/readings", 1);
+
+        let summary = execute_corpus(options(&lab, Epochs::Latest)).unwrap();
+
+        assert_eq!((summary.failed, summary.stored), (0, 4));
+        assert_eq!(lab.count("POST /api/runs/1/readings"), 2);
     }
 
     #[test]
