@@ -87,4 +87,15 @@ RSpec.describe Experiments::IndexPage do
                                                     description: Lab::SWEEPS.fetch("mutation_rate")[:description])
     end
   end
+
+  context "with a finished descendant" do
+    it "counts it done but reads the rate over the founding runs" do
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 400)
+      create(:run, experiment: experiment, status: "finished")
+      create(:run, :descendant, experiment: experiment, status: "finished")
+
+      expect(page.rows.find { |row| row.experiment == experiment })
+        .to have_attributes(runs_done: 3, transition_rate: have_attributes(fraction: 0.5))
+    end
+  end
 end

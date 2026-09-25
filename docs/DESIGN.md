@@ -108,7 +108,10 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   (`init = zero`) — a control that must never produce replicators without mutation.
 - **Determinism**: a run is fully determined by `(params, seed)`. Same inputs, same
   bytes, on native and on wasm. RNG is `xoshiro256**` seeded from the run seed; per-epoch
-  visiting order and neighbour choice come from that stream only.
+  visiting order and neighbour choice come from that stream only. A **descendant** run,
+  which starts from a finished parent run's stored world instead of an initial state, is
+  fully determined by `(parent run's world at parent_epoch, params, seed)` (the rule
+  lands with its record entry in `docs/design_record.md`).
 
 The ordinary Game of Life (`B3/S23`) is also shipped, as the `Life` substrate, because it
 is what visitors recognise. It shares the viewer and the run pipeline but no research

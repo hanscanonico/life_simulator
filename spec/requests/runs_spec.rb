@@ -81,6 +81,40 @@ RSpec.describe "Runs", type: :request do
       expect(response.body).to include("Compression ratio", "Copy rate", "<svg", "4242", "mutation_rate")
     end
 
+    context "with a descendant run" do
+      let(:child) { create(:run, :descendant, :claimed, epochs_done: 1_250) }
+
+      it "links the parent it started from, and the epoch it started at" do
+        get run_path(child)
+
+        expect(response.body).to include(%(href="#{run_path(child.parent_run)}"))
+        expect(response.body.squish).to include("world at epoch 1,000")
+      end
+
+      it "reads its progress over its own budget, from the parent epoch" do
+        get run_path(child)
+
+        expect(response.body.squish).to include("1,250 / 2,000 epochs (25.0%)")
+      end
+
+      it "records no transition of its own" do
+        get run_path(child)
+
+        expect(response.body).to include("none of its own (a descendant)")
+      end
+    end
+
+    context "with a run that has descendants" do
+      it "lists them" do
+        child = create(:run, :descendant)
+
+        get run_path(child.parent_run)
+
+        expect(response.body.squish).to include("1 descendant started from this run's world")
+        expect(response.body).to include(%(href="#{run_path(child)}"))
+      end
+    end
+
     context "with a run under an energy stock" do
       it "shows the influx and the stock cap it ran with" do
         stocked = create(:run, params: Lab::Schema.run_defaults.merge("energy_influx" => 64,

@@ -162,6 +162,6 @@ module Findings
       Sample.where("values -> 'replicator_count' > '0'::jsonb").select(:run_id)
     end
 
-    def finished_runs = experiment.runs.where(status: "finished")
+    def finished_runs = experiment.runs.founding.where(status: "finished")
   end
 end

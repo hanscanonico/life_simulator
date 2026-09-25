@@ -78,6 +78,14 @@ RSpec.describe Programme::Status do
       expect(status.seeds_transitioned).to eq(1)
     end
 
+    context "with a descendant" do
+      it "sums only the epochs it simulated past its parent's" do
+        child = create(:run, :descendant, epochs_done: 1_250)
+
+        expect(status.epochs_simulated).to eq(1_007 + child.parent_run.epochs_done + 250)
+      end
+    end
+
     it "takes the largest census any sample recorded" do
       expect(status.peak_replicator_count).to eq(867)
     end

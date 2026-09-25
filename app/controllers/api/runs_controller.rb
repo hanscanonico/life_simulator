@@ -13,7 +13,7 @@ module Api
       run = Runs::ClaimService.call(runner_id: runner_id)
       return head :no_content if run.nil?
 
-      render json: run.slice(:id, :params, :seed, :epochs, :epochs_done)
+      render json: run.slice(:id, :params, :seed, :epochs, :epochs_done, :parent_run_id, :parent_epoch)
     end
 
     # The runner's heartbeat thread can have a request in flight when `finish` posts, so a

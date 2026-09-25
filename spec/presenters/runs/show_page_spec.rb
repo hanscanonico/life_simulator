@@ -246,6 +246,14 @@ RSpec.describe Runs::ShowPage do
         expect(page.epochs_per_compute_second).to be_nil
       end
     end
+
+    context "with a descendant" do
+      it "divides only the epochs it simulated past its parent's" do
+        child = create(:run, :descendant, epochs_done: 1_400, compute_seconds: 40.0)
+
+        expect(described_class.build(run: child).epochs_per_compute_second).to eq(10.0)
+      end
+    end
   end
 
   describe "#epochs_per_second" do

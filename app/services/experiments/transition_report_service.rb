@@ -160,7 +160,7 @@ module Experiments
     def sampled_rows
       rows = []
 
-      @experiment.runs.find_each do |run|
+      @experiment.runs.founding.find_each do |run|
         samples = samples_of(run)
         rows << row(run, samples) if samples.any?
       end

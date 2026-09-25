@@ -43,6 +43,7 @@ module Runs
     # measurement: dividing by it reports megaepochs a second. A minute of observed time is
     # the floor under which this page says nothing rather than something impossible.
     MIN_MEASURED_SECONDS = 60
+    DESCENDANTS_SHOWN = 20
 
     def self.build(run:) = new(run: run)
 
@@ -84,10 +85,21 @@ module Runs
 
     def census_peak_label = persistence.census_label
 
+    def parent = run.parent_run
+
+    def descendants
+      @descendants ||= run.descendants.order(:id).limit(DESCENDANTS_SHOWN).select(:id, :seed, :status).to_a
+    end
+
+    def descendant_count = @descendant_count ||= run.descendants.count
+
+    def more_descendants? = descendant_count > descendants.size
+
     def charts_empty? = charts.all?(&:empty?)
 
     def transition_label
       return delimited(run.transition_epoch) if run.transition_epoch
+      return "none of its own (a descendant)" if run.descendant?
 
       run.terminal? ? "no emergence" : "no emergence yet"
     end
@@ -121,7 +133,7 @@ module Runs
     def epochs_per_compute_second
       return nil unless run.compute_seconds.positive?
 
-      (run.epochs_done / run.compute_seconds).round(2)
+      (run.own_epochs_done / run.compute_seconds).round(2)
     end
 
     def compute_hours = (run.compute_seconds / 3600).round(2)
@@ -142,9 +154,9 @@ module Runs
     def params = run.params.sort.to_h
 
     def progress
-      return 0.0 if run.epochs.zero?
+      return 0.0 unless run.own_epochs.positive?
 
-      (run.epochs_done.fdiv(run.epochs) * 100).round(1)
+      (run.own_epochs_done.fdiv(run.own_epochs) * 100).round(1)
     end
 
     private

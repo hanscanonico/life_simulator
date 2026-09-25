@@ -5,8 +5,23 @@
 <p class="text-muted">
   <%= link_to @show.run.experiment.name, experiment_path(@show.run.experiment) %> —
   <% if @show.arm_label %><%= @show.arm_label %>, <% end %><%= @show.run.experiment.substrate %> substrate, seed <span class="mono"><%= @show.run.seed %></span>.
-  The seed and the parameters below reproduce this run byte for byte.
+  <% if @show.parent %>
+    Descended from <%= link_to "run ##{@show.parent.id}", run_path(@show.parent) %>: it started from that run's
+    world at epoch <%= number_with_delimiter @show.run.parent_epoch %>, and that world, the seed and the parameters
+    below reproduce it byte for byte.
+  <% else %>
+    The seed and the parameters below reproduce this run byte for byte.
+  <% end %>
 </p>
+
+<% if @show.descendant_count.positive? %>
+  <p class="text-sm" id="descendants">
+    <%= pluralize @show.descendant_count, "descendant" %> started from this run's world:
+    <% @show.descendants.each do |descendant| %>
+      <%= link_to "##{descendant.id}", run_path(descendant) %>
+    <% end %><% if @show.more_descendants? %>…<% end %>
+  </p>
+<% end %>
 
 <% if @show.findings.any? %>
   <p class="text-sm">
@@ -28,9 +43,15 @@
   <% persistence = @show.persistence %>
   <h2>Persistence</h2>
   <p class="text-muted">
-    What became of the world after the transition at epoch
-    <%= number_with_delimiter @show.run.transition_epoch %>, read off this run's stored samples by the
-    engine's own transition rule: a transition is a state a world can leave.
+    <% if @show.run.descendant? %>
+      What became of the world after it started from its parent's at epoch
+      <%= number_with_delimiter @show.run.parent_epoch %>, read off this run's stored samples by the
+      engine's own transition rule: a transition is a state a world can leave.
+    <% else %>
+      What became of the world after the transition at epoch
+      <%= number_with_delimiter @show.run.transition_epoch %>, read off this run's stored samples by the
+      engine's own transition rule: a transition is a state a world can leave.
+    <% end %>
   </p>
   <dl class="facts">
     <dt>census peak</dt>

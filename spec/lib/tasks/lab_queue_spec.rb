@@ -183,6 +183,18 @@ RSpec.describe "the lab queue tasks" do
       expect(run.reload.transition_epoch).to eq(900)
     end
 
+    # A descendant's series starts already transitioned: the drop it holds is its parent's.
+    it "leaves a descendant without a transition" do
+      child = create(:run, :descendant, experiment: experiment, status: "finished")
+      [0.94, 0.5, 0.4, 0.3, 0.2].each_with_index do |ratio, index|
+        create(:sample, run: child, epoch: 1_000 + (index * 10), values: { "compress_ratio" => ratio })
+      end
+
+      invoke("lab:backfill_transitions", "bff-control")
+
+      expect(child.reload.transition_epoch).to be_nil
+    end
+
     it "prints each run's old and new epoch and a total" do
       run = run_with_drop(transition_epoch: 40)
 

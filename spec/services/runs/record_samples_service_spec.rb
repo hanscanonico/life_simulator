@@ -105,4 +105,14 @@ RSpec.describe Runs::RecordSamplesService do
       expect { described_class.call(run: run, samples: []) }.not_to change(Sample, :count)
     end
   end
+
+  context "with a descendant" do
+    let(:run) { create(:run, :descendant, :claimed) }
+
+    it "records neither transition reading its runner reports" do
+      described_class.call(run: run, samples: batch(1_100), transition_epoch: 1_100, transition_epoch_relative: 1_100)
+
+      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_relative: nil)
+    end
+  end
 end

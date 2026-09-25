@@ -94,4 +94,14 @@ RSpec.describe Runs::RequeueFailedService do
       expect(experiment.reload.status).to eq("finished")
     end
   end
+
+  context "with a failed descendant" do
+    it "sends it back to the epoch it descended at" do
+      run = create(:run, :descendant, experiment: experiment, status: "failed", epochs_done: 1_400)
+
+      described_class.call(experiment: experiment)
+
+      expect(run.reload).to have_attributes(status: "pending", epochs_done: 1_000)
+    end
+  end
 end

@@ -72,7 +72,21 @@ RSpec.describe "Api::Runs", type: :request do
       post claim_api_runs_path, params: { runner_id: "runner-1" }, headers: headers, as: :json
 
       expect(response.parsed_body).to eq("id" => run.id, "params" => run.params, "seed" => 7,
-                                         "epochs" => 20_000, "epochs_done" => 0)
+                                         "epochs" => 20_000, "epochs_done" => 0,
+                                         "parent_run_id" => nil, "parent_epoch" => nil)
+    end
+
+    # The runner restores a descendant from its parent's world rather than from a random
+    # fill, so the claim names that world.
+    context "with a descendant run" do
+      it "names the parent world the run starts from" do
+        child = create(:run, :descendant, experiment: experiment, priority: 10)
+
+        post claim_api_runs_path, params: { runner_id: "runner-1" }, headers: headers, as: :json
+
+        expect(response.parsed_body).to include("id" => child.id, "parent_run_id" => child.parent_run_id,
+                                                "parent_epoch" => 1_000, "epochs" => 2_000, "epochs_done" => 1_000)
+      end
     end
 
     it "marks the run claimed" do
@@ -225,6 +239,20 @@ RSpec.describe "Api::Runs", type: :request do
       expect(run.samples.order(:epoch).last.values).to eq("compress_ratio" => 0.55)
     end
 
+    context "with a descendant whose runner reports a transition" do
+      let(:run) { create(:run, :descendant, :claimed, experiment: experiment) }
+
+      it "stores the samples and neither reading" do
+        post samples_api_run_path(run),
+             params: { runner_id: "runner-1", samples: [{ epoch: 1_010, compress_ratio: 0.3 }],
+                       transition_epoch: 1_010, transition_epoch_relative: 1_010 },
+             headers: headers, as: :json
+
+        expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_relative: nil)
+        expect(run.samples.pluck(:epoch)).to eq([1_010])
+      end
+    end
+
     it "summarises the run with the last sample" do
       post samples_api_run_path(run), params: payload, headers: headers, as: :json
 
@@ -262,6 +290,21 @@ RSpec.describe "Api::Runs", type: :request do
 
   describe "POST /api/runs/:id/snapshots" do
     let(:run) { create(:run, :claimed, experiment: experiment) }
+
+    # The engine's constant tracker fires early in a descendant; its snapshot is kept like
+    # any other and names no transition of the run's.
+    context "with a descendant posting a transition snapshot" do
+      let(:run) { create(:run, :descendant, :claimed, experiment: experiment) }
+
+      it "stores it and leaves the run without a transition" do
+        post snapshots_api_run_path(run),
+             params: { runner_id: "runner-1", epoch: 1_010, blob: Base64.encode64("world"), reason: "transition" },
+             headers: headers, as: :json
+
+        expect(run.snapshots.sole).to have_attributes(epoch: 1_010, reason: "transition")
+        expect(run.reload.transition_epoch).to be_nil
+      end
+    end
 
     it "stores a base64 payload" do
       post snapshots_api_run_path(run),
@@ -474,10 +517,38 @@ RSpec.describe "Api::Runs", type: :request do
 
       expect(response).to have_http_status(:ok)
     end
+
+    # A descendant's runner holds the child, never the finished parent it restores from.
+    it "serves a descendant's runner the parent world it starts from" do
+      child = create(:run, :descendant, :claimed, experiment: experiment)
+      parent = child.parent_run
+      parent.snapshots.find_by(epoch: 1_000).update!(blob: "parent-world")
+
+      get world_api_run_path(parent), params: { epoch: 1_000, runner_id: child.runner_id }, headers: headers, as: :json
+
+      expect(response.parsed_body.values_at("id", "epoch", "blob"))
+        .to eq([parent.id, 1_000, Base64.strict_encode64("parent-world")])
+    end
   end
 
   describe "POST /api/runs/:id/finish" do
     let(:run) { create(:run, :claimed, experiment: experiment) }
+
+    # A descendant's engine still tracks the constant rule, which fires just after the
+    # parent epoch on an already-transitioned world: that is no transition of the child's.
+    context "with a descendant whose runner reports a transition" do
+      let(:run) { create(:run, :descendant, :claimed, experiment: experiment) }
+
+      it "stores neither reading and keeps the inherited emergence" do
+        post finish_api_run_path(run),
+             params: { runner_id: "runner-1", transition_epoch: 1_010, transition_epoch_relative: 1_020 },
+             headers: headers, as: :json
+
+        expect(run.reload).to have_attributes(status: "finished", transition_epoch: nil,
+                                              transition_epoch_relative: nil, emergence_epoch: 100,
+                                              emergence_witness: "census")
+      end
+    end
 
     it "finishes the run" do
       post finish_api_run_path(run),
