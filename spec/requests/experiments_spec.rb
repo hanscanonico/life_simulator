@@ -807,6 +807,55 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    # The host-parasite page issued 95 queries and ran past the proxy's timeout: one query
+    # per arm and series, and one per emerged run (issue #236).
+    context "with a two-axis sweep grown threefold" do
+      let(:experiment) do
+        create(:experiment, name: "Host-parasite economy", slug: "host-parasite",
+                            param_grid: { "economy" => [{ "energy_influx" => 0, "steal_amount" => 0 },
+                                                        { "energy_influx" => 512, "steal_amount" => 1_024 }],
+                                          "max_tape_len" => [128, 256] })
+      end
+
+      def add_runs
+        [0, 512].product([128, 256]).each_with_index do |(influx, cap), index|
+          params = Lab::Schema.run_defaults.merge("energy_influx" => influx, "steal_amount" => influx * 2,
+                                                  "max_tape_len" => cap)
+          run = create(:run, (:emerged if index.even?), experiment: experiment, params: params,
+                                                        status: "finished", transition_epoch: 100)
+          [0, 100, 200].each { |epoch| create(:sample, run: run, epoch: epoch, values: sample_values(epoch)) }
+          create(:rescore, run: run, top_k: 64, replicator_count: 1)
+        end
+      end
+
+      def sample_values(epoch)
+        { "compress_ratio" => 0.4, "replicator_count" => epoch / 100, "dominant_instruction_count" => 10 + epoch,
+          "conserved_core_bytes" => 30, "dominant_compressed_len" => 139, "distinct_lineages" => 4,
+          "top_lineage_share" => 0.5, "lineage_compressed_len" => 120, "lineage_instruction_count" => 40,
+          "steal_rate" => 0.1 }
+      end
+
+      def page_query_count
+        queries = []
+        collect = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
+
+        ActiveSupport::Notifications.subscribed(collect, "sql.active_record") do
+          get experiment_path(experiment)
+        end
+
+        queries.size
+      end
+
+      it "costs the same number of queries at three times the runs, emerged ones included" do
+        add_runs
+        once = page_query_count
+        2.times { add_runs }
+
+        expect(page_query_count).to eq(once)
+        expect(response.body).to include("Does complexity keep rising, per arm", "Distinct lineages vs epoch")
+      end
+    end
+
     context "with more runs than a page holds" do
       it "paginates them" do
         create_list(:run, 26, experiment: experiment)

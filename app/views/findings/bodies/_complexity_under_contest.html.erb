@@ -16,7 +16,7 @@
   op on, a tape can take what a neighbour saved, at a loss to the world. That gives one tape
   something to gain from another's state and the other something to defend — the arms race
   the only fitness-free result tying a mechanism to rising structural complexity rests on.
-  The question this page will answer: <strong>does complexity keep rising when energy is a
+  The question this page answers: <strong>does complexity keep rising when energy is a
   contested stock?</strong>
 </p>
 
@@ -35,13 +35,18 @@
   The reading is <strong>pre-registered</strong> (DESIGN §1.3 sweep 9) and taken on emerged
   runs only — a crossing the replicator census or the copy rate confirmed, not every
   crossing the detector flagged. Per run, the median of the last decile of the post-crossing
-  samples against the median of the first decile. A run counts as <em>measured</em> only
-  where both halves of the rule can be read over that span: one carrying no
-  <span class="mono">conserved_core_bytes</span> sample, or whose first decile of either
-  observable medians to zero and so has no ratio to take, is unmeasured rather than read on
-  the instruction count alone. A measured run <em>keeps rising</em> when
-  <span class="mono">dominant_instruction_count</span> rises by at least 20% and
-  <span class="mono">conserved_core_bytes</span> does not fall over the same span; it
+  samples against the median of the first decile. A run counts as <em>measured</em> where
+  the first decile of <span class="mono">dominant_instruction_count</span> medians above
+  zero, so there is a ratio to take; a run carrying no
+  <span class="mono">conserved_core_bytes</span> sample at all over that span is unmeasured,
+  since the core clause cannot be read on it. That measured rule is a
+  <strong>post-hoc amendment</strong> (<span class="mono">docs/design_record.md</span>,
+  2026-09-21), made after this sweep's data were seen: as registered, the rule also wanted a
+  nonzero first-decile median of the conserved core, and the Result below states what that
+  rule read beside every reading taken under the amended one. A measured run
+  <em>keeps rising</em> when <span class="mono">dominant_instruction_count</span> rises by
+  at least 20% and <span class="mono">conserved_core_bytes</span> does not fall in bytes over
+  the same span, so a core at zero at both ends has not fallen; it
   <em>plateaus</em> when the last decile sits within ±10% of the first. An arm keeps rising
   where at least half its measured runs do and plateaus where at least half plateau; an arm
   clearing both bars reads <em>mixed</em>, never rising, and one clearing neither, its runs
@@ -56,16 +61,27 @@
   arm no <span class="mono">steal_rate</span> was sampled on, which reads unmeasured.
 </p>
 
+<% reading = @show.complexity_under_contest %>
 <h2>Result</h2>
-<p>
-  <strong>
-    No claim yet: <%= pluralize findings_finished_count(experiment_slug: "host-parasite"), "run" %>
-    of the sweep have finished, and nothing is read here until the arms read.
-  </strong>
-  The per-arm reading is computed at render time on
-  <%= link_to "the sweep page", experiment_path("host-parasite") %> and in its transition
-  report, so it can be watched filling in; this page states the claim once the arms read.
-</p>
+<% if reading.any? %>
+  <%= render "findings/complexity_arms_verdict", reading: reading %>
+  <p>
+    Every count on this page is read from the sweep's stored runs at render time, and the
+    per-arm reading is the one
+    <%= link_to "the sweep page", experiment_path("host-parasite") %> and its transition
+    report draw: an arm keeps rising only where at least half its measured runs do, on at
+    least two of them.
+  </p>
+  <%= render "findings/complexity_arms_emergence", reading: reading %>
+  <%= render "findings/complexity_arms_theft", reading: reading %>
+  <%= render "findings/complexity_arms_reading", reading: reading %>
+<% else %>
+  <p class="text-muted">
+    No run of <%= link_to "the sweep", experiment_path("host-parasite") %> has reported a
+    sample in this database, so there is no arm to read here. This page reads the arms at
+    render time and states the claim from them.
+  </p>
+<% end %>
 
 <h2>What would refute it</h2>
 <p>
@@ -76,3 +92,6 @@
   <span class="mono">steal_rate</span> never leaves zero, theft never evolved and the arms
   say nothing about whether theft would have helped.
 </p>
+<% if reading.any? %>
+  <p><strong><%= reading.refutation_sentence %></strong></p>
+<% end %>

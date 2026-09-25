@@ -12,17 +12,21 @@ module Findings
         date: Date.new(2026, 9, 18),
         experiment_slug: "host-parasite",
         related_finding_slugs: %w[complexity-keeps-rising replicator-complexity-plateau],
-        status: :open,
+        status: :partial,
         summary: "Complexity rises at emergence and then stops rising on every substrate " \
                  "the programme has tested, because a byte off the copy path costs its " \
                  "tape nothing and no quantity in the world is worth taking. DESIGN §1.3 " \
-                 "sweep 9 prices that: instruction energy becomes a stock that carries " \
-                 "across epochs, bounded by a cap, and with the steal op on a tape can " \
-                 "take what a neighbour saved. The reading is pre-registered on " \
-                 "dominant_instruction_count and the conserved core, never on compressed " \
-                 "length, and it is taken on the last decile of a run's post-crossing " \
-                 "samples against its first. No arm has read yet: this page states the " \
-                 "question, the arms and the rule the claim will be made by."
+                 "sweep 9 priced that — instruction energy as a stock, with a steal op " \
+                 "that takes what a neighbour saved — and the sweep has finished. Pricing " \
+                 "energy did not make life more common: no priced arm emerged more often " \
+                 "than the economy-off control at its cap, and the poorest economy held no " \
+                 "replicator at all. Theft evolved wherever it was offered. Read arm by arm " \
+                 "on dominant_instruction_count and the conserved core, a single priced " \
+                 "arm keeps rising, on the fewest measured runs the rule reads, while the " \
+                 "others plateau, read neither or hold too few runs to read — and that " \
+                 "reading stands on a measured-run rule amended after the data were seen; " \
+                 "as registered, the rule reads almost every emerged run as unmeasured and " \
+                 "no arm at all."
       ),
       Finding.new(
         slug: "complexity-under-asymmetry",
@@ -31,19 +35,18 @@ module Findings
         experiment_slug: "asymmetric-execution",
         related_finding_slugs: %w[complexity-under-contest complexity-keeps-rising
                                   replicator-complexity-plateau],
-        status: :open,
+        status: :negative,
         summary: "Complexity rises at emergence and then stops rising on every substrate " \
                  "the programme has tested, and each bet so far changed what a tape can " \
                  "hold or spend rather than what it is to its partner. DESIGN §1.3 " \
-                 "sweep 10 changes that: under a host interaction only the first tape's " \
-                 "code runs, so the second is read/write substrate whose fate depends on " \
-                 "how the tapes hosting it treat it as data. The reading is the " \
-                 "pre-registered one of sweep 9 — dominant_instruction_count and the " \
-                 "conserved core over a run's last decile against its first, never " \
-                 "compressed length — with late-run distinct_lineages against the concat " \
-                 "control at the same cap as the arms-race secondary. No arm has read " \
-                 "yet: this page states the question, the arms and the rule the claim " \
-                 "will be made by."
+                 "sweep 10 changed that — under a host interaction only the first tape's " \
+                 "code runs — and the sweep has finished. Under it nothing emerged at all: " \
+                 "the host arms are barren at both caps while the concat controls beside " \
+                 "them held replicators, so the asymmetry did not lower the plateau, it " \
+                 "kept replication from arising. With no host run to read, the " \
+                 "pre-registered refutation and the distinct_lineages secondary cannot be " \
+                 "evaluated; the concat controls, the same worlds sweep 9's control ran, " \
+                 "are read as the reference."
       ),
       Finding.new(
         slug: "complexity-keeps-rising",

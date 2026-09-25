@@ -1358,11 +1358,11 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
-    context "with the host-parasite skeleton" do
-      let(:pending_finding) { Findings::Registry.find("complexity-under-contest") }
+    context "with the host-parasite finding" do
+      let(:contest_finding) { Findings::Registry.find("complexity-under-contest") }
 
-      it "states the question, the arms and the rule the claim will be made by" do
-        get finding_path(pending_finding)
+      it "states the question, the arms and the rule the claim is made by" do
+        get finding_path(contest_finding)
 
         expect(response.body.squish)
           .to include("does complexity keep rising when energy is a contested stock?",
@@ -1370,32 +1370,34 @@ RSpec.describe "Findings", type: :request do
                       "theft never evolved")
       end
 
-      it "states the clauses that leave a run or an arm unread" do
-        get finding_path(pending_finding)
+      it "states the amended measured rule as post hoc" do
+        get finding_path(contest_finding)
 
         expect(response.body.squish)
-          .to include("is unmeasured rather than read on the instruction count alone",
+          .to include("since the core clause cannot be read on it",
+                      "<strong>post-hoc amendment</strong>",
                       "clearing both bars reads <em>mixed</em>, never rising",
                       "its runs having mostly fallen, reads <em>neither</em>",
                       "was sampled on, which reads unmeasured")
-        expect(response.body).to include(%(<span class="badge badge-info">open</span>))
+        expect(response.body).to include(%(<span class="badge badge-warning">partial</span>))
       end
 
-      it "says no arm has read yet and points at the sweep the lab will fill it from" do
+      it "says there is no arm to read and points at the sweep" do
         create(:experiment, name: "Host–parasite economy", slug: "host-parasite")
 
-        get finding_path(pending_finding)
+        get finding_path(contest_finding)
 
-        expect(response.body.squish).to include("No claim yet: 0 runs of the sweep have finished")
+        expect(response.body.squish).to include("has reported a sample in this database, so there is no arm to read")
+        expect(response.body).not_to include("No claim yet")
         expect(response.body).to include(experiment_path("host-parasite"))
       end
     end
 
-    context "with the asymmetric-execution skeleton" do
-      let(:pending_finding) { Findings::Registry.find("complexity-under-asymmetry") }
+    context "with the asymmetric-execution finding" do
+      let(:asymmetry_finding) { Findings::Registry.find("complexity-under-asymmetry") }
 
-      it "states the question, the arms and the rule the claim will be made by" do
-        get finding_path(pending_finding)
+      it "states the question, the arms and the rule the claim is made by" do
+        get finding_path(asymmetry_finding)
 
         expect(response.body.squish)
           .to include("does complexity keep rising when only one partner's code runs?",
@@ -1403,22 +1405,45 @@ RSpec.describe "Findings", type: :request do
                       "the two room-to-grow caps whose plateau sweep 8 measured")
       end
 
-      it "states the secondary reading and what would refute the sweep" do
-        get finding_path(pending_finding)
+      it "states the amended measured rule as post hoc, the secondary reading and what would refute the sweep" do
+        get finding_path(asymmetry_finding)
 
         expect(response.body.squish)
-          .to include("last decile holds more lineages than the",
+          .to include("since the core clause cannot be read on it", "<strong>post-hoc amendment</strong>",
+                      "last decile holds more lineages than the",
                       "controls plateau — same caps, same rate, same world")
-        expect(response.body).to include(%(<span class="badge badge-info">open</span>))
+        expect(response.body).to include(%(<span class="badge badge-error">negative</span>))
       end
 
-      it "says no arm has read yet and points at the sweep the lab will fill it from" do
+      it "says there is no arm to read and points at the sweep" do
         create(:experiment, name: "Asymmetric execution", slug: "asymmetric-execution")
 
-        get finding_path(pending_finding)
+        get finding_path(asymmetry_finding)
 
-        expect(response.body.squish).to include("No claim yet: 0 runs of the sweep have finished")
+        expect(response.body.squish).to include("has reported a sample in this database, so there is no arm")
+        expect(response.body).not_to include("No claim yet")
         expect(response.body).to include(experiment_path("asymmetric-execution"))
+      end
+
+      context "with the concat control as barren as the host arm" do
+        before do
+          experiment = create(:experiment, name: "Asymmetric execution", slug: "asymmetric-execution",
+                                           param_grid: Lab::SWEEPS.fetch("asymmetric_execution").fetch(:param_grid))
+          %w[concat host].each do |interaction|
+            10.times do
+              run = create(:run, experiment: experiment, status: "finished",
+                                 params: { "interaction" => interaction, "max_tape_len" => 128 })
+              create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+            end
+          end
+        end
+
+        it "reads the blank block without saying the host interaction kept replication from arising" do
+          get finding_path(asymmetry_finding)
+
+          expect(response.body.squish).to include("here the blank block is every run of every")
+          expect(response.body.squish).not_to include("Running only the first tape's code did not lower the plateau")
+        end
       end
     end
 
