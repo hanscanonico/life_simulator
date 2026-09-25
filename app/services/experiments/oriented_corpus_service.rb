@@ -4,7 +4,8 @@ module Experiments
   # The corpus-wide headline of OrientedArmsService: one row per experiment, each the total
   # of its arms, and a total over every finished founding run the lab holds — flagged,
   # emerged, replicator worlds and held, the counts a relock of the census would be argued
-  # from. Three queries per experiment.
+  # from. Each experiment is reduced to its total before the next is read, so no more than
+  # one experiment's readings are held at a time. Two queries per experiment.
   class OrientedCorpusService
     include Callable
 
@@ -15,8 +16,7 @@ module Experiments
     private
 
     def row_of(experiment)
-      OrientedArmsService::Arm.new(label: experiment.slug,
-                                   rows: OrientedArmsService.call(experiment: experiment).total.rows)
+      OrientedArmsService.call(experiment: experiment).total.with(label: experiment.slug)
     end
   end
 end

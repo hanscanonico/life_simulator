@@ -10,32 +10,45 @@ RSpec.describe Runs::OrientedSummariesService do
 
   let(:summaries) { described_class.call(runs: [stored, live, unread]) }
 
+  def read(run, epoch, share, source_epoch: epoch, instrument: "oriented_census/1")
+    create(:snapshot_reading, run: run, instrument: instrument, epoch: epoch, source_epoch: source_epoch,
+                              values: { "replicator_share" => share })
+  end
+
   before do
-    create(:snapshot_reading, run: stored, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.6 })
-    create(:snapshot_reading, run: stored, epoch: 2_000, source_epoch: 2_000, values: { "replicator_share" => 0.75 })
-    create(:snapshot_reading, run: stored, instrument: "other_census/1", epoch: 1_500, source_epoch: 1_500,
-                              values: { "replicator_share" => 0.1 })
-    create(:sample, run: live, epoch: 1_990, values: { "compress_ratio" => 0.4, "replicator_share" => 0.5 })
+    read(stored, 1_000, 0.6)
+    read(stored, 2_000, 0.75)
+    read(stored, 1_500, 0.1, instrument: "other_census/1")
     create(:sample, run: live, epoch: 2_000, values: { "compress_ratio" => 0.4, "replicator_share" => 0.625 })
-    create(:sample, run: live, epoch: 1_000, values: { "compress_ratio" => 0.9 })
     create(:sample, run: unread, epoch: 2_000, values: { "compress_ratio" => 0.9 })
   end
 
-  context "with a run read only from its stored worlds" do
-    it "summarises the instrument's readings" do
+  context "with a run read from its stored worlds" do
+    it "summarises the instrument's static readings" do
       summary = summaries.fetch(stored.id)
 
-      expect([summary.stored_count, summary.live_count, summary.terminal_share, summary.first_replicator_epoch])
-        .to eq([2, 0, 0.75, 1_000])
+      expect([summary.readings.size, summary.terminal_share, summary.first_replicator_epoch, summary.held])
+        .to eq([2, 0.75, 1_000, true])
     end
   end
 
-  context "with a run read only from its live samples" do
-    it "summarises the samples that carry the share" do
-      summary = summaries.fetch(live.id)
+  context "with a reading stepped on from a stored world" do
+    it "leaves out the in-situ reading after the world" do
+      read(stored, 1_010, 0.9, source_epoch: 1_000)
 
-      expect([summary.stored_count, summary.live_count, summary.terminal_share, summary.first_replicator_epoch])
-        .to eq([0, 2, 0.625, 1_990])
+      expect(summaries.fetch(stored.id).peak_share).to eq(0.75)
+    end
+
+    it "leaves out the reading past the run's last epoch" do
+      read(unread, 2_010, 0.9, source_epoch: 2_000)
+
+      expect(summaries.fetch(unread.id)).not_to be_measured
+    end
+  end
+
+  context "with a run only its live samples read" do
+    it "is unmeasured" do
+      expect(summaries.fetch(live.id)).not_to be_measured
     end
   end
 
@@ -55,12 +68,12 @@ RSpec.describe Runs::OrientedSummariesService do
     end
   end
 
-  it "costs two queries whatever the runs" do
+  it "costs one query whatever the runs" do
     runs = [stored, live, unread]
     queries = 0
     counter = ->(_name, _start, _finish, _id, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
     ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { described_class.call(runs: runs) }
 
-    expect(queries).to eq(2)
+    expect(queries).to eq(1)
   end
 end

@@ -25,18 +25,20 @@ RSpec.describe Experiments::OrientedArmsService do
     read(finished_run(1, transition_epoch: 600), 0.6, 0.2)
     read(finished_run(1, transition_epoch: 700, emergence_epoch: 700, emergence_witness: "copy_rate"), 0.1, 0.2)
     finished_run(1, transition_epoch: 800, emergence_epoch: 800, emergence_witness: "census")
+    read(finished_run(1), 0.1, 0.2)
+    finished_run(1)
     read(finished_run(2), 0.3, 0.7)
   end
 
   it "counts each arm's runs, the measured ones and the detector's and the rule's calls" do
-    expect(arm("1").cells.first(5)).to eq(["1", 4, 3, 4, 3])
+    expect(arm("1").cells.first(5)).to eq(["1", 6, 4, 4, 3])
   end
 
   it "counts the replicator worlds and the ones held to the end" do
     expect([arm("1").replicator_worlds, arm("1").held_to_end]).to eq([2, 1])
   end
 
-  it "counts the runs the census and the rule disagree on, unmeasured runs in neither" do
+  it "counts the runs the census and the rule disagree on, measured runs only" do
     expect([arm("1").replicators_not_emerged, arm("1").emerged_without_replicators]).to eq([1, 1])
   end
 
@@ -45,7 +47,7 @@ RSpec.describe Experiments::OrientedArmsService do
   end
 
   it "totals every arm" do
-    expect(report.total.cells).to eq(["all", 5, 4, 4, 3, 3, 2, 2, 1, 1_000])
+    expect(report.total.cells).to eq(["all", 7, 5, 4, 3, 3, 2, 2, 1, 1_000])
   end
 
   context "with runs that are no finished founding run" do
@@ -57,31 +59,31 @@ RSpec.describe Experiments::OrientedArmsService do
     end
 
     it "leaves them out" do
-      expect(report.total.runs).to eq(5)
+      expect(report.total.runs).to eq(7)
     end
   end
 
-  it "costs three queries whatever the sweep holds" do
+  it "costs two queries whatever the sweep holds" do
     queries = 0
     counter = ->(_name, _start, _finish, _id, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
     ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
       described_class.call(experiment: experiment).total.cells
     end
 
-    expect(queries).to eq(3)
+    expect(queries).to eq(2)
   end
 
   it "prints the arms and the total with the coarseness note" do
     text = report.to_text
 
     expect(text).to match(/arm\s+n\s+measured\s+flagged\s+emerged\s+replicator_worlds\s+held_to_end/)
-    expect(text).to match(/^\s*all\s+5\s+4\s+4\s+3\s+3\s+2\s+2\s+1\s+1000$/)
+    expect(text).to match(/^\s*all\s+7\s+5\s+4\s+3\s+3\s+2\s+2\s+1\s+1000$/)
     expect(text).to include("about every 1000 epochs")
   end
 
-  it "writes the arms as CSV" do
-    expect(CSV.parse(report.to_csv)).to eq([described_class::COLUMNS,
-                                            %w[1 4 3 4 3 2 1 1 1 1000], %w[2 1 1 0 0 1 1 1 0 2000]])
+  it "writes the arms and their total as CSV" do
+    expect(CSV.parse(report.to_csv)).to eq([described_class::COLUMNS, %w[1 6 4 4 3 2 1 1 1 1000],
+                                            %w[2 1 1 0 0 1 1 1 0 2000], %w[all 7 5 4 3 3 2 2 1 1000]])
   end
 
   context "with a sweep no pass has read" do

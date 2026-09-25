@@ -3,9 +3,7 @@
 require "rails_helper"
 
 RSpec.describe Runs::OrientedSummary do
-  def reading(epoch, share, source = described_class::STORED)
-    described_class::Reading.new(epoch: epoch, share: share, source: source)
-  end
+  def reading(epoch, share) = described_class::Reading.new(epoch: epoch, share: share)
 
   def summary(*readings, epochs: 3_000) = described_class.new(epochs: epochs, readings: readings)
 
@@ -53,7 +51,15 @@ RSpec.describe Runs::OrientedSummary do
     subject(:read) { summary(reading(1_000, 0.6), reading(2_000, nil), reading(3_000, nil)) }
 
     it "skips it rather than reading a zero" do
-      expect([read.readings.size, read.held, read.terminal_share]).to eq([1, true, nil])
+      expect([read.readings.size, read.terminal_share, read.first_replicator_epoch]).to eq([1, nil, 1_000])
+    end
+  end
+
+  context "with a run whose last world was never read" do
+    subject(:read) { summary(reading(1_000, 0.6), reading(2_000, 0.9)) }
+
+    it "leaves held unknown" do
+      expect([read.held, read.held_to_end?]).to eq([nil, false])
     end
   end
 
@@ -63,20 +69,6 @@ RSpec.describe Runs::OrientedSummary do
     it "is unmeasured with every reading blank" do
       expect([read.measured?, read.terminal_share, read.peak_share, read.first_replicator_epoch, read.held])
         .to eq([false, nil, nil, nil, nil])
-    end
-  end
-
-  context "with both sources reading the same epoch" do
-    subject(:read) do
-      summary(reading(1_000, 0.2), reading(1_000, 0.8, described_class::LIVE), reading(2_000, 0.9))
-    end
-
-    it "keeps the live sample" do
-      expect(read.readings.map(&:share)).to eq([0.8, 0.9])
-    end
-
-    it "counts each source apart" do
-      expect([read.stored_count, read.live_count]).to eq([1, 1])
     end
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_25_220000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_25_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -92,7 +92,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_220000) do
     t.jsonb "values", default: {}, null: false
     t.index ["created_at"], name: "index_samples_on_created_at"
     t.index ["run_id", "epoch"], name: "index_samples_on_run_id_and_epoch", unique: true
-    t.index ["run_id", "epoch"], name: "index_samples_on_run_id_oriented", where: "((\"values\" -> 'replicator_share'::text) IS NOT NULL)"
     t.index ["run_id"], name: "index_samples_on_run_id_replicated", where: "((\"values\" -> 'replicator_count'::text) > '0'::jsonb)"
   end
 

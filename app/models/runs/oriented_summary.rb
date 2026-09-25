@@ -3,38 +3,26 @@
 module Runs
   # What the orientation-aware census (#245, #247) says about one run: the share of its
   # soup held by self-replicators that copy in either orientation, read at the end, at its
-  # peak, and from the first epoch it held a qualifying share. The locked census counts
-  # only same-orientation copies, so this is a companion reading beside it; it relocks
-  # nothing.
+  # peak, and from the first reading at a qualifying share. The locked census counts only
+  # same-orientation copies, so this is a companion reading beside it; it relocks nothing.
   #
-  # Its readings come from two sources, kept apart: `stored` readings the corpus pass took
-  # of the worlds the run kept (`snapshot_readings` under the instrument), and `live`
-  # samples taken while the run ran, which carry the share only since #247. Stored worlds
-  # are about every 1000 epochs apart, so for most runs every epoch here — the first above
-  # all — is only as fine as that: the first reading at the share, not the first epoch the
-  # world held it. A reading that lacks the share is no reading, never a zero.
+  # Its readings are the corpus pass's static readings of the worlds the run kept (see
+  # OrientedSummariesService), so every run is read at the same cadence: the first and
+  # last world, one about every 1000 epochs, and the one nearest the transition. Every
+  # epoch here — the first replicator epoch above all — is only as fine as that: the first
+  # reading at the share, not the first epoch the world held it. A reading that lacks the
+  # share is no reading, never a zero.
   class OrientedSummary
-    STORED = "stored"
-    LIVE = "live"
-
-    Reading = Data.define(:epoch, :share, :source)
+    Reading = Data.define(:epoch, :share)
 
     attr_reader :readings
 
-    # `readings` are Reading values; where both sources read the same epoch the live
-    # sample stands, being the world itself rather than a restored copy of it.
     def initialize(epochs:, readings:)
       @epochs = epochs
-      @readings = readings.select { |reading| reading.share.is_a?(Numeric) }
-                          .sort_by { |reading| [reading.epoch, reading.source == LIVE ? 1 : 0] }
-                          .reverse.uniq(&:epoch).reverse
+      @readings = readings.select { |reading| reading.share.is_a?(Numeric) }.sort_by(&:epoch)
     end
 
     def measured? = readings.any?
-
-    def stored_count = readings.count { |reading| reading.source == STORED }
-
-    def live_count = readings.count { |reading| reading.source == LIVE }
 
     def terminal_share = readings.find { |reading| reading.epoch == @epochs }&.share
 
@@ -44,9 +32,11 @@ module Runs
 
     def first_replicator_epoch = first_replicator&.epoch
 
-    # Nil where the run never reached the share: there is nothing it could have held.
+    # Whether every reading from the first replicator one to the run's last world holds
+    # the share. Nil where the run never reached it, or where its last world was never
+    # read: without an end there is no telling whether it held to it.
     def held
-      return if first_replicator.nil?
+      return if first_replicator.nil? || terminal_share.nil?
 
       readings.drop_while { |reading| reading.epoch < first_replicator.epoch }.all? { |reading| qualifies?(reading) }
     end

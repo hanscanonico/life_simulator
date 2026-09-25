@@ -10,12 +10,15 @@ module Experiments
   # runs the rules disagree on. It is the evidence a relock of the census or the emergence
   # rule would be argued from; it relocks nothing.
   #
-  # A run nothing has read under the instrument is not measured, and counts in neither
-  # census column nor either cross-tab: a missing reading is no zero. Its first replicator
-  # epoch is only as fine as the readings — stored worlds about every 1000 epochs apart —
-  # so the median is coarse.
+  # The census columns read the corpus pass's readings of stored worlds only
+  # (Runs::OrientedSummariesService), so every run is read at one cadence. A run the pass
+  # has not reached is not measured, and counts in neither census column nor either
+  # cross-tab: a missing reading is no zero. The pass is re-run, and resumes, as runs
+  # finish. A first replicator epoch is only as fine as the readings — stored worlds about
+  # every 1000 epochs apart — so the median is coarse.
   #
-  # Three queries whatever the sweep holds: the runs, then Runs::OrientedSummariesService.
+  # Two queries whatever the sweep holds, of about 22 readings a run: the runs, then
+  # Runs::OrientedSummariesService.
   class OrientedArmsService
     include Callable
     include GroupsRunsByArm
@@ -24,38 +27,49 @@ module Experiments
                  emerged_without_replicators median_first_replicator_epoch_coarse].freeze
 
     Row = Data.define(:flagged, :emerged, :summary) do
-      delegate :measured?, :replicator_world?, :held_to_end?, to: :summary
+      delegate :measured?, :replicator_world?, :held_to_end?, :first_replicator_epoch, to: :summary
+
+      def flagged? = flagged
+
+      def emerged? = emerged
+
+      def replicators_not_emerged? = replicator_world? && !emerged
+
+      # An unmeasured run is no run without replicators: nothing has read it.
+      def emerged_without_replicators? = emerged && measured? && !replicator_world?
     end
 
-    Arm = Data.define(:label, :rows) do
-      def runs = rows.size
+    # Each count but `runs`, and the Row predicate it counts.
+    COUNTED = { measured: :measured?, flagged: :flagged?, emerged: :emerged?,
+                replicator_worlds: :replicator_world?, held_to_end: :held_to_end?,
+                replicators_not_emerged: :replicators_not_emerged?,
+                emerged_without_replicators: :emerged_without_replicators? }.freeze
+    COUNTS = [:runs, *COUNTED.keys].freeze
 
-      def measured = rows.count(&:measured?)
+    # An arm reduced to its counts as it is built, so no reading outlives the arm that read
+    # it: only the first replicator epochs of its replicator worlds are kept, for the median
+    # and for a total over arms.
+    Arm = Data.define(:label, :runs, :measured, :flagged, :emerged, :replicator_worlds, :held_to_end,
+                      :replicators_not_emerged, :emerged_without_replicators, :first_replicator_epochs) do
+      def self.of(label, rows)
+        counts = COUNTED.transform_values { |predicate| rows.count(&predicate) }
 
-      def flagged = rows.count(&:flagged)
-
-      def emerged = rows.count(&:emerged)
-
-      def replicator_worlds = rows.count(&:replicator_world?)
-
-      def held_to_end = rows.count(&:held_to_end?)
-
-      def replicators_not_emerged = rows.count { |row| row.replicator_world? && !row.emerged }
-
-      def emerged_without_replicators = rows.count { |row| row.emerged && row.measured? && !row.replicator_world? }
-
-      def median_first_replicator_epoch
-        Findings::Median.of(rows.select(&:replicator_world?).map { |row| row.summary.first_replicator_epoch })
+        new(label: label, runs: rows.size, **counts,
+            first_replicator_epochs: rows.select(&:replicator_world?).map(&:first_replicator_epoch))
       end
 
-      def cells
-        [label, runs, measured, flagged, emerged, replicator_worlds, held_to_end, replicators_not_emerged,
-         emerged_without_replicators, median_first_replicator_epoch]
+      def self.sum(label, arms)
+        new(label: label, **COUNTS.index_with { |count| arms.sum(&count) },
+            first_replicator_epochs: arms.flat_map(&:first_replicator_epochs))
       end
+
+      def median_first_replicator_epoch = Findings::Median.of(first_replicator_epochs)
+
+      def cells = [label, *COUNTS.map { |count| public_send(count) }, median_first_replicator_epoch]
     end
 
     Report = Data.define(:arms) do
-      def total = Arm.new(label: "all", rows: arms.flat_map(&:rows))
+      def total = Arm.sum("all", arms)
 
       def measured? = arms.any? { |arm| arm.measured.positive? }
 
@@ -64,7 +78,7 @@ module Experiments
       def to_csv
         CSV.generate do |csv|
           csv << COLUMNS
-          arms.each { |arm| csv << arm.cells }
+          [*arms, total].each { |arm| csv << arm.cells }
         end
       end
 
@@ -81,7 +95,8 @@ module Experiments
 
     NOTE = "finished founding runs; the census columns read #{Lab::DescendantReading::INSTRUMENT} " \
            "(share >= #{Lab::DescendantReading::QUALIFYING_SHARE}) and count measured runs only;\n" \
-           "stored worlds are read about every 1000 epochs, so a first replicator epoch is no finer than that\n".freeze
+           "only stored worlds are read, about every 1000 epochs, so a first replicator epoch is no finer " \
+           "than that;\na run the corpus pass has not reached is unmeasured\n".freeze
 
     def initialize(experiment:)
       @experiment = experiment
@@ -91,7 +106,7 @@ module Experiments
 
     private
 
-    def arm(label, arm_runs) = Arm.new(label: label, rows: arm_runs.map { |run| row(run) })
+    def arm(label, arm_runs) = Arm.of(label, arm_runs.map { |run| row(run) })
 
     def row(run)
       Row.new(flagged: run.transition_epoch.present?, emerged: run.emerged?, summary: summaries.fetch(run.id))

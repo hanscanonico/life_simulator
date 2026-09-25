@@ -1010,7 +1010,8 @@ RSpec.describe "Experiments", type: :request do
       run = create(:run, experiment: experiment, seed: 7, status: "finished", epochs: 2_000, transition_epoch: 500,
                          params: Lab::Schema.run_defaults.merge("radius" => 2))
       create(:snapshot_reading, run: run, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.5 })
-      create(:sample, run: run, epoch: 2_000, values: { "replicator_share" => 0.25 })
+      create(:snapshot_reading, run: run, epoch: 2_000, source_epoch: 2_000, values: { "replicator_share" => 0.25 })
+      create(:snapshot_reading, run: run, epoch: 2_010, source_epoch: 2_000, values: { "replicator_share" => 0.9 })
       unread = create(:run, experiment: experiment, seed: 8, status: "finished", params: run.params)
 
       get oriented_experiment_path(experiment)
@@ -1019,8 +1020,8 @@ RSpec.describe "Experiments", type: :request do
       expect(response.media_type).to eq("text/csv")
       expect(response.headers["Content-Disposition"]).to include("attachment", "radius-oriented.csv")
       expect(lines).to eq([Experiments::OrientedCsvService::COLUMNS.join(","),
-                           "#{run.id},7,radius 2,500,,true,1,1,0.25,0.5,1000,1000,false",
-                           "#{unread.id},8,radius 2,,,false,0,0,,,,,"])
+                           "#{run.id},7,radius 2,500,,true,2,0.25,0.5,1000,1000,false",
+                           "#{unread.id},8,radius 2,,,false,0,,,,,"])
     end
   end
 end

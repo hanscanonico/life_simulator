@@ -10,9 +10,12 @@
     orientation even for a tape that writes its reverse; the cell passes where 3/4 of its
     positions match the original, each position read by the majority of 5 trials. The
     locked census counts only same-orientation copies among the 16 commonest tapes, so it
-    reads zero in worlds of reverse copiers. The readings come from the worlds a run kept,
-    about every 1000 epochs apart (and from the live samples of runs sampled since the
-    detector shipped), so a first replicator epoch here is no finer than that. A world holds
+    reads zero in worlds of reverse copiers. Only the worlds a run kept are read — the first
+    and the last, one about every 1000 epochs and the one nearest the transition — so every
+    run is read at the same cadence, and a first replicator epoch here is no finer than
+    that. Live samples are not used. A run the corpus pass has not reached yet is
+    unmeasured and counts in none of the census columns; the pass is re-run as runs
+    finish. A world holds
     replicators where at least <%= percent_value Lab::DescendantReading::QUALIFYING_SHARE %>
     of its sampled cells pass. This is a companion reading: it relocks neither the census
     nor the emergence rule
@@ -24,8 +27,7 @@
           width and clipped mid-word on a phone. %>
       <figcaption class="table-caption text-sm text-muted" id="oriented-arms">
         Detector, emergence rule and orientation-aware census, per arm, over finished runs —
-        the census columns count measured runs only, and a run no pass has read counts in
-        none of them
+        the census columns count measured runs only
       </figcaption>
       <div class="table-scroll" tabindex="0" role="region" aria-labelledby="oriented-arms">
         <table class="data-table" aria-labelledby="oriented-arms">

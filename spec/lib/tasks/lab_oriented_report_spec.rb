@@ -22,7 +22,8 @@ RSpec.describe "lab:oriented_report" do
     it "writes the arm table as CSV" do
       csv = with_env("FORMAT", "csv") { invoke("lab:oriented_report", "radius") }
 
-      expect(CSV.parse(csv)).to eq([Experiments::OrientedArmsService::COLUMNS, %w[2 1 1 1 0 1 1 1 0 2000]])
+      expect(CSV.parse(csv)).to eq([Experiments::OrientedArmsService::COLUMNS, %w[2 1 1 1 0 1 1 1 0 2000],
+                                    %w[all 1 1 1 0 1 1 1 0 2000]])
     end
   end
 
