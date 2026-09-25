@@ -7,7 +7,7 @@ module Api
     SNAPSHOT_EPOCH_HEADER = "X-Snapshot-Epoch"
 
     before_action :set_run, except: :claim
-    before_action :authorize_runner!, except: %i[claim world rescores]
+    before_action :authorize_runner!, except: %i[claim world rescores readings]
 
     def claim
       run = Runs::ClaimService.call(runner_id: runner_id)
@@ -77,6 +77,14 @@ module Api
     # runner holds — and it writes only rescore rows, never the run's own metrics.
     def rescores
       Runs::RecordRescoresService.call(run: @run, rescores: body_params.fetch("rescores", []))
+      head :no_content
+    end
+
+    # What a pass over stored worlds stores: one instrument's readings of them, never the
+    # run's samples or metrics. Not claim-gated, for the reason `rescores` is not.
+    def readings
+      Runs::RecordReadingsService.call(run: @run, instrument: params.require(:instrument),
+                                       readings: body_params.fetch("readings", []))
       head :no_content
     end
 

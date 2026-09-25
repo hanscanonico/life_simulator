@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_25_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_25_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -94,6 +94,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_120000) do
     t.index ["run_id"], name: "index_samples_on_run_id_replicated", where: "((\"values\" -> 'replicator_count'::text) > '0'::jsonb)"
   end
 
+  create_table "snapshot_readings", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "epoch", null: false
+    t.string "instrument", null: false
+    t.datetime "measured_at"
+    t.bigint "run_id", null: false
+    t.integer "source_epoch", null: false
+    t.datetime "updated_at", null: false
+    t.jsonb "values", default: {}, null: false
+    t.index ["run_id", "epoch"], name: "index_snapshot_readings_on_run_id_and_epoch"
+    t.index ["run_id", "instrument", "epoch"], name: "index_snapshot_readings_on_run_id_and_instrument_and_epoch", unique: true
+  end
+
   create_table "snapshots", force: :cascade do |t|
     t.binary "blob"
     t.datetime "created_at", null: false
@@ -109,5 +122,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_25_120000) do
   add_foreign_key "runs", "experiments"
   add_foreign_key "runs", "runs", column: "parent_run_id"
   add_foreign_key "samples", "runs"
+  add_foreign_key "snapshot_readings", "runs"
   add_foreign_key "snapshots", "runs"
 end

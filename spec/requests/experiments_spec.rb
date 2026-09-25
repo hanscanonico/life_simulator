@@ -913,4 +913,32 @@ RSpec.describe "Experiments", type: :request do
       end
     end
   end
+
+  describe "GET /experiments/:slug/readings" do
+    let(:run) do
+      create(:run, experiment: experiment, seed: 7, status: "finished",
+                   params: Lab::Schema.run_defaults.merge("radius" => 2))
+    end
+
+    it "streams one instrument's readings as CSV" do
+      create(:snapshot_reading, run: run, instrument: "oriented_census/1", epoch: 105, source_epoch: 100,
+                                values: { "replicator_share" => 0.5, "reverse_copy_rate" => 0.25 })
+
+      get readings_experiment_path(experiment, instrument: "oriented_census/1")
+
+      lines = response.body.lines.map(&:chomp)
+      expect(response.media_type).to eq("text/csv")
+      expect(response.headers["Content-Disposition"]).to include("attachment", "radius-oriented_census-1-readings.csv")
+      expect(lines).to eq(["run_id,seed,arm,epoch,source_epoch,replicator_share,reverse_copy_rate",
+                           "#{run.id},7,radius 2,105,100,0.5,0.25"])
+    end
+
+    context "with no instrument named" do
+      it "answers bad request" do
+        get readings_experiment_path(experiment)
+
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+  end
 end
