@@ -431,6 +431,13 @@ RSpec.describe Experiments::ShowPage do
 
       expect(read_page.last).not_to be_empty
     end
+
+    it "reads them afresh once a deploy changes the code" do
+      read_page
+      stub_const("#{described_class}::CODE_VERSION", "the next deploy's")
+
+      expect(read_page.last).not_to be_empty
+    end
   end
 
   describe "#agreement_chart" do

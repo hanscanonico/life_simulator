@@ -15,7 +15,11 @@ module Experiments
       def census_only? = counted? && !transitioned
     end
 
-    CACHE_VERSION = 1
+    # The readings held in the cache are the code's as much as the runs', and the cache
+    # outlives a deploy: a deploy that changes how a reading is taken, or a Data it is held
+    # in (whose Marshal no longer loads once a member is added), reads it afresh rather than
+    # serve the last deploy's. Digested once per boot.
+    CODE_VERSION = Digest::SHA256.hexdigest(Rails.root.glob("app/**/*.rb").sort.map(&:binread).join)
 
     def self.build(experiment:, paginate:)
       new(experiment: experiment, paginate: paginate)
@@ -128,10 +132,9 @@ module Experiments
     # and a finished sweep's samples never change (issue #236). Every write behind them
     # goes through a run — its samples are recorded with an update of its summary, its
     # crossing and its status are columns of it, and a grid change moves the axes — so the
-    # key moves with any run of the experiment and with its grid. Bump CACHE_VERSION when
-    # the shape of a cached reading changes.
+    # key moves with any run of the experiment, with its grid and with the code.
     def cached(name, &)
-      Rails.cache.fetch(["experiments/show_page", CACHE_VERSION, experiment.id, name, runs_version], &)
+      Rails.cache.fetch(["experiments/show_page", CODE_VERSION, experiment.id, name, runs_version], &)
     end
 
     def runs_version = @runs_version ||= Digest::SHA256.hexdigest([experiment.param_grid, run_versions].to_json)
