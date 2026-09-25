@@ -263,7 +263,10 @@ impl Lab {
     /// the run loop knows not to measure its first epoch: a resumed run already posted it,
     /// and a descendant's parent measured it.
     fn restore(&self, slot: &Slot, claimed: &ClaimedRun) -> Result<(World, bool)> {
-        if claimed.epochs_done > 0 {
+        // A requeued descendant is put back at its parent's epoch, not 0, and must restart
+        // from the parent's world like a requeued founding run restarts from soup.
+        let start_epoch = claimed.parent.map_or(0, |parent| parent.epoch);
+        if claimed.epochs_done > start_epoch {
             let latest =
                 self.client
                     .latest_snapshot(claimed.id, &slot.claim_id, &claimed.params)?;
@@ -898,6 +901,25 @@ mod tests {
         assert_eq!(mock.count("GET /api/runs/9/world"), 0);
         assert_eq!(posted_epochs(&mock), vec![514]);
         assert!(mock.request("POST /api/runs/1/finish")["error"].is_null());
+    }
+
+    /// Rails requeues a descendant at its parent's epoch, so whatever snapshots of its own
+    /// it holds, it starts over from the parent's world, as a requeued founding run
+    /// starts over from soup rather than from its latest snapshot.
+    #[test]
+    fn a_descendant_requeued_at_its_parents_epoch_starts_over_from_its_parent() {
+        let mock = MockLab::start();
+        let (blob, claimed) = descendant(&mock, PARENT_EPOCH);
+        let mut own = World::descend(&MockLab::params(), 7, &blob).unwrap();
+        own.step();
+        own.step();
+        mock.set_latest_snapshot(512, own.snapshot());
+
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed);
+
+        assert_eq!(mock.count("GET /api/runs/1/snapshots/latest"), 0);
+        assert_eq!(mock.count("GET /api/runs/9/world"), 1);
+        assert_eq!(posted_epochs(&mock), vec![512, 514]);
     }
 
     /// `epochs_done` is the heartbeat's absolute epoch, so a child that beat past its
