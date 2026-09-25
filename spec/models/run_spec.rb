@@ -173,6 +173,13 @@ RSpec.describe Run, type: :model do
       expect(child.tap(&:valid?).errors[:parent_epoch]).to be_present
     end
 
+    it "refuses a parent epoch inside the baseline window, which the engine cannot descend from" do
+      insert_snapshots(parent, [Lab::TransitionRule::BASELINE_EPOCHS])
+      child = descendant(parent_epoch: Lab::TransitionRule::BASELINE_EPOCHS)
+
+      expect(child.tap(&:valid?).errors[:parent_epoch]).to be_present
+    end
+
     it "refuses a budget that does not run past the parent epoch" do
       expect(descendant(epochs: 1_000)).not_to be_valid
     end

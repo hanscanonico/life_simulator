@@ -126,11 +126,11 @@ RSpec.describe Runs::PruneSnapshotsService do
   context "with a snapshot a descendant starts from" do
     it "keeps it" do
       run = snapshotted((100..1_000).step(100).to_a)
-      create(:run, :descendant, parent_run: run, parent_epoch: 500)
+      create(:run, :descendant, parent_run: run, parent_epoch: 700)
 
       described_class.call(run: run, keep_every: 300)
 
-      expect(kept(run)).to eq([100, 300, 500, 600, 900, 1_000])
+      expect(kept(run)).to eq([100, 300, 600, 700, 900, 1_000])
     end
   end
 end

@@ -106,5 +106,10 @@ class Run < ApplicationRecord
       errors.add(:parent_epoch, "must be an epoch the parent stored a world at")
     end
     errors.add(:epochs, "must run past the parent epoch") unless epochs.to_i > parent_epoch.to_i
+    # The engine refuses to descend from inside the relative tracker's baseline window
+    # (`World::descend`), so a child started there could never be claimed.
+    return if parent_epoch.to_i > Lab::TransitionRule::BASELINE_EPOCHS
+
+    errors.add(:parent_epoch, "must lie past the baseline window (epoch #{Lab::TransitionRule::BASELINE_EPOCHS})")
   end
 end
