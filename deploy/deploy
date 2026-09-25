@@ -72,15 +72,28 @@ fi
 # wasm-bindgen version pinned in engine/Cargo.lock. An app-only merge changes
 # none of those, so BuildKit reuses the cached layers verbatim: the runner image
 # keeps the same image ID, `up -d` sees the runner container already on that
-# image and leaves it running, and the runs in flight are not interrupted. That
-# only holds with `provenance: false` on the build (see docker-compose.yml).
-runner_before=$(docker image inspect --format '{{.Id}}' "$runner_image" 2>/dev/null || true)
-$compose build app runner
-runner_after=$(docker image inspect --format '{{.Id}}' "$runner_image" 2>/dev/null || true)
-if [ -n "$runner_before" ] && [ "$runner_before" = "$runner_after" ]; then
+# image and leaves it running, and the runs in flight are not interrupted.
+#
+# The same ID needs BUILDX_NO_DEFAULT_ATTESTATIONS=1. The daemon uses the
+# containerd image store, where an image ID is the digest of the image index,
+# and BuildKit's default provenance attestation sits in that index and differs
+# on every build, so without the variable the ID moved on every deploy and
+# compose recreated the runner (#173). `provenance: false` in the compose file
+# would be the natural knob, but Compose 2.40.3's built-in builder swaps the
+# arguments when it reads that key and asks for a max-mode attestation instead
+# (docker/compose#14111, fixed on compose main only); revisit after a compose
+# upgrade.
+runner_running=""
+runner_container=$($compose ps -q runner 2>/dev/null || true)
+if [ -n "$runner_container" ]; then
+  runner_running=$(docker inspect --format '{{.Image}}' "$runner_container" 2>/dev/null || true)
+fi
+BUILDX_NO_DEFAULT_ATTESTATIONS=1 $compose build app runner
+runner_built=$(docker image inspect --format '{{.Id}}' "$runner_image" 2>/dev/null || true)
+if [ -n "$runner_running" ] && [ "$runner_running" = "$runner_built" ]; then
   echo "Runner image unchanged; the runner container keeps its runs."
 else
-  echo "Runner image rebuilt; the runner container will be recreated."
+  echo "Runner image differs from the running container's; the runner will be recreated."
 fi
 
 if start_stack; then
