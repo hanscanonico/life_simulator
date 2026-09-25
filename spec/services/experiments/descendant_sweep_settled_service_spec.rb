@@ -79,6 +79,18 @@ RSpec.describe Experiments::DescendantSweepSettledService do
     end
   end
 
+  context "with a parent still running, whose reading will not qualify it" do
+    let!(:running) { parent(share: 0.1).tap { |run| run.update!(status: "running") } }
+
+    it "reads the pool again once that parent finishes" do
+      expect(settled).to be(false)
+
+      running.update!(status: "finished")
+
+      expect([settled, uncached]).to eq([true, true])
+    end
+  end
+
   it "reads the pool again once a parent's last world is dropped" do
     settled
     Snapshot.where(run: source.runs).delete_all

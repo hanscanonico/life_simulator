@@ -433,6 +433,16 @@ RSpec.describe "Experiments", type: :request do
 
         expect(page_body).not_to eq(first)
       end
+
+      # The cache outlives a deploy, so a changed chart partial has to move the fragment's
+      # digest.
+      it "draws them again once the chart partial changes" do
+        finder = ApplicationController.new.lookup_context
+        dependencies = ActionView::Digestor.tree("experiments/show", finder).children
+
+        expect(dependencies.find { |node| node.name == "charts/arm_lines" }&.children&.map(&:name))
+          .to eq(["charts/axes"])
+      end
     end
 
     context "with an arm whose emerged runs carry a complexity reading" do

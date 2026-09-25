@@ -47,6 +47,8 @@
     <% unless survival.empty? %>
       <%= render "experiments/hazard_table", axis: axis, survival: survival %>
     <% end %>
+    <%# The chart collections below name no partial the cache digest can find. %>
+    <%# Template Dependency: charts/arm_lines %>
     <% cache @show.series_cache_key(axis) do %>
       <% series = @show.series.fetch(axis) %>
       <% if series.lineage_charts.any? %>

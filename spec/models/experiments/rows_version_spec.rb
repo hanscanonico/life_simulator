@@ -38,6 +38,17 @@ RSpec.describe Experiments::RowsVersion do
     expect(version).not_to eq(before)
   end
 
+  # Two writers race: the one that took the later timestamp commits first, and the other's
+  # row lands under a timestamp older than the latest already seen.
+  it "moves once a row is rewritten under an older timestamp than the latest" do
+    older = create(:rescore, run: run, updated_at: 1.hour.ago)
+    create(:rescore, run: run, epoch: older.epoch + 1)
+    before = version
+    older.update!(replicator_count: older.replicator_count.to_i + 1, updated_at: 30.minutes.ago)
+
+    expect(version).not_to eq(before)
+  end
+
   it "moves once a row is deleted" do
     create(:rescore, run: run)
     before = version
