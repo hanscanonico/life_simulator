@@ -11,7 +11,12 @@
   seen: the pre-registered rule wanted a nonzero first-decile median of the conserved core as
   well, and dropped every run whose dominant lineage conserved no byte.
   <% if reading.pre_registered_readable_arms.empty? %>
-    Read under the rule as it was registered, no arm of this sweep says anything at all.
+    Read under the rule as it was registered, no arm of this sweep reaches the two measured
+    runs a complexity verdict needs.
+    <% if reading.arms.any?(&:barren?) %>
+      The barren arms read barren under either rule: they hold no emerged run for any
+      measured-run rule to drop.
+    <% end %>
   <% end %>
 </p>
 <p>
