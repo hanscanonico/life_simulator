@@ -154,6 +154,16 @@
       ]
     },
     {
+      "default": "aligned",
+      "doc": "How a soup cell's lineage tag follows descent. After an interaction a cell takes its partner's tag when its tape ends strictly closer, by Hamming distance, to the tape its partner arrived with than to its own. aligned compares byte for byte, which is the rule of DESIGN 1.2 every earlier run used; oriented takes each distance as the smaller of the arriving tape's and its reverse's, so a cell overwritten by a reverse copy takes the copier's tag. Moves no byte of the world: only the lineage tags and the readings made of them.",
+      "name": "lineage_rule",
+      "type": "enum",
+      "values": [
+        "aligned",
+        "oriented"
+      ]
+    },
+    {
       "default": "random",
       "doc": "Initial world state: uniformly random bytes, or all zero (the control).",
       "name": "init",

@@ -149,6 +149,10 @@ RSpec.describe Run, type: :model do
       expect(descendant(params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.01, "radius" => 2))).to be_valid
     end
 
+    it "accepts a child that switches the lineage rule its tags follow" do
+      expect(descendant(params: parent.params.merge("lineage_rule" => "oriented"))).to be_valid
+    end
+
     it "accepts the parent's params and seed, the exact continuation" do
       expect(descendant(params: parent.params, seed: parent.seed)).to be_valid
     end

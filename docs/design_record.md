@@ -1628,3 +1628,60 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   run 1007 (cap 128) 5.6 → 29.6 (5.3×); run 1029 (cap 256) 5.6 → 20.5 (3.6×); the emerged
   BFF control 184 (512×256, 64 fixed) 0.82 → 2.1 (2.6×); a fresh random 128² soup at epoch
   100, 68 → 129 (1.9×).
+- 2026-09-25 — **The lineage rule becomes a parameter: `lineage_rule`, `aligned` by default,
+  `oriented` for tags that follow descent through reverse copies.** The entry "Oriented
+  companions for heredity and adaptation" found that on run 1007's world continued at
+  mutation 0 the 22 distinct tapes are eleven programs and their reverses, 20 to 127 bytes
+  from the modal tape, **all under one lineage tag**. The tag is inherited by the rule of the 2026-09-13
+  entry: a cell takes its partner's tag when its tape ends Hamming-closer, aligned, to the
+  partner's arriving tape than to its own. A cell overwritten by `reverse(A)` is aligned-far
+  from `A`, so it keeps its own tag while its bytes descend from `A`. After a takeover by a
+  reverse copier the tags stop tracking descent. The oriented readings put members the right
+  way round but read the aligned tags, so they cannot fix which members a lineage holds.
+  That entry left the limitation standing "until a record entry changes the rule". This is
+  that entry. It changes the rule by adding a second one beside it, not by replacing it.
+
+  **The rule.** `lineage_rule ∈ {aligned, oriented}`, default `aligned` (DESIGN §1.2). At
+  `aligned` the engine runs exactly the code it ran before. At `oriented` both distances are
+  oriented: the distance from the cell's final tape to an arriving tape is the smaller of the
+  Hamming distance to that tape and to its reverse. The reverse is taken over the arriving
+  tape's live bytes and read from the cell's first byte, the image `reverse_copy_rate` reads
+  a reverse copy as, so a grown tape's extra bytes count against both. The cell takes its
+  partner's tag when
+  `min(d(final, partner), d(final, reverse(partner))) < min(d(final, own), d(final, reverse(own)))`.
+  The own side is oriented too because a comparison that allowed the partner a reversal and
+  denied it to the cell would tilt every close call toward the partner. It would also move a
+  cell whose own bytes came back to it reversed to another lineage, although nothing of
+  anyone else's reached it. The tie still keeps the cell's own tag, and a palindrome's copy
+  inherits under both rules. It follows that the oriented rule reads a tape and its reverse
+  as one tape: a cell holding `X` overwritten by an exact forward copy of a partner holding
+  `reverse(X)` is a tie and keeps its own tag, where the aligned rule hands it the
+  partner's.
+
+  **What it moves.** Nothing but tags. The rule reads the pair each interaction already keeps,
+  draws nothing and writes no byte, so a world's bytes and every RNG stream are the same
+  under both rules. Every pinned hash and observable digest stays as it was. New pins lock
+  the oriented rule from the start. The 32×32 soup at seed 42, stepped 50 epochs, has the
+  bytes `PINNED_SOUP_HASH` under `oriented` and the same tags as under `aligned`
+  (`0x4d38_1366_823a_e560`): no interaction there leaves a tape nearer an arrival reversed.
+  That is this world's reading, not a property of random soups: a 64×64 soup at seed 7 or
+  seed 1 parts on 3 or 4 cells by epoch 50.
+  A 16×16 world half seeded with the handwritten reverse replicator at the default mutation
+  rate, seed 5, 50 epochs, has one set of bytes (`0x752c_1e85_b477_d74e`) and two sets of
+  tags. It reads 39 distinct lineages aligned and 15 oriented. A reverse copier whose
+  reverse agrees with it at no byte, invading a random half-world without mutation, keeps
+  its 128 tags at home under `aligned`, while 12 cells hold its copy under their victims'
+  tags. Under `oriented` its tags reach 140 cells and no copy wears a foreign tag. The
+  snapshot stores no params, so its format does not change. The rule is dynamics, not
+  structure: a descendant may switch it, and `Lab::CanonicalParams::STRUCTURAL_KEYS` does
+  not name it.
+
+  **Which runs use which.** Every existing run and the running `from-emerged` sweep use
+  `aligned`. A run stored before the parameter existed carries no `lineage_rule` key, and
+  `Lab::CanonicalParams` fills in the engine default, `aligned`, on both sides of every
+  identity comparison. Stored runs keep their identity and are not rebuilt by a sweep that
+  now writes the key. The rung-2 `lineage-diversity` sweep of the evolution-programme
+  entry (2026-09-11), when it is pre-registered, will run at `lineage_rule = oriented`. Its
+  hypothesis is about lineages sharing ancestry and drifting apart, and the aligned tag
+  is the one reading that cannot follow ancestry through the reverse copies that dominate
+  emerged worlds. Nothing is relocked.

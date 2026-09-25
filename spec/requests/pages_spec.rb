@@ -136,7 +136,7 @@ RSpec.describe "Pages", type: :request do
       terms = response.parsed_body.css("#glossary ~ dl dt").map(&:text)
 
       expect(response.body).to include(%(id="glossary"))
-      expect(terms).to include("transition", "flagged", "replicator", "census", "emergence", "arm")
+      expect(terms).to include("transition", "flagged", "replicator", "census", "emergence", "arm", "lineage")
     end
 
     it "anchors the orientation-aware observable the instrument notes link to" do

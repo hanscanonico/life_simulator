@@ -6,7 +6,7 @@
 use crate::bff;
 use crate::hash::{fnv1a64, fnv1a64_of};
 use crate::metrics::{self, Metrics, TransitionTracker};
-use crate::params::{Init, Interaction, ParamError, Params, Substrate};
+use crate::params::{Init, Interaction, LineageRule, ParamError, Params, Substrate};
 use crate::render;
 use crate::replicator;
 use crate::rng::{self, Rng};
@@ -436,15 +436,16 @@ impl World {
 
     /// Descent, read off the one interaction that just ran: a cell takes its partner's
     /// lineage id when the tape it ends with is closer to the tape its partner arrived
-    /// with than to the tape it arrived with itself, and keeps its own on a tie. Both
-    /// cells are judged against the pair as it arrived, so an exchange swaps the two tags
-    /// rather than collapsing them onto one.
+    /// with than to the tape it arrived with itself, and keeps its own on a tie — closer
+    /// as the run's `lineage_rule` measures it. Both cells are judged against the pair as
+    /// it arrived, so an exchange swaps the two tags rather than collapsing them onto one.
     fn inherit_lineages(&mut self, a: usize, b: usize, pair: &[u8], before: &[u8], split: usize) {
+        let rule = self.params.lineage_rule;
         let (was_a, was_b) = (self.lineages[a], self.lineages[b]);
-        if inherits_partner(&pair[..split], &before[..split], &before[split..]) {
+        if inherits_partner(rule, &pair[..split], &before[..split], &before[split..]) {
             self.lineages[a] = was_b;
         }
-        if inherits_partner(&pair[split..], &before[split..], &before[..split]) {
+        if inherits_partner(rule, &pair[split..], &before[split..], &before[..split]) {
             self.lineages[b] = was_a;
         }
     }
@@ -975,8 +976,33 @@ fn reversed_onto(result: &[u8], source: &[u8]) -> bool {
 /// Hamming distance over the tape's bytes — the plainest distance on a fixed-length tape,
 /// and the same byte-by-byte reading `copy_rate` makes of an exact copy. A tie keeps the
 /// cell's own lineage, so a tape that did not move keeps its tag.
-fn inherits_partner(result: &[u8], own: &[u8], partner: &[u8]) -> bool {
-    metrics::hamming_distance(result, partner) < metrics::hamming_distance(result, own)
+///
+/// Under the oriented rule both distances are taken either way round, not only the
+/// partner's: measuring one arrival with a reversal allowed and the other without would
+/// tilt every close call toward the partner, and a cell whose own bytes came back to it
+/// reversed would change lineage although nothing of anyone else's reached it.
+fn inherits_partner(rule: LineageRule, result: &[u8], own: &[u8], partner: &[u8]) -> bool {
+    match rule {
+        LineageRule::Aligned => {
+            metrics::hamming_distance(result, partner) < metrics::hamming_distance(result, own)
+        }
+        LineageRule::Oriented => {
+            oriented_distance(result, partner) < oriented_distance(result, own)
+        }
+    }
+}
+
+/// How far a tape is from an arriving tape put whichever way round is nearer to it: the
+/// arrival as it came, or its live bytes last to first read from the tape's first byte —
+/// the image `reversed_onto` reads a reverse copy as.
+fn oriented_distance(result: &[u8], arrived: &[u8]) -> u64 {
+    let reversed = result
+        .iter()
+        .zip(arrived.iter().rev())
+        .filter(|(left, right)| left != right)
+        .count() as u64
+        + result.len().abs_diff(arrived.len()) as u64;
+    metrics::hamming_distance(result, arrived).min(reversed)
 }
 
 /// A run of `u32`s as the little-endian bytes the world hashes them by.
@@ -1088,6 +1114,18 @@ mod tests {
     /// them — a within-lineage reading must not move a lineage.
     const PINNED_LINEAGES: &str = "distinct_lineages=1022 top_lineage_share=0.001953125";
     const PINNED_SEEDED_LINEAGES: &str = "distinct_lineages=51 top_lineage_share=0.09375";
+    /// The tags of that first world, pinned when the lineage rule became a parameter: the
+    /// same under both rules there.
+    const PINNED_SOUP_LINEAGE_HASH: u64 = 0x4d38_1366_823a_e560;
+    /// A mutating reverse-copier colony, where the two lineage rules part
+    /// (`mutating_reverse_colony`): its bytes, and its tags under each rule.
+    const PINNED_REVERSE_COLONY_HASH: u64 = 0x752c_1e85_b477_d74e;
+    const PINNED_REVERSE_COLONY_ALIGNED_LINEAGE_HASH: u64 = 0xe746_36f6_8030_b75c;
+    const PINNED_REVERSE_COLONY_ORIENTED_LINEAGE_HASH: u64 = 0xe173_3ed0_0d40_85cc;
+    const PINNED_REVERSE_COLONY_ALIGNED_LINEAGES: &str =
+        "distinct_lineages=39 top_lineage_share=0.109375";
+    const PINNED_REVERSE_COLONY_ORIENTED_LINEAGES: &str =
+        "distinct_lineages=15 top_lineage_share=0.1484375";
     /// The replicator readings of those same two worlds, as they read before #192 added a
     /// raw length and a tape hash beside them: the new fields are additive, so every field
     /// a sample already carried has to print the same digits it printed before.
@@ -1792,21 +1830,139 @@ mod tests {
     #[test]
     fn a_tape_inherits_only_when_it_ends_strictly_closer_to_its_partner() {
         assert!(
-            inherits_partner(b"wxyz", b"abcd", b"wxyz"),
+            inherits_partner(LineageRule::Aligned, b"wxyz", b"abcd", b"wxyz"),
             "an exact copy of the partner's arriving tape inherits"
         );
         assert!(
-            !inherits_partner(b"abcd", b"abcd", b"wxyz"),
+            !inherits_partner(LineageRule::Aligned, b"abcd", b"abcd", b"wxyz"),
             "a tape that did not move keeps its own tag"
         );
         assert!(
-            !inherits_partner(b"abcz", b"abcd", b"wxyz"),
+            !inherits_partner(LineageRule::Aligned, b"abcz", b"abcd", b"wxyz"),
             "one byte from its own arrival, three from the partner's: keeps its own"
         );
         assert!(
-            !inherits_partner(b"abyz", b"abcd", b"wxyz"),
+            !inherits_partner(LineageRule::Aligned, b"abyz", b"abcd", b"wxyz"),
             "two bytes from each arrival is a tie, and a tie keeps its own"
         );
+    }
+
+    /// A reverse copy of `A` over a cell of lineage `B` is aligned-far from `A` — here as
+    /// far as it is from `B` — so the aligned rule leaves the cell `B`, and the oriented
+    /// rule reads it as `A`'s descendant.
+    #[test]
+    fn a_reverse_copy_takes_the_copiers_tag_only_under_the_oriented_rule() {
+        let (copier, own) = (b"abcdefgh", b"stuvwxyz");
+        let reversed = b"hgfedcba";
+        assert!(!inherits_partner(
+            LineageRule::Aligned,
+            reversed,
+            own,
+            copier
+        ));
+        assert!(inherits_partner(
+            LineageRule::Oriented,
+            reversed,
+            own,
+            copier
+        ));
+    }
+
+    /// A forward copy, a cell that did not move and a partial overwrite read the same
+    /// under both rules when no arriving tape is nearer reversed.
+    #[test]
+    fn a_forward_copy_reads_the_same_under_both_rules() {
+        for (result, expected) in [
+            (b"abcdefgh", true),
+            (b"stuvwxyz", false),
+            (b"abcdefyz", true),
+            (b"abcdwxyz", false),
+        ] {
+            for rule in [LineageRule::Aligned, LineageRule::Oriented] {
+                assert_eq!(
+                    inherits_partner(rule, result, b"stuvwxyz", b"abcdefgh"),
+                    expected,
+                    "{rule:?} {:?}",
+                    std::str::from_utf8(result)
+                );
+            }
+        }
+    }
+
+    /// A palindrome is its own reverse, so its copy inherits under both rules; and the
+    /// oriented rule keeps the aligned rule's tie: strictly closer, or the cell keeps its
+    /// own tag.
+    #[test]
+    fn a_palindrome_inherits_under_both_rules_and_a_tie_keeps_the_cells_own_tag() {
+        for rule in [LineageRule::Aligned, LineageRule::Oriented] {
+            assert!(inherits_partner(
+                rule,
+                b"abcddcba",
+                b"stuvwxyz",
+                b"abcddcba"
+            ));
+        }
+        assert!(
+            !inherits_partner(LineageRule::Oriented, b"abyz", b"abcd", b"wxyz"),
+            "two bytes from each arrival either way round is a tie"
+        );
+        assert!(
+            !inherits_partner(LineageRule::Oriented, b"dcyz", b"abcd", b"zyxw"),
+            "two bytes from each arrival once both are reversed is a tie too"
+        );
+    }
+
+    /// The own tape is read either way round as well: a cell whose own bytes came back to
+    /// it reversed descends from itself, and keeps its tag.
+    #[test]
+    fn a_cell_holding_its_own_tape_reversed_keeps_its_tag_under_the_oriented_rule() {
+        assert!(!inherits_partner(
+            LineageRule::Oriented,
+            b"hgfedcbx",
+            b"abcdefgh",
+            b"hgfedcyz"
+        ));
+        assert!(inherits_partner(
+            LineageRule::Aligned,
+            b"hgfedcbx",
+            b"abcdefgh",
+            b"hgfedcyz"
+        ));
+    }
+
+    /// The oriented rule reads a tape and its reverse as one tape: a cell holding `X`
+    /// that ends an exact forward copy of a partner holding `reverse(X)` is at distance 0
+    /// from both arrivals, a tie, and keeps its own tag; the aligned rule hands it over.
+    #[test]
+    fn a_tape_and_its_reverse_are_one_tape_under_the_oriented_rule() {
+        let (own, partner) = (b"abcdefgh", b"hgfedcba");
+        assert!(inherits_partner(
+            LineageRule::Aligned,
+            partner,
+            own,
+            partner
+        ));
+        assert!(!inherits_partner(
+            LineageRule::Oriented,
+            partner,
+            own,
+            partner
+        ));
+    }
+
+    /// A tape that grew is set against the reverse of the live bytes its partner arrived
+    /// with, read from its own first byte; the bytes it gained count against both.
+    #[test]
+    fn the_oriented_distance_reads_live_bytes_of_a_ragged_pair() {
+        assert_eq!(oriented_distance(b"cbaxy", b"abc"), 2);
+        assert_eq!(oriented_distance(b"abcxy", b"abc"), 2);
+        assert_eq!(oriented_distance(b"cb", b"abc"), 1);
+        assert!(inherits_partner(
+            LineageRule::Oriented,
+            b"cbaxy",
+            b"zzzzz",
+            b"abc"
+        ));
     }
 
     /// Both halves are judged against the pair as it arrived, so a pair that swapped tapes
@@ -2969,6 +3125,82 @@ mod tests {
         assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
     }
 
+    fn lineage_hash(world: &World) -> u64 {
+        let ids: Vec<u8> = world
+            .lineages
+            .iter()
+            .flat_map(|id| id.to_le_bytes())
+            .collect();
+        fnv1a64(&ids)
+    }
+
+    /// A 16×16 soup half seeded with the handwritten reverse replicator, under the default
+    /// mutation rate, stepped 50 epochs under `rule`.
+    fn mutating_reverse_colony(rule: LineageRule) -> World {
+        let params = Params {
+            tape_len: 64,
+            lineage_rule: rule,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        let tape = replicator::handwritten_reverse_replicator(64);
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        for _ in 0..50 {
+            world.step();
+        }
+        world
+    }
+
+    /// The oriented lineage rule on the pinned soup: it moves no byte, so the world is the
+    /// pinned one exactly. On this world no interaction in 50 epochs leaves a tape nearer
+    /// an arrival reversed, so the tags are the aligned rule's too; a larger random soup
+    /// can already part on a handful of cells.
+    #[test]
+    fn pinned_lineage_determinism_of_a_random_soup_under_the_oriented_rule() {
+        let params = Params {
+            lineage_rule: LineageRule::Oriented,
+            ..soup(32, 32)
+        };
+        let mut world = World::new(&params, 42).unwrap();
+        for _ in 0..50 {
+            world.step();
+        }
+        assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
+        assert_eq!(lineage_hash(&world), PINNED_SOUP_LINEAGE_HASH);
+        assert_eq!(lineage_digest(&world.metrics()), PINNED_LINEAGES);
+    }
+
+    /// And on a mutating colony of reverse copiers, where the two rules part: the same
+    /// bytes under both, and two different sets of tags — the oriented rule reading the
+    /// colony as fewer, larger lineages.
+    #[test]
+    fn pinned_lineage_determinism_of_a_reverse_colony_under_the_oriented_rule() {
+        let mut aligned = mutating_reverse_colony(LineageRule::Aligned);
+        let mut oriented = mutating_reverse_colony(LineageRule::Oriented);
+        assert_eq!(oriented.world_hash(), aligned.world_hash());
+        assert_eq!(oriented.world_hash(), PINNED_REVERSE_COLONY_HASH);
+        assert_eq!(
+            lineage_hash(&aligned),
+            PINNED_REVERSE_COLONY_ALIGNED_LINEAGE_HASH
+        );
+        assert_eq!(
+            lineage_hash(&oriented),
+            PINNED_REVERSE_COLONY_ORIENTED_LINEAGE_HASH
+        );
+        assert_eq!(
+            lineage_digest(&aligned.metrics()),
+            PINNED_REVERSE_COLONY_ALIGNED_LINEAGES
+        );
+        assert_eq!(
+            lineage_digest(&oriented.metrics()),
+            PINNED_REVERSE_COLONY_ORIENTED_LINEAGES
+        );
+    }
+
     #[test]
     fn pinned_determinism_of_a_soup_without_the_copy_to_head0_op() {
         let params = Params {
@@ -3318,6 +3550,30 @@ mod tests {
                 field: "max_tape_len"
             })
         ));
+    }
+
+    /// The lineage rule is dynamics: a descendant may switch it, and the switch moves no
+    /// byte of the parent's world — only which tags the next copies carry.
+    #[test]
+    fn a_descendant_may_switch_its_lineage_rule() {
+        let params = colony_params();
+        let mut parent = colony(&params, 11);
+        for _ in 0..DESCENT_EPOCH {
+            parent.step();
+        }
+        let oriented = Params {
+            lineage_rule: LineageRule::Oriented,
+            ..params
+        };
+        let mut child = World::descend(&oriented, 11, &parent.snapshot()).unwrap();
+        assert_eq!(child.lineages, parent.lineages);
+
+        for _ in 0..20 {
+            parent.step();
+            child.step();
+        }
+
+        assert_eq!(child.world_hash(), parent.world_hash());
     }
 
     #[test]
@@ -3848,6 +4104,67 @@ mod tests {
         }
         world.step();
         world
+    }
+
+    /// The head of `handwritten_reverse_replicator` on its filler without the mirrored
+    /// tail: a tape whose reverse agrees with it at no position, so a copy of it is as far
+    /// from it, byte for byte, as a tape it never touched.
+    fn one_way_reverse_copier() -> Vec<u8> {
+        const LETTERS: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+        let mut tape: Vec<u8> = (0..64)
+            .map(|at| LETTERS[(at * 7) % LETTERS.len()])
+            .collect();
+        tape[..6].copy_from_slice(b"{[.>{]");
+        let reversed: Vec<u8> = tape.iter().rev().copied().collect();
+        assert_eq!(metrics::hamming_distance(&tape, &reversed), 64);
+        tape
+    }
+
+    /// After `epochs` under `rule` of a world whose top half is seeded with
+    /// `one_way_reverse_copier` and whose bottom half is random: how many cells carry one
+    /// of the colony's tags, and how many hold the colony's reverse copy under a tag that
+    /// is not one of them.
+    fn reverse_colony_reach(rule: LineageRule, epochs: usize) -> (usize, usize) {
+        let params = Params {
+            tape_len: 64,
+            mutation_rate: 0.0,
+            lineage_rule: rule,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        let tape = one_way_reverse_copier();
+        let reversed: Vec<u8> = tape.iter().rev().copied().collect();
+        let mut seeded = BTreeSet::new();
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+                seeded.insert(world.lineage(x, y));
+            }
+        }
+        for _ in 0..epochs {
+            world.step();
+        }
+        let cells = (0..params.height).flat_map(|y| (0..params.width).map(move |x| (x, y)));
+        let tagged = cells
+            .clone()
+            .filter(|(x, y)| seeded.contains(&world.lineage(*x, *y)))
+            .count();
+        let untagged_copies = cells
+            .filter(|(x, y)| {
+                world.cell(*x, *y) == reversed && !seeded.contains(&world.lineage(*x, *y))
+            })
+            .count();
+        (tagged, untagged_copies)
+    }
+
+    /// A reverse copier invading a random world: its copies are its reverse, which under
+    /// the aligned rule is as far from it as from the random tape overwritten, so the
+    /// colony's 128 tags never leave home and its copies wear their victims' tags; under
+    /// the oriented rule every copy carries the colony's tag out with it.
+    #[test]
+    fn a_reverse_copier_spreads_its_tags_under_the_oriented_rule_alone() {
+        assert_eq!(reverse_colony_reach(LineageRule::Aligned, 10), (128, 12));
+        assert_eq!(reverse_colony_reach(LineageRule::Oriented, 10), (140, 0));
     }
 
     /// The blind spot the companions exist for: a world of tapes that copy in reverse

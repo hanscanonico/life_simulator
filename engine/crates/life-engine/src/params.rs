@@ -47,6 +47,18 @@ pub enum Interaction {
     Host,
 }
 
+/// How a lineage tag follows descent (`docs/DESIGN.md` §1.2; why it is a parameter is the
+/// 2026-09-25 design-record entry). `Aligned` is the default and the rule every earlier
+/// run's tags were inherited by: a tape is compared with the two arriving tapes byte for
+/// byte. `Oriented` compares it with each arriving tape either way round, so a cell a
+/// reverse copier overwrote takes the copier's tag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineageRule {
+    Aligned,
+    Oriented,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Init {
@@ -100,6 +112,9 @@ pub struct Params {
     /// What an interaction executes: the whole concatenation (`concat`, the default and
     /// the substrate of DESIGN §1.1), or the first tape's bytes only (`host`).
     pub interaction: Interaction,
+    /// How a lineage tag follows descent: byte for byte (`aligned`, the default and the
+    /// rule of every earlier run), or either way round (`oriented`). Moves no byte.
+    pub lineage_rule: LineageRule,
     pub init: Init,
     pub sample_every: u32,
     pub top_k: u32,
@@ -126,6 +141,7 @@ impl Default for Params {
             structure: Structure::Uniform,
             structure_amplitude: 0.5,
             interaction: Interaction::Concat,
+            lineage_rule: LineageRule::Aligned,
             init: Init::Random,
             sample_every: 10,
             top_k: 16,
@@ -302,6 +318,18 @@ const FIELDS: &[Field] = &[
               two tapes, which is the substrate of DESIGN 1.1; host runs the first tape's \
               bytes only, leaving the partner as data the program reads and writes. Both \
               heads range over the whole pair either way.",
+    },
+    Field {
+        name: "lineage_rule",
+        kind: Kind::Choice(&["aligned", "oriented"]),
+        doc: "How a soup cell's lineage tag follows descent. After an interaction a cell \
+              takes its partner's tag when its tape ends strictly closer, by Hamming \
+              distance, to the tape its partner arrived with than to its own. aligned \
+              compares byte for byte, which is the rule of DESIGN 1.2 every earlier run \
+              used; oriented takes each distance as the smaller of the arriving tape's and \
+              its reverse's, so a cell overwritten by a reverse copy takes the copier's \
+              tag. Moves no byte of the world: only the lineage tags and the readings \
+              made of them.",
     },
     Field {
         name: "init",
@@ -1007,7 +1035,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 21);
+        assert_eq!(fields.len(), 22);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -1054,6 +1082,11 @@ mod tests {
         assert_eq!(interaction["type"], "enum");
         assert_eq!(interaction["default"], "concat");
         assert_eq!(interaction["values"], serde_json::json!(["concat", "host"]));
+
+        let rule = fields.iter().find(|f| f["name"] == "lineage_rule").unwrap();
+        assert_eq!(rule["type"], "enum");
+        assert_eq!(rule["default"], "aligned");
+        assert_eq!(rule["values"], serde_json::json!(["aligned", "oriented"]));
 
         let substrate = fields.iter().find(|f| f["name"] == "substrate").unwrap();
         assert_eq!(substrate["type"], "enum");
@@ -1156,5 +1189,19 @@ mod tests {
             }
         );
         assert!(serde_json::from_str::<Params>(r#"{"interaction": "duel"}"#).is_err());
+    }
+
+    /// The lineage rule of §1.2 is the aligned one unless a run asks for the other.
+    #[test]
+    fn a_lineage_tag_follows_aligned_descent_by_default() {
+        assert_eq!(Params::default().lineage_rule, LineageRule::Aligned);
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"lineage_rule": "oriented"}"#).unwrap(),
+            Params {
+                lineage_rule: LineageRule::Oriented,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"lineage_rule": "sideways"}"#).is_err());
     }
 }

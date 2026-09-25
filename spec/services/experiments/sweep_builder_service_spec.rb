@@ -76,7 +76,7 @@ RSpec.describe Experiments::SweepBuilderService do
   context "with runs stored before the engine schema grew a parameter" do
     it "recognises them instead of re-creating the whole sweep" do
       build_sweep
-      experiment.runs.each { |run| run.update!(params: run.params.except("ops", "top_k")) }
+      experiment.runs.each { |run| run.update!(params: run.params.except("ops", "top_k", "lineage_rule")) }
 
       expect { described_class.call(experiment.reload) }.not_to change(Run, :count)
     end
