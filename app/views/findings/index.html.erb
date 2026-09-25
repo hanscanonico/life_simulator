@@ -30,8 +30,8 @@
             <time datetime="<%= row.finding.date.iso8601 %>"><%= l row.finding.date, format: :long %></time>
             <% if row.finding.instrument_note? %>
               <%= link_to "instrument note", finding_path(row.finding, anchor: "instrument-note"),
-                          class: "badge badge-warning instrument-note-badge",
-                          title: "Some of this finding's claims rest on the replicator census, which cannot count replicators that copy in reverse." %>
+                          class: "badge badge-pro instrument-note-badge",
+                          title: "Some of this finding's claims rest on readings that miss or confound the replicators that copy in reverse." %>
             <% end %>
           </p>
           <h2 class="finding-title"><%= link_to row.finding.title, finding_path(row.finding) %></h2>

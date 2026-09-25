@@ -497,8 +497,16 @@ ul.chart-legend li {
 
 .instrument-note a {
   color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.instrument-note-badge {
+.instrument-note-badge,
+.instrument-note-badge:hover {
+  color: var(--paper);
   text-decoration: none;
+}
+
+.instrument-note-badge:hover {
+  background: var(--ink-secondary);
 }
