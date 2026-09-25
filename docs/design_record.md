@@ -1856,3 +1856,98 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
      is its finished founding runs per radius with a confirmed `emergence_epoch`: that sweep
      sampled no `replicator_share`, so its count carries no share clause, where this sweep's
      does.
+- 2026-09-25 — **The from-emerged economy arms, confirmed on held-out parents: a
+  confirmatory reading, pre-registered after looking.** A second reading of the same sweep,
+  `from-emerged`, on a subset of its children that does not exist yet. The entry "Runs that
+  start from an emerged world" and its six clarifications stand untouched, and their reading
+  stays the sweep's pre-registered one. This entry adds rules that were written **after**
+  seeing that reading's interim numbers and an exploratory look at the same children, which
+  is exactly why they are tested only on children none of whose samples had been seen.
+
+  **What was seen.** The interim reading of all 120 children of the first ten parents (runs
+  944, 950, 967, 991, 1007, 1029, 1087, 1089, 1103 and 2568), every one finished, under the
+  locked rules:
+
+  | treatment | held | relapsed | rises | plateau | mixed |
+  |---|---|---|---|---|---|
+  | continuation | 29 | 1 | 2 | 17 | 11 |
+  | economy 2048 | 22 | 8 | 7 | 6 | 17 |
+  | economy 8192 | 27 | 3 | 10 | 8 | 11 |
+  | host mode | 30 | 0 | 0 | 15 | 15 |
+
+  H-economy for economy 8192 went 10 pairs against 1, p = 0.0059, but reads **not read:
+  relapses more than the continuation**, and the result is carried by pairs of parents.
+  H-host is refuted. Then an **exploratory** look, not pre-registered, by SELECTs on the same
+  120 children:
+  1. The economy lowered `copy_latency` (#255: the step at which the partner first holds a
+     complete image of the dominant tape, in either orientation). The median over children
+     of their first-decile and last-decile medians went 4 780 → 1 930 in economy 8192, with
+     23 of 30 children falling, and 1 864 → 1 280 in economy 2048, with 22 of 25 falling. In
+     the continuation and in host mode 14 of 30 fell in each.
+  2. 8 of the 9 relapses in economy 2048 are a transient crash within about 500 epochs of the
+     switch at 20 000, recovered by 20 050–20 670. One child of the whole sweep (economy 8192,
+     seed 1003) went extinct for good, as its `steal_rate` rose to about 0.9.
+  3. No halting copier appeared: `copy_cost` equals `max_steps` in 16 385 of 16 400 non-null
+     samples.
+
+  Those observations suggested the rules below, so they cannot be tested on the children
+  they came from.
+
+  **The held-out set.** The children whose parent is a founding `host-parasite` run with
+  **seed > 90** — sweep 9's extension, seeds 91–270, in the economy-off arms at caps 128 and
+  256, qualifying by the sweep's existing parent rule — **and is not one of the ten parents
+  above**. Run 2568 is an extension parent (seed 102, cap 128) that qualified early; its
+  twelve children are among the 120 seen, so the seed alone does not hold them out, and it
+  is excluded by name. At the time of writing (2026-09-25 21:43 UTC, a SELECT on the lab
+  database) the sweep holds 120 children, all of the ten parents above, and **no held-out
+  child exists**. The extension adds about 18 parents; their worlds finish after
+  2026-09-26. The constants live in `Lab::FromEmergedHeldout`
+  (`LAST_SEEN_SEED`, `SEEN_PARENT_IDS`), and the reading is in
+  `Experiments::FromEmergedReadingService` beside the original one.
+
+  **The readings, per child, over its own samples** (epochs above `parent_epoch`):
+  - **Settled relapse.** A child relapses only where its `replicator_share` sits below
+    **0.1** for **3** consecutive samples, counting only samples at epochs above
+    `parent_epoch` + **1 000** (`SETTLING_WINDOW`): the exploratory look found switching
+    shocks that recover, and this window leaves them out. A child is **extinct** where its
+    last-decile median share, the original entry's last decile, is below **0.1**
+    (`EXTINCT_SHARE`). A child that never sampled a share is read by neither rule.
+  - **H3-latency (rung 3).** For each child that is not extinct, the latency ratio **R** is
+    its last-decile median `copy_latency` divided by its first-decile median. The deciles
+    are the first and last `ceil(n / 10)` of the `n` samples at epochs above `parent_epoch`
+    + 1 000 that carry `copy_latency` as a number; a median is `Findings::Median`'s lower
+    middle. A child with fewer than **10** such samples in either decile
+    (`MIN_DECILE_SAMPLES`), or whose first-decile median is 0, is **unmeasured**. Each pair
+    is an economy child and the continuation child of the same parent and seed, both
+    measured; it favours the treatment where the treatment's R is lower than the
+    continuation's, the continuation where it is higher, and equal ratios tie and are
+    dropped. The test is the original one-sided sign test at p < **0.05**, per economy arm
+    (2048 and 8192 on their own). **Shown** at p < 0.05; **refuted** where the pairs
+    favouring the continuation are at least as many as those favouring the treatment;
+    **not shown** otherwise; **no measured pairs** where no pair is measured on both sides.
+  - **H4-survivors (rung 4).** The original complexity rule — rises, plateau, mixed,
+    unmeasured, from `dominant_instruction_count` over self-replicating samples — read only
+    on pairs where **neither** child had a settled relapse and **neither** is extinct, and,
+    as the original test requires, both are measured. A pair favours the treatment where the
+    treatment child rises and the continuation child does not, and the continuation in the
+    reverse case. The same sign test, per economy arm, with the same shown, refuted, not
+    shown and no-measured-pairs outcomes. There is no "relapses more" clause here: the
+    settled-relapse and extinction counts per treatment are reported beside the tests,
+    descriptively, and that is where "the economy kills replicators" shows.
+  - **Host mode** is not re-tested: it was refuted. Its held-out children are counted in the
+    per-treatment table like the others.
+  - **Robustness.** Each shown result carries the original entry's per-parent agreement and
+    its leave-one-or-two-parents-out rule (clarification 5): every set of one or two parents
+    whose pairs, left out, bring p to 0.05 or above is listed as carrying it.
+
+  **When it is read.** The reading is **final** when every held-out child of every parent
+  qualifying from the extension has finished, which is the original reading's own final
+  (clarification 6: the parent pool settled, every child of every qualifying parent
+  finished). Before that it is labelled **interim**, and before any held-out child exists
+  it says so.
+
+  **What is not claimed.** A held-out confirmation on about 18 parents is still one
+  substrate, one budget and correlated children per parent: it guards against reading
+  noise the look found into rules the look wrote, not against those limits. `copy_latency`
+  is measured on the dominant tape against noise, not in situ, so a lower ratio says the
+  dominant copier copies faster in isolation, not that the colony replicates faster.
