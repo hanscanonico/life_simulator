@@ -4237,4 +4237,97 @@ mod tests {
             );
         }
     }
+
+    /// A world the way an emerged one looks (#245): most cells the reverse copier, its
+    /// loop spread over up to six non-op bytes after each op, at lengths from 40 up to the
+    /// cap, over nonzero filler that sometimes holds a steal byte; the rest random.
+    fn emerged_world(params: &Params, seed: u64) -> World {
+        let mut world = World::new(params, seed).unwrap();
+        let mut rng = rng::seeded(seed, 0x454d_4552, 0);
+        let cap = params.tape_cap() as u64;
+        let filler = |rng: &mut Rng| loop {
+            let byte = match rng::below(rng, 32) {
+                0 => bff::STEAL,
+                _ => 1 + rng::below(rng, 255) as u8,
+            };
+            if !bff::is_op(byte) {
+                return byte;
+            }
+        };
+        for y in 0..params.height {
+            for x in 0..params.width {
+                let len = 40 + rng::below(&mut rng, cap - 39) as usize;
+                let mut tape = Vec::new();
+                if rng::below(&mut rng, 5) > 0 {
+                    let pad = rng::below(&mut rng, 7);
+                    for op in b"{[.<>>{]" {
+                        tape.push(*op);
+                        tape.extend((0..pad).map(|_| filler(&mut rng)));
+                    }
+                }
+                while tape.len() < len {
+                    tape.push(filler(&mut rng));
+                }
+                tape.truncate(len);
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world
+    }
+
+    /// Everything a stepped world is and reads: its hash and every piece of its state, and
+    /// the whole sample at every tenth epoch.
+    fn stepped_both_ways(params: &Params, seed: u64) -> [(Vec<Metrics>, u64, World); 2] {
+        [true, false].map(|skipping| {
+            bff::SKIPPING.set(skipping);
+            let mut world = emerged_world(params, seed);
+            let mut samples = Vec::new();
+            for _ in 0..5 {
+                for _ in 0..10 {
+                    world.step();
+                }
+                samples.push(world.metrics());
+            }
+            bff::SKIPPING.set(true);
+            let hash = world.world_hash();
+            (samples, hash, world)
+        })
+    }
+
+    /// The interpreter's skips are a pure speed-up (`docs/design_record.md`, 2026-09-25):
+    /// an emerged world stepped 50 epochs with them and without them ends with the same
+    /// hash, tapes, lengths, lineages and stock, and reads the same full sample every tenth
+    /// epoch — at the joined default, and under a hosted interaction with the stock and the
+    /// steal op on, whose steals the skipped laps count too.
+    #[test]
+    fn an_emerged_world_steps_exactly_the_same_with_the_skips() {
+        let joined = Params {
+            tape_len: 64,
+            max_tape_len: 128,
+            sample_every: 10,
+            ..soup(16, 16)
+        };
+        let economic = Params {
+            energy_influx: 6_000,
+            energy_stock_cap: 32_768,
+            steal_amount: 64,
+            interaction: Interaction::Host,
+            ..joined.clone()
+        };
+        for params in [joined, economic] {
+            let skipped_before = bff::RECURRED.get() + bff::LAPPED.get();
+            let [(skipped_samples, skipped_hash, skipped), (stepped_samples, stepped_hash, stepped)] =
+                stepped_both_ways(&params, 11);
+            assert!(
+                bff::RECURRED.get() + bff::LAPPED.get() - skipped_before > 10_000_000,
+                "the copiers never skipped"
+            );
+            assert_eq!(skipped_hash, stepped_hash);
+            assert_eq!(skipped.cells, stepped.cells);
+            assert_eq!(skipped.lens, stepped.lens);
+            assert_eq!(skipped.lineages, stepped.lineages);
+            assert_eq!(skipped.stock, stepped.stock);
+            assert_eq!(skipped_samples, stepped_samples);
+        }
+    }
 }

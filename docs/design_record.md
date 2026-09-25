@@ -1598,3 +1598,33 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   lineage can hold unrelated tapes; the oriented readings correct the orientation of the
   members they are given, not which members a lineage holds. That limitation stands until a
   record entry changes the rule.
+- 2026-09-25 — **The interpreter skips what it can prove, and nothing else moves.** A
+  performance change. No rule, parameter or observable changes, and every run, snapshot,
+  sample and pinned hash stays identical to the bit. The pilot behind the entry "The
+  replicator census is blind to replicators that copy in reverse" found that an emerged
+  world is mostly reverse copiers whose loop never exits. Nearly every interaction runs all
+  of `max_steps`, which is why from-emerged descendants took ~2.5 h per 20 000 epochs.
+
+  `bff::run_stealing`, through which the soup, the census and the replicator test all run,
+  now skips two kinds of steps whose outcome is already determined (DESIGN §1.1). The first
+  is a whole cycle: the full state recurs at a jump back with the buffer unchanged, so whole
+  periods of steps and steals are added at once. The second is a repeated lap: a loop that
+  closes on the same bracket again is replayed from its acting steps at the shifted heads.
+  Replay stops before any bracket that would read the other way and before any write to the
+  lap's own code, and runs only on a buffer at its cap. The cycle case alone does nothing
+  for emerged worlds: their loops span tens of bytes, so the heads never come round within
+  8192 steps. The lap case is what speeds them up. Steps and steals come out exactly as a run
+  of every step produces them, so the energy debit, the stock cap and the steal settlement
+  all read what they read before. `bff::first_image`, the `copy_latency` interpreter, still
+  steps one at a time.
+
+  Equivalence tests hold the skipping interpreter to one that runs every step: 400 000
+  random pairs, handwritten reverse copiers at 64, 128 and 256 bytes with ragged partners
+  and room to grow, a forward copier that steals every lap, laps whose inner loop changes
+  course, and a synthetic emerged world stepped 50 epochs with and without the skips, joined
+  and hosted with the stock and steal on. The pilot's stored worlds 1007, 1029, 1087, 1089
+  and 1103 stepped 50 epochs give the same hash every epoch, the same snapshot bytes and the
+  same full sample. Single-thread epochs per second, before and after:
+  run 1007 (cap 128) 5.6 → 29.6 (5.3×); run 1029 (cap 256) 5.6 → 20.5 (3.6×); the emerged
+  BFF control 184 (512×256, 64 fixed) 0.82 → 2.1 (2.6×); a fresh random 128² soup at epoch
+  100, 68 → 129 (1.9×).
