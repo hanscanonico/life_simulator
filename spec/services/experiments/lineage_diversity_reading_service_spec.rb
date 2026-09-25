@@ -91,7 +91,7 @@ RSpec.describe Experiments::LineageDiversityReadingService do
     end
 
     it "reads from the emergence epoch on" do
-      expect(report.rows.first.reading).to have_attributes(verdict: :monophyletic, decile_size: 10)
+      expect(report.rows.first.reading).to have_attributes(verdict: :monophyletic, decile_readings: 10)
     end
   end
 

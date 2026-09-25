@@ -1818,3 +1818,41 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   sweep reads how the tags split a world, not a tree. It also says nothing about why a world
   stays split: a spatial world can hold several colonies that never meet, and "locality
   keeps lineages apart" is that reading, not a mechanism.
+- 2026-09-25 — **The lineage-diversity reading: five clarifications made before any run was
+  read.** The entry above left five places its reading could go two ways. They were closed
+  on the day the reading service landed, while the sweep's 360 runs were seeded and none
+  had yet been claimed, so no run of it had been read, interim or otherwise. The rules now
+  read, in `Experiments::LineageDiversityReadingService` and `Lab::LineageDiversityReading`:
+  1. **Finished** means finished, where the entry said terminal: the reading is final when
+     every run of the sweep has finished, and a failed run keeps it interim until it is
+     re-run and finishes, since its samples stop short of its budget — as the from-emerged
+     reading's sixth clarification reads its children. An interim reading reads the finished
+     runs only; a pending, running or failed run is counted in its arm and not read, its
+     last decile not yet its last.
+  2. **Deciles** are cut first, as the from-emerged reading's first clarification cuts them:
+     a run's first and last deciles are the first and last `ceil(n / 10)` of all `n` of its
+     samples from `emergence_epoch` on, in epoch order. Inside a decile a value the engine
+     did not report as a number drops out, and a run is unmeasured when fewer than 10 of its
+     last decile's samples carry `lineage_effective_count` as a number. Every sample of this
+     sweep carries it, so the two readings coincide in practice.
+  3. **Unmeasured** is a class of emerged runs only. A run that did not emerge has no class
+     and counts in none of the class columns.
+  4. **The permutation dealing**, so that anyone can reproduce p. The groups are the read
+     arms in the order well-mixed, 4, 2, 1, an unread arm left out, each holding its measured
+     emerged runs' last-decile medians. The pooled values are sorted ascending, and beside
+     them lies a list of group labels, each read arm's label repeated once per value it
+     holds, in that arm order. One generator, CRuby's `Random.new(PERMUTATION_SEED)`
+     (MT19937), serves the whole reading: each of the 100 000 dealings in turn is
+     `labels.shuffle(random: generator)`, CRuby's Fisher–Yates, and the i-th label deals the
+     i-th value. Every distinct dealing into the observed arm sizes is equally likely, and
+     tied values are interchangeable under a statistic that counts a tie one half, so their
+     order among themselves does not move p. b counts the dealings whose statistic is at
+     least the observed one, and p = (1 + b) / (1 + 100 000) is compared with 0.05 as an
+     exact fraction. The same generator deals the same labels on CRuby 3.3 and 4.0.
+  5. **The descriptive spans.** Per run, `lineages_over_one_percent` and the oriented core
+     and variation are last-decile medians, and `copy_latency` "over the run" is its
+     first-decile median set against its last, both over the samples from the crossing on;
+     per arm each is the median over the measured emerged runs. The radius sweep's count
+     is its finished founding runs per radius with a confirmed `emergence_epoch`: that sweep
+     sampled no `replicator_share`, so its count carries no share clause, where this sweep's
+     does.

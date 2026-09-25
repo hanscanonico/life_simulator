@@ -3,7 +3,8 @@
 module Lab
   # The numbers the lineage-diversity sweep was pre-registered with (`docs/design_record.md`,
   # 2026-09-25, "Lineage diversity after a transition"), so the entry and the reading that
-  # will apply it name one set of values.
+  # applies it name one set of values. The reading follows that entry as clarified before any
+  # run was read (same file and date, "The lineage-diversity reading: five clarifications").
   module LineageDiversityReading
     # Emergence is the record's confirmed `emergence_epoch`, and the run must also read at
     # least this share of orientation-aware replicators at some sample after it: the census
@@ -13,8 +14,8 @@ module Lab
 
     # Per emerged run, the median of DIVERSITY_KEY over the last decile of its samples from
     # `emergence_epoch` on: polyphyletic at POLYPHYLETIC and above, monophyletic below
-    # MONOPHYLETIC, between otherwise. Fewer than MIN_DECILE_SAMPLES samples in that decile
-    # leaves the run unmeasured.
+    # MONOPHYLETIC, between otherwise. Fewer than MIN_DECILE_SAMPLES of that decile's samples
+    # carrying it leaves the run unmeasured.
     DIVERSITY_KEY = "lineage_effective_count"
     POLYPHYLETIC = 2.0
     MONOPHYLETIC = 1.5

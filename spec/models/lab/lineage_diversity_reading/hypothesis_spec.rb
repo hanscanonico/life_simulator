@@ -14,7 +14,7 @@ RSpec.describe Lab::LineageDiversityReading::Hypothesis do
               else :between
               end
     Lab::LineageDiversityReading::RunReading::Reading.new(emerged: true, verdict: verdict, effective_count: effective,
-                                                          decile_size: 10, descriptive: {}, copy_latency_first: nil)
+                                                          decile_readings: 10, descriptive: {}, copy_latency_first: nil)
   end
 
   # One arm, one finished emerged run per effective count; nil is an unmeasured run.

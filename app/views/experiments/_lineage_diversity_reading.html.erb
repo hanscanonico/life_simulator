@@ -22,8 +22,8 @@
     polyphyletic where the median <span class="mono">lineage_effective_count</span> of the last
     decile of its samples since emergence is at least <%= Lab::LineageDiversityReading::POLYPHYLETIC %>,
     monophyletic below <%= Lab::LineageDiversityReading::MONOPHYLETIC %>, between otherwise, and
-    unmeasured with fewer than <%= Lab::LineageDiversityReading::MIN_DECILE_SAMPLES %> samples in that
-    decile. An arm with fewer than <%= Lab::LineageDiversityReading::MIN_ARM_RUNS %> measured emerged
+    unmeasured where fewer than <%= Lab::LineageDiversityReading::MIN_DECILE_SAMPLES %> of that decile's
+    samples carry it. An arm with fewer than <%= Lab::LineageDiversityReading::MIN_ARM_RUNS %> measured emerged
     runs is unread.
   </p>
 

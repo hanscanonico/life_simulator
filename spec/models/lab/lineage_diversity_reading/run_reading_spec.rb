@@ -47,7 +47,7 @@ RSpec.describe Lab::LineageDiversityReading::RunReading do
       let(:samples) { samples_of { |index| values(effective: last_decile?(index) ? 2.0 : 9.0) } }
 
       it "is polyphyletic" do
-        expect(reading).to have_attributes(verdict: :polyphyletic, effective_count: 2.0, decile_size: 10)
+        expect(reading).to have_attributes(verdict: :polyphyletic, effective_count: 2.0, decile_readings: 10)
       end
     end
 
@@ -89,7 +89,7 @@ RSpec.describe Lab::LineageDiversityReading::RunReading do
       let(:samples) { samples_of(91) { values } }
 
       it "is measured" do
-        expect(reading).to have_attributes(decile_size: 10, measured?: true)
+        expect(reading).to have_attributes(decile_readings: 10, measured?: true)
       end
     end
 
@@ -97,12 +97,12 @@ RSpec.describe Lab::LineageDiversityReading::RunReading do
       let(:samples) { samples_of(90) { values } }
 
       it "is unmeasured" do
-        expect(reading).to have_attributes(verdict: :unmeasured, decile_size: 9, effective_count: nil,
+        expect(reading).to have_attributes(verdict: :unmeasured, decile_readings: 9, effective_count: nil,
                                            measured?: false, emerged?: true)
       end
     end
 
-    context "with samples that do not carry the effective count as a number" do
+    context "with a sample outside the last decile that does not carry the effective count" do
       let(:samples) do
         samples_of(101) do |index|
           effective = index >= 91 ? 1.0 : 3.0
@@ -110,8 +110,16 @@ RSpec.describe Lab::LineageDiversityReading::RunReading do
         end
       end
 
-      it "skips them before cutting the decile" do
-        expect(reading).to have_attributes(decile_size: 10, verdict: :monophyletic)
+      it "counts it among the n the deciles are cut from" do
+        expect(reading).to have_attributes(decile_readings: 11, effective_count: 1.0, verdict: :monophyletic)
+      end
+    end
+
+    context "with a last decile of ten, one of whose samples does not carry the effective count as a number" do
+      let(:samples) { samples_of(91) { |index| values(effective: index == 85 ? "3.0" : 3.0) } }
+
+      it "drops it from the decile and leaves the run unmeasured" do
+        expect(reading).to have_attributes(decile_readings: 9, verdict: :unmeasured, measured?: false)
       end
     end
   end
