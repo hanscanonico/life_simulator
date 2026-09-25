@@ -35,6 +35,15 @@ RSpec.describe Runs::PruneSnapshotsService do
     end
   end
 
+  it "keeps every reading taken from a world it deletes" do
+    run = snapshotted((100..1_000).step(100).to_a)
+    create(:snapshot_reading, run: run, epoch: 205, source_epoch: 200)
+
+    described_class.call(run: run, keep_every: 300)
+
+    expect(run.snapshot_readings.pluck(:source_epoch)).to eq([200])
+  end
+
   it "keeps the single snapshot of a run that only posted one" do
     run = snapshotted([100])
 

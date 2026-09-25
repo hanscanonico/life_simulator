@@ -17,6 +17,7 @@ class Run < ApplicationRecord
   has_many :samples, dependent: :destroy
   has_many :snapshots, dependent: :destroy
   has_many :rescores, dependent: :destroy
+  has_many :snapshot_readings, dependent: :destroy
 
   validates :seed, numericality: { only_integer: true }
   validates :epochs, numericality: { only_integer: true, greater_than: 0 }
@@ -78,6 +79,14 @@ class Run < ApplicationRecord
   def emerged? = emergence_epoch.present?
 
   def claimed_by?(other_runner_id) = runner_id.present? && runner_id == other_runner_id
+
+  # One value of an instrument's readings of the run's stored worlds, `[[epoch, value], ...]`
+  # in epoch order; a reading that lacks the key reads nil.
+  def readings_series(instrument, key)
+    value = Arel::Nodes::InfixOperation.new("->", SnapshotReading.arel_table[:values],
+                                            Arel::Nodes.build_quoted(key.to_s))
+    snapshot_readings.where(instrument: instrument).order(:epoch).pluck(:epoch, value)
+  end
 
   # The transition is the FIRST qualifying epoch (DESIGN.md §2), so a resumed runner
   # reporting a later one — or a retried batch — never replaces an epoch already recorded.

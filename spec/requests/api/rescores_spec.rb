@@ -31,7 +31,7 @@ RSpec.describe "Api::Rescores", type: :request do
       expect(response.parsed_body).to eq(
         "slug" => "radius-sweep",
         "runs" => [{ "id" => run.id, "seed" => 7, "params" => run.params, "status" => "finished",
-                     "transition_epoch" => 400, "epochs" => [100, 300] }]
+                     "transition_epoch" => 400, "epochs" => [100, 300], "read_epochs" => {} }]
       )
     end
 
