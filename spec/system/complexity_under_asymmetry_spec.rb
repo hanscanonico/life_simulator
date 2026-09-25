@@ -27,6 +27,7 @@ RSpec.describe "The complexity-under-asymmetry finding", type: :system do
     )
     expect(page).to have_text("beside controls that held replicators it kept replication from arising at all")
     expect(page).to have_text("not refuted by a plateau")
+    expect(page).to have_no_text("measured runs of the host arms keep rising")
   end
 
   it "tables how often life emerged, the barren arm against its control" do
