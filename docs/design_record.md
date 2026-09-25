@@ -1492,3 +1492,35 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   favour the treatment, favour the continuation or tie — and a sign test that falls to
   p ≥ 0.05 once the pairs of some one or two parents are left out is stated as carried by
   those parents.
+- 2026-09-25 — **The from-emerged reading: six clarifications made before any child was
+  read.** The entry above left six places a reading could go two ways. They were closed on
+  the day the sweep was seeded, while every one of its children was still running and before
+  any reading of them, interim or otherwise, had been printed or consulted. The rules now
+  read, in `Experiments::FromEmergedReadingService` and `Lab::DescendantReading`:
+  1. **Deciles.** A child's first and last deciles are the first and last `ceil(n / 10)` of
+     all `n` of its own samples in epoch order, as sweeps 9 and 10 cut them over a run's
+     samples; the complexity rule then reads, inside each decile, the samples whose
+     `dominant_self_replicates` is true. The samples are not filtered before the deciles are
+     cut: the rule compares the dominant replicator early against late, and a filtered
+     series would take a child whose replicator lapsed at its "last decile" from mid-span,
+     while "fewer than 10 samples in either decile have a self-replicating dominant tape"
+     would reduce to a count of the whole series. A median is the lower middle
+     (`Findings::Median`), and a value the engine did not report as a number drops out of
+     its decile.
+  2. **No measured pair.** A treated arm with no (parent, seed) pair measured on both sides
+     reads **no measured pairs**: neither held, not shown nor refuted. An arm with measured
+     pairs but none discordant rises no more often than the continuation and is refuted.
+  3. **Relapsing more often** is a strictly larger share of relapsed children among the
+     children read for persistence, the treated arm's against the continuation's, untested.
+     In the final reading the arms are the same size and this is a count; in an interim one
+     it compares only the children read so far.
+  4. **Per-parent agreement** counts ties among the pairs measured on both sides; a pair not
+     measured on both sides is counted in a column of its own, not as a tie.
+  5. **Leaving parents out** is read on a test that holds (p < 0.05) only. Every set of one
+     or two parents whose pairs, left out, bring p to 0.05 or above — or leave no discordant
+     pair — is listed as carrying the test, except a set containing a smaller one already
+     listed.
+  6. **Finished** means finished: a failed child keeps the reading interim until it is
+     re-run and finishes, since its samples stop short of its budget. The parents' pool is
+     settled when every candidate is terminal and every finished one that kept its world
+     has been read.

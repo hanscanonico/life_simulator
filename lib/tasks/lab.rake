@@ -250,6 +250,17 @@ namespace :lab do
     print Experiments::CostReportService.call(experiment: experiment).to_text
   end
 
+  desc "Read the from-emerged sweep as pre-registered: every child, every treatment, every hypothesis " \
+       "(FORMAT=csv); labelled interim until every child of every qualifying parent is terminal"
+  task from_emerged_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("from_emerged"))
+    raise "The from-emerged sweep is not seeded." if experiment.nil?
+
+    report = Experiments::FromEmergedReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"
   task prune_snapshots: :environment do
     deleted = Run.terminal.find_each.sum { |run| Runs::PruneSnapshotsService.call(run: run) }
