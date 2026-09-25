@@ -12,11 +12,16 @@ module Experiments
       param_grid.filter_map { |name, values| new(name: name, values: values) if values.is_a?(Array) && values.size > 1 }
     end
 
-    def param_keys = paired? ? values.first.keys : [name]
+    def param_keys = paired? ? values.flat_map(&:keys).uniq : [name]
 
     def paired? = values.first.is_a?(Hash)
 
-    def value_of(run_params) = values.find { |value| matches?(run_params, value) }
+    # A descendant sweep's bundles merge over a parent's params, so the empty one — the
+    # continuation — matches every run and a treated run matches it too: the most specific
+    # bundle a run matches is its arm.
+    def value_of(run_params)
+      values.select { |value| matches?(run_params, value) }.max_by { |value| value.is_a?(Hash) ? value.size : 0 }
+    end
 
     def matches?(run_params, value)
       return value.all? { |key, paired| run_params[key] == paired } if value.is_a?(Hash)
@@ -35,7 +40,7 @@ module Experiments
 
     def label_of(value)
       return "well-mixed" if well_mixed?(value)
-      return value.values.map { |paired| Charts.format_value(paired.to_f) }.uniq.join("×") if value.is_a?(Hash)
+      return hash_label(value) if value.is_a?(Hash)
 
       value.is_a?(Numeric) ? Charts.format_value(value.to_f) : value.to_s
     end
@@ -84,6 +89,14 @@ module Experiments
     end
 
     def plain_values = values.reject { |value| well_mixed?(value) }
+
+    def hash_label(value)
+      return "continuation" if value.empty?
+
+      value.values.map do |paired|
+        paired.is_a?(Numeric) ? Charts.format_value(paired.to_f) : paired.to_s
+      end.uniq.join("×")
+    end
 
     def own_value(run_params)
       return nil if paired?

@@ -1348,3 +1348,147 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - the census's `top_k` = 16 window, whose tapes cover 2–4% of the cells of these worlds,
     so even an orientation-aware top-16 census would count a few percent of a world of
     replicators. The companions draw from the whole world instead.
+- 2026-09-25 — **Runs that start from an emerged world: the from-emerged sweep,
+  pre-registered.** Option 3 of the entry of 2026-09-24, chosen by the next-step entry
+  above ("The next step after sweeps 9 and 10"), which named what this one must lock. It
+  is §1.3 item 11, experiment `from-emerged` (sweep key `from_emerged` in `Lab::SWEEPS`).
+  One finding changed the question after the next-step entry was written, and the entry
+  starts from it.
+
+  **What an emerged world is made of** (#245, a pilot on the nine worlds the previous
+  entry lists, all numbers pilot). They are not relapsed monocultures. In 74–99% of their
+  cells the tape is a working copier that writes a byte-exact **reversed** copy of itself
+  into its partner on nearly every interaction; its reverse runs the same program, so the
+  population is X and reverse(X). The locked replicator census and `copy_rate` compare in
+  the same orientation only, so they read about zero in worlds that are about 95%
+  replicators, and copying outpaces mutation 20 to 45 times. So the next-step entry's framing
+  — rung 1 first, under what continuation does the census hold, with a lowered mutation rate
+  as an error-threshold arm — is contradicted: the colonies held, the instrument did not see
+  them. Descendant runs are therefore for **rung 4**: does an existing replicator keep
+  complicating under a treatment? They also re-test rung 1's persistence, with an instrument
+  that sees the replicators: the orientation-aware census (#247), sampled live as
+  `replicator_share`, `replicator_share_rotated`, `dominant_self_replicates` and
+  `reverse_copy_rate`, and read from stored worlds into `snapshot_readings` under instrument
+  `oriented_census/1` (#246). The lowered-mutation arm is dropped: its premise was the error
+  threshold.
+
+  **Identity.** A descendant run is determined by **(its parent run's stored world at
+  `parent_epoch`, its params, its seed)**, and nothing else; this amends DESIGN §1.1's
+  "(params, seed)" for descendants only. Its epoch count continues its parent's: it starts
+  at `parent_epoch` and `epochs` is the absolute epoch it stops at, so its own span is
+  `epochs − parent_epoch` and its own samples are those at epochs above `parent_epoch`. A
+  child with its parent's params and seed is the exact continuation of the parent, byte for
+  byte (the engine's `World::descend` test, #243). Inside the experiment a child is
+  identified by (canonical params, seed, parent run, parent epoch), so re-seeding the sweep
+  never duplicates a child.
+
+  **The parent rule.** A parent is a finished run of experiment `host-parasite` in one of
+  sweep 9's two economy-off controls, `{energy_influx 0, steal_amount 0, max_tape_len 128}`
+  and the same at `max_tape_len 256`, seeds 1–270 as the next-step entry extended them. The
+  world a child starts from is the parent's **last stored world**, its terminal snapshot at
+  `epochs`: every finished run stores it and thinning never removes it, so the rule names
+  the same world for every parent and needs no choice of a post-crossing epoch. A parent
+  **qualifies** when the `snapshot_readings` row under `oriented_census/1` at that epoch reads
+  `replicator_share ≥ 0.5` — at least half of the world's cells are orientation-aware
+  replicators. Emergence as this record defines it (census- or copy-confirmed, 2026-09-15)
+  is not the gate, because that census is blind to the reverse copiers that fill these
+  worlds; a child still carries its parent's emergence epoch where it has one, which is
+  what `colony_age_at` counts from. A parent that has no such reading yet does not qualify
+  **yet**: the builder skips it and says so, by reason (not finished, no stored world at the
+  last epoch, no reading of the last world, share below the minimum), and re-seeding once
+  the readings pass reaches it adds its children. What may differ from the parent is the
+  **dynamics** only; what may not is the world's shape, `Lab::CanonicalParams::
+  STRUCTURAL_KEYS` (`substrate`, `width`, `height`, `tape_len`, `max_tape_len`, `ops`),
+  which Rails and the engine both refuse to change. **Stock minting** is a treatment
+  choice, named as one: the parents hold no energy, so in the priced arms every cell starts
+  full at the child's `energy_stock_cap`, as a fresh run does, and the economy is switched
+  on over a world that has never been priced.
+
+  **The sweep.** Every qualifying parent × four treatments × three seeds, each treatment a
+  bundle merged over the parent's params:
+  1. `{}` — the **continuation**, the parent's own dynamics: the control;
+  2. `{energy_influx 2^11, steal_amount 2^10, energy_stock_cap 4·2^13, steal_loss 0.5}` —
+     sweep 9's one arm that read keeps rising;
+  3. `{energy_influx 2^13, steal_amount 2^10, energy_stock_cap 4·2^13, steal_loss 0.5}` —
+     the rich economy;
+  4. `{interaction host}` — sweep 10's asymmetry.
+
+  Seeds 1001, 1002 and 1003, the same under every treatment and none a parent's own, so the
+  design is **paired**: each (parent, seed) is observed under all four, and a treated child
+  is read against the continuation child of the same (parent, seed). Budget 20 000 epochs
+  past the parent, so a child of a 20 000-epoch parent runs 20 000 → 40 000. Priority 50,
+  ahead of sweep 9's extension (seed-major, 0 − seed). That is **12 children per qualifying
+  parent**. The expected pool today is the nine emerged controls the next-step entry lists.
+  #247 read four of their terminal worlds with the detector the gate reads, at epoch
+  20 000: `replicator_share` 0.96 for 1007, 0.91 for 1087, 0.95 for 967 and 0.71 for 991,
+  each with a self-replicating dominant tape. 1087 passes aligned although its copy
+  reflects about an axis one byte off centre, because the offset cancels over the
+  detector's five-run chain. The other five are expected to qualify but have no reading
+  yet, and the pilot's single-generation measures are not the shares the gate reads; any
+  that reads below 0.5 is skipped and reported, not re-gated. The extension to seeds
+  91–270 adds about 18 more emerged worlds. So about 108 children now and about 320 once the
+  extension is terminal. **Cost**, from sweep 9's measured `compute_seconds` at 12 runs at a
+  time (the next-step entry's figures): about 21 minutes a 20 000-epoch run at cap 128 and 30
+  at cap 256 for the economy off, 13 for the 2 048-influx arm. An emerged world is dearer
+  than those means, which average over worlds that mostly never emerged: its copier loops
+  never exit and spend the whole step budget of every interaction. Taking 30 minutes a child
+  as the planning figure, 108 children are about 54 run-hours, about 4½ hours of the
+  mini-pc, and 320 about 13 hours; the first finished children's `compute_seconds` replace
+  the estimate.
+
+  **The readings, per child, over its own samples** (epochs above `parent_epoch`; the
+  numbers live in `Lab::DescendantReading`, which the reading reads):
+  - **Persistence (rung 1).** A child **held** its replicators when the median
+    `replicator_share` of its last decile of samples is at least **0.5** and the share never
+    sat below **0.1** for **3** consecutive samples; it **relapsed** otherwise. The
+    2026-09-11 rung-1 hypothesis, **the hazard of relapse is constant per epoch**, is read on
+    the continuation children against `colony_age_at`, the age counted from the parent's
+    emergence; a child whose parent has no emergence epoch has no colony age and is left out
+    of it. A relapsed child's **relapse epoch** is the first sample of its first run of 3
+    samples below 0.1; a child that relapsed on its last decile alone is listed without
+    one. This reading is descriptive: each relapse is listed with its colony age beside the
+    colony ages every continuation child was watched over, and no test of the hazard's
+    shape is pre-registered here, since the pilot expects few relapses or none. If no
+    continuation child relapses, the record says the colonies persisted over the budget and
+    that the constant-hazard hypothesis had no relapse to be read on.
+  - **Complexity (rung 4).** `dominant_instruction_count` over the samples whose
+    `dominant_self_replicates` is true. A child **rises** when its last-decile median is at
+    least **1.2 ×** its first-decile median, **plateaus** when the last-decile median is
+    within **±10%** of the first, and reads **mixed** otherwise. A child is **unmeasured**
+    when fewer than **10** samples in either decile have a self-replicating dominant tape.
+    The conserved-core clause of the sweeps 9 and 10 rule (2026-09-21) is **dropped** for
+    this sweep: `conserved_core_bytes` compares aligned bytes and reads 0 in a population of
+    X and reverse(X) (#245), so in these worlds it measures orientation, not conservation.
+
+  **Hypotheses and what refutes them.**
+  - **H-economy.** A priced arm's children rise more often than their paired continuation
+    children. Read with a one-sided sign test over the (parent, seed) pairs where the two
+    children's rise verdicts differ, at p < 0.05, only on pairs where both children are
+    measured. Refuted if the priced arm rises no more often than the continuation; an arm
+    that rises more often short of p < 0.05 reads **not shown**, neither held nor refuted.
+    Each priced arm (2 and 3 above) is read on its own.
+  - **H-host.** The same for the host arm against the continuation.
+  - **H-persistence.** The continuation children hold. Refuted by any continuation child
+    that relapses; how many did is reported.
+  - A treated arm whose children relapse more often than the continuation's is reported as
+    such: that is the treatment killing replicators, not a complexity reading, and its
+    complexity verdicts are printed but not read as H-economy or H-host.
+  - Secondary and descriptive only: `steal_rate` in the priced arms, the `replicator_share`
+    trajectories, `distinct_tapes`.
+
+  **When it is read.** When sweep 9's extension is terminal, the readings pass has read its
+  terminal worlds, and every child of every parent that then qualifies has finished. A
+  reading printed before that is labelled **interim**. The children need a runner that
+  samples the orientation-aware keys, and the parents need the reading of their terminal
+  worlds, so the sweep is seeded only once #247 is deployed and the readings pass has read
+  `host-parasite`'s latest worlds; a child that sampled none of those keys is unmeasured
+  by construction.
+
+  **What is not claimed.** This asks whether an **existing** replicator keeps complicating
+  under a treatment. It is not spontaneous emergence, and says nothing about whether the
+  treatment lets a replicator arise. Every child of one parent shares that parent's world,
+  so the children are not independent: the reading reports, beside the pooled sign tests,
+  per-parent agreement — for each parent and each treated arm, how many of its three pairs
+  favour the treatment, favour the continuation or tie — and a sign test that falls to
+  p ≥ 0.05 once the pairs of some one or two parents are left out is stated as carried by
+  those parents.

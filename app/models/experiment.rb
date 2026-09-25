@@ -14,4 +14,8 @@ class Experiment < ApplicationRecord
   validates :priority, numericality: { only_integer: true }
 
   def to_param = slug
+
+  # A sweep whose runs start from other runs' stored worlds rather than a random fill
+  # (Experiments::DescendantSweepBuilderService).
+  def descendant_sweep? = parents.present?
 end

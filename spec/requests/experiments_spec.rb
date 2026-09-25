@@ -478,6 +478,29 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with a descendant sweep seeded from an emerged world" do
+      let(:experiment) do
+        create(:experiment, name: "From an emerged world", slug: "from-emerged",
+                            **Lab::SWEEPS.fetch("from_emerged").slice(:parents, :param_grid, :seeds, :epochs, :priority))
+      end
+
+      before do
+        source = create(:experiment, slug: "host-parasite")
+        params = Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128)
+        parent = create(:run, experiment: source, params: params, status: "finished", epochs: 1_000)
+        create(:snapshot, run: parent, epoch: 1_000)
+        create(:snapshot_reading, run: parent, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.9 })
+        Experiments::SweepBuilderService.call(experiment)
+      end
+
+      it "lists every child under its own treatment" do
+        get experiment_path(experiment)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.squish).to include("continuation", "host")
+      end
+    end
+
     context "with a corpus pass over the sweep" do
       let(:run) do
         create(:run, experiment: experiment, seed: 7, status: "finished",

@@ -364,6 +364,36 @@ RSpec.describe "lab:sweep" do
     end
   end
 
+  describe "from_emerged" do
+    let(:source) { create(:experiment, slug: "host-parasite") }
+    let!(:parent) do
+      params = Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128,
+                                              "tape_len" => 64)
+      create(:run, experiment: source, params: params, status: "finished", epochs: 1_000).tap do |run|
+        create(:snapshot, run: run, epoch: run.epochs)
+        create(:snapshot_reading, run: run, epoch: run.epochs, source_epoch: run.epochs,
+                                  values: { "replicator_share" => 0.8 })
+      end
+    end
+
+    it "starts four treatments times three seeds from each qualifying parent" do
+      build_sweep("from_emerged")
+
+      experiment = Experiment.find_by(slug: "from-emerged")
+      expect(experiment.runs_count).to eq(12)
+      expect(experiment.runs.distinct.pluck(:parent_run_id, :parent_epoch)).to eq([[parent.id, 1_000]])
+    end
+
+    it "prints how many parents qualified and which were skipped" do
+      expect { build_sweep("from_emerged", quiet: false) }
+        .to output(/From an emerged world: 1 qualifying parents, 12 children created/).to_stdout
+    end
+
+    it "leaves the founding sweep it draws from alone" do
+      expect { build_sweep("from_emerged") }.not_to(change { source.runs.pluck(:id, :updated_at) })
+    end
+  end
+
   describe "bff_control" do
     it "builds the two mutation arms times three seeds" do
       build_sweep("bff_control")
@@ -451,12 +481,12 @@ RSpec.describe "lab:sweep" do
     Experiments::SweepBuilderService.call(experiment)
   end
 
-  def build_sweep(name)
+  def build_sweep(name, quiet: true)
     Rails.application.load_tasks if Rake::Task.tasks.empty?
     task = Rake::Task["lab:sweep"]
     task.reenable
     original = $stdout
-    $stdout = StringIO.new
+    $stdout = StringIO.new if quiet
     task.invoke(name)
   ensure
     $stdout = original
