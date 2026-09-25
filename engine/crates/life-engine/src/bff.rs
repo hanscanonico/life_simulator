@@ -208,7 +208,33 @@ pub fn run_bounded(
 /// and the world settles what they move. Switched off — every run at the defaults — the
 /// byte is not in the table the loop reads, so it is the no-op it has always been and the
 /// identical instruction stream runs.
+///
+/// A run whose whole state recurs skips the whole periods of its cycle (`Recurrence`), and
+/// a loop that goes round the same way lap after lap is replayed from its acting steps
+/// alone (`Laps`): either way the run ends with the buffer, halt, step count and steals a
+/// run of every step ends with.
 pub fn run_stealing(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> Outcome {
+    #[cfg(test)]
+    if !SKIPPING.get() {
+        return execute::<false>(tape, bounds, stealing);
+    }
+    execute::<true>(tape, bounds, stealing)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Off, `run_stealing` executes every step: the reference the equivalence tests hold
+    /// the skips to, down to whole worlds stepped through `World::step`.
+    pub(crate) static SKIPPING: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+    /// How many steps each skip has added without running them, so a test can tell an
+    /// equivalence that held because the skip was exact from one where it never fired.
+    pub(crate) static RECURRED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    pub(crate) static LAPPED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// The interpreter loop. `SKIP` compiles both skips in or out; out, it is the plain loop
+/// that executes every step, which the tests keep as the reference.
+fn execute<const SKIP: bool>(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> Outcome {
     let Bounds {
         max_steps,
         enabled,
@@ -237,6 +263,12 @@ pub fn run_stealing(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> O
     // comes first. Held rather than compared each step: only a head claiming a byte can
     // move it, so the inner loop pays the one comparison it always paid.
     let mut bound = len.min(code_len);
+    let mut recurrence = Recurrence::new();
+    let mut laps = Laps::default();
+    // Whether any byte of the buffer, or its length, has changed since the last jump back,
+    // and where that jump landed.
+    let mut changed = true;
+    let mut last_target = usize::MAX;
 
     while ip < bound {
         if steps == max_steps {
@@ -252,18 +284,36 @@ pub fn run_stealing(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> O
             byte if !enabled[byte as usize] => {}
             HEAD0_LEFT => head0 = (head0 + len - 1) % len,
             HEAD0_RIGHT => {
+                let before = len;
                 head0 = step_right(head0, &mut len, cap, tape);
+                changed |= len != before;
                 bound = len.min(code_len);
             }
             HEAD1_LEFT => head1 = (head1 + len - 1) % len,
             HEAD1_RIGHT => {
+                let before = len;
                 head1 = step_right(head1, &mut len, cap, tape);
+                changed |= len != before;
                 bound = len.min(code_len);
             }
-            INC => tape[head0] = tape[head0].wrapping_add(1),
-            DEC => tape[head0] = tape[head0].wrapping_sub(1),
-            COPY_TO_HEAD1 => tape[head1] = tape[head0],
-            COPY_TO_HEAD0 => tape[head0] = tape[head1],
+            INC => {
+                tape[head0] = tape[head0].wrapping_add(1);
+                changed = true;
+            }
+            DEC => {
+                tape[head0] = tape[head0].wrapping_sub(1);
+                changed = true;
+            }
+            COPY_TO_HEAD1 => {
+                let byte = tape[head0];
+                changed |= tape[head1] != byte;
+                tape[head1] = byte;
+            }
+            COPY_TO_HEAD0 => {
+                let byte = tape[head1];
+                changed |= tape[head0] != byte;
+                tape[head0] = byte;
+            }
             STEAL => steals[usize::from(ip >= split)] += 1,
             LOOP_START if tape[head0] == 0 => match match_forward(tape, ip) {
                 Some(target) => ip = target,
@@ -276,7 +326,38 @@ pub fn run_stealing(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> O
                 }
             },
             LOOP_END if tape[head0] != 0 => match match_backward(tape, ip) {
-                Some(target) => ip = target,
+                Some(target) => {
+                    ip = target;
+                    if SKIP {
+                        let idle = !std::mem::take(&mut changed);
+                        let mut machine = Machine {
+                            ip,
+                            head0,
+                            head1,
+                            steps,
+                            steals,
+                        };
+                        recurrence.observe(&mut machine, idle, max_steps);
+                        if ip == last_target && len == cap {
+                            let frame = Frame {
+                                enabled: &enabled,
+                                len,
+                                bound,
+                                split,
+                                max_steps,
+                            };
+                            changed = laps.run(tape, &frame, &mut machine);
+                        }
+                        last_target = ip;
+                        Machine {
+                            ip,
+                            head0,
+                            head1,
+                            steps,
+                            steals,
+                        } = machine;
+                    }
+                }
                 None => {
                     return Outcome {
                         halt: Halt::UnmatchedBracket,
@@ -297,6 +378,348 @@ pub fn run_stealing(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> O
         steals,
     }
 }
+
+/// An execution's state besides its buffer: where the pointer and both heads stand, and
+/// the steps and steals it has taken.
+#[derive(Debug, Clone, Copy)]
+struct Machine {
+    ip: usize,
+    head0: usize,
+    head1: usize,
+    steps: u32,
+    steals: [u32; 2],
+}
+
+impl Machine {
+    fn place(&self) -> (usize, usize, usize) {
+        (self.ip, self.head0, self.head1)
+    }
+
+    /// Adds `times` repeats of the steps and steals one stretch from `earlier` to here
+    /// took, and says how many steps that was.
+    fn repeat(&mut self, earlier: &Machine, times: u32) -> u32 {
+        let added = times * (self.steps - earlier.steps);
+        self.steps += added;
+        for half in 0..2 {
+            self.steals[half] += times * (self.steals[half] - earlier.steals[half]);
+        }
+        added
+    }
+}
+
+/// What one execution holds fixed once its buffer is at its cap: the table of enabled
+/// ops, the buffer's length and the pointer's bound, where the pair was joined, and the
+/// budget.
+struct Frame<'a> {
+    enabled: &'a [bool; 256],
+    len: usize,
+    bound: usize,
+    split: usize,
+    max_steps: u32,
+}
+
+/// Recognises an execution whose whole state has recurred: a loop that has stopped
+/// changing its buffer and brought its heads back to where they stood.
+///
+/// The state is the buffer, the pointer and the two heads; nothing else in the loop moves
+/// but the steps and steals it counts. It is read at every jump back, because a pointer
+/// that never jumps back only ever moves forward and cannot come round again. Two jumps
+/// back with the same pointer and heads, and no byte of the buffer nor its length changed
+/// in between, are the same state, and everything after the later one repeats what came
+/// after the earlier one, period for period. So the run may add whole periods of steps at
+/// once — and each period's steals, the same every time round — and step out the
+/// remainder, and it ends exactly where a run of every step ends.
+///
+/// Two earlier states are kept to compare against, each an O(1) comparison per jump: the
+/// first jump back after the buffer last changed, which catches a copier the moment its
+/// heads have gone once round, since their stride makes every such cycle close on itself;
+/// and a probe moved to the latest jump at every power of two (Brent's cycle finding), which
+/// catches a cycle entered only after a run-in, once the power reaches its length.
+#[derive(Debug)]
+struct Recurrence {
+    anchor: Option<Machine>,
+    probe: Option<Machine>,
+    power: u64,
+    lap: u64,
+    spent: bool,
+}
+
+impl Recurrence {
+    fn new() -> Self {
+        Self {
+            anchor: None,
+            probe: None,
+            power: 1,
+            lap: 0,
+            spent: false,
+        }
+    }
+
+    /// Reads the state at one jump back, `idle` saying whether the buffer held still since
+    /// the one before, and once the state has recurred adds every whole period the budget
+    /// still holds. Skips once: what is left afterwards is shorter than a period.
+    fn observe(&mut self, at: &mut Machine, idle: bool, max_steps: u32) {
+        if self.spent {
+            return;
+        }
+        if !idle {
+            self.anchor = Some(*at);
+            self.probe = Some(*at);
+            self.power = 1;
+            self.lap = 0;
+            return;
+        }
+        for earlier in [self.anchor, self.probe].into_iter().flatten() {
+            if earlier.place() == at.place() {
+                self.spent = true;
+                let periods = (max_steps - at.steps) / (at.steps - earlier.steps);
+                tally(Skip::Recurred, at.repeat(&earlier, periods));
+                return;
+            }
+        }
+        self.lap += 1;
+        if self.lap == self.power {
+            self.probe = Some(*at);
+            self.power *= 2;
+            self.lap = 0;
+        }
+    }
+}
+
+/// What one step of a lap did that depended on the buffer or changed it: a bracket that
+/// found the byte under head0 zero or not, a copy between the heads, or an increment or
+/// decrement under head0. Head moves, no-ops and steals are not here: they only move the
+/// heads and count, which the offsets and counts of the next such step already hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Act {
+    Zero,
+    NonZero,
+    ToHead1,
+    ToHead0,
+    Inc,
+    Dec,
+}
+
+/// One acting step of a lap, and where the lap stood as it took it: the pointer, the
+/// steps and steals taken since the lap began, and each head's offset from where it began.
+#[derive(Debug, Clone, Copy)]
+struct Beat {
+    act: Act,
+    ip: usize,
+    steps: u32,
+    steals: [u32; 2],
+    head0: usize,
+    head1: usize,
+}
+
+/// The laps no whole cycle covers. An emerged world's copier loop is tens of bytes of
+/// code, so its heads take more steps to come round than any budget allows and its state
+/// never recurs; yet every lap does the same few things — a copy, a few head moves, a
+/// bracket — a byte further on, over tens of no-op bytes.
+///
+/// A loop that has closed one lap on a bracket and comes back to it runs its next lap
+/// here, faithfully and one step at a time, noting each acting step (`Beat`) with the
+/// heads as offsets from where the lap began. The pointer then stands where it began and
+/// the heads have moved by a fixed shift. The next lap, from any heads, is those beats
+/// again at the shifted heads, in order: as long as every bracket reads the way it did,
+/// the same code sends the pointer the same way, through the same no-ops, steals and head
+/// moves. So each beat's bracket is tested and each write made, in order, on the buffer
+/// itself, and the rest of the lap is counted rather than run.
+///
+/// Two things stop a lap, just before the beat concerned, where the interpreter takes up
+/// the run itself: a bracket reading the other way, and a write that would change a byte of
+/// the code the lap runs through — the bytes from the lowest its pointer reached to the
+/// furthest, which also hold every bracket the lap matched. A lap that changed its own code as it was
+/// noted is not repeated at all. A lap is only begun whole within the budget, and only on a
+/// buffer at its cap, where a head stepping off the end wraps as every other step does
+/// rather than claiming a byte.
+#[derive(Default)]
+struct Laps {
+    beats: Vec<Beat>,
+}
+
+impl Laps {
+    /// More acting steps than this and a lap is not worth noting; it runs step by step.
+    const MOST_BEATS: usize = 64;
+
+    /// Runs the laps from `at`, the pointer on the bracket the last one closed on, and
+    /// says whether they changed the buffer.
+    fn run(&mut self, tape: &mut [u8], frame: &Frame, at: &mut Machine) -> bool {
+        let begun = *at;
+        let mut changed = false;
+        let Some(code) = self.note(tape, frame, at, &mut changed) else {
+            return changed;
+        };
+        let len = frame.len;
+        let shift0 = (at.head0 + len - begun.head0) % len;
+        let shift1 = (at.head1 + len - begun.head1) % len;
+        let lap_steps = at.steps - begun.steps;
+        let lap_steals = [
+            at.steals[0] - begun.steals[0],
+            at.steals[1] - begun.steals[1],
+        ];
+        let mut repeated = 0u32;
+        while frame.max_steps - at.steps >= lap_steps {
+            let from = *at;
+            for beat in &self.beats {
+                let head0 = (from.head0 + beat.head0) % len;
+                let head1 = (from.head1 + beat.head1) % len;
+                let write = match beat.act {
+                    Act::Zero | Act::NonZero => None,
+                    Act::ToHead1 => Some((head1, tape[head0])),
+                    Act::ToHead0 => Some((head0, tape[head1])),
+                    Act::Inc => Some((head0, tape[head0].wrapping_add(1))),
+                    Act::Dec => Some((head0, tape[head0].wrapping_sub(1))),
+                };
+                let holds = match write {
+                    None => (tape[head0] == 0) == (beat.act == Act::Zero),
+                    Some((to, byte)) => tape[to] == byte || !code.contains(&to),
+                };
+                if holds {
+                    if let Some((to, byte)) = write {
+                        changed |= tape[to] != byte;
+                        tape[to] = byte;
+                    }
+                    continue;
+                }
+                *at = Machine {
+                    ip: beat.ip - 1,
+                    head0,
+                    head1,
+                    steps: from.steps + beat.steps,
+                    steals: [
+                        from.steals[0] + beat.steals[0],
+                        from.steals[1] + beat.steals[1],
+                    ],
+                };
+                tally(Skip::Lapped, repeated + beat.steps);
+                return changed;
+            }
+            at.head0 = (from.head0 + shift0) % len;
+            at.head1 = (from.head1 + shift1) % len;
+            at.steps += lap_steps;
+            at.steals = [
+                from.steals[0] + lap_steals[0],
+                from.steals[1] + lap_steals[1],
+            ];
+            repeated += lap_steps;
+        }
+        tally(Skip::Lapped, repeated);
+        changed
+    }
+
+    /// Runs one lap from `at`, the pointer on the bracket it began from, noting its beats.
+    /// The code it ran through once it closes back on that bracket, without having changed
+    /// any of it; `None` where it stopped short, before the step the interpreter must take
+    /// itself, with `at` where it stopped, or where it rewrote its own code.
+    fn note(
+        &mut self,
+        tape: &mut [u8],
+        frame: &Frame,
+        at: &mut Machine,
+        changed: &mut bool,
+    ) -> Option<std::ops::RangeInclusive<usize>> {
+        let Frame {
+            enabled,
+            len,
+            bound,
+            split,
+            max_steps,
+        } = *frame;
+        let begun = *at;
+        let (mut lowest, mut furthest) = (begun.ip, begun.ip);
+        let mut rewrote: Vec<usize> = Vec::new();
+        self.beats.clear();
+        loop {
+            let ip = at.ip + 1;
+            if ip >= bound || at.steps == max_steps || self.beats.len() == Self::MOST_BEATS {
+                return None;
+            }
+            let beat = |act| Beat {
+                act,
+                ip,
+                steps: at.steps - begun.steps,
+                steals: [
+                    at.steals[0] - begun.steals[0],
+                    at.steals[1] - begun.steals[1],
+                ],
+                head0: (at.head0 + len - begun.head0) % len,
+                head1: (at.head1 + len - begun.head1) % len,
+            };
+            let mut next = ip;
+            let mut write = None;
+            match tape[ip] {
+                byte if !enabled[byte as usize] => {}
+                HEAD0_LEFT => at.head0 = (at.head0 + len - 1) % len,
+                HEAD0_RIGHT => at.head0 = (at.head0 + 1) % len,
+                HEAD1_LEFT => at.head1 = (at.head1 + len - 1) % len,
+                HEAD1_RIGHT => at.head1 = (at.head1 + 1) % len,
+                INC => {
+                    self.beats.push(beat(Act::Inc));
+                    write = Some((at.head0, tape[at.head0].wrapping_add(1)));
+                }
+                DEC => {
+                    self.beats.push(beat(Act::Dec));
+                    write = Some((at.head0, tape[at.head0].wrapping_sub(1)));
+                }
+                COPY_TO_HEAD1 => {
+                    self.beats.push(beat(Act::ToHead1));
+                    write = Some((at.head1, tape[at.head0]));
+                }
+                COPY_TO_HEAD0 => {
+                    self.beats.push(beat(Act::ToHead0));
+                    write = Some((at.head0, tape[at.head1]));
+                }
+                STEAL => at.steals[usize::from(ip >= split)] += 1,
+                LOOP_START if tape[at.head0] == 0 => {
+                    self.beats.push(beat(Act::Zero));
+                    next = match_forward(tape, ip)?;
+                }
+                LOOP_START => self.beats.push(beat(Act::NonZero)),
+                LOOP_END if tape[at.head0] != 0 => {
+                    self.beats.push(beat(Act::NonZero));
+                    next = match_backward(tape, ip)?;
+                }
+                LOOP_END => self.beats.push(beat(Act::Zero)),
+                _ => {}
+            }
+            if let Some((to, byte)) = write {
+                if tape[to] != byte {
+                    *changed = true;
+                    rewrote.push(to);
+                }
+                tape[to] = byte;
+            }
+            at.steps += 1;
+            at.ip = next;
+            lowest = lowest.min(next);
+            furthest = furthest.max(ip).max(next);
+            if next == begun.ip {
+                let code = lowest..=furthest;
+                return (!rewrote.iter().any(|to| code.contains(to))).then_some(code);
+            }
+        }
+    }
+}
+
+/// Which skip added steps without running them, for the tests' tallies.
+#[derive(Debug, Clone, Copy)]
+enum Skip {
+    Recurred,
+    Lapped,
+}
+
+#[cfg(test)]
+fn tally(skip: Skip, steps: u32) {
+    let counter = match skip {
+        Skip::Recurred => &RECURRED,
+        Skip::Lapped => &LAPPED,
+    };
+    counter.set(counter.get() + u64::from(steps));
+}
+
+#[cfg(not(test))]
+fn tally(_skip: Skip, _steps: u32) {}
 
 /// A head one byte to the right: onto a fresh zero byte at the end while the tape may
 /// still lengthen, and round to the front once it may not.
@@ -936,5 +1359,281 @@ mod tests {
         let mut pair = b"+++aaaaa".to_vec();
         assert_eq!(first_image(&mut pair, b"+++a", 100, OpSet::ALL), None);
         assert_eq!(pair, b".++aaaaa", "the run went on to its end");
+    }
+
+    /// A run's whole result under the skip, beside the plain loop's: the buffer, and the
+    /// halt, steps and steals of the outcome.
+    fn both_ways(pair: &[u8], bounds: Bounds, stealing: Stealing) -> [(Vec<u8>, Outcome); 2] {
+        let mut skipped = pair.to_vec();
+        let with_skip = execute::<true>(&mut skipped, bounds, stealing);
+        let mut stepped = pair.to_vec();
+        let every_step = execute::<false>(&mut stepped, bounds, stealing);
+        [(skipped, with_skip), (stepped, every_step)]
+    }
+
+    fn assert_skips_exactly(pair: &[u8], bounds: Bounds, stealing: Stealing) {
+        let [skipped, stepped] = both_ways(pair, bounds, stealing);
+        assert_eq!(skipped, stepped, "{pair:?} under {bounds:?}, {stealing:?}");
+    }
+
+    /// The steps each skip added while `run` ran: `(recurred, lapped)`.
+    fn skipped_during(run: impl FnOnce()) -> (u64, u64) {
+        let before = (RECURRED.get(), LAPPED.get());
+        run();
+        (RECURRED.get() - before.0, LAPPED.get() - before.1)
+    }
+
+    /// Both skips are exact: over random pairs of every length from 2 to 64, drawn mostly
+    /// from the ops and the steal byte so that loops form and close, under random budgets,
+    /// with and without room to grow, joined or hosted, stealing on or off, the run that
+    /// skips ends with the buffer, halt, steps and steals of the run that executes every
+    /// step.
+    #[test]
+    fn skipping_ends_every_run_where_executing_every_step_does() {
+        const ALPHABET: &[u8] = b"<>{}+-.,[][]]]$$\0\x01a";
+        let mut rng = crate::rng::seeded(29, 0, 0);
+        let mut draw = |bound: u64| crate::rng::below(&mut rng, bound) as usize;
+        let (recurred, lapped) = skipped_during(|| {
+            for _ in 0..200_000 {
+                let len = 2 + draw(63);
+                let split = 1 + draw(len as u64 - 1);
+                let pair: Vec<u8> = (0..len)
+                    .map(|_| ALPHABET[draw(ALPHABET.len() as u64)])
+                    .collect();
+                let cap = len + [0, 0, 1, draw(40)][draw(4)];
+                let bounds = Bounds {
+                    max_steps: [draw(64), draw(1_024), draw(8_193)][draw(3)] as u32,
+                    enabled: if draw(4) == 0 {
+                        OpSet::parse("<>{}.[]").expect("a legal set")
+                    } else {
+                        OpSet::ALL
+                    },
+                    cap,
+                    code_len: if draw(2) == 0 { split } else { cap },
+                };
+                let stealing = if draw(2) == 0 {
+                    Stealing::Off
+                } else {
+                    Stealing::At(split)
+                };
+                assert_skips_exactly(&pair, bounds, stealing);
+            }
+        });
+        assert!(
+            recurred > 10_000_000,
+            "cycles skipped only {recurred} steps"
+        );
+        assert!(lapped > 1_000_000, "laps skipped only {lapped} steps");
+    }
+
+    /// The lap skip against the paths a lap can take: short programs dense in brackets and
+    /// head moves, and no increments, over data that is mostly nonzero with a zero here and
+    /// there, so nested loops run for a while and then leave by a different bracket than
+    /// the lap that was noted. Each run must end where the run of every step does.
+    #[test]
+    fn a_lap_that_would_leave_by_another_bracket_is_never_skipped() {
+        const CODE: &[u8] = b"[[[]]]]<<>>>{}}..,$a";
+        const DATA: &[u8] = b"\0\x01\x01\x01\x02a[]";
+        let mut rng = crate::rng::seeded(31, 0, 0);
+        let mut draw = |bound: u64| crate::rng::below(&mut rng, bound) as usize;
+        let (_, lapped) = skipped_during(|| {
+            for _ in 0..200_000 {
+                let code_len = 3 + draw(14);
+                let len = code_len + 2 + draw(48);
+                let pair: Vec<u8> = (0..len)
+                    .map(|at| match at < code_len {
+                        true => CODE[draw(CODE.len() as u64)],
+                        false => DATA[draw(DATA.len() as u64)],
+                    })
+                    .collect();
+                let split = 1 + draw(len as u64 - 1);
+                let max_steps = [draw(256), draw(4_096)][draw(2)] as u32;
+                let stealing = [Stealing::Off, Stealing::At(split)][draw(2)];
+                assert_skips_exactly(&pair, joined(max_steps, len), stealing);
+            }
+        });
+        assert!(lapped > 1_000_000, "laps skipped only {lapped} steps");
+    }
+
+    /// A lap through an inner loop, `[>]` inside `[> … >]`, over data laid out so that
+    /// every lap takes one path: the inner `[` entered and its `]` falling through, or the
+    /// inner `[` jumping straight past its body. Where the data changes step, the inner
+    /// bracket reads a byte the noted lap did not, and the lap takes another path from
+    /// there on. The loops only read, so the `+` after them marks where head0 stopped, and
+    /// every budget is tried: the run is held to the plain loop at every step.
+    #[test]
+    fn a_lap_whose_inner_loop_changes_course_is_run_from_there() {
+        let entered = [1u8, 1, 0];
+        let jumped = [1u8, 0];
+        let courses: [(&[u8], &[u8]); 3] = [
+            (&entered, &[1, 0, 0, 1]),
+            (&entered, &[1, 1, 1, 1, 1, 1, 1, 0]),
+            (&jumped, &[1, 1, 1, 1, 1, 0]),
+        ];
+        for (lap, change) in courses {
+            let mut data = lap.repeat(12);
+            data.extend_from_slice(change);
+            data.extend(lap.repeat(4));
+            data.extend([0; 4]);
+            let mut pair = vec![HEAD0_LEFT; data.len()];
+            pair.extend_from_slice(b"[>[>]>]+");
+            pair.extend_from_slice(&data);
+            let (_, lapped) = skipped_during(|| {
+                for max_steps in 0..=600 {
+                    assert_skips_exactly(&pair, joined(max_steps, pair.len()), Stealing::Off);
+                }
+            });
+            assert!(lapped > 0, "the laps before {change:?} were all run");
+        }
+    }
+
+    /// The copier of an emerged world (#245): `{` puts head1 on the pair's last byte, and
+    /// the loop copies head0 onto it with head0 walking right and head1 left, over `pad`
+    /// non-op bytes after each op. No byte is zero, so the loop never ends; once the pair is
+    /// a palindrome every lap rewrites a byte with itself, and the pair returns to itself
+    /// every lap of the heads.
+    fn reverse_copier(len: usize, partner_len: usize, pad: usize, seed: u64) -> Vec<u8> {
+        let mut rng = crate::rng::seeded(seed, 0, 0);
+        let mut filler = || loop {
+            let byte = 1 + crate::rng::below(&mut rng, 255) as u8;
+            if !is_op(byte) {
+                return byte;
+            }
+        };
+        let mut pair = Vec::new();
+        for op in b"{[.<>>{]" {
+            pair.push(*op);
+            pair.extend((0..pad).map(|_| filler()));
+        }
+        pair.extend((pair.len()..len).map(|_| filler()));
+        pair.extend((0..partner_len).map(|_| filler()));
+        pair
+    }
+
+    fn joined(max_steps: u32, cap: usize) -> Bounds {
+        Bounds {
+            max_steps,
+            enabled: OpSet::ALL,
+            cap,
+            code_len: cap,
+        }
+    }
+
+    /// At every length an emerged world holds, with a partner of the same length or a
+    /// ragged one, joined or hosted, the copier skips its idle laps and ends where running
+    /// them ends. With room to grow, a head walking off the end claims a zero byte that
+    /// ends the loop, and the run that follows must still come out the same.
+    #[test]
+    fn a_reverse_copier_skips_its_laps_and_ends_where_every_step_ends() {
+        for len in [64, 128, 256] {
+            for partner_len in [len, len / 2 + 3, len - 1] {
+                for pad in [0, 4] {
+                    let seed = (len + partner_len + pad) as u64;
+                    let pair = reverse_copier(len, partner_len, pad, seed);
+                    for cap in [pair.len(), pair.len() + 17, len + len + 40] {
+                        let (recurred, lapped) = skipped_during(|| {
+                            assert_skips_exactly(&pair, joined(8_192, cap), Stealing::Off);
+                            assert_skips_exactly(
+                                &pair,
+                                Bounds {
+                                    code_len: len,
+                                    ..joined(8_192, cap)
+                                },
+                                Stealing::At(len),
+                            );
+                        });
+                        // A 256-byte copier over a padded loop spends the whole budget
+                        // on its first pass.
+                        if cap == pair.len() && (pad == 0 || len == 64) {
+                            assert!(
+                                recurred + lapped > 2_048,
+                                "a copier at {len}+{partner_len} ran its laps"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The emerged copier's loop is tens of bytes (#245), so its heads come round in more
+    /// steps than the budget: its state never recurs and only the lap skip applies. Once
+    /// the partner half is the reversed tape, most of the budget is idle laps.
+    #[test]
+    fn a_copier_too_slow_to_come_round_still_skips_its_idle_laps() {
+        for len in [64, 128] {
+            let pair = reverse_copier(len, len, 5, len as u64);
+            let (recurred, lapped) = skipped_during(|| {
+                assert_skips_exactly(&pair, joined(8_192, 2 * len), Stealing::Off);
+            });
+            assert_eq!(recurred, 0, "the heads never came round at {len}");
+            assert!(lapped > 2_048, "only {lapped} steps of idle laps at {len}");
+        }
+    }
+
+    /// A copier whose heads walk the same way a fixed gap apart: `}` puts head1 that far
+    /// ahead of head0, and the loop pulls each byte back by the gap. The pair repeats at the
+    /// gap past the moves, so one lap writes the pattern over them and the pair then holds
+    /// still for ever, with a steal in the loop that every lap counts again: the skipped
+    /// laps' steals are counted too.
+    #[test]
+    fn a_forward_copier_skips_its_laps_and_counts_their_steals() {
+        for gap in [6, 8, 13] {
+            let mut pattern = b"[,$>}]".to_vec();
+            pattern.resize(gap, b'a');
+            let mut pair = vec![b'}'; gap];
+            for _ in 0..96 / gap {
+                pair.extend_from_slice(&pattern);
+            }
+            let bounds = joined(8_192, pair.len());
+            let (recurred, lapped) = skipped_during(|| {
+                let [skipped, stepped] = both_ways(&pair, bounds, Stealing::At(pair.len() / 2));
+                assert!(stepped.1.steals[0] > 1_000, "the loop steals every lap");
+                assert_eq!(skipped, stepped);
+            });
+            assert!(
+                recurred + lapped > 4_096,
+                "a forward copier with a gap of {gap} ran its laps"
+            );
+        }
+    }
+
+    /// With room to grow the lap skip stands aside, since a head stepping off the end may
+    /// claim a byte on one lap and not the last; a loop whose heads come straight back is
+    /// still a cycle, and the cycle skip takes it.
+    #[test]
+    fn a_cycle_is_skipped_where_the_buffer_may_still_grow() {
+        let pair = vec![1, b'[', b'}', b'{', b']'];
+        let (recurred, lapped) = skipped_during(|| {
+            assert_skips_exactly(&pair, joined(8_192, 9), Stealing::Off);
+        });
+        assert!(recurred > 8_000);
+        assert_eq!(lapped, 0);
+    }
+
+    /// The skip lands on the very step budget: a cycle whose period divides what is left
+    /// skips all of it, and one a step longer steps out the remainder.
+    #[test]
+    fn a_skip_lands_on_the_budget_whatever_is_left_over() {
+        let pair = vec![1, b'[', b'>', b'<', b']'];
+        for max_steps in 60..=80 {
+            let [skipped, stepped] = both_ways(&pair, joined(max_steps, 5), Stealing::Off);
+            assert_eq!(skipped, stepped);
+            assert_eq!(skipped.1.steps, max_steps);
+            assert_eq!(skipped.1.halt, Halt::StepLimit);
+        }
+    }
+
+    /// A loop whose heads return to the same bytes while the buffer still changes is
+    /// neither a cycle nor an idle lap: an increment each lap keeps the state new until the
+    /// byte wraps to zero.
+    #[test]
+    fn a_loop_that_keeps_writing_is_never_skipped() {
+        let pair = vec![b'[', b'+', b']', 0];
+        let skipped = skipped_during(|| {
+            assert_skips_exactly(&[1, b'[', b'-', b']'], joined(8_192, 4), Stealing::Off);
+            assert_skips_exactly(&pair, joined(8_192, 4), Stealing::Off);
+        });
+        assert_eq!(skipped, (0, 0));
     }
 }

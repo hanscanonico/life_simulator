@@ -95,6 +95,21 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   tape, at `max_steps`, at the end of the host's code under an asymmetric `interaction`,
   or on an unmatched bracket. Heads wrap modulo the concatenation's
   current length — 2×`tape_len` unless the tapes have room to grow.
+  The interpreter skips work only where the skipped steps are fully determined, so every
+  run is byte-identical to one that executes every step. Two cases qualify. First, when
+  its whole state (buffer, instruction pointer, both heads) recurs at a jump back with no
+  byte changed in between, it adds as many whole periods of steps and steals as the budget
+  holds. Second, on a buffer that can no longer grow, a loop that closes twice on the same
+  bracket has its next lap noted: the acting steps (bracket tests, copies, increments)
+  with head offsets. Later laps replay those steps at the shifted heads instead of
+  stepping through the no-op bytes between them. Replay stops before a bracket that would
+  read the other way, and before a write that would change the lap's own code. The results
+  are the ones a run of every step gives: the buffer, the halt, the step count the economy
+  debits, and the steals it settles. An emerged world's copier loop spans tens of bytes
+  and never exits, so this is where its cost goes. Equivalence tests hold both skips to an
+  interpreter that runs every step, over random pairs, handwritten copiers and whole
+  emerged worlds (`docs/design_record.md`, 2026-09-25). `bff::first_image` still runs
+  every step.
 - **Mutation**: after every epoch each byte is replaced by a uniformly random byte with
   probability `mutation_rate` (default 1/4096 per byte per epoch... tune by measurement).
 - **Environmental structure** (`structure`, default `uniform` = off): with a structure
