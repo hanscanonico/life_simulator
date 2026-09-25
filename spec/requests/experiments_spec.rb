@@ -391,6 +391,60 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    # The series charts are held as rendered HTML; the test environment caches nothing, so
+    # this turns fragment caching on over a store of its own.
+    context "with the series charts held in the fragment cache" do
+      let!(:run) do
+        create(:run, experiment: experiment, status: "finished", params: Lab::Schema.run_defaults.merge("radius" => 2))
+      end
+
+      around do |example|
+        caching = ActionController::Base.perform_caching
+        store = ActionController::Base.cache_store
+        ActionController::Base.perform_caching = true
+        ActionController::Base.cache_store = ActiveSupport::Cache::MemoryStore.new
+        example.run
+      ensure
+        ActionController::Base.perform_caching = caching
+        ActionController::Base.cache_store = store
+      end
+
+      before { create(:sample, run: run, epoch: 100, values: { "distinct_lineages" => 3 }) }
+
+      def page_body
+        get experiment_path(experiment)
+        response.body
+      end
+
+      it "serves the page it rendered" do
+        expect(page_body).to eq(page_body).and include("Distinct lineages vs epoch")
+      end
+
+      it "serves the charts it drew while no run moves" do
+        first = page_body
+        Sample.where(run: run).update_all(values: { "distinct_lineages" => 30 })
+
+        expect(page_body).to eq(first)
+      end
+
+      it "draws them again once a run posts samples" do
+        first = page_body
+        Runs::RecordSamplesService.call(run: run, samples: [{ "epoch" => 200, "distinct_lineages" => 30 }])
+
+        expect(page_body).not_to eq(first)
+      end
+
+      # The cache outlives a deploy, so a changed chart partial has to move the fragment's
+      # digest.
+      it "draws them again once the chart partial changes" do
+        finder = ApplicationController.new.lookup_context
+        dependencies = ActionView::Digestor.tree("experiments/show", finder).children
+
+        expect(dependencies.find { |node| node.name == "charts/arm_lines" }&.children&.map(&:name))
+          .to eq(["charts/axes"])
+      end
+    end
+
     context "with an arm whose emerged runs carry a complexity reading" do
       let(:experiment) do
         create(:experiment, name: "Host-parasite economy", slug: "host-parasite",

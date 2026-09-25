@@ -52,6 +52,16 @@ module Experiments
       peak_steal_rate theft reading
     ].freeze
 
+    # What is read of one run's samples: the spans of a run that emerged, and its peak
+    # `steal_rate`.
+    RunReading = Data.define(:spans, :steal_peak)
+
+    # A run's reading is this file's as much as its samples', and the Data it is held in
+    # stops loading once a member is added. Digested once per boot.
+    READING_VERSION = Digest::SHA256.hexdigest(
+      Rails.root.join("app/services/experiments/complexity_arms_service.rb").binread
+    )
+
     READING_BADGES = { keeps_rising: "badge-success", plateau: "badge-warning", mixed: "badge-info",
                        neither: "badge-error", unread: "badge-info", barren: "badge-error" }.freeze
 
@@ -203,41 +213,67 @@ module Experiments
     end
 
     def reading_of(run)
-      spans = spans_by_run.fetch(run.id, {})
+      spans = run_readings.fetch(run.id).spans
 
       Reading.new(instructions: spans[INSTRUCTIONS], core: spans[CORE], compressed: spans[COMPRESSED],
                   lineages: spans[LINEAGES])
     end
 
     def peak_steal_rate_of(runs)
-      peaks = runs.filter_map { |run| steal_peaks[run.id] }
+      peaks = runs.filter_map { |run| run_readings.fetch(run.id).steal_peak }
 
       peaks.max&.to_f
     end
 
     def sampled_runs
       @sampled_runs ||= experiment.runs.where(id: sampled_run_ids)
-                                  .order(:id).select(:id, :params, :status, :emergence_epoch).to_a
+                                  .order(:id).select(:id, :params, :status, :emergence_epoch, :updated_at).to_a
+    end
+
+    # A terminal run's samples never change, so what is read of them is held per run, keyed
+    # on the run as it stands, and a view while the sweep runs reads again only the runs
+    # still under way: the two passes over every sample cost the from-emerged page 2.6 s
+    # on every view while any of its children ran.
+    def run_readings
+      @run_readings ||= begin
+        terminal = sampled_runs.select(&:terminal?).index_by { |run| run_key(run) }
+        held = held_readings(terminal)
+        read = read_runs(sampled_runs.reject { |run| held.key?(run.id) })
+        written = terminal.select { |_, run| read.key?(run.id) }.transform_values { |run| read.fetch(run.id) }
+        Rails.cache.write_multi(written) if written.any?
+        held.merge(read)
+      end
+    end
+
+    def held_readings(runs_by_key)
+      return {} if runs_by_key.empty?
+
+      Rails.cache.read_multi(*runs_by_key.keys).transform_keys { |key| runs_by_key.fetch(key).id }
+    end
+
+    def run_key(run)
+      ["experiments/complexity_arms/run", READING_VERSION, run.id, run.status, run.emergence_epoch,
+       run.updated_at.iso8601(6)]
+    end
+
+    def read_runs(runs)
+      return {} if runs.empty?
+
+      spans = read_spans(runs.select(&:emerged?).map(&:id))
+      peaks = steal_peaks(runs.map(&:id))
+      runs.to_h { |run| [run.id, RunReading.new(spans: spans.fetch(run.id, {}), steal_peak: peaks[run.id])] }
     end
 
     # A run no `steal_rate` was sampled on groups to a null peak, which drops out like a
     # missing one. The type test sits inside the aggregate rather than in a WHERE: as a
     # filter the planner took it for a rare row and sorted the sweep's samples to disk on
     # the way to the group, ten times the cost of hashing them (issue #236).
-    def steal_peaks
-      @steal_peaks ||= Sample.where(run_id: experiment.runs.select(:id))
-                             .group(:run_id).maximum(value_of(STEAL_RATE))
-    end
+    def steal_peaks(run_ids) = Sample.where(run_id: run_ids).group(:run_id).maximum(value_of(STEAL_RATE))
 
     # The four spans of every emerged run, reduced in Postgres so no sample leaves the
-    # database: one statement for the sweep, where one per run cost the page a round trip
+    # database: one statement for the runs, where one per run cost the page a round trip
     # each and every post-crossing sample held in Ruby (issues #226, #236).
-    def spans_by_run
-      @spans_by_run ||= read_spans
-    end
-
-    def read_spans
-      emerged_ids = sampled_runs.select(&:emerged?).map(&:id)
+    def read_spans(emerged_ids)
       return {} if emerged_ids.empty?
 
       Sample.connection.select_all(spans_sql(emerged_ids)).cast_values

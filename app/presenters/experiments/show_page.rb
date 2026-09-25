@@ -93,7 +93,11 @@ module Experiments
 
     # The page that makes the claim shows how often the two observables disagree; the
     # per-run rows behind the counts stay in the transition report CSV.
-    def transition_arms = @transition_arms ||= TransitionArmsService.call(experiment: experiment)
+    def transition_arms
+      @transition_arms ||= cached("transition_arms", rows_version) do
+        TransitionArmsService.call(experiment: experiment)
+      end
+    end
 
     # The same counts as a picture: which arms disagree, and which way.
     def agreement_chart
@@ -131,13 +135,20 @@ module Experiments
 
     def rescores? = rescore_summary.any?
 
-    # The orientation-aware census (#245) beside the detector and the emergence rule. Read
-    # afresh, not cached: a corpus pass writes its readings without touching the run.
-    def oriented_arms = @oriented_arms ||= OrientedArmsService.call(experiment: experiment)
+    # The orientation-aware census (#245) beside the detector and the emergence rule. A
+    # corpus pass writes its readings without touching the run, so its key carries them.
+    def oriented_arms
+      @oriented_arms ||= cached("oriented_arms", rows_version) { OrientedArmsService.call(experiment: experiment) }
+    end
+
+    # The series charts are held as rendered HTML under the key their means are: drawing
+    # them is a path per arm through every sampled epoch, a second and a half of the
+    # host-parasite sweep's page.
+    def series_cache_key(axis) = cache_key("series", axis.name)
 
     # The from-emerged sweep's pre-registered reading, on a sweep with a parent rule only.
     # Whether it is final also turns on the parent pool, whose runs belong to another
-    # experiment and so are not in the cache key: it is read afresh on every request.
+    # experiment and so are not in this key: the settled service keys it on that pool.
     def descendant_reading
       return nil if experiment.parents.blank?
 
@@ -159,17 +170,27 @@ module Experiments
       cached("arm_means") { ArmMeans.read(axes: axes, runs: observed_runs, series: ArmSeries::EVERY) }
     end
 
-    # The two readings that pass over every sample of the sweep, held per experiment: a pass
-    # is seconds of disk on the lab's database at the host-parasite sweep's 2.5 M samples,
-    # and a finished sweep's samples never change (issue #236). Every write behind them
-    # goes through a run — its samples are recorded with an update of its summary, its
-    # crossing and its status are columns of it, and a grid change moves the axes — so the
-    # key moves with any run of the experiment, with its grid and with the code.
-    def cached(name, &)
-      Rails.cache.fetch(["experiments/show_page", CODE_VERSION, experiment.id, name, runs_version], &)
+    # The readings that pass over the sweep's samples or stored worlds, held per experiment:
+    # a pass is seconds of disk on the lab's database at the host-parasite sweep's 2.5 M
+    # samples, and a finished sweep's samples never change (issue #236). Every sample
+    # behind them goes through a run — its samples are recorded with an update of its
+    # summary, its crossing and its status are columns of it, and a grid change moves the
+    # axes — so the key moves with any run of the experiment, with its grid and with the
+    # code. A reading of rows written beside the run passes their version as `inputs`.
+    def cached(name, *inputs, &) = Rails.cache.fetch(cache_key(name, *inputs), &)
+
+    def cache_key(name, *inputs)
+      ["experiments/show_page", CODE_VERSION, experiment.id, name, runs_version, *inputs]
     end
 
     def runs_version = @runs_version ||= Digest::SHA256.hexdigest([experiment.param_grid, run_versions].to_json)
+
+    # The rows the transition block and the orientation-aware census read that are written
+    # without touching a run.
+    def rows_version
+      @rows_version ||= Digest::SHA256.hexdigest(RowsVersion.of(experiment.runs, SnapshotReading, Snapshot,
+                                                                Rescore).to_json)
+    end
 
     def run_versions
       experiment.runs.order(:id).pluck(:id, :status, :updated_at)
@@ -207,7 +228,7 @@ module Experiments
     def observed_runs
       @observed_runs ||= experiment.runs.where.not(status: "pending")
                                    .select(:id, :params, :status, :epochs_done, :emergence_epoch, :persistence,
-                                           :parent_run_id).to_a
+                                           :parent_run_id, :updated_at).to_a
     end
 
     # A descendant's emergence is its parent's, which it never waited for: time to

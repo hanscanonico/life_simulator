@@ -28,8 +28,10 @@ module Charts
 
     def empty? = drawn_arms.none?
 
+    # Drawn once: the partial reads the lines for the plot and again for the legend, and a
+    # path through every sampled epoch of an arm is most of a sweep page's render.
     def lines
-      drawn_arms.map.with_index do |arm, index|
+      @lines ||= drawn_arms.map.with_index do |arm, index|
         Line.new(label: arm.label, dash: dash_for(index), path: draw(arm.points))
       end
     end

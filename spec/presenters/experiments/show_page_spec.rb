@@ -440,6 +440,91 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  # The transition block and the orientation-aware census read rows a corpus pass writes
+  # without touching the run: rescores, readings of stored worlds, and the worlds themselves.
+  describe "the readings of rows written beside the runs" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let!(:run) do
+      finished_run(radius: 1, transition_epoch: 100).tap do |run|
+        create(:sample, run: run, epoch: 100, values: { "replicator_count" => 0 })
+        create(:snapshot, run: run, epoch: 1_000)
+      end
+    end
+
+    before { allow(Rails).to receive(:cache).and_return(cache) }
+
+    def readings
+      fresh = described_class.build(experiment: experiment, paginate: paginate)
+      [fresh.transition_arms.map(&:cells), fresh.oriented_arms.to_text]
+    end
+
+    def uncached
+      RSpec::Mocks.with_temporary_scope do
+        allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::NullStore.new)
+        readings
+      end
+    end
+
+    it "reads the same from the cache as from the rows" do
+      readings
+
+      expect(readings).to eq(uncached)
+    end
+
+    it "reads nothing but the cache and the versions again" do
+      readings
+      queries = []
+      collect = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
+
+      ActiveSupport::Notifications.subscribed(collect, "sql.active_record") { readings }
+
+      expect(queries.size).to eq(2)
+    end
+
+    it "reads them afresh once a corpus pass reads a stored world" do
+      first = readings
+      create(:snapshot_reading, run: run, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.9 })
+
+      expect(readings).to eq(uncached)
+      expect(readings).not_to eq(first)
+    end
+
+    it "reads them afresh once a corpus pass rescores a world" do
+      first = readings
+      create(:rescore, run: run, top_k: Experiments::TransitionArmsService::WIDE_TOP_K, replicator_count: 3)
+
+      expect(readings).to eq(uncached)
+      expect(readings).not_to eq(first)
+    end
+
+    it "reads them afresh once a stored world is dropped" do
+      create(:snapshot_reading, run: run, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.9 })
+      create(:snapshot, run: run, epoch: 2_000)
+      first = readings
+      run.snapshots.find_by(epoch: 2_000).destroy!
+
+      expect(readings).to eq(uncached)
+      expect(readings).not_to eq(first)
+    end
+  end
+
+  describe "#series_cache_key" do
+    let!(:run) { finished_run(radius: 1) }
+
+    def key = described_class.build(experiment: experiment, paginate: paginate).series_cache_key(page.axes.sole)
+
+    it "holds while nothing is written" do
+      expect(key).to eq(key)
+    end
+
+    it "moves once a run posts samples" do
+      before = key
+      Runs::RecordSamplesService.call(run: run, samples: [{ "epoch" => 10, "distinct_lineages" => 2 }])
+
+      expect(key).not_to eq(before)
+    end
+  end
+
   describe "#agreement_chart" do
     it "draws the arm rows the transition report prints" do
       create(:sample, run: finished_run(radius: 1, transition_epoch: 700), epoch: 700,
