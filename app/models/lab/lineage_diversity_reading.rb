@@ -42,5 +42,11 @@ module Lab
     ].freeze
 
     VERDICTS = %i[polyphyletic between monophyletic unmeasured].freeze
+    RUN_COLUMNS = %w[radius seed run_id status emerged class last_decile_effective_count emergence_epoch].freeze
+    ARM_COLUMNS = %w[
+      arm runs finished emerged measured polyphyletic between monophyletic unmeasured median_effective_count reading
+      lineages_over_one_percent lineage_variation_oriented conserved_core_bytes_oriented conserved_core_ops_oriented
+      copy_latency_last copy_latency_first radius_sweep_emerged radius_sweep_finished
+    ].freeze
   end
 end

@@ -111,7 +111,11 @@ module Experiments
 
     # A descendant sweep is read under its own rule (`descendant_reading`): this one would
     # read its children under the conserved-core clause that sweep's entry drops.
-    def complexity_reading? = experiment.parents.blank? && complexity_arms.any?
+    # The lineage-diversity sweep is read under its own rule (`lineage_diversity_reading`):
+    # this one would read its emerged runs without that entry's share clause.
+    def complexity_reading?
+      experiment.parents.blank? && !LineageDiversityReadingService.applies_to?(experiment) && complexity_arms.any?
+    end
 
     def rise_margin = ComplexityArmsService::RISE_MARGIN
 
@@ -139,6 +143,14 @@ module Experiments
 
       @descendant_reading ||= cached("descendant_reading") { FromEmergedReadingService.call(experiment: experiment) }
                               .with(final: DescendantSweepSettledService.call(experiment))
+    end
+
+    # The lineage-diversity sweep's pre-registered reading, on that sweep only. The service
+    # holds each finished run's reading and the trend's p in the cache itself.
+    def lineage_diversity_reading
+      return nil unless LineageDiversityReadingService.applies_to?(experiment)
+
+      @lineage_diversity_reading ||= LineageDiversityReadingService.call(experiment: experiment)
     end
 
     private
