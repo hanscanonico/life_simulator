@@ -10,6 +10,17 @@ RSpec.describe Lab::CanonicalParams do
       expect(described_class.for(stored)).to eq(described_class.for(Lab::Schema.run_defaults.merge("radius" => 2)))
     end
 
+    it "reads a run stored before the lineage rule existed as the aligned arm it ran" do
+      stored = Lab::Schema.run_defaults.except("lineage_rule")
+
+      expect(described_class.for(stored)).to eq(described_class.for(Lab::Schema.run_defaults))
+      expect(described_class.for(stored)).to include("lineage_rule" => "aligned")
+    end
+
+    it "keeps an oriented run apart from the aligned one" do
+      expect(described_class.for("lineage_rule" => "oriented")).not_to eq(described_class.for({}))
+    end
+
     it "reads an integer and a float of the same value as one arm" do
       expect(described_class.for("radius" => 0)).to eq(described_class.for("radius" => 0.0))
     end
@@ -52,6 +63,11 @@ RSpec.describe Lab::CanonicalParams do
 
       expect(structure).to eq("substrate" => "soup", "width" => 32, "height" => 128, "tape_len" => 64,
                               "max_tape_len" => 0, "ops" => Lab::FULL_INSTRUCTION_SET)
+    end
+
+    it "reads the lineage rule as dynamics a descendant may change" do
+      expect(described_class.structure_of({ "lineage_rule" => "oriented" }, substrate: "soup"))
+        .to eq(described_class.structure_of({}, substrate: "soup"))
     end
 
     it "reads two runs that differ in dynamics alone as one structure" do

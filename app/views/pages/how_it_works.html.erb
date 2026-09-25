@@ -163,7 +163,10 @@
       cell takes its partner's lineage when the tape it ends with differs in fewer bytes
       from the tape its partner arrived with than from the tape it arrived with itself, and
       keeps its own on a tie. It counts descent rather than shape, so two lineages that
-      drifted onto the same tape still read as two.
+      drifted onto the same tape still read as two. By default those distances are read
+      byte for byte; a run with <span class="mono">lineage_rule</span> set to
+      <span class="mono">oriented</span> reads each arriving tape whichever way round is
+      nearer, so a cell overwritten by a reverse copy joins the copier's lineage.
     </dd>
 
     <dt class="mono">top_lineage_share</dt>
@@ -350,6 +353,14 @@
 
     <dt>arm</dt>
     <dd>One grid value of a sweep, with its seeds.</dd>
+
+    <dt>lineage</dt>
+    <dd>
+      The cells whose tapes descend from one starting cell's, as the lineage rule reads
+      descent: <span class="mono">aligned</span> by default, which compares tapes byte for
+      byte, or <span class="mono">oriented</span>, which also reads a tape copied in reverse
+      as descended from the tape it copies.
+    </dd>
   </dl>
 
   <h2>The programme</h2>

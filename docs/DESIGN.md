@@ -189,7 +189,18 @@ claim rests on it.
   with is closer — Hamming distance over the tape's bytes — to the tape its partner
   arrived with than to the tape it arrived with itself, and keeps its own on a tie. The
   reading counts descent rather than shape, so two lineages that drifted onto the same
-  tape still read as two. Tags sit beside the tapes: they are never written into a tape,
+  tape still read as two. How "closer" is read is the **lineage rule** (`lineage_rule`,
+  default `aligned`; docs/design_record.md 2026-09-25). At `aligned` both distances are
+  Hamming distance byte for byte, the rule every run before the parameter used and still
+  uses. At `oriented` each is the smaller of the distance to the arriving tape and to its
+  reverse — its live bytes last to first, read from the cell's first byte as
+  `reverse_copy_rate` reads a reverse copy — so a cell overwritten by `reverse(A)` takes
+  `A`'s tag. The own tape is oriented as well as the partner's, so neither side of the
+  comparison is given a reading the other is not, and a cell whose own bytes came back to
+  it reversed keeps its tag; the tie still keeps the cell's own tag. The rule is dynamics,
+  not structure: it moves no byte and draws nothing, so a world's bytes are the same
+  under both rules and only the tags differ, and a descendant may switch it. Tags sit
+  beside the tapes: they are never written into a tape,
   never drawn from the RNG stream, and mutation never moves one, so a run's bytes are what
   they were before lineages existed. A snapshot (format version 3) carries the tags beside
   the tapes, so a run resumed from one continues the census it was keeping; a version 1 or
@@ -214,9 +225,10 @@ claim rests on it.
   (docs/design_record.md 2026-09-25): the emerged replicators copy themselves in reverse, so
   a lineage of near-clones is half `X` and half `reverse(X)`, and the aligned reading counts
   every reversed member as most of a tape of variation. A tape that grew is reversed over
-  its own live length, never over its slot. The lineage tags themselves are still inherited
-  by the aligned rule above, so after a takeover one lineage can hold unrelated tapes and
-  neither reading can see past that. It draws nothing; the life substrate reports 0, and
+  its own live length, never over its slot. The lineage tags themselves are inherited by
+  the run's lineage rule above; under the default `aligned` rule a takeover by a reverse
+  copier leaves one lineage holding unrelated tapes, and neither reading can see past
+  that — which is what `lineage_rule = oriented` is for. It draws nothing; the life substrate reports 0, and
   every sample recorded before it existed carries none.
 - `conserved_core_bytes` / `conserved_core_ops`: what the largest lineage holds
   invariant across its members — the reading that tells a conserved copy loop with junk
