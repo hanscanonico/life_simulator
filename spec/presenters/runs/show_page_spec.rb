@@ -18,8 +18,9 @@ RSpec.describe Runs::ShowPage do
 
     it "draws one chart per plottable DESIGN observable" do
       expect(described_class::METRICS.keys)
-        .to eq(%w[compress_ratio distinct_tapes top_share replicator_count op_density entropy_bits alphabet_size
-                  copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost
+        .to eq(%w[compress_ratio distinct_tapes top_share replicator_count replicator_share
+                  replicator_share_rotated op_density entropy_bits alphabet_size
+                  copy_rate reverse_copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost
                   dominant_compressed_len dominant_instruction_count dominant_raw_len
                   conserved_core_bytes conserved_core_ops steal_rate replicator_pass_rate
                   replicator_count_mean lineage_compressed_len lineage_instruction_count])
@@ -104,6 +105,21 @@ RSpec.describe Runs::ShowPage do
 
       expect(chart_for("dominant_compressed_len")).not_to be_empty
       expect(chart_for("dominant_instruction_count")).not_to be_empty
+    end
+
+    # A sample recorded before the orientation-aware companions existed carries none of
+    # them, and a missing reading is no reading — never a share of zero.
+    it "draws the orientation-aware companions of the samples that carry them" do
+      create(:sample, run: run, epoch: 100, values: { "replicator_count" => 0, "copy_rate" => 0.001 })
+      create(:sample, run: run, epoch: 200,
+                      values: { "replicator_count" => 0, "copy_rate" => 0.001, "reverse_copy_rate" => 0.7,
+                                "replicator_share" => 0.96, "replicator_share_rotated" => 0.97,
+                                "dominant_self_replicates" => true })
+
+      expect(%w[replicator_share replicator_share_rotated reverse_copy_rate]
+               .map { |metric| Runs::MetricSeriesService.call(run: run, metric: metric) })
+        .to eq([[[200, 0.96]], [[200, 0.97]], [[200, 0.7]]])
+      expect(chart_for("replicator_share")).not_to be_empty
     end
 
     it "draws the conserved core of the samples that carry one" do

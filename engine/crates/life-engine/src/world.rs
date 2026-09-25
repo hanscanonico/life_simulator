@@ -25,6 +25,12 @@ const STREAM_REPLICATOR_DRAW: u64 = 0x5245_5043_0000_0000;
 /// flickers between adjacent samples (`docs/design_record.md`, 2026-09-18). Module-private
 /// and not a parameter: it is how an observable is read, not something a sweep varies.
 const CENSUS_DRAWS: u32 = 8;
+/// The streams the orientation-aware companions of the census draw on: the cells sampled
+/// for `replicator_share` and their chains' noise, and the dominant tape's chains. Far from
+/// every other stream id, so the companions never move a draw the run or the census makes
+/// (`docs/design_record.md`, 2026-09-25).
+const STREAM_SELF_REP: u64 = 0x5345_4c46_0000_0000;
+const STREAM_SELF_REP_DOMINANT: u64 = STREAM_SELF_REP | 1;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -41,6 +47,8 @@ pub struct World {
     copy_rate: f64,
     /// The `steal_rate` of that same epoch, counted in the same pass.
     steal_rate: f64,
+    /// The `reverse_copy_rate` of that same epoch, counted in the same pass.
+    reverse_copy_rate: f64,
     /// One lineage id per cell, unique at init and inherited by descent in `step_soup`.
     /// Empty on the life substrate. A tag is read and written beside the tapes and never
     /// from the RNG stream, so a run's bytes are what they were before lineages existed.
@@ -68,6 +76,7 @@ impl World {
             transition: TransitionTracker::default(),
             copy_rate: 0.0,
             steal_rate: 0.0,
+            reverse_copy_rate: 0.0,
             lineages: fresh_lineages(params),
             lens: fresh_lens(params),
             stock: fresh_stock(params),
@@ -109,10 +118,7 @@ impl World {
     /// The state of one cell: a whole tape in the soup, one `0`/`1` byte in life. On a
     /// world whose tapes can grow this is the cell's live bytes, not its whole slot.
     pub fn cell(&self, x: u32, y: u32) -> &[u8] {
-        let cell = self.index(x, y);
-        let stride = self.params.stride();
-        let at = cell * stride;
-        &self.cells[at..at + self.live_len(cell)]
+        self.tape(self.index(x, y))
     }
 
     /// The lineage id of one cell: the ancestor its tape descends from by copying
@@ -222,6 +228,11 @@ impl World {
         metrics::Tapes::ragged(&self.cells, self.params.stride(), &self.lens)
     }
 
+    fn tape(&self, cell: usize) -> &[u8] {
+        let at = cell * self.params.stride();
+        &self.cells[at..at + self.live_len(cell)]
+    }
+
     fn live_len(&self, cell: usize) -> usize {
         self.lens
             .get(cell)
@@ -255,6 +266,7 @@ impl World {
             transition: TransitionTracker::from_state(restored.header.transition),
             copy_rate: 0.0,
             steal_rate: 0.0,
+            reverse_copy_rate: 0.0,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: restored_stock(params, restored.stock)?,
@@ -289,6 +301,7 @@ impl World {
             transition: TransitionTracker::default(),
             copy_rate: 0.0,
             steal_rate: 0.0,
+            reverse_copy_rate: 0.0,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: descended_stock(params, restored.stock)?,
@@ -322,9 +335,9 @@ impl World {
     }
 
     /// One epoch of the soup, and — on the epochs a sample will read — the `copy_rate`
-    /// of those interactions. The pre-execution pair is kept every epoch — the lineage
-    /// rule reads it — and counting copies adds at most three comparisons per interaction,
-    /// so it stays off on every other epoch.
+    /// and `reverse_copy_rate` of those interactions. The pre-execution pair is kept every
+    /// epoch — the lineage rule reads it — and counting copies adds a few comparisons
+    /// per interaction for each rate, so it stays off on every other epoch.
     fn step_soup(&mut self, rng: &mut Rng) {
         let stride = self.params.stride();
         let cap = self.params.tape_cap() as usize;
@@ -341,6 +354,7 @@ impl World {
         let mut before = Vec::with_capacity(stride * 2);
         let mut interactions: u64 = 0;
         let mut copies: u64 = 0;
+        let mut reversed_copies: u64 = 0;
         let mut thefts: u64 = 0;
         for cell in &order {
             let a = *cell as usize;
@@ -386,6 +400,12 @@ impl World {
                     && (copied_onto(&pair[live_a..], arrived_a)
                         || copied_onto(&pair[..live_a], arrived_b));
                 copies += u64::from(copied);
+                let arrived_reversed =
+                    reversed_onto(arrived_b, arrived_a) || reversed_onto(arrived_a, arrived_b);
+                let reversed = !arrived_reversed
+                    && (reversed_onto(&pair[live_a..], arrived_a)
+                        || reversed_onto(&pair[..live_a], arrived_b));
+                reversed_copies += u64::from(reversed);
             }
             // The split stays where the pair was joined: the first cell keeps the length it
             // arrived with, the second keeps the rest — the tail a copier writes into and
@@ -406,6 +426,7 @@ impl World {
             };
             self.copy_rate = share(copies);
             self.steal_rate = share(thefts);
+            self.reverse_copy_rate = share(reversed_copies);
         }
     }
 
@@ -540,6 +561,7 @@ impl World {
         let census = self.replicator_census(&ranked);
         let core = self.conserved_core();
         let lineage = self.lineage_complexity();
+        let share = self.replicator_share();
 
         Metrics {
             compress_ratio,
@@ -566,7 +588,42 @@ impl World {
             replicator_count_mean: census.count_mean(),
             lineage_compressed_len: lineage.map(|read| read.compressed_len),
             lineage_instruction_count: lineage.map(|read| read.instruction_count),
+            reverse_copy_rate: self.reverse_copy_rate,
+            replicator_share: share.map(|read| read.aligned),
+            replicator_share_rotated: share.map(|read| read.rotated),
+            dominant_self_replicates: census.dominant_self_replicates,
         }
+    }
+
+    /// The orientation-aware companion of the census: `SELF_REP_SAMPLE_CELLS` cells drawn
+    /// uniformly with replacement, each tape put to `replicator::self_replicates`, and the
+    /// share that passed. Drawn from the whole world rather than the `top_k` ranked tapes,
+    /// which in an emerged world cover a few percent of its cells. Everything — which cells,
+    /// and every chain's noise — comes off `STREAM_SELF_REP` at this epoch, and nothing is
+    /// written back, so the reading is a pure function of `(seed, epoch)` and moves no other
+    /// observable. Life cells have no tape to judge.
+    fn replicator_share(&self) -> Option<SelfRepShare> {
+        if self.params.substrate != Substrate::Soup {
+            return None;
+        }
+        let mut rng = rng::seeded(self.seed, STREAM_SELF_REP, self.epoch);
+        let cells = self.params.cell_count() as u64;
+        let (mut aligned, mut rotated) = (0u32, 0u32);
+        for _ in 0..replicator::SELF_REP_SAMPLE_CELLS {
+            let cell = rng::below(&mut rng, cells) as usize;
+            let verdict = self.self_replicates(self.tape(cell), &mut rng);
+            aligned += u32::from(verdict.aligned);
+            rotated += u32::from(verdict.rotated);
+        }
+        let share = |passed: u32| f64::from(passed) / f64::from(replicator::SELF_REP_SAMPLE_CELLS);
+        Some(SelfRepShare {
+            aligned: share(aligned),
+            rotated: share(rotated),
+        })
+    }
+
+    fn self_replicates(&self, tape: &[u8], rng: &mut Rng) -> replicator::Verdict {
+        replicator::self_replicates(tape, self.params.max_steps, self.params.op_set(), rng)
     }
 
     /// How much tape the largest lineage is, read off its modal tape. Life cells carry no
@@ -612,6 +669,10 @@ impl World {
                 .dominant
                 .map(|tape| metrics::Complexity::of(tape, self.params.op_set())),
             dominant_replicates: first.dominant_replicates,
+            dominant_self_replicates: first.dominant.map(|tape| {
+                let mut rng = rng::seeded(self.seed, STREAM_SELF_REP_DOMINANT, self.epoch);
+                self.self_replicates(tape, &mut rng).aligned
+            }),
             counts: draws.iter().map(|draw| draw.count).collect(),
         }
     }
@@ -661,6 +722,9 @@ struct ReplicatorCensus {
     copy_cost: Option<u32>,
     complexity: Option<metrics::Complexity>,
     dominant_replicates: bool,
+    /// Whether that same tape passes the orientation-aware detector, on a stream of its
+    /// own. `None` on the life substrate.
+    dominant_self_replicates: Option<bool>,
     /// What each of the `CENSUS_DRAWS` draws counted, draw 0 first — the count above being
     /// that first draw's. Empty on the life substrate, where no assay runs at all.
     counts: Vec<u64>,
@@ -685,6 +749,14 @@ impl ReplicatorCensus {
             false => Some(of(&self.counts)),
         }
     }
+}
+
+/// The share of sampled cells whose tape passed the orientation-aware detector, read
+/// aligned and under the best rotation.
+#[derive(Clone, Copy)]
+struct SelfRepShare {
+    aligned: f64,
+    rotated: f64,
 }
 
 /// What one assay draw of the census read: the cells it counted, and the dominant tape it
@@ -859,6 +931,14 @@ fn copied_onto(result: &[u8], source: &[u8]) -> bool {
     result.len() >= source.len() && result[..source.len()] == *source
 }
 
+/// `copied_onto` with the image reversed (`reverse_copy_rate`, DESIGN §1.2): the half holds
+/// the source's bytes last to first, read from its own first byte over the source's length.
+/// A palindrome is its own reverse, so its copy satisfies both rules and counts in both
+/// rates.
+fn reversed_onto(result: &[u8], source: &[u8]) -> bool {
+    result.len() >= source.len() && result[..source.len()].iter().eq(source.iter().rev())
+}
+
 /// Whether a tape resembles its partner's arriving tape more closely than its own, by
 /// Hamming distance over the tape's bytes — the plainest distance on a fixed-length tape,
 /// and the same byte-by-byte reading `copy_rate` makes of an exact copy. A tie keeps the
@@ -1005,6 +1085,25 @@ mod tests {
         "lineage_compressed_len=Some(75) lineage_instruction_count=Some(4)";
     const PINNED_SEEDED_LINEAGE_COMPLEXITY: &str =
         "lineage_compressed_len=Some(39) lineage_instruction_count=Some(15)";
+
+    /// And the four orientation-aware companions (`docs/design_record.md`, 2026-09-25),
+    /// pinned apart from every reading above, which they must not move.
+    const PINNED_SELF_REP: &str = "reverse_copy_rate=0.0 replicator_share=Some(0.0) \
+         replicator_share_rotated=Some(0.0) dominant_self_replicates=Some(false)";
+    const PINNED_SEEDED_SELF_REP: &str = "reverse_copy_rate=0.0 \
+         replicator_share=Some(0.99609375) replicator_share_rotated=Some(0.99609375) \
+         dominant_self_replicates=Some(true)";
+
+    fn self_rep_digest(measured: &Metrics) -> String {
+        format!(
+            "reverse_copy_rate={:?} replicator_share={:?} replicator_share_rotated={:?} \
+             dominant_self_replicates={:?}",
+            measured.reverse_copy_rate,
+            measured.replicator_share,
+            measured.replicator_share_rotated,
+            measured.dominant_self_replicates,
+        )
+    }
 
     fn observable_digest(measured: &Metrics) -> String {
         format!(
@@ -1436,6 +1535,7 @@ mod tests {
             lineage_complexity_digest(&measured),
             PINNED_LINEAGE_COMPLEXITY
         );
+        assert_eq!(self_rep_digest(&measured), PINNED_SELF_REP);
     }
 
     #[test]
@@ -1455,6 +1555,7 @@ mod tests {
             lineage_complexity_digest(&measured),
             PINNED_SEEDED_LINEAGE_COMPLEXITY
         );
+        assert_eq!(self_rep_digest(&measured), PINNED_SEEDED_SELF_REP);
     }
 
     /// The census only reads the world: it draws on streams of its own, moves no cell and
@@ -1829,6 +1930,9 @@ mod tests {
         assert_eq!(measured.lineage_compressed_len, None);
         assert_eq!(measured.lineage_instruction_count, None);
         assert!(!measured.dominant_replicates);
+        assert_eq!(measured.replicator_share, None);
+        assert_eq!(measured.replicator_share_rotated, None);
+        assert_eq!(measured.dominant_self_replicates, None);
     }
 
     #[test]
@@ -3659,6 +3763,114 @@ mod tests {
             0.0,
             "identical halves are not a copy"
         );
+        assert_eq!(
+            world.metrics().reverse_copy_rate,
+            0.0,
+            "a tape of zeros is its own reverse, and arrived that way"
+        );
+    }
+
+    /// A 16×16 soup of 64-byte tapes, half of them the hand-written reverse copier,
+    /// stepped once and sampled.
+    fn reverse_colony() -> World {
+        let params = Params {
+            tape_len: 64,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        let tape = replicator::handwritten_reverse_replicator(64);
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world.step();
+        world
+    }
+
+    /// The blind spot the companions exist for: a world of tapes that copy in reverse
+    /// reads no replicator on the census and next to no `copy_rate`, while the detector
+    /// and the reversed rate see them.
+    #[test]
+    fn a_reverse_copying_colony_reads_on_the_companions_and_not_on_the_census() {
+        let measured = reverse_colony().metrics();
+
+        assert_eq!(measured.replicator_count, 0);
+        assert_eq!(measured.replicator_pass_rate, Some(0.0));
+        assert!(!measured.dominant_replicates);
+        assert_eq!(measured.dominant_self_replicates, Some(true));
+        let share = measured.replicator_share.expect("a soup");
+        assert!(share > 0.4, "{measured:?}");
+        assert!(measured.replicator_share_rotated >= Some(share));
+        assert!(
+            measured.reverse_copy_rate > 0.3 && measured.copy_rate < 0.05,
+            "{measured:?}"
+        );
+    }
+
+    #[test]
+    fn a_random_soup_reads_no_self_replicators() {
+        let mut world = World::new(&soup(16, 16), 5).unwrap();
+        world.step();
+        let measured = world.metrics();
+
+        assert_eq!(measured.replicator_share, Some(0.0));
+        assert_eq!(measured.replicator_share_rotated, Some(0.0));
+        assert_eq!(measured.dominant_self_replicates, Some(false));
+    }
+
+    /// The companions only read the world, on streams of their own: sampling every epoch
+    /// moves no byte of the run, and a world rebuilt from a snapshot reads what the live
+    /// world read at that epoch.
+    #[test]
+    fn the_companions_move_no_run_and_reread_the_same_from_a_snapshot() {
+        let mut sampled = reverse_colony();
+        let mut unsampled = reverse_colony();
+        let live = sampled.metrics();
+        for _ in 0..3 {
+            sampled.step();
+            sampled.metrics();
+            unsampled.step();
+        }
+        assert_eq!(sampled.world_hash(), unsampled.world_hash());
+
+        let mut world = reverse_colony();
+        let mut restored =
+            World::from_snapshot(world.params(), world.seed(), &world.snapshot()).unwrap();
+        let reread = restored.metrics();
+        assert_eq!(reread.replicator_share, live.replicator_share);
+        assert_eq!(
+            reread.replicator_share_rotated,
+            live.replicator_share_rotated
+        );
+        assert_eq!(
+            reread.dominant_self_replicates,
+            live.dominant_self_replicates
+        );
+        assert_eq!(world.metrics(), live);
+    }
+
+    #[test]
+    fn a_reversed_image_is_read_from_the_first_byte_over_the_sources_length() {
+        assert!(reversed_onto(b"cba", b"abc"));
+        assert!(
+            reversed_onto(b"cbaxx", b"abc"),
+            "room past the image does not unmake it"
+        );
+        assert!(
+            !reversed_onto(b"cb", b"abc"),
+            "too short to hold the source"
+        );
+        assert!(!reversed_onto(b"abc", b"abc"));
+        assert!(!reversed_onto(b"xcba", b"abc"), "read from the first byte");
+    }
+
+    /// A palindrome is its own reverse, so its copy is both images at once.
+    #[test]
+    fn a_palindromes_copy_counts_in_both_rates() {
+        assert!(copied_onto(b"abba", b"abba") && reversed_onto(b"abba", b"abba"));
     }
 
     #[test]
@@ -3674,6 +3886,7 @@ mod tests {
         .unwrap();
         world.step();
         assert_eq!(world.metrics().copy_rate, 0.0);
+        assert_eq!(world.metrics().reverse_copy_rate, 0.0);
     }
 
     #[test]
