@@ -35,4 +35,10 @@ class ExperimentsController < ApplicationController
     stream_csv(Experiments::ReadingsCsvService.call(experiment: experiment, instrument: instrument),
                filename: "#{experiment.slug}-#{instrument.parameterize}-readings.csv")
   end
+
+  def oriented
+    experiment = Experiment.find_by!(slug: params.expect(:id))
+    stream_csv(Experiments::OrientedCsvService.call(experiment: experiment),
+               filename: "#{experiment.slug}-oriented.csv")
+  end
 end

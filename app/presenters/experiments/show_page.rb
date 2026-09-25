@@ -127,6 +127,10 @@ module Experiments
 
     def rescores? = rescore_summary.any?
 
+    # The orientation-aware census (#245) beside the detector and the emergence rule. Read
+    # afresh, not cached: a corpus pass writes its readings without touching the run.
+    def oriented_arms = @oriented_arms ||= OrientedArmsService.call(experiment: experiment)
+
     # The from-emerged sweep's pre-registered reading, on a sweep with a parent rule only.
     # Whether it is final also turns on the parent pool, whose runs belong to another
     # experiment and so are not in the cache key: it is read afresh on every request.

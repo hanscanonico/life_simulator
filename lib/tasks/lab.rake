@@ -208,6 +208,21 @@ namespace :lab do
     puts ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
+  desc "Read the detector, the emergence rule and the orientation-aware census side by side, per arm " \
+       "(one experiment, or `all` for every experiment's totals). Prints them; changes nothing (FORMAT=csv)"
+  task :oriented_report, [:slug] => :environment do |_task, args|
+    report = if args[:slug] == "all"
+               Experiments::OrientedCorpusService.call
+             else
+               experiment = Experiment.find_by(slug: args[:slug])
+               raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+               Experiments::OrientedArmsService.call(experiment: experiment)
+             end
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
   desc "List the stored transitions the alphabet guard would no longer accept (one experiment, or all). " \
        "Prints them; changes nothing"
   task :transition_audit, [:slug] => :environment do |_task, args|

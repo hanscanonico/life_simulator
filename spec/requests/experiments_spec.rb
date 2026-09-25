@@ -595,6 +595,46 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with finished runs the orientation-aware pass has read" do
+      before do
+        run = create(:run, experiment: experiment, status: "finished", epochs: 2_000, transition_epoch: 500,
+                           params: Lab::Schema.run_defaults.merge("radius" => 2))
+        create(:snapshot_reading, run: run, epoch: 2_000, source_epoch: 2_000,
+                                  values: { "replicator_share" => 0.8 })
+      end
+
+      it "tables the arms by the orientation-aware detector" do
+        get experiment_path(experiment)
+
+        section = response.parsed_body.at_css("section[aria-labelledby='oriented-arms-heading']")
+        expect(section.at_css("h2").text).to eq("Replicators by the orientation-aware detector")
+        expect(section.css("tbody tr").map { |row| row.css("td").map { |cell| cell.text.squish } })
+          .to eq([["2", "1", "1", "1", "0", "1", "1", "1", "0", "~2,000"]])
+      end
+
+      it "says what the detector reads and that it relocks nothing" do
+        get experiment_path(experiment)
+
+        expect(response.body.squish).to include("random sample of 256 cells", "chain of 5 runs", "majority of 5 trials",
+                                                "16 commonest tapes", "about every 1000 epochs",
+                                                "it relocks neither the census nor the emergence rule")
+        expect(response.body).to include("https://github.com/hanscanonico/life_simulator/issues/245",
+                                         oriented_experiment_path(experiment))
+      end
+    end
+
+    context "with finished runs the orientation-aware pass has not read" do
+      it "says the pass has not read the sweep" do
+        create(:run, experiment: experiment, status: "finished", params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Replicators by the orientation-aware detector",
+                                         "The corpus pass has not read every stored world of any run in this sweep")
+        expect(response.body).not_to include(oriented_experiment_path(experiment))
+      end
+    end
+
     context "with a sweep nothing has been sampled from" do
       it "shows no transition report" do
         create(:run, experiment: experiment, status: "finished",
@@ -1014,6 +1054,26 @@ RSpec.describe "Experiments", type: :request do
 
         expect(response).to have_http_status(:bad_request)
       end
+    end
+  end
+
+  describe "GET /experiments/:slug/oriented" do
+    it "streams the per-run orientation-aware summary as CSV" do
+      run = create(:run, experiment: experiment, seed: 7, status: "finished", epochs: 2_000, transition_epoch: 500,
+                         params: Lab::Schema.run_defaults.merge("radius" => 2))
+      create(:snapshot_reading, run: run, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.5 })
+      create(:snapshot_reading, run: run, epoch: 2_000, source_epoch: 2_000, values: { "replicator_share" => 0.25 })
+      create(:snapshot_reading, run: run, epoch: 2_010, source_epoch: 2_000, values: { "replicator_share" => 0.9 })
+      unread = create(:run, experiment: experiment, seed: 8, status: "finished", params: run.params)
+
+      get oriented_experiment_path(experiment)
+
+      lines = response.body.lines.map(&:chomp)
+      expect(response.media_type).to eq("text/csv")
+      expect(response.headers["Content-Disposition"]).to include("attachment", "radius-oriented.csv")
+      expect(lines).to eq([Experiments::OrientedCsvService::COLUMNS.join(","),
+                           "#{run.id},7,radius 2,500,,true,2,0,0.25,0.5,1000,1000,false",
+                           "#{unread.id},8,radius 2,,,false,0,0,,,,,"])
     end
   end
 end
