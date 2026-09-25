@@ -218,4 +218,24 @@ RSpec.describe Findings::ShowPage do
       expect(page.complexity_under_contest.controls.map(&:label)).to eq(["0 128"])
     end
   end
+
+  context "with the asymmetric-execution sweep" do
+    let(:finding) { Findings::Registry.find("complexity-under-asymmetry") }
+
+    before do
+      experiment = create(:experiment, slug: "asymmetric-execution",
+                                       param_grid: { "interaction" => %w[concat host], "max_tape_len" => [128, 256] })
+      [{ "interaction" => "host" }, { "interaction" => "concat" }, {}].each do |interaction|
+        run = create(:run, experiment: experiment, status: "finished", params: interaction.merge("max_tape_len" => 128))
+        create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+      end
+    end
+
+    it "reads concat as the control, a run carrying no interaction included" do
+      reading = page.complexity_under_asymmetry
+
+      expect(reading.controls).not_to be_empty
+      expect(reading.treated.map { |arm| arm.params["interaction"] }).to eq(["host"])
+    end
+  end
 end

@@ -284,16 +284,144 @@ RSpec.describe Findings::ComplexityArmsReading do
     end
   end
 
+  describe "an asymmetric-execution sweep" do
+    subject(:reading) do
+      described_class.build(experiment: experiment, complexity_arms: complexity_arms,
+                            control: ->(params) { params["interaction"] == "concat" },
+                            treated_name: "host arm", control_name: "concat control")
+    end
+
+    let(:concat) { { "interaction" => "concat" } }
+    let(:host) { { "interaction" => "host" } }
+    let(:experiment) { create(:experiment, param_grid: { "interaction" => %w[concat host], "max_tape_len" => [128, 256] }) }
+
+    context "with every host arm barren" do
+      let(:complexity_arms) do
+        [arm(concat, 128, runs: %i[rising plateau plateau neither neither], terminal: 20, zero_core: 5),
+         arm(concat, 256, runs: %i[neither neither], terminal: 20, zero_core: 2),
+         arm(host, 128, runs: [], terminal: 20), arm(host, 256, runs: [], terminal: 20)]
+      end
+
+      it "states the barren arms against their controls and that the refutation cannot be evaluated" do
+        expect(reading.headline).to eq(
+          "Every host arm is barren — host 128 (0 of 20) and host 256 (0 of 20) held no replicator at all, " \
+          "against 5 of 20 in concat 128 and 2 of 20 in concat 256, the concat controls at the same caps — so " \
+          "there is no complexity in them to read and the refutation condition cannot be evaluated."
+        )
+      end
+
+      it "reads the verdict as barren rather than refuted or not rising" do
+        expect(reading).to have_attributes(verdict: :barren, verdict_label: "no host arm held a replicator",
+                                           badge_class: "badge-error", refutation_met?: false,
+                                           barren_beside_emerged_controls?: true)
+      end
+
+      it "says the condition cannot be evaluated from the controls alone" do
+        expect(reading.refutation_sentence).to eq(
+          "Checked against the condition as worded: concat 128 reads neither and concat 256 reads neither. " \
+          "The condition cannot be evaluated: no host arm held a replicator, so none has a plateau to set " \
+          "beside its concat control's, and a control read alone says nothing about the treatment."
+        )
+      end
+
+      it "pools both caps as a descriptive comparison" do
+        p_value = format("%.2g", Stats::FisherExact.two_sided([[0, 40], [7, 33]]))
+
+        expect(reading.pooled_emergence_sentence).to eq(
+          "0 of 40 runs of the host arms emerged against 7 of 40 of the concat " \
+          "controls (two-sided Fisher exact p = #{p_value})."
+        )
+      end
+
+      it "reads the secondary reading as unreadable" do
+        expect(reading.lineages_sentence).to eq(
+          "The secondary reading is unreadable: host 128 and host 256 have no measured emerged run and so no " \
+          "distinct_lineages span to set above the concat controls'."
+        )
+      end
+
+      it "gives each control's reading as the reference" do
+        expect(reading.control_readings_sentence).to eq(
+          "Read under the amended rule, concat 128 has 1 rising and 2 plateauing of 5 measured runs and reads " \
+          "neither; concat 256 has 0 rising and 0 plateauing of 2 measured runs and reads neither."
+        )
+      end
+    end
+
+    context "with the one host arm barren" do
+      let(:complexity_arms) { [arm(host, 128, runs: [])] }
+
+      it "has no control to set it against" do
+        expect(reading.headline).to eq(
+          "The one host arm is barren — host 128 (0 of 10) held no replicator at all, with no concat control at " \
+          "the same cap to set against — so there is no complexity in it to read and the refutation condition " \
+          "cannot be evaluated."
+        )
+        expect(reading.barren_beside_emerged_controls?).to be(false)
+      end
+    end
+
+    context "with the host arm and its concat control both barren" do
+      let(:complexity_arms) { [arm(concat, 128, runs: []), arm(host, 128, runs: [])] }
+
+      it "does not read the host arm's barrenness as the treatment's" do
+        expect(reading).to have_attributes(verdict: :barren, barren_beside_emerged_controls?: false)
+      end
+    end
+
+    context "with a host arm and a control each holding one measured run" do
+      let(:complexity_arms) do
+        [arm(concat, 128, runs: %i[plateau plateau], lineages: [30, 4]),
+         arm(concat, 256, runs: %i[plateau], lineages: [30, 4]),
+         arm(host, 128, runs: %i[plateau], lineages: [30, 9]),
+         arm(host, 256, runs: %i[plateau plateau], lineages: [30, 9])]
+      end
+
+      it "reads no lineage span on fewer runs than an arm reads on" do
+        expect(reading.lineages_sentence).to eq(
+          "The secondary reading is unreadable: host 128 has 1 measured emerged run carrying distinct_lineages, " \
+          "fewer than the 2 an arm reads on; host 256 has no concat control span at its cap to set against."
+        )
+      end
+    end
+
+    context "with a host arm holding measured runs" do
+      let(:complexity_arms) do
+        [arm(concat, 128, runs: %i[plateau plateau], lineages: [30, 4]),
+         arm(concat, 256, runs: %i[plateau plateau], lineages: [30, 4]),
+         arm(host, 128, runs: %i[plateau plateau], lineages: [30, 9]),
+         arm(host, 256, runs: [])]
+      end
+
+      it "falls back to stating the arm readings" do
+        expect(reading.headline).to eq(
+          "Complexity kept rising in none of the 2 host arms: 1 plateaus and 1 held no replicator at all, " \
+          "while both concat controls plateau."
+        )
+        expect(reading.verdict).to eq(:refuted)
+      end
+
+      it "compares the lineages it can and names the arm it cannot" do
+        expect(reading.lineages_sentence).to eq(
+          "Host 128's last-decile distinct_lineages (9) sits above concat 128's (4); host 256 has no measured " \
+          "emerged run and so no distinct_lineages span to set above the concat control's."
+        )
+      end
+    end
+  end
+
   def arm_named(label) = reading.arms.find { |candidate| candidate.label == label }
 
   # One arm of the sweep in the database, runs and all, and the complexity reading the
   # service would publish for it, built from readings of the named kinds.
-  def arm(economy, cap, runs:, terminal: 10, steals: false, peak: nil, zero_core: 0)
+  def arm(economy, cap, runs:, terminal: 10, steals: false, peak: nil, zero_core: 0, lineages: nil)
     runs_seeded = seed_runs(economy, cap, terminal: terminal, emerged: runs.size)
 
     Experiments::ComplexityArmsService::Arm.new(
       label: reading_label_of(runs_seeded.first), terminal_count: terminal, steals: steals, peak_steal_rate: peak,
-      readings: runs.each_with_index.map { |kind, index| run_reading(kind, zero_core: index < zero_core) }
+      readings: runs.each_with_index.map do |kind, index|
+        run_reading(kind, zero_core: index < zero_core, lineages: lineages)
+      end
     )
   end
 
@@ -311,13 +439,14 @@ RSpec.describe Findings::ComplexityArmsReading do
     Experiments::Axis.sweep(experiment.reload.param_grid).map { |axis| axis.label_of_run(run.params) }.join(" ")
   end
 
-  def run_reading(kind, zero_core:)
+  def run_reading(kind, zero_core:, lineages: nil)
     span = Experiments::ComplexityArmsService::Span
     core = zero_core ? span.new(first: 0, last: 0) : span.new(first: 40, last: 40)
     first, last = { rising: [10, 30], plateau: [10, 10], neither: [10, 5] }[kind]
     instructions = first && span.new(first: first, last: last)
 
     Experiments::ComplexityArmsService::Reading.new(instructions: instructions, core: core, compressed: nil,
-                                                    lineages: nil)
+                                                    lineages: lineages && span.new(first: lineages.first,
+                                                                                   last: lineages.last))
   end
 end

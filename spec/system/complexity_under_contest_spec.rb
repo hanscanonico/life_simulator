@@ -46,6 +46,7 @@ RSpec.describe "The complexity-under-contest finding", type: :system do
     expect(page).to have_css("#complexity-reading")
     expect(page).to have_text(statement, count: 2)
     expect(page).to have_text("The barren arms read barren under either rule")
+    expect(page).to have_text("1 of the 2 measured runs of the priced arms keep rising")
   end
 
   it "reads the theft the steal arm evolved" do

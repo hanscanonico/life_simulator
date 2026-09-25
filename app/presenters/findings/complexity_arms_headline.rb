@@ -2,9 +2,9 @@
 
 module Findings
   # The sentences a finding states its claim in, composed from a ComplexityArmsReading's
-  # arms: the headline, what each rising arm stands on, and the refutation condition checked
-  # against what the controls actually read. Nothing here names a sweep; the reading's two
-  # nouns do.
+  # arms: the headline, what each rising arm stands on, the refutation condition checked
+  # against what the controls actually read, and the controls' and the lineage readings set
+  # beside it. Nothing here names a sweep; the reading's two nouns do.
   class ComplexityArmsHeadline
     include ArmsProse
 
@@ -25,6 +25,7 @@ module Findings
 
     def headline
       return "No #{treated_name} has a run to read yet." if treated.empty?
+      return barren_headline if reading.every_treated_barren?
 
       "#{lead}#{rest_clause}, #{control_clause}."
     end
@@ -41,7 +42,37 @@ module Findings
       "Checked against the condition as worded: #{control_readings}. #{refutation_outcome}"
     end
 
-    def refutation_met? = plateau_controls.any? && plateau_controls.size == controls.size && unmatched_arms.empty?
+    # The secondary reading: a treated arm's last-decile distinct_lineages against its
+    # control's at the same cap. A span reads on the two measured runs an arm's complexity
+    # reading needs, so an arm with fewer is unreadable rather than above or below.
+    def lineages_sentence
+      readable, unreadable = treated.partition { |arm| lineages_readable?(arm) && lineages_readable?(control_for(arm)) }
+      parts = readable.map { |arm| lineages_comparison(arm) }
+      parts << unreadable_lineages_clause(unreadable) if unreadable.any?
+      return "The secondary reading has no #{treated_name} to read yet." if parts.empty?
+
+      sentence = "#{parts.join('; ')}."
+      readable.empty? ? "The secondary reading is unreadable: #{sentence}" : sentence.upcase_first
+    end
+
+    def control_readings_sentence
+      return "No #{control_name} has been read yet." if controls.empty?
+
+      parts = controls.map do |arm|
+        next "#{arm.label} held no replicator at all" if arm.barren?
+
+        "#{arm.label} has #{arm.rising_count} rising and #{arm.plateau_count} plateauing of " \
+          "#{counted(arm.measured_count, 'measured run')} and reads #{arm.reading.to_s.tr('_', ' ')}"
+      end
+
+      "Read under the amended rule, #{parts.join('; ')}."
+    end
+
+    def refutation_met?
+      return false if reading.every_treated_barren?
+
+      plateau_controls.any? && plateau_controls.size == controls.size && unmatched_arms.empty?
+    end
 
     private
 
@@ -84,6 +115,58 @@ module Findings
       end
     end
 
+    def lineages_comparison(arm)
+      paired = control_for(arm)
+      side = arm.lineages.last > paired.lineages.last ? "above" : "at or below"
+
+      "#{arm.label}'s last-decile distinct_lineages (#{arm.lineages.last}) sits #{side} " \
+        "#{paired.label}'s (#{paired.lineages.last})"
+    end
+
+    def lineages_readable?(arm) = arm.present? && arm.lineages_run_count >= ComplexityArmsReading::MIN_ARM_RUNS
+
+    def unreadable_lineages_clause(arms)
+      without_span, without_control = arms.partition { |arm| !lineages_readable?(arm) }
+      unmeasured, too_few = without_span.partition { |arm| arm.measured_count.zero? }
+      clauses = []
+      clauses << unmeasured_lineages_clause(unmeasured) if unmeasured.any?
+      clauses.concat(too_few.map { |arm| too_few_lineages_clause(arm) })
+      if without_control.any?
+        clauses << "#{sentence_of(without_control.map(&:label))} " \
+                   "#{verb_for(without_control.size, %w[has have])} no #{control_name} span at " \
+                   "#{without_control.one? ? 'its' : 'their'} cap to set against"
+      end
+      clauses.join("; ")
+    end
+
+    def unmeasured_lineages_clause(arms)
+      "#{sentence_of(arms.map(&:label))} #{verb_for(arms.size, %w[has have])} no measured emerged run and so no " \
+        "distinct_lineages span to set above #{control_possessive(arms.size)}"
+    end
+
+    def too_few_lineages_clause(arm)
+      "#{arm.label} has #{counted(arm.lineages_run_count, 'measured emerged run')} carrying distinct_lineages, " \
+        "fewer than the #{ComplexityArmsReading::MIN_ARM_RUNS} an arm reads on"
+    end
+
+    def control_possessive(count) = count == 1 ? "the #{control_name}'s" : "the #{control_name.pluralize}'"
+
+    def barren_headline
+      arms = sentence_of(treated.map { |arm| "#{arm.label} (#{arm.emergence_fraction})" })
+      lead = treated.one? ? "The one #{treated_name} is barren" : "Every #{treated_name} is barren"
+
+      "#{lead} — #{arms} held no replicator at all, #{barren_controls_clause} — so there is no " \
+        "complexity in #{treated.one? ? 'it' : 'them'} to read and the refutation condition cannot be evaluated."
+    end
+
+    def barren_controls_clause
+      paired = treated.filter_map { |arm| control_for(arm) }.uniq
+      return "with no #{control_name} at the same cap to set against" if paired.empty?
+
+      "against #{sentence_of(paired.map { |arm| "#{arm.emergence_fraction} in #{arm.label}" })}, " \
+        "the #{control_name.pluralize(paired.size)} at the same #{paired.one? ? 'cap' : 'caps'}"
+    end
+
     def control_readings
       sentence_of(controls.map { |arm| "#{arm.label} #{verb_for(1, VERBS.fetch(arm.reading))}" })
     end
@@ -110,6 +193,10 @@ module Findings
     end
 
     def refutation_outcome
+      if reading.every_treated_barren?
+        return "The condition cannot be evaluated: no #{treated_name} held a replicator, so none has a plateau " \
+               "to set beside its #{control_name}'s, and a control read alone says nothing about the treatment."
+      end
       if plateau_controls.empty?
         return "no #{control_name} plateaus, so there is no control plateau for a #{treated_name} to match " \
                "and the condition is not met on these runs.".upcase_first

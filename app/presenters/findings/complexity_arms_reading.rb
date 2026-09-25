@@ -19,7 +19,8 @@ module Findings
     MIN_ARM_RUNS = Experiments::ComplexityArmsService::MIN_ARM_RUNS
 
     VERDICT_BADGES = { pending: "badge-info", unresolved: "badge-info", keeps_rising: "badge-warning",
-                       mostly_rising: "badge-success", refuted: "badge-error", not_rising: "badge-error" }.freeze
+                       mostly_rising: "badge-success", refuted: "badge-error", not_rising: "badge-error",
+                       barren: "badge-error" }.freeze
 
     # One arm of the sweep: how often life emerged in it, paired with the service's
     # complexity reading of the same label. An arm the service publishes no row for has no
@@ -36,6 +37,12 @@ module Findings
       def measured_count = complexity&.measured_count.to_i
 
       def rising_count = complexity&.rising_count.to_i
+
+      def plateau_count = complexity&.plateau_count.to_i
+
+      def lineages = complexity&.lineages
+
+      def lineages_run_count = complexity ? complexity.measured.count(&:lineages) : 0
 
       def tested? = terminal_count.positive?
 
@@ -73,8 +80,19 @@ module Findings
 
     def rising_arms = treated.select { |arm| arm.reading == :keeps_rising }
 
+    # No treated arm held a replicator, so none has a plateau to set against its control's
+    # and the refutation condition cannot be evaluated either way.
+    def every_treated_barren? = treated.any? && treated.all?(&:barren?)
+
+    # Every treated arm barren beside a control at its cap that held a replicator, so the
+    # barrenness is the treatment's rather than a substrate where nothing emerged at all.
+    def barren_beside_emerged_controls?
+      every_treated_barren? && treated.all? { |arm| control_for(arm)&.emerged_count.to_i.positive? }
+    end
+
     def verdict
       return :pending if treated.empty?
+      return :barren if every_treated_barren?
       return rising_verdict if rising_arms.any?
       return :unresolved if treated.any? { |arm| arm.reading == :unread }
 
@@ -86,13 +104,15 @@ module Findings
       when :keeps_rising, :mostly_rising then "keeps rising in #{rising_arms.size} of #{treated.size} arms"
       when :not_rising then "no arm keeps rising"
       when :pending then "no reading yet"
+      when :barren then "no #{treated_name} held a replicator"
       else verdict.to_s
       end
     end
 
     def badge_class = VERDICT_BADGES.fetch(verdict)
 
-    delegate :headline, :rising_notes, :refutation_sentence, :refutation_met?, to: :prose
+    delegate :headline, :rising_notes, :refutation_sentence, :refutation_met?, :lineages_sentence,
+             :control_readings_sentence, to: :prose
 
     def emergence_p_value(arm)
       paired = control_for(arm)
@@ -113,6 +133,21 @@ module Findings
       return "No #{treated_name} has been run to an end beside a #{control_name} at its cap yet." if compared.empty?
 
       "#{emergence_direction(compared)}; #{significance(compared)}.#{barren_sentence}"
+    end
+
+    # Every treated arm's runs against every control's, both caps together. Descriptive
+    # only: the pre-registered comparison is the per-cap one.
+    def pooled_emergence_sentence
+      treated_terminal, control_terminal = [treated, controls].map { |arms| arms.sum(&:terminal_count) }
+      return nil if treated_terminal.zero? || control_terminal.zero?
+
+      treated_emerged, control_emerged = [treated, controls].map { |arms| arms.sum(&:emerged_count) }
+      p_value = Stats::FisherExact.two_sided([[treated_emerged, treated_terminal - treated_emerged],
+                                              [control_emerged, control_terminal - control_emerged]])
+
+      "#{treated_emerged} of #{treated_terminal} runs of the #{treated_name.pluralize} " \
+        "emerged against #{control_emerged} of #{control_terminal} of the #{control_name.pluralize} " \
+        "(two-sided Fisher exact p = #{format_p(p_value)})."
     end
 
     def steal_arms = complexity_arms.select(&:steals)
@@ -238,6 +273,8 @@ module Findings
     end
 
     def pre_registered_measured_count(arm) = arm.measured_count - arm.pre_registered_unmeasured_count
+
+    def format_p(value) = format("%.2g", value)
 
     def theft_share(count, total)
       return "#{count.zero? ? 'did not evolve' : 'evolved'} in the one steal arm" if total == 1
