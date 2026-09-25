@@ -3000,10 +3000,20 @@ mod tests {
 
     /// The continuation arm: a child under its parent's params and seed is the parent
     /// carried on — cells, lineages and stocks — since no stream holds state of its own.
+    /// The parent is a stocked colony, so by the descent its lineage census has moved off
+    /// the one-id-per-cell a fresh world mints and a child that dropped it would show.
     #[test]
     fn a_descendant_with_its_parents_params_and_seed_continues_the_parent() {
-        let params = descent_params();
-        let mut parent = stepped(&params, 11, DESCENT_EPOCH);
+        let params = Params {
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            ..colony_params()
+        };
+        let mut parent = colony(&params, 11);
+        for _ in 0..DESCENT_EPOCH {
+            parent.step();
+        }
+        assert_ne!(parent.lineages, fresh_lineages(&params));
         let mut child = World::descend(&params, 11, &parent.snapshot()).unwrap();
         assert_eq!(child.epoch(), DESCENT_EPOCH);
 
