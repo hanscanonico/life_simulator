@@ -99,8 +99,8 @@ the time). Revisit after a compose upgrade. `deploy/deploy` prints whether the n
 image differs from the one the running container uses.
 
 `deploy/deploy` builds both (`docker compose build app runner`, without attestations),
-tags both `:previous` before building, and rolls both back together. To check the behaviour by hand after an
-app-only commit:
+tags both `:previous` before building, and rolls both back together. To check the
+behaviour by hand after an app-only commit:
 
 ```sh
 docker image inspect --format '{{.Id}}' life-simulator-runner:latest   # before
