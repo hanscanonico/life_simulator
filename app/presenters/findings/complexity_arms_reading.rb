@@ -42,6 +42,8 @@ module Findings
 
       def lineages = complexity&.lineages
 
+      def lineages_run_count = complexity ? complexity.measured.count(&:lineages) : 0
+
       def tested? = terminal_count.positive?
 
       def unemerged_count = [terminal_count - emerged_count, 0].max
@@ -81,6 +83,12 @@ module Findings
     # No treated arm held a replicator, so none has a plateau to set against its control's
     # and the refutation condition cannot be evaluated either way.
     def every_treated_barren? = treated.any? && treated.all?(&:barren?)
+
+    # Every treated arm barren beside a control at its cap that held a replicator, so the
+    # barrenness is the treatment's rather than a substrate where nothing emerged at all.
+    def barren_beside_emerged_controls?
+      every_treated_barren? && treated.all? { |arm| control_for(arm)&.emerged_count.to_i.positive? }
+    end
 
     def verdict
       return :pending if treated.empty?

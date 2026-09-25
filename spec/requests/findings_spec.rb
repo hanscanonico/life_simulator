@@ -1424,6 +1424,27 @@ RSpec.describe "Findings", type: :request do
         expect(response.body).not_to include("No claim yet")
         expect(response.body).to include(experiment_path("asymmetric-execution"))
       end
+
+      context "with the concat control as barren as the host arm" do
+        before do
+          experiment = create(:experiment, name: "Asymmetric execution", slug: "asymmetric-execution",
+                                           param_grid: Lab::SWEEPS.fetch("asymmetric_execution").fetch(:param_grid))
+          %w[concat host].each do |interaction|
+            10.times do
+              run = create(:run, experiment: experiment, status: "finished",
+                                 params: { "interaction" => interaction, "max_tape_len" => 128 })
+              create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+            end
+          end
+        end
+
+        it "reads the blank block without saying the host interaction kept replication from arising" do
+          get finding_path(asymmetry_finding)
+
+          expect(response.body.squish).to include("here the blank block is every run of every")
+          expect(response.body.squish).not_to include("Running only the first tape's code did not lower the plateau")
+        end
+      end
     end
 
     context "with an unknown slug" do
