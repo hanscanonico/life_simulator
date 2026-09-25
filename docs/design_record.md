@@ -1302,11 +1302,14 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   is read against the continuation child of the same (parent, seed). Budget 20 000 epochs
   past the parent, so a child of a 20 000-epoch parent runs 20 000 → 40 000. Priority 50,
   ahead of sweep 9's extension (seed-major, 0 − seed). That is **12 children per qualifying
-  parent**. The expected pool today is the nine emerged controls the previous entry lists;
-  the pilot's measure put eight of them at 0.51–0.97 of their cells reverse copiers, and run
-  1087 at 0.01 aligned but 0.95 once rotation is allowed, so `replicator_share` may leave
-  1087 out and only `replicator_share_rotated` would see it — the rule is locked on
-  `replicator_share` and a skipped 1087 is reported, not re-gated. The extension to seeds
+  parent**. The expected pool today is the nine emerged controls the previous entry lists.
+  #247 read four of their terminal worlds with the detector the gate reads, at epoch
+  20 000: `replicator_share` 0.96 for 1007, 0.91 for 1087, 0.95 for 967 and 0.71 for 991,
+  each with a self-replicating dominant tape. 1087 passes aligned although its copy
+  reflects about an axis one byte off centre, because the offset cancels over the
+  detector's five-run chain. The other five are expected to qualify but have no reading
+  yet, and the pilot's single-generation measures are not the shares the gate reads; any
+  that reads below 0.5 is skipped and reported, not re-gated. The extension to seeds
   91–270 adds about 18 more emerged worlds. So about 108 children now and about 320 once the
   extension is terminal. **Cost**, from sweep 9's measured `compute_seconds` at 12 runs at a
   time (the previous entry's figures): about 21 minutes a 20 000-epoch run at cap 128 and 30
@@ -1324,8 +1327,14 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     sat below **0.1** for **3** consecutive samples; it **relapsed** otherwise. The
     2026-09-11 rung-1 hypothesis, **the hazard of relapse is constant per epoch**, is read on
     the continuation children against `colony_age_at`, the age counted from the parent's
-    emergence. If no continuation child relapses, the record says the colonies persisted
-    over the budget and that the constant-hazard hypothesis had no relapse to be read on.
+    emergence; a child whose parent has no emergence epoch has no colony age and is left out
+    of it. A relapsed child's **relapse epoch** is the first sample of its first run of 3
+    samples below 0.1; a child that relapsed on its last decile alone is listed without
+    one. This reading is descriptive: each relapse is listed with its colony age beside the
+    colony ages every continuation child was watched over, and no test of the hazard's
+    shape is pre-registered here, since the pilot expects few relapses or none. If no
+    continuation child relapses, the record says the colonies persisted over the budget and
+    that the constant-hazard hypothesis had no relapse to be read on.
   - **Complexity (rung 4).** `dominant_instruction_count` over the samples whose
     `dominant_self_replicates` is true. A child **rises** when its last-decile median is at
     least **1.2 ×** its first-decile median, **plateaus** when the last-decile median is
@@ -1339,10 +1348,12 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **H-economy.** A priced arm's children rise more often than their paired continuation
     children. Read with a one-sided sign test over the (parent, seed) pairs where the two
     children's rise verdicts differ, at p < 0.05, only on pairs where both children are
-    measured. Refuted if the priced arm rises no more often than the continuation. Each
-    priced arm (2 and 3 above) is read on its own.
+    measured. Refuted if the priced arm rises no more often than the continuation; an arm
+    that rises more often short of p < 0.05 reads **not shown**, neither held nor refuted.
+    Each priced arm (2 and 3 above) is read on its own.
   - **H-host.** The same for the host arm against the continuation.
-  - **H-persistence.** The continuation children hold.
+  - **H-persistence.** The continuation children hold. Refuted by any continuation child
+    that relapses; how many did is reported.
   - A treated arm whose children relapse more often than the continuation's is reported as
     such: that is the treatment killing replicators, not a complexity reading, and its
     complexity verdicts are printed but not read as H-economy or H-host.
@@ -1351,13 +1362,17 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
 
   **When it is read.** When sweep 9's extension is terminal, the readings pass has read its
   terminal worlds, and every child of every parent that then qualifies has finished. A
-  reading printed before that is labelled **interim**. The children need a
-  runner that samples the orientation-aware keys, so the sweep is seeded only once #247 is
-  deployed; a child that sampled none of them is unmeasured by construction.
+  reading printed before that is labelled **interim**. The children need a runner that
+  samples the orientation-aware keys, and the parents need the reading of their terminal
+  worlds, so the sweep is seeded only once #247 is deployed and the readings pass has read
+  `host-parasite`'s latest worlds; a child that sampled none of those keys is unmeasured
+  by construction.
 
   **What is not claimed.** This asks whether an **existing** replicator keeps complicating
   under a treatment. It is not spontaneous emergence, and says nothing about whether the
   treatment lets a replicator arise. Every child of one parent shares that parent's world,
   so the children are not independent: the reading reports, beside the pooled sign tests,
-  per-parent agreement — for each parent, how many of its three seeds agree on the verdict —
-  and a result carried by one or two parents is stated as such.
+  per-parent agreement — for each parent and each treated arm, how many of its three pairs
+  favour the treatment, favour the continuation or tie — and a sign test that falls to
+  p ≥ 0.05 once the pairs of some one or two parents are left out is stated as carried by
+  those parents.

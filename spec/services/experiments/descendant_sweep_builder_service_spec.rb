@@ -51,6 +51,19 @@ RSpec.describe Experiments::DescendantSweepBuilderService do
       expect(build_sweep.skipped[:no_reading]).to eq([unread.id])
     end
 
+    it "takes a terminal world at exactly half replicators" do
+      at_the_line = parent(share: 0.5)
+
+      expect(build_sweep.parents).to eq([qualifying, at_the_line])
+    end
+
+    it "takes the reading at the terminal epoch whichever stored world it was stepped from" do
+      create(:snapshot_reading, run: unread, epoch: unread.epochs, source_epoch: unread.epochs - 7,
+                                values: { "replicator_share" => 0.9 })
+
+      expect(build_sweep.parents).to eq([qualifying, unread])
+    end
+
     it "reads only the instrument the rule names" do
       create(:snapshot_reading, run: unread, instrument: "census/1", epoch: unread.epochs,
                                 source_epoch: unread.epochs, values: { "replicator_share" => 0.9 })
@@ -84,6 +97,16 @@ RSpec.describe Experiments::DescendantSweepBuilderService do
       parent(share: 0.9, params: control_params.merge("energy_influx" => 2**11, "steal_amount" => 2**10))
 
       expect(build_sweep.parents).to eq([roomy])
+    end
+
+    it "never takes a descendant as a parent" do
+      root = parent(share: 0.9)
+      child = Run.descend_from(root, params: root.params, seed: 5, budget: 1_000, experiment: source)
+      child.update!(status: "finished")
+      create(:snapshot, run: child, epoch: child.epochs)
+      read(child, 0.9)
+
+      expect(build_sweep.parents).to eq([root])
     end
 
     it "takes no parent from another experiment" do
