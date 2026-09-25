@@ -112,6 +112,40 @@ it has read before rather than duplicating it. It prints
 `event=rescore_done experiment= worlds=` at the end; a world it cannot read logs
 `event=error` and the pass carries on. Like `rescore`, it changes no run, no param and no
 default.
+`runner readings-corpus` reads the orientation-aware observables (`replicator_share`,
+`replicator_share_rotated`, `dominant_self_replicates`, `reverse_copy_rate`) off the stored
+worlds of an experiment, so a finding that rests on the census can be re-read without
+re-running anything. It stores them as snapshot readings under `oriented_census/1`, never
+as samples. Each world costs a few seconds of CPU, so run it as a one-off container beside
+the live runner, never through `exec` inside it: `run --rm --no-deps` shares the runner's
+image and its `RUNNER_TOKEN` (from `deploy/.env`, as for `rescore-corpus`), and it leaves
+the live runner and its runs alone:
+`docker compose -f deploy/docker-compose.yml run --rm --no-deps --entrypoint runner runner readings-corpus --api http://app:8080 --experiment <slug> --jobs 2`
+There are two modes. `--epochs latest` reads only each run's newest stored world. It is the
+quick pass: about an hour for an experiment of ~1800 runs at `--jobs 2`, and it is what a
+descendant sweep chooses parents from. `--epochs all` (the default) reads every stored world
+and takes hours, so start it detached from the SSH session with its log kept:
+`nohup docker compose -f deploy/docker-compose.yml run --rm --no-deps -T --entrypoint runner runner readings-corpus --api http://app:8080 --experiment <slug> --jobs 2 > ~/readings-<slug>.log 2>&1 &`.
+Stepping to E′ dominates the cost and grows with `sample_every` (bff-control samples every
+50, five times the default). A deploy mid-pass is waited out, as lab mode does; a run whose
+readings still could not be stored logs `event=error` and counts its worlds as `failed=`;
+running the pass again stores them. Both skip the worlds an earlier pass already read, so an
+interrupted pass is resumed by running it again, and an `all` pass after a `latest` one
+does not read those worlds twice. Run one experiment at a time and start small: first
+`--dry-run --limit 5` (reads five worlds and stores nothing), then `bff-control`, then
+`max-tape-len`. Each run prints
+`event=readings run= worlds= rows= failed= skipped= stored=`, and the pass ends with
+`event=readings_done`. A world it cannot read logs `event=error`, and the pass carries on.
+Every stored world at epoch E gives a row at E (the census readings plus the engine's own
+`replicator_count`). The world is then stepped to the next sample epoch E′, and a row at
+E′ with `source_epoch` E carries both copy rates. For a run's last world E′ lies one sample
+past the run's end: it reads the world the run stopped at, not a sample the run took, so
+the run's samples have no counterpart there. Spot-check a pass against the live record
+before trusting it: the `replicator_count` of a row at E must equal the run's own sample at E
+(`https://simulator-life.com/runs/<id>/samples.csv`), and `copy_rate` at E′ must equal the sample at E′. A
+mismatch means the restore does not reproduce the run, so stop and report it. The readings
+come back as CSV from `https://simulator-life.com/experiments/<slug>/readings.csv?instrument=oriented_census/1`.
+The pass changes no run, no param and no default.
 
 The runner writes an `event=` line for each thing a slot does, in the shape
 `event=<name> runner=<id> slot=<n> ...`: `claim`, `resume`, `progress` (each heartbeat,

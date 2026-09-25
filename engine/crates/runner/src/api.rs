@@ -11,6 +11,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use life_engine::{Metrics, Params};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -102,11 +103,14 @@ pub struct Snapshot<'a> {
 /// One run of an experiment's corpus: which stored worlds it holds. `epochs` is ascending,
 /// as the lab orders it. The corpus answer also carries each run's params and seed, but a
 /// rescore reads them off the world it then fetches — parsing them here would let one run
-/// the current `Params` cannot describe cost the whole pass.
+/// the current `Params` cannot describe cost the whole pass. `read_epochs` names, per
+/// instrument, the epochs already read off the run's stored worlds; an app older than
+/// snapshot readings answers none.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorpusRun {
     pub id: i64,
     pub epochs: Vec<u64>,
+    pub read_epochs: BTreeMap<String, Vec<u64>>,
 }
 
 /// A binary answer: the bytes and the epoch its header named.
@@ -359,9 +363,13 @@ impl LabClient {
 
     /// The finished runs of an experiment and the worlds they stored — what
     /// `runner rescore-corpus` walks. Empty when the experiment finished no run yet.
-    pub fn corpus(&self, slug: &str) -> Result<Vec<CorpusRun>> {
+    /// `instrument` narrows each run's `read_epochs` to the one instrument a pass runs.
+    pub fn corpus(&self, slug: &str, instrument: Option<&str>) -> Result<Vec<CorpusRun>> {
         let path = format!("/api/experiments/{slug}/corpus");
-        let (status, body) = self.get(&path, &[], MAX_CORPUS_BODY)?;
+        let query: Vec<(&str, String)> = instrument
+            .map(|instrument| vec![("instrument", instrument.to_string())])
+            .unwrap_or_default();
+        let (status, body) = self.get(&path, &query, MAX_CORPUS_BODY)?;
         let body = accepted(status, body, &format!("GET {path}"))?;
         let corpus: Value = serde_json::from_str(&body).context("parsing the corpus")?;
         let runs = corpus["runs"]
@@ -375,6 +383,16 @@ impl LabClient {
     pub fn post_rescores(&self, run: i64, rescores: &[Value]) -> Result<()> {
         let path = format!("/api/runs/{run}/rescores");
         let (status, response) = self.post(&path, &json!({ "rescores": rescores }))?;
+        accepted(status, response, &format!("POST {path}"))?;
+        Ok(())
+    }
+
+    /// Stores one instrument's readings of a run's stored worlds, all or none. The rows key
+    /// on `[run, instrument, epoch]` in the app, so a repeat pass rewrites them.
+    pub fn post_readings(&self, run: i64, instrument: &str, readings: &[Value]) -> Result<()> {
+        let path = format!("/api/runs/{run}/readings");
+        let body = json!({ "instrument": instrument, "readings": readings });
+        let (status, response) = self.post(&path, &body)?;
         accepted(status, response, &format!("POST {path}"))?;
         Ok(())
     }
@@ -688,6 +706,11 @@ fn corpus_run(run: &Value) -> Result<CorpusRun> {
                     .ok_or_else(|| anyhow!("a stored epoch is not a number"))
             })
             .collect::<Result<Vec<u64>>>()?,
+        read_epochs: match &run["read_epochs"] {
+            Value::Null => BTreeMap::new(),
+            read => serde_json::from_value(read.clone())
+                .with_context(|| format!("run {} has unreadable read_epochs", run["id"]))?,
+        },
     })
 }
 
@@ -1160,13 +1183,14 @@ mod tests {
             }],
         }));
 
-        let corpus = client(&lab).corpus("radius").unwrap();
+        let corpus = client(&lab).corpus("radius", None).unwrap();
 
         assert_eq!(
             corpus,
             vec![CorpusRun {
                 id: 45,
                 epochs: vec![100, 300],
+                read_epochs: BTreeMap::new(),
             }]
         );
     }
@@ -1189,9 +1213,48 @@ mod tests {
             }],
         }));
 
-        let corpus = client(&lab).corpus("radius").unwrap();
+        let corpus = client(&lab).corpus("radius", None).unwrap();
 
         assert_eq!(corpus[0].epochs, vec![100]);
+    }
+
+    #[test]
+    fn a_corpus_names_the_epochs_each_instrument_has_read() {
+        let lab = MockLab::start();
+        lab.set_corpus(json!({
+            "slug": "radius",
+            "runs": [{
+                "id": 45,
+                "epochs": [100, 300],
+                "read_epochs": { "oriented_census/1": [100, 110] },
+            }],
+        }));
+
+        let corpus = client(&lab)
+            .corpus("radius", Some("oriented_census/1"))
+            .unwrap();
+
+        assert_eq!(
+            corpus[0].read_epochs,
+            BTreeMap::from([("oriented_census/1".to_string(), vec![100, 110])])
+        );
+    }
+
+    #[test]
+    fn snapshot_readings_travel_under_their_instrument() {
+        let lab = MockLab::start();
+
+        client(&lab)
+            .post_readings(
+                45,
+                "oriented_census/1",
+                &[json!({ "epoch": 110, "source_epoch": 100, "values": {} })],
+            )
+            .unwrap();
+
+        let posted = lab.request("POST /api/runs/45/readings");
+        assert_eq!(posted["instrument"], json!("oriented_census/1"));
+        assert_eq!(posted["readings"][0]["source_epoch"], json!(100));
     }
 
     #[test]
