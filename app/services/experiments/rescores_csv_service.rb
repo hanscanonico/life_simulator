@@ -12,6 +12,7 @@ module Experiments
   # memory. The runs are read once, for their seeds and their arm labels.
   class RescoresCsvService
     include Callable
+    include NamesRunArms
 
     BATCH_SIZE = 500
 
@@ -55,15 +56,9 @@ module Experiments
     end
 
     def runs
-      @runs ||= @experiment.runs.order(:id).select(:id, :seed, :params).index_by(&:id)
+      @runs ||= experiment.runs.order(:id).select(:id, :seed, :params).index_by(&:id)
     end
 
-    def arm_label(run)
-      labels = axes.filter_map { |axis| axis.named_label_of_run(run.params) }
-
-      labels.empty? ? @experiment.slug : labels.join(" ")
-    end
-
-    def axes = @axes ||= Axis.sweep(@experiment.param_grid)
+    attr_reader :experiment
   end
 end

@@ -64,8 +64,8 @@ RSpec.describe "Api::Readings", type: :request do
       expect(response).to have_http_status(:no_content)
     end
 
-    it "rejects a reading taken before its source world" do
-      post_readings([reading(105).merge(source_epoch: 200)])
+    it "stores nothing of a batch holding a reading taken before its source world" do
+      post_readings([reading(105), reading(205).merge(source_epoch: 300)])
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(SnapshotReading.count).to eq(0)
