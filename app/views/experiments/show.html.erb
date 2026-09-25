@@ -77,6 +77,10 @@
   <%= render "experiments/rescores_table", summary: @show.rescore_summary %>
 <% end %>
 
+<% if @show.founding_finished_count.positive? %>
+  <%= render "experiments/oriented_arms", report: @show.oriented_arms, experiment: @show.experiment %>
+<% end %>
+
 <h2>Runs</h2>
 <p class="flex flex-wrap gap-2">
   <%= link_to "Download CSV", experiment_path(@show.experiment, format: :csv), class: "btn btn-sm btn-outline" %>

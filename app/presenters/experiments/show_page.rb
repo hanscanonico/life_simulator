@@ -125,6 +125,10 @@ module Experiments
 
     def rescores? = rescore_summary.any?
 
+    # The orientation-aware census (#245) beside the detector and the emergence rule. Read
+    # afresh, not cached: a corpus pass writes its readings without touching the run.
+    def oriented_arms = @oriented_arms ||= OrientedArmsService.call(experiment: experiment)
+
     private
 
     def arm_means
