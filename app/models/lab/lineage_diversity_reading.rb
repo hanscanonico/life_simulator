@@ -20,14 +20,20 @@ module Lab
     MONOPHYLETIC = 1.5
     MIN_DECILE_SAMPLES = 10
 
-    # An arm with fewer measured emerged runs than this is unread.
+    # An arm with fewer measured emerged runs than this is unread. The trend test and the
+    # refutation both need at least MIN_READ_ARMS read arms.
     MIN_ARM_RUNS = 2
+    MIN_READ_ARMS = 2
 
     # The trend: a one-sided Jonckheere–Terpstra test of the last-decile medians across the
     # arms in the order the hypothesis predicts them to rise — well-mixed, then reach
-    # shrinking to radius 1 — read at p below TREND_LEVEL.
+    # shrinking to radius 1 — read at p below TREND_LEVEL. Its p is a permutation p, (1 + b)
+    # / (1 + PERMUTATIONS) over dealings drawn from `Random.new(PERMUTATION_SEED)`; the
+    # normal approximation is anti-conservative at the arm sizes the sweep expects.
     RADIUS_ORDER = [0, 4, 2, 1].freeze
     TREND_LEVEL = 0.05
+    PERMUTATIONS = 100_000
+    PERMUTATION_SEED = 20_260_925
 
     # Secondary and descriptive only.
     DESCRIPTIVE_KEYS = %w[

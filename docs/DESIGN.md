@@ -548,7 +548,9 @@ sample.
     rate and `lineage_rule = oriented`, seeds 1–90 per arm, 20 000 epochs. Per emerged run
     (census-confirmed emergence plus `replicator_share ≥ 0.5` after it), the last-decile
     median `lineage_effective_count` reads polyphyletic (≥ 2), monophyletic (< 1.5) or
-    between; the trend across the arms is a one-sided Jonckheere–Terpstra test.
+    between; the trend across the arms is a one-sided Jonckheere–Terpstra test with a
+    permutation p, and the hypothesis is shown only where the shortest read reach is also
+    polyphyletic.
     Pre-registered in `docs/design_record.md`, 2026-09-25, "Lineage diversity after a
     transition", whose numbers live in `Lab::LineageDiversityReading`.
 

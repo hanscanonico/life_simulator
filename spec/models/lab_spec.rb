@@ -309,6 +309,7 @@ RSpec.describe Lab do
       it "orders the trend test's arms from the well-mixed world to the shortest reach" do
         expect(reading::RADIUS_ORDER).to match_array(definition[:param_grid].fetch("radius"))
         expect(reading::RADIUS_ORDER).to eq([0, 4, 2, 1])
+        expect(reading::MIN_READ_ARMS).to be_between(2, reading::RADIUS_ORDER.size)
       end
 
       it "reads polyphyly on an observable the engine records" do

@@ -1733,6 +1733,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   **Emergence, for this sweep.** A run is **emerged** when it has the record's confirmed
   `emergence_epoch` (2026-09-15: the detector's crossing confirmed by the census or
   `copy_rate`) **and** reads `replicator_share ≥ 0.5` at some sample at or after that epoch.
+  The share is a live companion the engine records at every sample of a soup run, so every
+  run of this sweep carries it from its crossing on; a sample without it is no reading, never
+  a share of 0, and a run with no such sample at or after its crossing is not emerged.
   The confirmed rule found the right worlds on sweep 9: the nine economy-off worlds it
   confirmed are, read by #245's pilot, 74–99% working reverse copiers. The share clause is
   needed because the census that confirms a crossing is blind to reverse copiers (#245):
@@ -1747,23 +1750,44 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **Monophyletic**: it is **< 1.5**.
   - **Between** otherwise.
   - A run with fewer than **10** samples in its last decile is **unmeasured**. At the
-    default `sample_every` of 10, that is a run that emerged after about epoch 19 000.
+    default `sample_every` of 10, that is a run that emerged after epoch 19 100.
+
+  The samples read are those that carry `lineage_effective_count` as a number, which every
+  sample of this sweep does; a sample without it is skipped, never read as 0.
 
   **Per arm**, the counts of emerged, measured, polyphyletic, between and monophyletic runs,
   and the median last-decile `lineage_effective_count` over the measured runs. An arm with
   fewer than **2** measured emerged runs is **unread**, as sweeps 9 and 10 require.
 
-  **The hypothesis and its test.** The number of surviving lineages grows as reach shrinks.
-  It is read as a **one-sided Jonckheere–Terpstra trend test** of the runs' last-decile
-  `lineage_effective_count` across the arms in the order well-mixed < 4 < 2 < 1, predicting
-  higher values toward radius 1. The test runs over the measured emerged runs of the read
-  arms, and needs at least two read arms. Its p comes from the normal approximation with the
-  tie-corrected variance.
-  - **Shown** at p < 0.05.
-  - **Refuted**, per the locked wording, when all four arms are read and every measured
-    emerged run of every arm reads monophyletic.
-  - **Neither shown nor refuted** otherwise, with the per-arm counts printed. An unread arm
-    is named as unread; it is not counted as a monophyletic one.
+  **The hypothesis and its test.** The locked hypothesis has two halves: a transitioned
+  world stays polyphyletic, and the number of surviving lineages grows as reach shrinks.
+  - **The trend** is a **one-sided Jonckheere–Terpstra test** of the runs' last-decile
+    `lineage_effective_count` across the arms in the order well-mixed < 4 < 2 < 1,
+    predicting higher values toward radius 1. It runs over the measured emerged runs of the
+    read arms, and needs at least **two** read arms. The statistic counts, over every pair of
+    runs in two different arms, the pairs where the run of shorter reach reads higher, a tie
+    counting one half. Its p is a **permutation** p, not the normal approximation: the pooled
+    values are dealt at random into arms of the observed sizes **100 000** times, from a
+    generator seeded with `PERMUTATION_SEED` so the reading reproduces, and p = (1 + b) /
+    (1 + 100 000), where b dealings reach a statistic at least the observed one. At the arm
+    sizes this sweep expects the normal approximation is anti-conservative exactly where the
+    decision falls: at three runs in each of three arms the statistic 21 reads p = 0.048
+    against an exact 0.061, and at three runs in each of four arms 39 reads 0.044 against
+    0.052. Monophyletic worlds can read exactly 1.0, so ties are expected, and dealing the
+    observed values handles them with no correction. A complete enumeration is out of reach
+    past a few runs an arm (4.7 × 10^21 dealings at ten each), and the (1 + b) / (1 + 100 000)
+    estimate never rejects more often than its level.
+  - **Shown** when both halves hold: the trend at p < 0.05, **and** the read arm of shortest
+    reach has a median last-decile `lineage_effective_count` of at least 2, polyphyletic. A
+    significant trend among worlds that all read monophyletic is reported as a trend, not as
+    the hypothesis.
+  - **Refuted**, per the locked wording, when at least two arms are read and every measured
+    emerged run of the sweep, in read and unread arms alike, reads monophyletic. An arm that
+    never transitions holds no transitioned world to refute on, so refutation does not wait
+    for all four arms; the unread arms are named.
+  - **Neither shown nor refuted** otherwise, with the per-arm counts and the trend's p
+    printed. An unread arm is named as unread; it is not counted as a monophyletic one.
+    Shown and refuted cannot both hold: a polyphyletic median is a polyphyletic run.
 
   **Secondary and descriptive only.** `lineages_over_one_percent` over the same last decile;
   the oriented core and variation (#255: `lineage_variation_oriented`,
