@@ -378,7 +378,9 @@ mod tests {
     /// head1 one byte short of the pair's end, so the partner holds the tape's reverse one
     /// byte round, with its last byte left to the noise; the tail's plain `{` reflects the
     /// other way. Each round trip moves the tape one byte, so four copies down the chain it
-    /// sits two bytes round from where it started — the shape of the pilot's world 1087.
+    /// sits two bytes round from where it started. The pilot's world 1087 is not this shape:
+    /// both its orientations reflect about the same off-centre axis, which the next copy
+    /// undoes, so it passes aligned.
     fn rotated_reverse_copier(len: usize) -> Vec<u8> {
         two_ended(len, 2, b"{{[.>{]", b"{[.>{]")
     }
@@ -500,8 +502,19 @@ mod tests {
         }
     }
 
-    /// Majority, not unanimity, and three quarters, not all: the pass is read off the
-    /// agreement count exactly at the boundary.
+    /// A position agrees on a strict majority of the chains, not on all of them.
+    #[test]
+    fn a_position_agrees_by_majority_and_not_by_unanimity() {
+        let tape = filler(64);
+        let noise = vec![0; 64];
+        let two_of_three = vec![noise.clone(), tape.clone(), tape.clone()];
+        assert!(agrees_under(&tape, &two_of_three, 0));
+        let one_of_three = vec![noise.clone(), noise, tape.clone()];
+        assert!(!agrees_under(&tape, &one_of_three, 0));
+    }
+
+    /// Three quarters, not all: the pass is read off the agreement count exactly at the
+    /// boundary.
     #[test]
     fn three_quarters_of_the_positions_agreeing_is_a_pass_and_one_fewer_is_not() {
         let tape = filler(64);
