@@ -192,4 +192,30 @@ RSpec.describe Findings::ShowPage do
       expect(survey.outcome.persisted_count).to eq(1)
     end
   end
+
+  context "with the host-parasite sweep" do
+    let(:finding) { Findings::Registry.find("complexity-under-contest") }
+    let(:economy) { { "energy_influx" => 0, "steal_amount" => 0 } }
+
+    before do
+      experiment = create(:experiment, slug: "host-parasite",
+                                       param_grid: { "economy" => [economy, { "energy_influx" => 512, "steal_amount" => 0 }],
+                                                     "max_tape_len" => [128, 256] })
+      run = create(:run, experiment: experiment, status: "finished", params: economy.merge("max_tape_len" => 128))
+      create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+    end
+
+    it "reads the arms once, through the evidence presenter" do
+      allow(Experiments::ComplexityArmsService).to receive(:call).and_call_original
+
+      page.evidence.complexity_arms
+      page.complexity_under_contest.headline
+
+      expect(Experiments::ComplexityArmsService).to have_received(:call).once
+    end
+
+    it "reads the economy off as the control" do
+      expect(page.complexity_under_contest.controls.map(&:label)).to eq(["0 128"])
+    end
+  end
 end

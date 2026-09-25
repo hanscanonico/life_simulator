@@ -922,3 +922,48 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   report CSV (`pre_registered_unmeasured`), beside the amended reading it is never printed
   without. Nothing about the engine, the samples or any locked observable moves: this is a
   rule for reading stored samples, applied in `Experiments::ComplexityArmsService`.
+- 2026-09-24 — **The host–parasite finding states its claim: one priced arm keeps rising, on
+  one of its two measured runs, and the controls read neither.** Sweep 9 finished on 2026-09-20,
+  1 260 runs, every one terminal, 90 per arm. Read under the amended measured-run rule of
+  2026-09-21 (`FORMAT=csv lab:transition_report[host-parasite]`, 2026-09-24):
+
+  | arm | emerged / 90 | measured | pre-registered unmeasured | rising | plateau | reading | theft |
+  |---|---|---|---|---|---|---|---|
+  | `0 128` (control) | 5 | 5 | 5 | 1 | 2 | neither | — |
+  | `0 256` (control) | 4 | 4 | 4 | 1 | 1 | neither | — |
+  | `0×8192 128` | 2 | 2 | 2 | 0 | 0 | neither | — |
+  | `0×8192 256` | 2 | 2 | 2 | 0 | 1 | plateau | — |
+  | `1024×8192 128` | 4 | 4 | 4 | 0 | 1 | neither | evolved, peak 0.93 |
+  | `1024×8192 256` | 1 | 1 | 1 | 1 | 0 | unread | evolved, peak 0.85 |
+  | `0×2048 128` | 2 | 2 | 2 | 0 | 1 | plateau | — |
+  | `0×2048 256` | 1 | 1 | 1 | 1 | 0 | unread | — |
+  | `1024×2048 128` | 2 | 2 | 2 | 1 | 0 | keeps rising | evolved, peak 0.32 |
+  | `1024×2048 256` | 3 | 3 | 2 | 0 | 0 | neither | evolved, peak 0.94 |
+  | `0×512 128` | 0 | 0 | 0 | 0 | 0 | barren | — |
+  | `0×512 256` | 0 | 0 | 0 | 0 | 0 | barren | — |
+  | `1024×512 128` | 0 | 0 | 0 | 0 | 0 | barren | evolved, peak 0.32 |
+  | `1024×512 256` | 0 | 0 | 0 | 0 | 0 | barren | evolved, peak 0.32 |
+
+  **The claim**: complexity kept rising in 1 of the 12 priced arms — `1024×2048 128`, on 1
+  of its 2 measured runs, the smallest arm the rule reads, while its own control `0 128`
+  holds a rising run too (1 of 5). Two priced arms plateau, three read neither, two are
+  unread on one measured run, and the four 512-influx arms are barren: the poorest economy
+  holds no replicator to read. Both controls read **neither**. No priced arm emerged more
+  often than the control at its cap (none of the Fisher tests reaches p < 0.05), and theft
+  evolved in all six steal arms (peak `steal_rate` 0.32–0.94), so no arm reads the
+  theft-never-evolved null. **Pooled over runs**, the priced arms' measured runs rise no more
+  often than the controls' — 3 of 17 against 2 of 9 — which is descriptive, not part of
+  the pre-registered reading, and printed only so the one rising arm can be weighed. The
+  refutation condition as worded — the priced arms plateau where their controls plateau — is
+  not met, because neither control plateaus. **Under the pre-registered measured rule**,
+  25 of the 26 emerged runs are unmeasured and no arm reads; the page states that beside the
+  amended reading, as the 2026-09-21 entry requires.
+
+  **Registry status `partial`**: the sweep has finished, but the one supporting arm stands on
+  the fewest measured runs the rule reads, beside a control that holds a rising run too, so the
+  reading cannot be taken as final; more seeds on `1024×2048 128` and `0 128` would decide
+  it. The page renders every count above from the stored runs at render time through
+  `Findings::ComplexityArmsReading`, which composes `Experiments::ComplexityArmsService`'s
+  arms and pairs each treated arm with the control at its `max_tape_len`, so it is built to
+  serve sweep 10 with its own control predicate. Nothing about the engine, the rules or any
+  observable moves.

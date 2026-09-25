@@ -58,6 +58,14 @@ module Findings
       @evidence ||= Experiments::ShowPage.build(experiment: experiment, paginate: @paginate)
     end
 
+    # Sweep 9 read arm by arm, each priced arm against the economy-off control at its own
+    # cap. The arms are the evidence presenter's, so the page reads them once.
+    def complexity_under_contest
+      @complexity_under_contest ||=
+        complexity_arms_reading(treated_name: "priced arm", control_name: "economy-off control",
+                                control: ->(params) { params["energy_influx"].to_i.zero? })
+    end
+
     def diagrams = evidence ? evidence.diagrams : []
 
     def runs_done = evidence ? evidence.finished_count : 0
@@ -76,6 +84,11 @@ module Findings
     def arm_column = evidence&.arm_columns&.first || "Arm"
 
     private
+
+    def complexity_arms_reading(**sweep)
+      ComplexityArmsReading.build(experiment: experiment, complexity_arms: evidence ? evidence.complexity_arms : [],
+                                  **sweep)
+    end
 
     def transition_rows = @transition_rows ||= rows_of(candidate_runs)
 

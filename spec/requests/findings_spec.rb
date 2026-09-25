@@ -1358,11 +1358,11 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
-    context "with the host-parasite skeleton" do
-      let(:pending_finding) { Findings::Registry.find("complexity-under-contest") }
+    context "with the host-parasite finding" do
+      let(:contest_finding) { Findings::Registry.find("complexity-under-contest") }
 
-      it "states the question, the arms and the rule the claim will be made by" do
-        get finding_path(pending_finding)
+      it "states the question, the arms and the rule the claim is made by" do
+        get finding_path(contest_finding)
 
         expect(response.body.squish)
           .to include("does complexity keep rising when energy is a contested stock?",
@@ -1370,23 +1370,25 @@ RSpec.describe "Findings", type: :request do
                       "theft never evolved")
       end
 
-      it "states the clauses that leave a run or an arm unread" do
-        get finding_path(pending_finding)
+      it "states the amended measured rule as post hoc" do
+        get finding_path(contest_finding)
 
         expect(response.body.squish)
-          .to include("is unmeasured rather than read on the instruction count alone",
+          .to include("since the core clause cannot be read on it",
+                      "<strong>post-hoc amendment</strong>",
                       "clearing both bars reads <em>mixed</em>, never rising",
                       "its runs having mostly fallen, reads <em>neither</em>",
                       "was sampled on, which reads unmeasured")
-        expect(response.body).to include(%(<span class="badge badge-info">open</span>))
+        expect(response.body).to include(%(<span class="badge badge-warning">partial</span>))
       end
 
-      it "says no arm has read yet and points at the sweep the lab will fill it from" do
+      it "says there is no arm to read and points at the sweep" do
         create(:experiment, name: "Host–parasite economy", slug: "host-parasite")
 
-        get finding_path(pending_finding)
+        get finding_path(contest_finding)
 
-        expect(response.body.squish).to include("No claim yet: 0 runs of the sweep have finished")
+        expect(response.body.squish).to include("has reported a sample in this database, so there is no arm to read")
+        expect(response.body).not_to include("No claim yet")
         expect(response.body).to include(experiment_path("host-parasite"))
       end
     end
