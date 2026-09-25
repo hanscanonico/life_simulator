@@ -12,13 +12,13 @@ module Experiments
   #
   # The census columns read the corpus pass's readings of stored worlds only
   # (Runs::OrientedSummariesService), so every run is read at one cadence. A run the pass
-  # has not reached is not measured, and counts in neither census column nor either
-  # cross-tab: a missing reading is no zero. The pass is re-run, and resumes, as runs
+  # has not read every stored world of is not measured, and counts in neither census
+  # column nor either cross-tab: a missing reading is no zero. The pass is re-run, and resumes, as runs
   # finish. A first replicator epoch is only as fine as the readings — stored worlds about
   # every 1000 epochs apart — so the median is coarse.
   #
-  # Two queries whatever the sweep holds, of about 22 readings a run: the runs, then
-  # Runs::OrientedSummariesService.
+  # Three queries whatever the sweep holds, of about 22 readings a run: the runs, then the
+  # two of Runs::OrientedSummariesService.
   class OrientedArmsService
     include Callable
     include GroupsRunsByArm
@@ -96,7 +96,7 @@ module Experiments
     NOTE = "finished founding runs; the census columns read #{Lab::DescendantReading::INSTRUMENT} " \
            "(share >= #{Lab::DescendantReading::QUALIFYING_SHARE}) and count measured runs only;\n" \
            "only stored worlds are read, about every 1000 epochs, so a first replicator epoch is no finer " \
-           "than that;\na run the corpus pass has not reached is unmeasured\n".freeze
+           "than that;\na run is measured once the corpus pass has read every world it kept\n".freeze
 
     def initialize(experiment:)
       @experiment = experiment

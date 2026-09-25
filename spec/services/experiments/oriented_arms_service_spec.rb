@@ -63,14 +63,14 @@ RSpec.describe Experiments::OrientedArmsService do
     end
   end
 
-  it "costs two queries whatever the sweep holds" do
+  it "costs three queries whatever the sweep holds" do
     queries = 0
     counter = ->(_name, _start, _finish, _id, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
     ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
       described_class.call(experiment: experiment).total.cells
     end
 
-    expect(queries).to eq(2)
+    expect(queries).to eq(3)
   end
 
   it "prints the arms and the total with the coarseness note" do

@@ -572,13 +572,13 @@ RSpec.describe "Experiments", type: :request do
     end
 
     context "with finished runs the orientation-aware pass has not read" do
-      it "says the pass has not reached the sweep" do
+      it "says the pass has not read the sweep" do
         create(:run, experiment: experiment, status: "finished", params: Lab::Schema.run_defaults.merge("radius" => 2))
 
         get experiment_path(experiment)
 
         expect(response.body).to include("Replicators by the orientation-aware detector",
-                                         "The corpus pass has not reached this sweep")
+                                         "The corpus pass has not read every stored world of any run in this sweep")
         expect(response.body).not_to include(oriented_experiment_path(experiment))
       end
     end
@@ -1020,8 +1020,8 @@ RSpec.describe "Experiments", type: :request do
       expect(response.media_type).to eq("text/csv")
       expect(response.headers["Content-Disposition"]).to include("attachment", "radius-oriented.csv")
       expect(lines).to eq([Experiments::OrientedCsvService::COLUMNS.join(","),
-                           "#{run.id},7,radius 2,500,,true,2,0.25,0.5,1000,1000,false",
-                           "#{unread.id},8,radius 2,,,false,0,,,,,"])
+                           "#{run.id},7,radius 2,500,,true,2,0,0.25,0.5,1000,1000,false",
+                           "#{unread.id},8,radius 2,,,false,0,0,,,,,"])
     end
   end
 end

@@ -46,6 +46,34 @@ RSpec.describe Runs::OrientedSummariesService do
     end
   end
 
+  context "with a static reading past the run's last epoch" do
+    it "leaves it out" do
+      read(unread, 2_010, 0.9)
+
+      expect(summaries.fetch(unread.id)).not_to be_measured
+    end
+  end
+
+  context "with a run whose every stored world has been read" do
+    it "is measured" do
+      [1_000, 2_000].each { |epoch| create(:snapshot, run: stored, epoch: epoch) }
+
+      expect([summaries.fetch(stored.id).measured?, summaries.fetch(stored.id).unread_worlds]).to eq([true, 0])
+    end
+  end
+
+  context "with a run whose stored worlds have been read only in part" do
+    it "is unmeasured with every census reading blank" do
+      [0, 1_000, 2_000].each { |epoch| create(:snapshot, run: live, epoch: epoch) }
+      read(live, 2_000, 0.9)
+      read(live, 1_010, 0.9, source_epoch: 1_000)
+      summary = summaries.fetch(live.id)
+
+      expect([summary.measured?, summary.unread_worlds, summary.peak_share, summary.first_replicator_epoch])
+        .to eq([false, 2, nil, nil])
+    end
+  end
+
   context "with a run only its live samples read" do
     it "is unmeasured" do
       expect(summaries.fetch(live.id)).not_to be_measured
@@ -68,12 +96,12 @@ RSpec.describe Runs::OrientedSummariesService do
     end
   end
 
-  it "costs one query whatever the runs" do
+  it "costs two queries whatever the runs" do
     runs = [stored, live, unread]
     queries = 0
     counter = ->(_name, _start, _finish, _id, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
     ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { described_class.call(runs: runs) }
 
-    expect(queries).to eq(1)
+    expect(queries).to eq(2)
   end
 end

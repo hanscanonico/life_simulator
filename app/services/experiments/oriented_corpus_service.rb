@@ -5,7 +5,7 @@ module Experiments
   # of its arms, and a total over every finished founding run the lab holds — flagged,
   # emerged, replicator worlds and held, the counts a relock of the census would be argued
   # from. Each experiment is reduced to its total before the next is read, so no more than
-  # one experiment's readings are held at a time. Two queries per experiment.
+  # one experiment's readings are held at a time. Three queries per experiment.
   class OrientedCorpusService
     include Callable
 

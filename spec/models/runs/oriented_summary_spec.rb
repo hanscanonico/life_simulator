@@ -5,7 +5,9 @@ require "rails_helper"
 RSpec.describe Runs::OrientedSummary do
   def reading(epoch, share) = described_class::Reading.new(epoch: epoch, share: share)
 
-  def summary(*readings, epochs: 3_000) = described_class.new(epochs: epochs, readings: readings)
+  def summary(*readings, epochs: 3_000, unread_worlds: 0)
+    described_class.new(epochs: epochs, readings: readings, unread_worlds: unread_worlds)
+  end
 
   context "with a run that took hold and kept it" do
     subject(:read) { summary(reading(0, 0.0), reading(1_000, 0.6), reading(2_000, 0.9), reading(3_000, 0.7)) }
@@ -60,6 +62,19 @@ RSpec.describe Runs::OrientedSummary do
 
     it "leaves held unknown" do
       expect([read.held, read.held_to_end?]).to eq([nil, false])
+    end
+  end
+
+  context "with a run whose stored worlds are read only in part" do
+    subject(:read) { summary(reading(3_000, 0.7), unread_worlds: 2) }
+
+    it "is unmeasured with every census reading blank" do
+      expect([read.measured?, read.terminal_share, read.peak_share, read.first_replicator_epoch, read.held])
+        .to eq([false, nil, nil, nil, nil])
+    end
+
+    it "counts neither as a replicator world nor as held to the end" do
+      expect([read.replicator_world?, read.held_to_end?]).to eq([false, false])
     end
   end
 

@@ -12,19 +12,24 @@ module Runs
   # epoch here — the first replicator epoch above all — is only as fine as that: the first
   # reading at the share, not the first epoch the world held it. A reading that lacks the
   # share is no reading, never a zero.
+  #
+  # A run counts as measured only once every world it keeps has been read: a pass that
+  # has read its last world alone would put its peak and its first replicator epoch at its
+  # end. Until then every reading of it is blank.
   class OrientedSummary
     Reading = Data.define(:epoch, :share)
 
-    attr_reader :readings
+    attr_reader :readings, :unread_worlds
 
-    def initialize(epochs:, readings:)
+    def initialize(epochs:, readings:, unread_worlds: 0)
       @epochs = epochs
+      @unread_worlds = unread_worlds
       @readings = readings.select { |reading| reading.share.is_a?(Numeric) }.sort_by(&:epoch)
     end
 
-    def measured? = readings.any?
+    def measured? = readings.any? && unread_worlds.zero?
 
-    def terminal_share = readings.find { |reading| reading.epoch == @epochs }&.share
+    def terminal_share = counted.find { |reading| reading.epoch == @epochs }&.share
 
     def peak_share = peak&.share
 
@@ -38,7 +43,7 @@ module Runs
     def held
       return if first_replicator.nil? || terminal_share.nil?
 
-      readings.drop_while { |reading| reading.epoch < first_replicator.epoch }.all? { |reading| qualifies?(reading) }
+      counted.drop_while { |reading| reading.epoch < first_replicator.epoch }.all? { |reading| qualifies?(reading) }
     end
 
     def replicator_world? = peak_share.present? && peak_share >= qualifying_share
@@ -47,9 +52,11 @@ module Runs
 
     private
 
-    def peak = @peak ||= readings.max_by(&:share)
+    def counted = measured? ? readings : []
 
-    def first_replicator = @first_replicator ||= readings.find { |reading| qualifies?(reading) }
+    def peak = @peak ||= counted.max_by(&:share)
+
+    def first_replicator = @first_replicator ||= counted.find { |reading| qualifies?(reading) }
 
     def qualifies?(reading) = reading.share >= qualifying_share
 
