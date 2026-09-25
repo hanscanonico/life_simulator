@@ -1,8 +1,8 @@
 //! The execution loop, shared by every sink.
 
-use crate::sink::{RunResult, RunSink, SnapshotReason};
+use crate::sink::{RunResult, RunSink, SnapshotReason, Transitions};
 use anyhow::{bail, Result};
-use life_engine::{Params, World};
+use life_engine::{Metrics, Params, World};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -102,6 +102,48 @@ pub(crate) fn settling_world(params: &Params, seed: u64) -> World {
     world
 }
 
+/// A sample reading rising off false — the replicator census going positive, or a sample
+/// crossing the transition threshold — rate limited to one snapshot per `snapshot_every`
+/// epochs so a world whose reading flickers cannot flood the lab with worlds. A rise is
+/// counted whether or not it earns a snapshot of its own, so an epoch the cadence already
+/// covers still spends the limiter's budget.
+#[derive(Debug, Default)]
+struct RiseWatch {
+    raised: bool,
+    last_snapshot_at: Option<u64>,
+}
+
+impl RiseWatch {
+    /// Whether this epoch's reading earns a snapshot of its own. A rise `covered` already
+    /// has a world stored under another reason, so it takes none — but it spends the
+    /// limiter's budget all the same, which is what keeps the limit honest.
+    fn wants_snapshot(
+        &mut self,
+        epoch: u64,
+        reading: bool,
+        snapshot_every: u64,
+        covered: bool,
+    ) -> bool {
+        let rising = reading && !self.raised;
+        let allowed = self
+            .last_snapshot_at
+            .is_none_or(|at| epoch - at >= snapshot_every);
+        self.raised = reading;
+        if !(rising && allowed) {
+            return false;
+        }
+        self.last_snapshot_at = Some(epoch);
+        !covered
+    }
+}
+
+/// Whether any of the census draws counted a replicator. The mean is read rather than a
+/// single draw's count so an epoch whose first draw fails but whose others succeed still
+/// counts as census-positive.
+fn saw_a_replicator(metrics: &Metrics) -> bool {
+    metrics.replicator_count_mean.is_some_and(|mean| mean > 0.0)
+}
+
 pub fn execute(
     params: &Params,
     seed: u64,
@@ -121,8 +163,11 @@ pub fn execute(
 /// world behind it to rescore. `snapshot_max_age` adds a wall-clock floor under the epoch
 /// cadence: past it the next sampled epoch snapshots, so a restart costs at most that
 /// much compute. Left `None` — local and file mode — only the cadence snapshots.
-/// `resumed_at` is the epoch a restored world came back from, whose observables were
-/// already measured and posted before the interruption.
+/// A sampled epoch whose replicator census rises off zero snapshots too, and so does the
+/// first sample to cross the transition threshold — the epoch `transition_epoch` names,
+/// three samples before the settle confirms it. Both are rate limited to one per
+/// `snapshot_every` epochs. `resumed_at` is the epoch a restored world came back
+/// from, whose observables were already measured and posted before the interruption.
 pub fn execute_world(
     mut world: World,
     epochs: u64,
@@ -139,6 +184,12 @@ pub fn execute_world(
     let mut last_snapshot_at = Instant::now();
     let mut buffers = SnapshotBuffers::default();
     let mut transition_seen = world.transition_epoch();
+    // The watch does not survive a restart: a resumed run reads its first positive sample
+    // as a rise and may store one extra snapshot the uninterrupted run would not.
+    let mut census_watch = RiseWatch::default();
+    // Likewise: a resumed run already over the threshold reads its first sample as a
+    // crossing, and the settled transition it carries turns the watch off from there.
+    let mut crossing_watch = RiseWatch::default();
 
     loop {
         let epoch = world.epoch();
@@ -149,7 +200,7 @@ pub fn execute_world(
         let sampling = !resuming && epoch.is_multiple_of(sample_every);
         let overdue = sampling
             && snapshot_max_age.is_some_and(|max_age| last_snapshot_at.elapsed() >= max_age);
-        let reason = if resuming {
+        let mut reason = if resuming {
             None
         } else if epoch.is_multiple_of(snapshot_every) {
             Some(SnapshotReason::Cadence)
@@ -158,16 +209,22 @@ pub fn execute_world(
         } else {
             None
         };
+        let mut census = None;
+        let mut crossing = None;
         match (sampling, reason) {
             (true, Some(reason)) => {
                 let (metrics, raw) = world.metrics_with_snapshot();
-                sink.sample(epoch, &metrics, world.transition_epoch())?;
+                sink.sample(epoch, &metrics, Transitions::of(&world))?;
+                census = Some(saw_a_replicator(&metrics));
+                crossing = Some(metrics.transition_candidate());
                 sink.snapshot(epoch, &raw, buffers.render_png(&world)?, reason)?;
                 last_snapshot_at = Instant::now();
             }
             (true, None) => {
                 let metrics = world.metrics();
-                sink.sample(epoch, &metrics, world.transition_epoch())?;
+                sink.sample(epoch, &metrics, Transitions::of(&world))?;
+                census = Some(saw_a_replicator(&metrics));
+                crossing = Some(metrics.transition_candidate());
             }
             (false, Some(reason)) => {
                 let raw = world.snapshot();
@@ -176,9 +233,9 @@ pub fn execute_world(
             }
             (false, None) => {}
         }
+        let settled = world.transition_epoch();
         // The one forced snapshot is stored under the sample epoch that confirmed the
         // drop, which trails the settled transition epoch by hold_samples x sample_every.
-        let settled = world.transition_epoch();
         if sampling && transition_seen.is_none() && settled.is_some() {
             if reason.is_none() {
                 let raw = world.snapshot();
@@ -189,8 +246,43 @@ pub fn execute_world(
                     SnapshotReason::Transition,
                 )?;
                 last_snapshot_at = Instant::now();
+                reason = Some(SnapshotReason::Transition);
             }
             transition_seen = settled;
+        }
+        // A census peak lasts a handful of epochs and the cadence is hundreds, so without
+        // this a positive epoch almost never has a world to rescore. An epoch already
+        // snapshotted for another reason has one, so the rise only costs bytes elsewhere.
+        if let Some(positive) = census {
+            if census_watch.wants_snapshot(epoch, positive, snapshot_every, reason.is_some()) {
+                let raw = world.snapshot();
+                sink.snapshot(
+                    epoch,
+                    &raw,
+                    buffers.render_png(&world)?,
+                    SnapshotReason::Census,
+                )?;
+                last_snapshot_at = Instant::now();
+                reason = Some(SnapshotReason::Census);
+            }
+        }
+        // `transition_epoch` names the sample that crossed, and the snapshot above trails
+        // it by hold_samples x sample_every — three samples, which the audit reads as a
+        // miss. So the crossing is stored when it happens, before it is known to hold: a
+        // candidate that falls back costs one world, one per `snapshot_every`. Last of the
+        // reasons, so an epoch a census rise already named keeps that narrower reading.
+        if let Some(candidate) = crossing {
+            let crossed = settled.is_none() && candidate;
+            if crossing_watch.wants_snapshot(epoch, crossed, snapshot_every, reason.is_some()) {
+                let raw = world.snapshot();
+                sink.snapshot(
+                    epoch,
+                    &raw,
+                    buffers.render_png(&world)?,
+                    SnapshotReason::Crossing,
+                )?;
+                last_snapshot_at = Instant::now();
+            }
         }
         if epoch == epochs {
             break;
@@ -210,6 +302,7 @@ pub fn execute_world(
         seed,
         epochs,
         transition_epoch: world.transition_epoch(),
+        transition_epoch_relative: world.transition_epoch_relative(),
         wall_seconds,
         epochs_per_second: if wall_seconds > 0.0 {
             epochs as f64 / wall_seconds
@@ -295,7 +388,7 @@ mod tests {
             &mut self,
             epoch: u64,
             metrics: &Metrics,
-            _transition_epoch: Option<u64>,
+            _transitions: Transitions,
         ) -> Result<()> {
             self.samples.push(epoch);
             self.copy_rates.push(metrics.copy_rate);
@@ -323,8 +416,6 @@ mod tests {
             Ok(())
         }
     }
-
-    use life_engine::Metrics;
 
     #[test]
     fn samples_and_snapshots_land_on_their_cadence() {
@@ -407,6 +498,97 @@ mod tests {
         assert!(sink.snapshots.len() > cadence_only.snapshots.len());
     }
 
+    /// The point of the reason: the stored world sits on the epoch `transition_epoch`
+    /// names — nought epochs away, where the settled `transition` snapshot is three
+    /// samples past it and the audit reads that as a miss.
+    #[test]
+    fn the_crossing_snapshot_sits_on_the_epoch_the_transition_names() {
+        let params = Params {
+            snapshot_every: 12,
+            ..settling_params()
+        };
+        let mut world = settling_world(&params, 3);
+        for _ in 0..2 {
+            world.step();
+        }
+
+        let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        let mut sink = RecordingSink::default();
+        let completion =
+            execute_world(restored, 8, None, None, &mut sink, &Progress::default()).unwrap();
+
+        let Completion::Finished(result) = completion else {
+            panic!("the run stopped short of its epochs")
+        };
+        assert_eq!(result.transition_epoch, Some(2));
+        assert_eq!(sink.samples, vec![2, 4, 6, 8]);
+        assert_eq!(sink.snapshots, vec![2, 8]);
+        assert_eq!(
+            sink.reasons,
+            vec![SnapshotReason::Crossing, SnapshotReason::Transition]
+        );
+    }
+
+    /// `transition_epoch` names the sample that crossed, and the settle only confirms it
+    /// three samples later, so a run interrupted mid-candidate stores the crossing it
+    /// samples next rather than leaving the cadence to be the nearest world.
+    #[test]
+    fn a_crossing_stores_a_world_before_the_settle_confirms_it() {
+        let params = Params {
+            snapshot_every: 8,
+            ..settling_params()
+        };
+        let mut world = settling_world(&params, 3);
+        for _ in 0..2 {
+            world.metrics();
+            world.step();
+        }
+        assert_eq!(world.transition_epoch(), None, "the drop has not held yet");
+
+        let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        let mut sink = RecordingSink::default();
+        execute_world(restored, 6, Some(2), None, &mut sink, &Progress::default()).unwrap();
+
+        assert_eq!(sink.snapshots, vec![4, 6]);
+        assert_eq!(
+            sink.reasons,
+            vec![SnapshotReason::Crossing, SnapshotReason::Transition]
+        );
+        assert!(!sink.blob_at(4).is_empty());
+    }
+
+    /// A crossing that falls back below the threshold and returns is one world, not two:
+    /// the limiter the census rise spends is the same budget.
+    #[test]
+    fn a_crossing_takes_no_second_world_while_it_holds() {
+        let params = Params {
+            snapshot_every: 8,
+            ..settling_params()
+        };
+        let mut world = settling_world(&params, 3);
+        for _ in 0..2 {
+            world.metrics();
+            world.step();
+        }
+
+        let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        let mut sink = RecordingSink::default();
+        execute_world(restored, 12, Some(2), None, &mut sink, &Progress::default()).unwrap();
+
+        assert_eq!(
+            sink.snapshots.iter().filter(|&&epoch| epoch == 4).count(),
+            1
+        );
+        assert_eq!(
+            sink.reasons
+                .iter()
+                .filter(|&&reason| reason == SnapshotReason::Crossing)
+                .count(),
+            1,
+            "the samples that keep holding are not fresh crossings"
+        );
+    }
+
     #[test]
     fn only_the_first_settling_sample_forces_a_snapshot() {
         let mut sink = RecordingSink::default();
@@ -480,7 +662,15 @@ mod tests {
         execute_world(restored, 6, Some(4), None, &mut sink, &Progress::default()).unwrap();
 
         assert_eq!(sink.samples, vec![5, 6]);
-        assert_eq!(sink.snapshots, vec![6]);
+        assert_eq!(
+            sink.snapshots,
+            vec![5, 6],
+            "the resumed run reads its first positive sample as a census rise"
+        );
+        assert_eq!(
+            sink.reasons,
+            vec![SnapshotReason::Census, SnapshotReason::Cadence]
+        );
         assert!(
             sink.copy_rates.iter().all(|rate| *rate > 0.0),
             "{:?}",
@@ -546,6 +736,118 @@ mod tests {
 
         assert_eq!(after.samples, vec![6, 8]);
         assert_eq!(after.lineages, uninterrupted.lineages[3..]);
+    }
+
+    /// A resumed colony reads its first sample as a census rise, at an epoch no cadence
+    /// covers, so the epoch a replicator was counted at has a world to rescore.
+    #[test]
+    fn a_census_rise_stores_a_world() {
+        let params = Params {
+            width: 8,
+            height: 8,
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            snapshot_every: 1000,
+            ..Params::default()
+        };
+        let mut world = colony(&params, 3);
+        for _ in 0..5 {
+            world.step();
+        }
+        assert!(world.metrics().replicator_count_mean.unwrap() > 0.0);
+
+        let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        let sink = run_colony(restored, 6, None);
+
+        assert_eq!(sink.snapshots, vec![5]);
+        assert_eq!(sink.reasons, vec![SnapshotReason::Census]);
+        assert!(!sink.blob_at(5).is_empty());
+    }
+
+    #[test]
+    fn the_census_rate_limit_holds_across_rises() {
+        let mut watch = RiseWatch::default();
+
+        assert!(watch.wants_snapshot(10, true, 4, false));
+        assert!(
+            !watch.wants_snapshot(11, false, 4, false),
+            "a fall is not a rise"
+        );
+        assert!(
+            !watch.wants_snapshot(12, true, 4, false),
+            "a rise inside the cadence waits"
+        );
+        assert!(!watch.wants_snapshot(13, false, 4, false));
+        assert!(
+            watch.wants_snapshot(14, true, 4, false),
+            "a rise a cadence later is stored"
+        );
+        assert!(
+            !watch.wants_snapshot(15, true, 4, false),
+            "a run of positives is one rise"
+        );
+    }
+
+    #[test]
+    fn a_covered_rise_takes_no_snapshot_of_its_own_and_still_spends_the_budget() {
+        let mut watch = RiseWatch::default();
+
+        assert!(
+            !watch.wants_snapshot(10, true, 4, true),
+            "a world another reason stored needs no second copy"
+        );
+        assert!(!watch.wants_snapshot(11, false, 4, false));
+        assert!(
+            !watch.wants_snapshot(12, true, 4, false),
+            "the covered rise spent the budget"
+        );
+        assert!(!watch.wants_snapshot(13, false, 4, false));
+        assert!(watch.wants_snapshot(14, true, 4, false));
+    }
+
+    /// The cadence snapshot at epoch 0 already stores the colony the census reads as a
+    /// rise, so that epoch keeps the one world it would have had without the reason.
+    #[test]
+    fn a_rise_a_cadence_snapshot_covers_stores_one_world() {
+        let params = Params {
+            width: 8,
+            height: 8,
+            tape_len: 256,
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            snapshot_every: 2,
+            ..Params::default()
+        };
+        let mut probe = colony(&params, 3);
+        assert!(probe.metrics().replicator_count_mean.unwrap() > 0.0);
+
+        let sink = run_colony(colony(&params, 3), 2, None);
+
+        assert_eq!(sink.snapshots, vec![0, 2]);
+        assert_eq!(
+            sink.reasons,
+            vec![SnapshotReason::Cadence, SnapshotReason::Cadence]
+        );
+    }
+
+    /// A soup with no replicator in it snapshots exactly as it did before the reason.
+    #[test]
+    fn cadence_snapshots_are_unchanged_by_the_census_reason() {
+        let mut sink = RecordingSink::default();
+        execute(&params(), 1, 6, &mut sink).unwrap();
+
+        assert_eq!(sink.snapshots, vec![0, 3, 6]);
+        assert_eq!(
+            sink.reasons,
+            vec![
+                SnapshotReason::Cadence,
+                SnapshotReason::Cadence,
+                SnapshotReason::Cadence
+            ]
+        );
     }
 
     #[test]

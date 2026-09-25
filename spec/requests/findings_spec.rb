@@ -19,6 +19,21 @@ RSpec.describe "Findings", type: :request do
       expect(response.body.squish).to include(*Findings::Finding::STATUS_MEANINGS.values)
     end
 
+    it "badges the findings that carry an instrument note, and only those" do
+      get findings_path
+
+      badged = response.parsed_body.css(".finding-card").select { |card| card.at_css(".instrument-note-badge") }
+                       .map { |card| card.at_css(".finding-title a")["href"] }
+      expect(badged).to match_array(Findings::InstrumentNotes::NOTES.keys.map { |slug| finding_path(slug) })
+    end
+
+    it "links each instrument-note badge to the note on its finding" do
+      get findings_path
+
+      expect(response.parsed_body.css(".instrument-note-badge").pluck("href"))
+        .to include(finding_path("emergence-can-be-left", anchor: "instrument-note"))
+    end
+
     it "points at the glossary for the words the write-ups use" do
       get findings_path
 
@@ -102,6 +117,41 @@ RSpec.describe "Findings", type: :request do
   end
 
   describe "GET /findings/:slug" do
+    context "with a finding that rests on the replicator census" do
+      it "shows its instrument note above the narrative" do
+        get finding_path("emergence-can-be-left")
+
+        note = response.parsed_body.at_css("#instrument-note")
+        expect(note.text.squish).to include("the most exposed on the site")
+        expect(response.body.index("instrument-note")).to be < response.body.index("Question")
+      end
+
+      it "links the census issue and the orientation-aware observable" do
+        get finding_path("emergence-can-be-left")
+
+        links = response.parsed_body.css("#instrument-note a").pluck("href")
+        expect(links).to include(Findings::InstrumentNotes::ISSUE_URL,
+                                 how_it_works_path(anchor: "replicator-share"))
+      end
+    end
+
+    context "with a finding the census does not touch" do
+      it "shows no instrument note" do
+        get finding_path("radius-locality")
+
+        expect(response.parsed_body.at_css("#instrument-note")).to be_nil
+      end
+    end
+
+    it "links issue #245 from every note" do
+      Findings::InstrumentNotes::NOTES.each_key do |slug|
+        get finding_path(slug)
+
+        expect(response.parsed_body.css("#instrument-note a").pluck("href"))
+          .to include(Findings::InstrumentNotes::ISSUE_URL), slug
+      end
+    end
+
     it "renders the narrative even with no sweep in the lab" do
       get finding_path(finding)
 
@@ -396,14 +446,15 @@ RSpec.describe "Findings", type: :request do
                       "controls sit at the random-soup baseline")
       end
 
-      it "reads its census peak as not yet resolved rather than as no evidence" do
+      it "reads its census as confirmed by rescore off the peak and open at the peak" do
         get finding_path(Findings::Registry.find("bff-control"))
 
         expect(response.body.squish)
           .to include("And the census is not zero.",
                       "in the lab — thousands of replicating cells at its peak",
-                      "no snapshot falls inside the window where the count was high",
-                      "not yet resolved rather than not evidence",
+                      "316 replicating cells at epoch 9 900, 112 at epoch 16 000",
+                      "What no stored world holds is the peak itself",
+                      "confirmed off the peak and unresolved at it",
                       "neither triggered nor retired")
       end
 
@@ -425,7 +476,7 @@ RSpec.describe "Findings", type: :request do
           .to include("What the zero-mutation control shows",
                       "a copying cascade of the tapes the seed handed the world",
                       "an entropy collapse on its own is not evidence of a replicator",
-                      "the snapshot forced on the sample where a transition settles")
+                      "writes a snapshot whenever the census rises off zero")
       end
 
       it "keeps the requeue history" do
@@ -440,7 +491,7 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.body).not_to match(/\d{2}:\d{2} CEST/)
         expect(response.body).not_to match(/\brun \d+/i)
-        expect(response.body).not_to match(/epoch \d ?\d{3}/)
+        expect(response.body).not_to match(/\bseed \d+/i)
       end
     end
 
@@ -1117,6 +1168,21 @@ RSpec.describe "Findings", type: :request do
                       "every verdict below is read off the instruction count")
       end
 
+      it "reads the room-to-grow sweep under both detector rules" do
+        get finding_path(open_endedness)
+
+        rows = response.parsed_body.css("#max-tape-len-detector-rules tbody tr")
+                       .map { |row| row.css("td").map { |cell| cell.text.squish } }
+
+        expect(rows).to eq([%w[64 30 3 3 2], %w[128 90 5 5 3], %w[256 90 4 4 4], %w[512 30 30 1 1]])
+        expect(response.body.squish)
+          .to include("means 0.754 with a minimum of 0.618, against 0.984 at cap 64",
+                      "30 constant crossings are the initial condition",
+                      "the 512 arm is the only place the two rules part",
+                      "the crossings by cap read 3 / 5 / 4 / 1",
+                      "No verdict above moves.")
+      end
+
       it "reads every sweep on both observables and decides it on only one" do
         get finding_path(open_endedness)
 
@@ -1338,6 +1404,95 @@ RSpec.describe "Findings", type: :request do
             .to include("That table is descriptive. It decides nothing about the plateau",
                         "A lower rate at 20 000 epochs is not an impossibility.")
           expect(response.body).to include(finding_path("mutation-rate-long-horizon"))
+        end
+      end
+    end
+
+    context "with the host-parasite finding" do
+      let(:contest_finding) { Findings::Registry.find("complexity-under-contest") }
+
+      it "states the question, the arms and the rule the claim is made by" do
+        get finding_path(contest_finding)
+
+        expect(response.body.squish)
+          .to include("does complexity keep rising when energy is a contested stock?",
+                      "at least 20%", "within ±10% of the first",
+                      "theft never evolved")
+      end
+
+      it "states the amended measured rule as post hoc" do
+        get finding_path(contest_finding)
+
+        expect(response.body.squish)
+          .to include("since the core clause cannot be read on it",
+                      "<strong>post-hoc amendment</strong>",
+                      "clearing both bars reads <em>mixed</em>, never rising",
+                      "its runs having mostly fallen, reads <em>neither</em>",
+                      "was sampled on, which reads unmeasured")
+        expect(response.body).to include(%(<span class="badge badge-warning">partial</span>))
+      end
+
+      it "says there is no arm to read and points at the sweep" do
+        create(:experiment, name: "Host–parasite economy", slug: "host-parasite")
+
+        get finding_path(contest_finding)
+
+        expect(response.body.squish).to include("has reported a sample in this database, so there is no arm to read")
+        expect(response.body).not_to include("No claim yet")
+        expect(response.body).to include(experiment_path("host-parasite"))
+      end
+    end
+
+    context "with the asymmetric-execution finding" do
+      let(:asymmetry_finding) { Findings::Registry.find("complexity-under-asymmetry") }
+
+      it "states the question, the arms and the rule the claim is made by" do
+        get finding_path(asymmetry_finding)
+
+        expect(response.body.squish)
+          .to include("does complexity keep rising when only one partner's code runs?",
+                      "at least 20%", "within ±10% of the first",
+                      "the two room-to-grow caps whose plateau sweep 8 measured")
+      end
+
+      it "states the amended measured rule as post hoc, the secondary reading and what would refute the sweep" do
+        get finding_path(asymmetry_finding)
+
+        expect(response.body.squish)
+          .to include("since the core clause cannot be read on it", "<strong>post-hoc amendment</strong>",
+                      "last decile holds more lineages than the",
+                      "controls plateau — same caps, same rate, same world")
+        expect(response.body).to include(%(<span class="badge badge-error">negative</span>))
+      end
+
+      it "says there is no arm to read and points at the sweep" do
+        create(:experiment, name: "Asymmetric execution", slug: "asymmetric-execution")
+
+        get finding_path(asymmetry_finding)
+
+        expect(response.body.squish).to include("has reported a sample in this database, so there is no arm")
+        expect(response.body).not_to include("No claim yet")
+        expect(response.body).to include(experiment_path("asymmetric-execution"))
+      end
+
+      context "with the concat control as barren as the host arm" do
+        before do
+          experiment = create(:experiment, name: "Asymmetric execution", slug: "asymmetric-execution",
+                                           param_grid: Lab::SWEEPS.fetch("asymmetric_execution").fetch(:param_grid))
+          %w[concat host].each do |interaction|
+            10.times do
+              run = create(:run, experiment: experiment, status: "finished",
+                                 params: { "interaction" => interaction, "max_tape_len" => 128 })
+              create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+            end
+          end
+        end
+
+        it "reads the blank block without saying the host interaction kept replication from arising" do
+          get finding_path(asymmetry_finding)
+
+          expect(response.body.squish).to include("here the blank block is every run of every")
+          expect(response.body.squish).not_to include("Running only the first tape's code did not lower the plateau")
         end
       end
     end

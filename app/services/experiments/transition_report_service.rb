@@ -17,14 +17,23 @@ module Experiments
     CONFIRM_WINDOW = Runs::EmergenceEpochService::CONFIRM_WINDOW
 
     RUN_COLUMNS = %w[run_id seed status].freeze
-    ARM_COLUMNS = %w[arm n n_terminal flagged replicators both either_but_not_both].freeze
+    ARM_COLUMNS = %w[arm n n_terminal flagged relative both_rules replicators both either_but_not_both].freeze
+    READING_COLUMNS = ComplexityArmsService::COLUMNS
     SAMPLE_COLUMNS = %w[
-      transition_epoch collapse_epoch crossings confirmed_epoch confirmed_by min_entropy_bits
+      transition_epoch transition_epoch_relative collapse_epoch crossings confirmed_epoch confirmed_by
+      min_entropy_bits
       min_entropy_epoch peak_replicator_count peak_replicator_epoch first_replicator_epoch
       peak_copy_rate peak_copy_rate_epoch final_compress_ratio final_distinct_tapes final_top_share
     ].freeze
+    # Every observable a reading of this report asks a sample for, the guard observables
+    # Lab::TransitionRule reads included: keep it in step with them and with the readings
+    # below, because a key left out of it reads as a sample that never carried one.
+    SAMPLE_KEYS = %w[
+      compress_ratio op_density alphabet_size entropy_bits replicator_count copy_rate distinct_tapes top_share
+    ].freeze
 
-    Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :collapse_epoch, :crossings,
+    Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :transition_epoch_relative,
+                      :collapse_epoch, :crossings,
                       :confirmed_epoch, :confirmed_by, :min_entropy_bits, :min_entropy_epoch, :peak_replicator_count,
                       :peak_replicator_epoch, :first_replicator_epoch, :peak_copy_rate,
                       :peak_copy_rate_epoch, :final_compress_ratio, :final_distinct_tapes,
@@ -37,24 +46,31 @@ module Experiments
 
       def flagged? = transition_epoch.present?
 
+      def flagged_relative? = transition_epoch_relative.present?
+
       def replicated? = peak_replicator_count.to_f.positive?
     end
 
-    Arm = Data.define(:label, :runs, :terminal, :flagged, :replicated, :both) do
+    Arm = Data.define(:label, :runs, :terminal, :flagged, :relative, :both_rules, :replicated, :both) do
       def flagged_only = flagged - both
 
       def replicated_only = replicated - both
 
       def either_but_not_both = flagged_only + replicated_only
 
-      def cells = [label, runs, terminal, flagged, replicated, both, either_but_not_both]
+      def cells
+        [label, runs, terminal, flagged, relative, both_rules, replicated, both, either_but_not_both]
+      end
     end
 
-    Report = Data.define(:rows, :arms, :param_keys) do
+    Report = Data.define(:rows, :arms, :readings, :param_keys) do
       def headers = [*RUN_COLUMNS, *param_keys, *SAMPLE_COLUMNS]
 
       def to_text
-        [table(headers, rows.map(&:cells)), table(ARM_COLUMNS, arms.map(&:cells))].join("\n")
+        sections = [table(headers, rows.map(&:cells)), table(ARM_COLUMNS, arms.map(&:cells))]
+        sections << table(READING_COLUMNS, readings.map(&:cells)) if readings.any?
+
+        sections.join("\n")
       end
 
       def to_csv
@@ -64,6 +80,11 @@ module Experiments
           csv << []
           csv << ARM_COLUMNS
           arms.each { |arm| csv << arm.cells }
+          next if readings.empty?
+
+          csv << []
+          csv << READING_COLUMNS
+          readings.each { |reading| csv << reading.cells }
         end
       end
 
@@ -90,12 +111,12 @@ module Experiments
       @include_running = include_running
     end
 
-    def call = Report.new(rows: rows, arms: arms, param_keys: param_keys)
+    def call = Report.new(rows: rows, arms: arms, readings: readings, param_keys: param_keys)
 
     private
 
     def rows
-      @rows ||= sampled_runs.map { |run, samples| row(run, samples) }
+      @rows ||= sampled_rows
     end
 
     # Counted off the rows already read rather than off the page's block
@@ -107,12 +128,21 @@ module Experiments
       @arms ||= rows.group_by { |row| arm_label(row.params) }.map { |label, arm_rows| arm(label, arm_rows) }
     end
 
+    # The pre-registered complexity reading of DESIGN §1.3 sweeps 9 and 10, over the same
+    # arms, so a sweep the reading says nothing about keeps the report it had.
+    def readings = @readings ||= ComplexityArmsService.call(experiment: @experiment)
+
     def arm(label, arm_rows)
       counted = @include_running ? arm_rows : arm_rows.select(&:terminal?)
 
-      Arm.new(label: label, runs: arm_rows.size, terminal: arm_rows.count(&:terminal?),
-              flagged: counted.count(&:flagged?), replicated: counted.count(&:replicated?),
-              both: counted.count { |row| row.flagged? && row.replicated? })
+      Arm.new(label: label, runs: arm_rows.size, terminal: arm_rows.count(&:terminal?), **counts_of(counted))
+    end
+
+    def counts_of(rows)
+      { flagged: rows.count(&:flagged?), relative: rows.count(&:flagged_relative?),
+        both_rules: rows.count { |row| row.flagged? && row.flagged_relative? },
+        replicated: rows.count(&:replicated?),
+        both: rows.count { |row| row.flagged? && row.replicated? } }
     end
 
     def arm_label(params)
@@ -123,15 +153,31 @@ module Experiments
 
     # A run nothing has been sampled from yet is no row: the report is a reading of stored
     # samples, not of the queue.
-    def sampled_runs
-      runs = @experiment.runs.order(:id).to_a
-      by_run = Sample.where(run: runs).order(:epoch).pluck(:run_id, :epoch, :values)
-                     .group_by(&:first)
+    #
+    # One run's samples are held at a time, and of each sample only the observables read
+    # below: the experiment's samples read at once cost the 2 GiB app container its memory
+    # at 848 runs of the host-parasite sweep (issue #223).
+    def sampled_rows
+      rows = []
 
-      runs.filter_map do |run|
-        samples = by_run[run.id]
-        [run, samples.map { |(_, epoch, values)| [epoch, values] }] if samples
+      @experiment.runs.founding.find_each do |run|
+        samples = samples_of(run)
+        rows << row(run, samples) if samples.any?
       end
+
+      rows
+    end
+
+    def samples_of(run) = run.samples.order(:epoch).pluck(:epoch, observed_values)
+
+    # The projection keeps the values a jsonb object, so every reading below reads the
+    # numbers the whole column gave it; an observable the sample never carried comes back
+    # a JSON null, which reads as the missing key it was.
+    def observed_values
+      @observed_values ||= Arel.sql(ActiveRecord::Base.sanitize_sql_array(
+        ["jsonb_build_object(#{(['?, samples.values -> ?'] * SAMPLE_KEYS.size).join(', ')})",
+         *SAMPLE_KEYS.flat_map { |key| [key, key] }]
+      ))
     end
 
     def row(run, samples)
@@ -150,6 +196,7 @@ module Experiments
       entropy = extreme(samples, "entropy_bits", :min_by)
 
       { transition_epoch: run.transition_epoch,
+        transition_epoch_relative: Runs::RelativeTransitionEpochService.call(samples: samples),
         collapse_epoch: samples.find { |(_, values)| below_threshold?(values) }&.first,
         crossings: Runs::CrossingsService.call(samples: samples).size,
         **confirmation_of(run.transition_epoch, samples),

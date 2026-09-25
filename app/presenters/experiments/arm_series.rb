@@ -9,30 +9,30 @@ module Experiments
   # The engine is the only authority on these metrics (DESIGN §1.2): everything here is an
   # average over stored samples, and nothing is derived from a tape.
   class ArmSeries
-    # The aggregate is spelled out per metric rather than built around the metric's name:
-    # no SQL on this page is assembled from a variable.
-    Series = Data.define(:metric, :title, :average)
+    Series = Data.define(:metric, :title)
 
     LINEAGE = [
-      Series.new(metric: "distinct_lineages", title: "Distinct lineages",
-                 average: "AVG((values ->> 'distinct_lineages')::numeric)"),
-      Series.new(metric: "top_lineage_share", title: "Share of the largest lineage",
-                 average: "AVG((values ->> 'top_lineage_share')::numeric)")
+      Series.new(metric: "distinct_lineages", title: "Distinct lineages"),
+      Series.new(metric: "top_lineage_share", title: "Share of the largest lineage")
     ].freeze
 
     COMPLEXITY = [
-      Series.new(metric: "dominant_compressed_len",
-                 title: "Compressed length of the dominant tape (bytes)",
-                 average: "AVG((values ->> 'dominant_compressed_len')::numeric)"),
-      Series.new(metric: "dominant_instruction_count", title: "Instructions in the dominant tape",
-                 average: "AVG((values ->> 'dominant_instruction_count')::numeric)")
+      Series.new(metric: "dominant_compressed_len", title: "Compressed length of the dominant tape (bytes)"),
+      Series.new(metric: "dominant_instruction_count", title: "Instructions in the dominant tape"),
+      Series.new(metric: "lineage_compressed_len", title: "Compressed length of the largest lineage's tape (bytes)"),
+      Series.new(metric: "lineage_instruction_count", title: "Instructions in the largest lineage's tape")
     ].freeze
 
-    def self.build(axis:, runs:) = new(axis: axis, runs: runs)
+    EVERY = (LINEAGE + COMPLEXITY).freeze
 
-    def initialize(axis:, runs:)
+    def self.build(axis:, runs:) = new(axis: axis, means: ArmMeans.read(axes: [axis], runs: runs, series: EVERY))
+
+    # Every axis of a sweep drawn off the one read of its samples ArmMeans makes.
+    def self.for_axes(axes:, means:) = axes.index_with { |axis| new(axis: axis, means: means) }
+
+    def initialize(axis:, means:)
       @axis = axis
-      @runs = runs
+      @means = means
     end
 
     def lineage_charts = @lineage_charts ||= charts_for(LINEAGE)
@@ -56,23 +56,10 @@ module Experiments
 
     def arms_for(series)
       @axis.values.map do |value|
-        Charts::ArmLines::Arm.new(label: @axis.label_of(value), points: means_for(run_ids_at(value), series))
+        Charts::ArmLines::Arm.new(label: @axis.label_of(value), points: points_at(value, series))
       end
     end
 
-    def run_ids_at(value) = @runs.select { |run| @axis.matches?(run.params, value) }.map(&:id)
-
-    # Averaged in Postgres, one query per arm and series: a sweep's runs carry thousands of
-    # samples each, and the page draws only the arm's mean at each epoch. The type test
-    # keeps a sample whose reading the engine reported as null — nothing replicated — out
-    # of the mean, and makes the cast behind it safe.
-    def means_for(run_ids, series)
-      return [] if run_ids.empty?
-
-      Sample.where(run_id: run_ids)
-            .where("jsonb_typeof(values -> ?) = 'number'", series.metric)
-            .group(:epoch).order(:epoch)
-            .pluck(:epoch, Arel.sql(series.average))
-    end
+    def points_at(value, series) = @means.fetch([@axis.name, @axis.values.index(value), series.metric], [])
   end
 end

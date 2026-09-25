@@ -10,6 +10,7 @@
        data-controller="viewer"
        data-viewer-worlds-value="<%= @show.worlds.to_json %>"
        data-viewer-substrate-value="<%= @show.substrate %>"
+       data-viewer-param-lines-value="<%= @show.param_lines.to_json %>"
        data-viewer-seed-value="<%= @show.seed %>"
        data-viewer-steps-per-frame-value="<%= @show.steps_per_frame %>"
        data-viewer-wasm-url-value="<%= @show.wasm_url %>">
@@ -65,7 +66,13 @@
         <dt class="text-xs text-muted uppercase">Copy rate</dt>
         <dd class="code" data-viewer-target="copyRate">—</dd>
       </div>
+      <div class="viewer-metric">
+        <dt class="text-xs text-muted uppercase">Steal rate</dt>
+        <dd class="code" data-viewer-target="stealRate">—</dd>
+      </div>
     </dl>
+
+    <p class="viewer-params text-xs mono" data-viewer-target="params"><%= @show.param_lines.fetch(@show.substrate) %></p>
   </div>
 
   <%= render "shared/programme_status", status: @show.programme_status %>

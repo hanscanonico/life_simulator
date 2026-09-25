@@ -23,13 +23,13 @@ RSpec.describe "lab:transition_report" do
   it "prints one line per sampled run" do
     expect(invoke("lab:transition_report", "mutation-rate"))
       .to match(
-        /^\s*#{run.id}\s+#{run.seed}\s+finished\s+0\.001\s+100\s+100\s+0\s+100\s+census\s+2\s+100\s+3\s+100\s+100\s+0\.004\s+100\s/
+        /^\s*#{run.id}\s+#{run.seed}\s+finished\s+0\.001\s+100\s+—\s+100\s+0\s+100\s+census\s+2\s+100\s+3\s+100\s+100\s+0\.004\s+100\s/
       )
   end
 
   it "prints the arm summary" do
     expect(invoke("lab:transition_report", "mutation-rate"))
-      .to match(/arm\s+n\s+n_terminal\s+flagged\s+replicators\s+both/)
+      .to match(/arm\s+n\s+n_terminal\s+flagged\s+relative\s+both_rules\s+replicators\s+both/)
   end
 
   context "with a run still going" do
@@ -42,14 +42,14 @@ RSpec.describe "lab:transition_report" do
     end
 
     it "leaves the in-flight flag out of the arm summary" do
-      expect(arm_line(invoke("lab:transition_report", "mutation-rate"))).to match(/0\.001\s+2\s+1\s+1\s+1\s+1\s+0/)
+      expect(arm_line(invoke("lab:transition_report", "mutation-rate"))).to match(/0\.001\s+2\s+1\s+1\s+0\s+0\s+1\s+1\s+0/)
     end
 
     context "with INCLUDE_RUNNING=1" do
       it "counts the in-flight flag" do
         report = with_env("INCLUDE_RUNNING", "1") { invoke("lab:transition_report", "mutation-rate") }
 
-        expect(arm_line(report)).to match(/0\.001\s+2\s+1\s+2\s+2\s+2\s+0/)
+        expect(arm_line(report)).to match(/0\.001\s+2\s+1\s+2\s+0\s+0\s+2\s+2\s+0/)
       end
     end
 

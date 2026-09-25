@@ -11,18 +11,25 @@ pub struct RunResult {
     pub seed: u64,
     pub epochs: u64,
     pub transition_epoch: Option<u64>,
+    /// The same measurement read against the run's own baseline (`docs/design_record.md`,
+    /// 2026-09-19). `transition_epoch` above stays the run's dependent variable.
+    pub transition_epoch_relative: Option<u64>,
     pub wall_seconds: f64,
     pub epochs_per_second: f64,
 }
 
 /// Why the loop took a snapshot: the epoch cadence, the wall-clock ceiling on snapshot
-/// age, or the sample that settled the transition. Lab mode logs it so a shift's restart
-/// cost can be read off the log rather than inferred from the snapshot epochs.
+/// age, the first sample that crosses the transition threshold, the sample that settled
+/// the transition, or a census rising off zero. Lab mode
+/// logs it so a shift's restart cost can be read off the log rather than inferred from
+/// the snapshot epochs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapshotReason {
     Cadence,
     Age,
+    Crossing,
     Transition,
+    Census,
 }
 
 impl SnapshotReason {
@@ -30,20 +37,38 @@ impl SnapshotReason {
         match self {
             Self::Cadence => "cadence",
             Self::Age => "age",
+            Self::Crossing => "crossing",
             Self::Transition => "transition",
+            Self::Census => "census",
         }
     }
 }
 
+/// The two transition readings the engine has settled on so far: the constant-threshold
+/// one every finding reads, and the relative one beside it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Transitions {
+    pub epoch: Option<u64>,
+    pub relative: Option<u64>,
+}
+
+impl Transitions {
+    pub fn of(world: &life_engine::World) -> Self {
+        Self {
+            epoch: world.transition_epoch(),
+            relative: world.transition_epoch_relative(),
+        }
+    }
+
+    pub fn settled(&self) -> bool {
+        self.epoch.is_some() || self.relative.is_some()
+    }
+}
+
 pub trait RunSink {
-    /// One sampled epoch, with the transition epoch the engine has settled on so far so
+    /// One sampled epoch, with the transition epochs the engine has settled on so far so
     /// a run that dies before `finish` still reports its measurement.
-    fn sample(
-        &mut self,
-        epoch: u64,
-        metrics: &Metrics,
-        transition_epoch: Option<u64>,
-    ) -> Result<()>;
+    fn sample(&mut self, epoch: u64, metrics: &Metrics, transitions: Transitions) -> Result<()>;
     fn snapshot(
         &mut self,
         epoch: u64,
@@ -58,12 +83,7 @@ pub trait RunSink {
 pub struct NullSink;
 
 impl RunSink for NullSink {
-    fn sample(
-        &mut self,
-        _epoch: u64,
-        _metrics: &Metrics,
-        _transition_epoch: Option<u64>,
-    ) -> Result<()> {
+    fn sample(&mut self, _epoch: u64, _metrics: &Metrics, _transitions: Transitions) -> Result<()> {
         Ok(())
     }
 

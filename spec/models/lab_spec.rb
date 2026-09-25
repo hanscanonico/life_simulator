@@ -147,6 +147,177 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the host-parasite sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("host_parasite") }
+      let(:economy) { definition[:param_grid].fetch("economy") }
+
+      it "crosses three influx levels with theft on and off, under one control at the defaults" do
+        expect(economy).to eq(
+          [{ "energy_influx" => 0, "steal_amount" => 0 },
+           { "energy_influx" => 2**13, "steal_amount" => 0 },
+           { "energy_influx" => 2**13, "steal_amount" => 2**10 },
+           { "energy_influx" => 2**11, "steal_amount" => 0 },
+           { "energy_influx" => 2**11, "steal_amount" => 2**10 },
+           { "energy_influx" => 2**9, "steal_amount" => 0 },
+           { "energy_influx" => 2**9, "steal_amount" => 2**10 }]
+        )
+      end
+
+      it "carries the arm where the economy is off, the substrate every other sweep ran" do
+        expect(economy.first)
+          .to eq(Lab::Schema.defaults.slice("energy_influx", "steal_amount"))
+      end
+
+      it "prices the influx against the step budget one interaction is cut from" do
+        full_interaction = Lab::Schema.defaults.fetch("max_steps")
+
+        expect(economy.filter_map { |arm| arm["energy_influx"].positive? ? arm["energy_influx"] : nil }.uniq)
+          .to eq([full_interaction, full_interaction / 4, full_interaction / 16])
+      end
+
+      it "keeps every priced arm's hoard under one ceiling, four full interactions high" do
+        cap = definition[:param_grid].fetch("energy_stock_cap").sole
+
+        expect(cap).to eq(4 * Lab::Schema.defaults.fetch("max_steps"))
+        expect(economy.map { |arm| arm.fetch("energy_influx") }).to all(be <= cap)
+      end
+
+      it "pays a thief something for every steal it runs" do
+        loss = definition[:param_grid].fetch("steal_loss").sole
+        amount = economy.filter_map { |arm| arm["steal_amount"] }.max
+
+        expect(loss).to eq(Lab::Schema.defaults.fetch("steal_loss"))
+        expect((amount * (1 - loss)).floor).to be_positive
+      end
+
+      it "runs both room-to-grow caps at the mutation rate that first produced emergence" do
+        expect(definition[:param_grid].values_at("max_tape_len", "tape_len", "mutation_rate"))
+          .to eq([[128, 256], [64], [Lab::EMERGENT_MUTATION_RATE]])
+      end
+
+      it "gives every arm ninety seeds, the control included" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..90).to_a, 20_000])
+      end
+
+      it "gives the one rising arm and the controls at both caps two hundred and seventy seeds" do
+        expect(definition.fetch(:seeds_by_arm).to_h { |arm| arm.values_at("params", "seeds") })
+          .to eq({ "energy_influx" => 2**11, "steal_amount" => 2**10, "max_tape_len" => 128 } => (1..270).to_a,
+                 { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128 } => (1..270).to_a,
+                 { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 256 } => (1..270).to_a)
+      end
+    end
+
+    describe "the asymmetric-execution sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("asymmetric_execution") }
+
+      it "reads the whole concatenation in its control arm, the substrate every other sweep ran" do
+        expect(definition[:param_grid].fetch("interaction")).to eq(%w[concat host])
+        expect(definition[:param_grid].fetch("interaction").first)
+          .to eq(Lab::Schema.defaults.fetch("interaction"))
+      end
+
+      it "crosses the two interaction modes with the two caps whose plateau sweep 8 measured" do
+        expect(definition[:param_grid].values_at("max_tape_len", "tape_len", "mutation_rate"))
+          .to eq([[128, 256], [64], [Lab::EMERGENT_MUTATION_RATE]])
+      end
+
+      it "runs the same 128-square world for the same budget as the sweep it extends" do
+        expect(definition[:param_grid].values_at("width", "height")).to eq([[128], [128]])
+        expect(definition[:epochs]).to eq(20_000)
+      end
+
+      it "gives every arm ninety seeds, the control included" do
+        expect(definition[:seeds]).to eq((1..90).to_a)
+        expect(definition).not_to have_key(:seeds_by_arm)
+      end
+    end
+
+    describe "the from-emerged descendant sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("from_emerged") }
+      let(:host_parasite) { Lab::SWEEPS.fetch("host_parasite") }
+      let(:treatments) { definition[:param_grid].fetch("treatment") }
+
+      it "draws its parents from sweep 9's two economy-off controls" do
+        controls = host_parasite.fetch(:seeds_by_arm).map { |arm| arm.fetch("params") }
+                                .select { |arm| arm.fetch("energy_influx").zero? }
+
+        expect(definition[:parents]).to include("experiment" => "host-parasite", "arms" => controls)
+      end
+
+      it "qualifies a parent on the oriented census of its terminal world, at half replicators" do
+        expect(definition[:parents].values_at("instrument", "share_key", "min_share"))
+          .to eq(["oriented_census/1", "replicator_share", 0.5])
+      end
+
+      it "pairs the continuation with sweep 9's rising arm, the rich economy and host mode" do
+        expect(treatments).to eq(
+          [{},
+           { "energy_influx" => 2**11, "steal_amount" => 2**10, "energy_stock_cap" => 2**15, "steal_loss" => 0.5 },
+           { "energy_influx" => 2**13, "steal_amount" => 2**10, "energy_stock_cap" => 2**15, "steal_loss" => 0.5 },
+           { "interaction" => "host" }]
+        )
+      end
+
+      it "changes no parameter that shapes the parent's world" do
+        expect(treatments.flat_map(&:keys) & Lab::CanonicalParams::STRUCTURAL_KEYS).to be_empty
+      end
+
+      it "runs the same three seeds under every treatment, none a parent's own" do
+        parent_seeds = host_parasite.fetch(:seeds_by_arm).flat_map { |arm| arm.fetch("seeds") }
+
+        expect(definition[:seeds]).to eq([1001, 1002, 1003])
+        expect(definition[:seeds] & parent_seeds).to be_empty
+      end
+
+      it "gives every child twenty thousand epochs past its parent" do
+        expect(definition[:epochs]).to eq(20_000)
+      end
+
+      it "runs ahead of sweep 9's seed-major extension" do
+        expect(definition[:priority]).to be > 0
+      end
+    end
+
+    describe "the lineage-diversity sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
+      let(:reading) { Lab::LineageDiversityReading }
+
+      it "runs the radius sweep's arms at the rate that first produced emergence" do
+        expect(definition[:param_grid].fetch("radius")).to eq(Lab::SWEEPS.fetch("radius")[:param_grid]["radius"])
+        expect(definition[:param_grid].values_at("width", "height", "mutation_rate"))
+          .to eq([[128], [128], [Lab::EMERGENT_MUTATION_RATE]])
+      end
+
+      it "holds tapes at a fixed 64 bytes" do
+        expect(definition[:param_grid].values_at("tape_len", "max_tape_len")).to eq([[64], [64]])
+      end
+
+      it "inherits lineage tags through reverse copies" do
+        expect(definition[:param_grid].fetch("lineage_rule")).to eq(["oriented"])
+        expect(Lab::Schema.values_for("lineage_rule")).to include("oriented")
+      end
+
+      it "gives every arm ninety seeds of twenty thousand epochs, 360 runs in all" do
+        expect(definition.values_at(:seeds, :epochs)).to eq([(1..90).to_a, 20_000])
+        expect(definition[:param_grid].fetch("radius").size * definition[:seeds].size).to eq(360)
+      end
+
+      it "runs after the from-emerged children and ahead of sweep 9's extension" do
+        expect(definition[:priority]).to be_between(1, Lab::SWEEPS.fetch("from_emerged")[:priority] - 1)
+      end
+
+      it "orders the trend test's arms from the well-mixed world to the shortest reach" do
+        expect(reading::RADIUS_ORDER).to match_array(definition[:param_grid].fetch("radius"))
+        expect(reading::RADIUS_ORDER).to eq([0, 4, 2, 1])
+        expect(reading::MIN_READ_ARMS).to be_between(2, reading::RADIUS_ORDER.size)
+      end
+
+      it "reads polyphyly on an observable the engine records" do
+        expect(Sample::OBSERVABLES).to include(reading::DIVERSITY_KEY, reading::SHARE_KEY, *reading::DESCRIPTIVE_KEYS)
+        expect(reading::MONOPHYLETIC).to be < reading::POLYPHYLETIC
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 
@@ -173,10 +344,37 @@ RSpec.describe Lab do
 
     it "overrides the seeds of arms its own grid carries" do
       Lab::SWEEPS.each_value do |definition|
-        definition.fetch(:seeds_by_arm, {}).each do |name, seeds_by_value|
-          expect(definition.fetch(:param_grid).fetch(name)).to include(*seeds_by_value.keys)
+        points = grid_points(definition.fetch(:param_grid))
+
+        arms(definition.fetch(:seeds_by_arm, {})).each do |arm|
+          expect(points).to include(a_hash_including(arm))
         end
       end
+    end
+
+    # The builder gives a grid point the seeds of the first arm it matches, so two arms
+    # sharing a point would hand the second its seeds silently.
+    it "names no grid point by two arms" do
+      Lab::SWEEPS.each_value do |definition|
+        named = arms(definition.fetch(:seeds_by_arm, {}))
+
+        grid_points(definition.fetch(:param_grid)).each do |point|
+          expect(named.count { |arm| point >= arm }).to be <= 1
+        end
+      end
+    end
+
+    # Every arm an override names, as the parameters it must match, in either of the two
+    # shapes Experiments::SweepBuilderService reads.
+    def arms(seeds_by_arm)
+      return seeds_by_arm.map { |arm| arm.fetch("params") } if seeds_by_arm.is_a?(Array)
+
+      seeds_by_arm.flat_map { |name, seeds_by_value| seeds_by_value.keys.map { |value| { name => value } } }
+    end
+
+    def grid_points(param_grid)
+      head, *tail = param_grid.map { |name, values| values.map { |value| value.is_a?(Hash) ? value : { name => value } } }
+      head.product(*tail).map { |parts| parts.reduce({}, :merge) }
     end
 
     # An axis whose values are hashes is a bundle of parameters travelling together, so it

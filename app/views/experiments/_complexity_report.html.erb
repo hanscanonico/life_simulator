@@ -1,0 +1,71 @@
+<%# The complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm: `arms` are
+    Experiments::ComplexityArmsService::Arm. %>
+<figure class="table-figure mt-4">
+  <%# The caption sits outside .table-scroll: inside it, it is laid out at the table's width
+      and clipped mid-word on a phone. %>
+  <figcaption class="table-caption text-sm text-muted" id="complexity-reading">
+    Does complexity keep rising, per arm — the median of the last decile of each emerged
+    run's post-crossing samples against the median of its first decile. An arm keeps rising
+    where at least half its measured runs raise
+    <span class="mono">dominant_instruction_count</span> by <%= percent_value rise_margin %>
+    or more without their conserved core falling, and plateaus where at least half sit
+    within <%= percent_value plateau_band %> of where they started. An arm clearing both
+    bars reads mixed and one clearing neither reads neither. A run is measured on its
+    instruction count, and its conserved core is compared in bytes, so a core that reads
+    zero at both ends counts as a core that did not fall — the post-hoc amendment of
+    2026-09-21; the pre-registered rule dropped those runs as unmeasured, and the
+    pre-registered unmeasured column counts, per arm, the measured runs it dropped. A run
+    carrying no conserved core at all over the span is unmeasured.
+    <span class="mono">dominant_compressed_len</span> is printed beside them and decides
+    nothing: it saturates at the tape cap plus zlib's envelope, and
+    <span class="mono">distinct_lineages</span> is the secondary reading of sweep 10, where
+    an arms race shows as a late-run lineage count above the control's at the same cap. An
+    arm reads on two measured runs, or on a blank block of ten; a steal arm whose
+    <span class="mono">steal_rate</span> never left zero reads as theft that never evolved,
+    not as theft that does not help, and one never sampled on that observable reads
+    unmeasured
+  </figcaption>
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="complexity-reading">
+    <table class="data-table" aria-labelledby="complexity-reading">
+      <thead>
+        <tr>
+          <th>Arm</th>
+          <th class="numeric">Emerged</th>
+          <th class="numeric">Measured</th>
+          <th class="numeric">Pre-registered unmeasured</th>
+          <th class="numeric">Instructions</th>
+          <th class="numeric">Conserved core</th>
+          <th class="numeric">Compressed length</th>
+          <th class="numeric">Distinct lineages</th>
+          <th class="numeric">Rising</th>
+          <th class="numeric">Plateau</th>
+          <th class="numeric">Peak <span class="mono">steal_rate</span></th>
+          <th>Reading</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% arms.each do |arm| %>
+          <tr>
+            <td class="mono"><%= arm.label %></td>
+            <td class="numeric"><%= arm.emerged_count %> / <%= arm.terminal_count %></td>
+            <td class="numeric"><%= arm.measured_count %></td>
+            <td class="numeric"><%= arm.pre_registered_unmeasured_count %></td>
+            <td class="numeric"><%= render "experiments/complexity_span", span: arm.instructions %></td>
+            <td class="numeric"><%= render "experiments/complexity_span", span: arm.core %></td>
+            <td class="numeric"><%= render "experiments/complexity_span", span: arm.compressed %></td>
+            <td class="numeric"><%= render "experiments/complexity_span", span: arm.lineages %></td>
+            <td class="numeric"><%= arm.rising_count %> / <%= arm.measured_count %></td>
+            <td class="numeric"><%= arm.plateau_count %> / <%= arm.measured_count %></td>
+            <td class="numeric"><%= metric_value arm.peak_steal_rate %></td>
+            <td>
+              <span class="badge <%= arm.badge_class %>"><%= arm.reading_label %></span>
+              <% if arm.theft_label %>
+                <span class="text-sm text-muted">theft <%= arm.theft_label %></span>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</figure>

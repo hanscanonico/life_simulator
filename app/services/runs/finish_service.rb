@@ -5,9 +5,10 @@ module Runs
   class FinishService
     include Callable
 
-    def initialize(run:, transition_epoch: nil, summary: nil, error: nil)
+    def initialize(run:, transition_epoch: nil, transition_epoch_relative: nil, summary: nil, error: nil)
       @run = run
       @transition_epoch = transition_epoch
+      @transition_epoch_relative = transition_epoch_relative
       @summary = summary
       @error = error
     end
@@ -16,7 +17,7 @@ module Runs
       Run.transaction do
         @run.assign_attributes(run_attributes)
         @run.persistence = persistence_summary
-        @run.assign_attributes(emergence.attributes)
+        @run.assign_attributes(emergence.attributes) unless @run.descendant?
         @run.save!
         finish_experiment
       end
@@ -45,6 +46,9 @@ module Runs
       attributes[:epochs_done] = @run.epochs if @error.blank?
       attributes[:summary] = @summary if @summary.present?
       attributes[:transition_epoch] = @transition_epoch if @run.earlier_transition_epoch?(@transition_epoch)
+      if @run.earlier_transition_epoch_relative?(@transition_epoch_relative)
+        attributes[:transition_epoch_relative] = @transition_epoch_relative
+      end
       attributes
     end
 
@@ -54,7 +58,8 @@ module Runs
     def persistence_summary = PersistenceSummaryService.call(run: @run).to_h
 
     # Against the same settled transition epoch: the crossing this finish recorded is the
-    # candidate, and the run carries whether a witness backed it.
+    # candidate, and the run carries whether a witness backed it. A descendant keeps the
+    # emergence it inherited from its parent.
     def emergence = EmergenceEpochService.call(run: @run)
 
     def finish_experiment

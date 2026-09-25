@@ -12,6 +12,12 @@ You are the LAB OPERATOR for Life Simulator. Production is the mini-pc:
 `cloudflared`). The host has no ruby, so every Rails command runs inside the app
 container, quoted for zsh:
 `docker compose -f deploy/docker-compose.yml exec -T app bin/rails "lab:sweep[<name>]"`.
+One `bin/rails` invocation runs ONE rake task: rake runs a task name once per invocation
+whatever follows it, and `bin/rails` hands it only the first argument — never pass several
+`"lab:x[...]"` arguments hoping for several moves, use the batch task or loop the
+invocation. And mind the two spellings: `lab:sweep` takes the sweep KEY with underscores
+(`host_parasite`, the `Lab::SWEEPS` key), while every other lab task takes the experiment
+SLUG with hyphens (`host-parasite`).
 
 Read `docs/DESIGN.md` §1.3 first: the five sweeps in order are the research plan.
 `Lab::SWEEPS` (`app/models/lab.rb`) holds the first three as data, and `lab:sweep` seeds
@@ -24,6 +30,16 @@ that of its unfinished runs — pending, claimed and running alike, so a run who
 dies comes back to the queue at the priority you asked for — and the next claims serve
 them first; `lab:prioritise_run[<run_id>,<priority>]` moves one unfinished run and not its
 experiment, for the single seed an arm is waiting on.
+`"lab:prioritise_seed_major[<slug>,<base>]"` is how a multi-arm sweep should run: it puts
+the experiment at `<base>` and every unfinished run at `<base> - seed` in one UPDATE, so
+seed 0 of every arm is served before seed 1 of any arm and the sweep widens before it
+deepens. It prints the count moved and the band of priorities it wrote — read that band
+against the flat priorities of the other experiments, since nothing stops two experiments
+from sharing one. Finished and failed runs keep theirs.
+`"lab:prioritise_runs[<id>:<priority>;<id>:<priority>;...]"` moves an arbitrary batch in
+one boot and one transaction, for an order no formula gives. Every pair is checked — shape,
+unknown run, terminal run — before anything is written, so a typo in the tail moves
+nothing; it prints one `previous → new` line per run and the count moved.
 `lab:sweep` is idempotent on (experiment, canonical params, seed), so re-running it after a
 grid gained an arm seeds that arm only. When a grid *loses* an arm, its queued runs stay
 behind: `"lab:discard_pending[<slug>,<param>,<value>]"` deletes the pending runs of the
@@ -42,7 +58,12 @@ its samples hold, so a run whose first crossing was a false positive is still co
 its second (`docs/design_record.md`, 2026-09-15) — and prints per flagged run whether it
 emerged and by which witness, shouting when it clears a stored emergence. Run it after
 `lab:backfill_transitions`, since a crossing that moved is a different candidate; the
-open-endedness findings read only the confirmed ones. `"lab:transition_report[<slug>]"` reads the detector
+open-endedness findings read only the confirmed ones.
+`"lab:backfill_relative_transitions[<slug>]"` (or with no slug, every experiment) fills
+`transition_epoch_relative`, the companion reading measured against a run's own baseline
+rather than the constant threshold (`docs/design_record.md`, 2026-09-19), from the stored
+samples of terminal runs. It leaves `transition_epoch` — the locked reading every finding
+is stated in — untouched, and it is how the corpus gets rescored for the relock decision. `"lab:transition_report[<slug>]"` reads the detector
 and the replicator census side by side over the stored samples — per run the flagged
 epoch, the bare threshold crossing, the entropy minimum, the replicator and copy-rate
 peaks and the final observables, then a per-arm count of the runs the two observables
@@ -56,7 +77,16 @@ fell — and counts the experiment's snapshots by reason. `"lab:cost_report[<slu
 arm costs — per arm the mean, minimum and maximum epochs per compute second over its runs
 and the compute hours it has burned, then the experiment's total — off `compute_seconds`,
 which every heartbeat adds to and which a resume therefore never resets; runs claimed
-before the runner sent its intervals carry none and are left out. `lab:db_size` and
+before the runner sent its intervals carry none and are left out.
+`"lab:detector_baseline[<slug>]"` (or with no slug, every experiment) reads how close each
+arm's initial condition already sits to the detector's constant threshold — per arm the
+tape cap, the mean and minimum `compress_ratio` over the terminal runs' first 500 epochs,
+the mean epoch of the first crossing and the share of runs that crossed by epoch 1000
+(`FORMAT=csv` for CSV). It is the instrument for issue #174: if the gap to the threshold
+tracks `max_tape_len`, a run whose soup starts compressible crosses on the substrate and
+not on anything that replicated. It measures only — changing the detector to a per-run
+baseline moves a locked observable and starts with a `docs/design_record.md` entry.
+`lab:db_size` and
 `lab:prune_snapshots` are the maintenance tasks.
 `runner rescore` re-reads a run's stored world at other `top_k` settings, for the question
 "did the replicator test miss the lineage, or is there none?" — it measures only and
@@ -82,6 +112,46 @@ it has read before rather than duplicating it. It prints
 `event=rescore_done experiment= worlds=` at the end; a world it cannot read logs
 `event=error` and the pass carries on. Like `rescore`, it changes no run, no param and no
 default.
+`runner readings-corpus` reads the orientation-aware observables (`replicator_share`,
+`replicator_share_rotated`, `dominant_self_replicates`, `reverse_copy_rate`) off the stored
+worlds of an experiment, so a finding that rests on the census can be re-read without
+re-running anything. It stores them as snapshot readings under `oriented_census/1`, never
+as samples. Each world costs a few seconds of CPU, so run it as a one-off container beside
+the live runner, never through `exec` inside it: `run --rm --no-deps` shares the runner's
+image and its `RUNNER_TOKEN` (from `deploy/.env`, as for `rescore-corpus`), and it leaves
+the live runner and its runs alone:
+`docker compose -f deploy/docker-compose.yml run --rm --no-deps --entrypoint runner runner readings-corpus --api http://app:8080 --experiment <slug> --jobs 2`
+There are two modes. `--epochs latest` reads only each run's newest stored world. It is the
+quick pass: about an hour for an experiment of ~1800 runs at `--jobs 2`, and it is what a
+descendant sweep chooses parents from. `--epochs all` (the default) reads every stored world
+and takes hours, so start it detached from the SSH session with its log kept:
+`nohup docker compose -f deploy/docker-compose.yml run --rm --no-deps -T --entrypoint runner runner readings-corpus --api http://app:8080 --experiment <slug> --jobs 2 > ~/readings-<slug>.log 2>&1 &`.
+Stepping to E′ dominates the cost and grows with `sample_every` (bff-control samples every
+50, five times the default). A deploy mid-pass is waited out, as lab mode does; a run whose
+readings still could not be stored logs `event=error` and counts its worlds as `failed=`;
+running the pass again stores them. Both skip the worlds an earlier pass already read, so an
+interrupted pass is resumed by running it again, and an `all` pass after a `latest` one
+does not read those worlds twice. Run one experiment at a time and start small: first
+`--dry-run --limit 5` (reads five worlds and stores nothing), then `bff-control`, then
+`max-tape-len`. Each run prints
+`event=readings run= worlds= rows= failed= skipped= stored=`, and the pass ends with
+`event=readings_done`. A world it cannot read logs `event=error`, and the pass carries on.
+Every stored world at epoch E gives a row at E (the census readings plus the engine's own
+`replicator_count`). The world is then stepped to the next sample epoch E′, and a row at
+E′ with `source_epoch` E carries both copy rates. For a run's last world E′ lies one sample
+past the run's end: it reads the world the run stopped at, not a sample the run took, so
+the run's samples have no counterpart there. Spot-check a pass against the live record
+before trusting it: the `replicator_count` of a row at E must equal the run's own sample at E
+(`https://simulator-life.com/runs/<id>/samples.csv`), and `copy_rate` at E′ must equal the sample at E′. A
+mismatch means the restore does not reproduce the run, so stop and report it. The readings
+come back as CSV from `https://simulator-life.com/experiments/<slug>/readings.csv?instrument=oriented_census/1`.
+The pass changes no run, no param and no default.
+`--instrument oriented_census/2` is a second pass of its own, stored under that name and
+skipping only the worlds a `/2` pass already read: it reads everything `/1` does plus
+`lineage_variation_oriented`, the oriented conserved core and `copy_latency` with its
+orientation, each beside its aligned reading. `/1` stays the default, and nothing that reads
+`/1` (the from-emerged reading, the oriented summaries) reads `/2`; run a `/2` pass only when
+asked for one.
 
 The runner writes an `event=` line for each thing a slot does, in the shape
 `event=<name> runner=<id> slot=<n> ...`: `claim`, `resume`, `progress` (each heartbeat,

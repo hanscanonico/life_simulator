@@ -115,6 +115,44 @@ mod tests {
         );
     }
 
+    /// The viewer takes the asymmetric execution mode of DESIGN §1.1 like any other
+    /// parameter, and runs the world the engine runs under it.
+    #[test]
+    fn a_world_runs_the_interaction_mode_its_params_name() {
+        let params = r#"{"width": 16, "height": 16, "interaction": "host"}"#;
+        let mut hosted = World::build(params, 42).unwrap();
+        let mut concat = World::build(r#"{"width": 16, "height": 16}"#, 42).unwrap();
+        hosted.step(20);
+        concat.step(20);
+
+        assert_ne!(hosted.world_hash(), concat.world_hash());
+        assert!(World::build(r#"{"interaction": "duel"}"#, 1).is_err());
+    }
+
+    /// The steal op of §1.1 reaches the viewer as a parameter like any other, and the
+    /// readout carries the observable it produces.
+    #[test]
+    fn a_world_accepts_the_steal_parameters_and_reads_out_a_steal_rate() {
+        let mut world = World::build(
+            r#"{"width": 32, "height": 32, "energy_influx": 64, "energy_stock_cap": 4096,
+                "steal_amount": 16, "steal_loss": 0.5}"#,
+            42,
+        )
+        .unwrap();
+        world.step(10);
+
+        let metrics: serde_json::Value = serde_json::from_str(&world.metrics_json()).unwrap();
+        assert!(
+            metrics["steal_rate"].is_f64(),
+            "the readout formats the engine's own steal_rate: {metrics}"
+        );
+
+        assert!(
+            World::build(r#"{"steal_amount": 16}"#, 1).is_err(),
+            "a steal with no stock to take from is refused"
+        );
+    }
+
     #[test]
     fn bad_json_and_bad_params_come_back_as_errors() {
         assert!(World::build("not json", 1).is_err());

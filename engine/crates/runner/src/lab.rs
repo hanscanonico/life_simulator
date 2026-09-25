@@ -7,10 +7,11 @@
 //! the client rides transient failures out for `--outage-grace` while the world stays in
 //! memory, and only a window that runs out ends the run.
 
-use crate::api::{self, ClaimedRun, LabClient};
+use crate::api::{self, ClaimedRun, LabClient, ParentWorld};
 use crate::http_sink::HttpSink;
 use crate::run::{self, Completion, Progress};
-use anyhow::Result;
+use crate::sink::Transitions;
+use anyhow::{anyhow, Context, Result};
 use life_engine::World;
 use std::any::Any;
 use std::panic::{self, AssertUnwindSafe};
@@ -208,10 +209,13 @@ impl Lab {
             Err(panic) => panic_message(&panic),
         };
         self.report(slot, &[("run", run.clone()), ("message", quoted(&failure))]);
-        if let Err(error) =
-            self.client
-                .finish(claimed.id, &slot.claim_id, None, None, Some(&failure))
-        {
+        if let Err(error) = self.client.finish(
+            claimed.id,
+            &slot.claim_id,
+            Transitions::default(),
+            None,
+            Some(&failure),
+        ) {
             self.report(
                 slot,
                 &[
@@ -253,11 +257,16 @@ impl Lab {
         })
     }
 
-    /// A run with epochs behind it continues from its latest snapshot; everything else
-    /// starts from `(params, seed)`. The flag says which of the two happened, so the run
-    /// loop knows whether its first epoch has already been measured and posted.
+    /// A run with epochs behind it continues from its latest snapshot; a descendant with
+    /// no snapshot of its own starts from its parent's world; everything else starts from
+    /// `(params, seed)`. The flag says whether the world was restored rather than made, so
+    /// the run loop knows not to measure its first epoch: a resumed run already posted it,
+    /// and a descendant's parent measured it.
     fn restore(&self, slot: &Slot, claimed: &ClaimedRun) -> Result<(World, bool)> {
-        if claimed.epochs_done > 0 {
+        // A requeued descendant is put back at its parent's epoch, not 0, and must restart
+        // from the parent's world like a requeued founding run restarts from soup.
+        let start_epoch = claimed.parent.map_or(0, |parent| parent.epoch);
+        if claimed.epochs_done > start_epoch {
             let latest =
                 self.client
                     .latest_snapshot(claimed.id, &slot.claim_id, &claimed.params)?;
@@ -275,9 +284,48 @@ impl Lab {
                     .map_err(anyhow::Error::msg);
             }
         }
+        if let Some(parent) = claimed.parent {
+            return self
+                .descend(slot, claimed, parent)
+                .map(|world| (world, true));
+        }
         World::new(&claimed.params, claimed.seed)
             .map(|world| (world, false))
             .map_err(anyhow::Error::msg)
+    }
+
+    /// The parent's world at `parent.epoch`, carried on under the claimed run's params and
+    /// seed. A descendant started from soup would be a different experiment posted under
+    /// this one's name, so a parent world that cannot be fetched or read fails the attempt.
+    /// `epochs_done` is no guide here: it is the heartbeat's absolute epoch, so a child that
+    /// crashed before its first snapshot restarts at `parent.epoch`, which is exact since
+    /// the run is deterministic.
+    fn descend(&self, slot: &Slot, claimed: &ClaimedRun, parent: ParentWorld) -> Result<World> {
+        let stored = self
+            .client
+            .world(parent.run, Some(parent.epoch))?
+            .ok_or_else(|| {
+                anyhow!(
+                    "parent run {} stored no world at epoch {}",
+                    parent.run,
+                    parent.epoch
+                )
+            })?;
+        self.log(
+            slot,
+            "descend",
+            &[
+                ("run", claimed.id.to_string()),
+                ("parent", parent.run.to_string()),
+                ("epoch", parent.epoch.to_string()),
+            ],
+        );
+        World::descend(&claimed.params, claimed.seed, &stored.blob).with_context(|| {
+            format!(
+                "descending from parent run {} at epoch {}",
+                parent.run, parent.epoch
+            )
+        })
     }
 
     /// Beats while the run works, and reports the rate the run is going at: the epochs
@@ -574,7 +622,7 @@ mod tests {
     use super::*;
     use crate::mock_lab::{self, MockLab};
     use life_engine::Params;
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     /// The outage window the tests give a call: long enough to ride a mock lab that
     /// vanishes for a moment out, short enough to run out inside a test.
@@ -639,6 +687,7 @@ mod tests {
             seed: 7,
             epochs,
             epochs_done,
+            parent: None,
         }
     }
 
@@ -777,6 +826,177 @@ mod tests {
         let error = failure["error"].as_str().unwrap_or_default();
         assert!(error.contains("/api/runs/1/snapshots/latest"), "{failure}");
         assert_eq!(mock.count("POST /api/runs/1/samples"), 0);
+    }
+
+    /// Past the engine's baseline window, where a descendant can start; the mock's world
+    /// is small enough to step there in a test.
+    const PARENT_EPOCH: u64 = 510;
+    const PARENT_RUN: i64 = 9;
+
+    /// A parent run stored at `PARENT_EPOCH`, and a claimed descendant of it that runs
+    /// four epochs past it.
+    fn descendant(mock: &MockLab, epochs_done: u64) -> (Vec<u8>, ClaimedRun) {
+        let mut parent = World::new(&MockLab::params(), 3).unwrap();
+        for _ in 0..PARENT_EPOCH {
+            parent.step();
+        }
+        let blob = parent.snapshot();
+        mock.set_run_worlds(PARENT_RUN, vec![(PARENT_EPOCH, blob.clone())]);
+        let claimed = ClaimedRun {
+            parent: Some(ParentWorld {
+                run: PARENT_RUN,
+                epoch: PARENT_EPOCH,
+            }),
+            ..claimed(MockLab::params(), PARENT_EPOCH + 4, epochs_done)
+        };
+        (blob, claimed)
+    }
+
+    fn posted_samples(mock: &MockLab) -> Vec<Value> {
+        mock.requests("POST /api/runs/1/samples")
+            .iter()
+            .flat_map(|body| body["samples"].as_array().cloned().unwrap_or_default())
+            .collect()
+    }
+
+    fn posted_epochs(mock: &MockLab) -> Vec<u64> {
+        posted_samples(mock)
+            .iter()
+            .map(|sample| sample["epoch"].as_u64().unwrap_or_default())
+            .collect()
+    }
+
+    /// The parent measured `PARENT_EPOCH`, so the child's first sample is the next one —
+    /// and it reads the parent's world carried on, not a soup.
+    #[test]
+    fn a_descendant_with_no_snapshot_of_its_own_starts_from_its_parents_world() {
+        let mock = MockLab::start();
+        let (blob, claimed) = descendant(&mock, 0);
+
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed);
+
+        assert_eq!(mock.count("GET /api/runs/9/world"), 1);
+        assert_eq!(posted_epochs(&mock), vec![512, 514]);
+        let mut expected = World::descend(&MockLab::params(), 7, &blob).unwrap();
+        expected.step();
+        expected.step();
+        assert_eq!(
+            posted_samples(&mock)[0]["compress_ratio"],
+            json!(expected.metrics().compress_ratio)
+        );
+        assert!(mock.request("POST /api/runs/1/finish")["error"].is_null());
+    }
+
+    #[test]
+    fn a_descendant_with_a_snapshot_of_its_own_resumes_from_it() {
+        let mock = MockLab::start();
+        let (blob, claimed) = descendant(&mock, 512);
+        let mut own = World::descend(&MockLab::params(), 7, &blob).unwrap();
+        own.step();
+        own.step();
+        mock.set_latest_snapshot(512, own.snapshot());
+
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed);
+
+        assert_eq!(mock.count("GET /api/runs/9/world"), 0);
+        assert_eq!(posted_epochs(&mock), vec![514]);
+        assert!(mock.request("POST /api/runs/1/finish")["error"].is_null());
+    }
+
+    /// Rails requeues a descendant at its parent's epoch, so whatever snapshots of its own
+    /// it holds, it starts over from the parent's world, as a requeued founding run
+    /// starts over from soup rather than from its latest snapshot.
+    #[test]
+    fn a_descendant_requeued_at_its_parents_epoch_starts_over_from_its_parent() {
+        let mock = MockLab::start();
+        let (blob, claimed) = descendant(&mock, PARENT_EPOCH);
+        let mut own = World::descend(&MockLab::params(), 7, &blob).unwrap();
+        own.step();
+        own.step();
+        mock.set_latest_snapshot(512, own.snapshot());
+
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed);
+
+        assert_eq!(mock.count("GET /api/runs/1/snapshots/latest"), 0);
+        assert_eq!(mock.count("GET /api/runs/9/world"), 1);
+        assert_eq!(posted_epochs(&mock), vec![512, 514]);
+    }
+
+    /// `epochs_done` is the heartbeat's absolute epoch, so a child that beat past its
+    /// parent's epoch and crashed before its first snapshot has no world of its own: it
+    /// starts over from its parent's.
+    #[test]
+    fn a_descendant_that_crashed_before_its_first_snapshot_starts_over_from_its_parent() {
+        let mock = MockLab::start();
+        let (_, claimed) = descendant(&mock, 512);
+
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed);
+
+        assert_eq!(mock.count("GET /api/runs/1/snapshots/latest"), 1);
+        assert_eq!(mock.count("GET /api/runs/9/world"), 1);
+        assert_eq!(posted_epochs(&mock), vec![512, 514]);
+    }
+
+    #[test]
+    fn a_descendant_whose_parent_world_is_missing_fails_rather_than_starting_from_soup() {
+        let mock = MockLab::start();
+        let (_, claimed) = descendant(&mock, 0);
+        mock.set_run_worlds(PARENT_RUN, Vec::new());
+
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed);
+
+        let failure = mock.request("POST /api/runs/1/finish");
+        let error = failure["error"].as_str().unwrap_or_default();
+        assert!(error.contains("parent run 9"), "{failure}");
+        assert_eq!(mock.count("POST /api/runs/1/samples"), 0);
+    }
+
+    #[test]
+    fn a_descendant_whose_parent_world_cannot_be_fetched_fails() {
+        let mock = MockLab::start();
+        let (_, claimed) = descendant(&mock, 0);
+        mock.fail_next_at("/api/runs/9/world", u32::MAX);
+
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed);
+
+        let failure = mock.request("POST /api/runs/1/finish");
+        let error = failure["error"].as_str().unwrap_or_default();
+        assert!(error.contains("/api/runs/9/world"), "{failure}");
+        assert_eq!(mock.count("POST /api/runs/1/samples"), 0);
+    }
+
+    #[test]
+    fn a_descendant_whose_params_cannot_read_its_parents_world_fails() {
+        let mock = MockLab::start();
+        let (_, claimed) = descendant(&mock, 0);
+        let wider = Params {
+            width: 16,
+            ..MockLab::params()
+        };
+
+        lab(&mock).execute(
+            &Slot::new("runner-1", 0),
+            &ClaimedRun {
+                params: wider,
+                ..claimed
+            },
+        );
+
+        let failure = mock.request("POST /api/runs/1/finish");
+        let error = failure["error"].as_str().unwrap_or_default();
+        assert!(error.contains("descending from parent run 9"), "{failure}");
+        assert!(error.contains("width"), "{failure}");
+        assert_eq!(mock.count("POST /api/runs/1/samples"), 0);
+    }
+
+    #[test]
+    fn an_ordinary_run_never_asks_for_a_parent_world() {
+        let mock = MockLab::start();
+
+        lab(&mock).execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 0));
+
+        assert_eq!(posted_epochs(&mock), vec![0, 2, 4, 6]);
+        assert_eq!(mock.count("GET /api/runs/9/world"), 0);
     }
 
     /// The 08:2x deploy: the app is unreachable for a stretch of the run. The world is

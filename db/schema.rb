@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_15_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_25_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -20,6 +20,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_130000) do
     t.integer "epochs", null: false
     t.string "name", null: false
     t.jsonb "param_grid", default: {}, null: false
+    t.jsonb "parents", default: {}, null: false
     t.integer "priority", default: 0, null: false
     t.integer "runs_count", default: 0, null: false
     t.jsonb "seeds", default: [], null: false
@@ -62,6 +63,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_130000) do
     t.datetime "finished_at"
     t.datetime "heartbeat_at"
     t.jsonb "params", default: {}, null: false
+    t.integer "parent_epoch"
+    t.bigint "parent_run_id"
     t.jsonb "persistence", default: {}, null: false
     t.integer "priority", default: 0, null: false
     t.string "runner_id"
@@ -70,12 +73,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_130000) do
     t.string "status", default: "pending", null: false
     t.jsonb "summary", default: {}, null: false
     t.integer "transition_epoch"
+    t.integer "transition_epoch_relative"
     t.datetime "updated_at", null: false
     t.index ["experiment_id"], name: "index_runs_on_experiment_id"
     t.index ["finished_at"], name: "index_runs_on_finished_at_terminal", where: "((status)::text = ANY (ARRAY[('finished'::character varying)::text, ('failed'::character varying)::text]))"
     t.index ["heartbeat_at"], name: "index_runs_on_heartbeat_at"
+    t.index ["parent_run_id"], name: "index_runs_on_parent_run_id"
     t.index ["status", "id"], name: "index_runs_on_status_and_id"
     t.index ["status", "priority", "id"], name: "index_runs_on_status_and_priority_and_id", order: { priority: :desc }
+    t.check_constraint "(parent_run_id IS NULL) = (parent_epoch IS NULL)", name: "runs_parent_complete"
   end
 
   create_table "samples", force: :cascade do |t|
@@ -87,6 +93,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_130000) do
     t.index ["created_at"], name: "index_samples_on_created_at"
     t.index ["run_id", "epoch"], name: "index_samples_on_run_id_and_epoch", unique: true
     t.index ["run_id"], name: "index_samples_on_run_id_replicated", where: "((\"values\" -> 'replicator_count'::text) > '0'::jsonb)"
+  end
+
+  create_table "snapshot_readings", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "epoch", null: false
+    t.string "instrument", null: false
+    t.datetime "measured_at"
+    t.bigint "run_id", null: false
+    t.integer "source_epoch", null: false
+    t.datetime "updated_at", null: false
+    t.jsonb "values", default: {}, null: false
+    t.index ["run_id", "epoch"], name: "index_snapshot_readings_on_run_id_and_epoch"
+    t.index ["run_id", "instrument", "epoch"], name: "index_snapshot_readings_on_run_id_and_instrument_and_epoch", unique: true
   end
 
   create_table "snapshots", force: :cascade do |t|
@@ -102,6 +121,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_15_130000) do
 
   add_foreign_key "rescores", "runs"
   add_foreign_key "runs", "experiments"
+  add_foreign_key "runs", "runs", column: "parent_run_id"
   add_foreign_key "samples", "runs"
+  add_foreign_key "snapshot_readings", "runs"
   add_foreign_key "snapshots", "runs"
 end
