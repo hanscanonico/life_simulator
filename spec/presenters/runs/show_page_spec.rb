@@ -20,9 +20,11 @@ RSpec.describe Runs::ShowPage do
       expect(described_class::METRICS.keys)
         .to eq(%w[compress_ratio distinct_tapes top_share replicator_count replicator_share
                   replicator_share_rotated op_density entropy_bits alphabet_size
-                  copy_rate reverse_copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost
+                  copy_rate reverse_copy_rate distinct_lineages top_lineage_share lineage_variation
+                  lineage_variation_oriented copy_cost copy_latency
                   dominant_compressed_len dominant_instruction_count dominant_raw_len
-                  conserved_core_bytes conserved_core_ops steal_rate replicator_pass_rate
+                  conserved_core_bytes conserved_core_ops conserved_core_bytes_oriented
+                  conserved_core_ops_oriented steal_rate replicator_pass_rate
                   replicator_count_mean lineage_compressed_len lineage_instruction_count])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
       expect(page.charts.map(&:title))
@@ -120,6 +122,41 @@ RSpec.describe Runs::ShowPage do
                .map { |metric| Runs::MetricSeriesService.call(run: run, metric: metric) })
         .to eq([[[200, 0.96]], [[200, 0.97]], [[200, 0.7]]])
       expect(chart_for("replicator_share")).not_to be_empty
+    end
+
+    # The oriented companions of the lineage readings and of copy_cost arrived after most
+    # samples were stored: a sample without them draws no point, never a zero.
+    it "draws the oriented companions of the samples that carry them" do
+      create(:sample, run: run, epoch: 100, values: { "lineage_variation" => 100.6, "conserved_core_bytes" => 0 })
+      create(:sample, run: run, epoch: 200,
+                      values: { "lineage_variation" => 100.6, "lineage_variation_oriented" => 0.4,
+                                "conserved_core_bytes" => 0, "conserved_core_bytes_oriented" => 126,
+                                "conserved_core_ops_oriented" => 20, "copy_cost" => nil,
+                                "copy_latency" => 511, "copy_latency_orientation" => "reverse" })
+
+      expect(%w[lineage_variation_oriented conserved_core_bytes_oriented conserved_core_ops_oriented copy_latency]
+               .map { |metric| Runs::MetricSeriesService.call(run: run, metric: metric) })
+        .to eq([[[200, 0.4]], [[200, 126]], [[200, 20]], [[200, 511]]])
+      expect(chart_for("copy_latency")).not_to be_empty
+      expect(chart_for("copy_cost")).to be_empty
+    end
+
+    describe "#copy_latency_orientation" do
+      it "reads the orientation of the latest sample that carries one" do
+        create(:sample, run: run, epoch: 100, values: { "copy_latency_orientation" => "forward" })
+        create(:sample, run: run, epoch: 200, values: { "copy_latency_orientation" => "reverse" })
+        create(:sample, run: run, epoch: 300, values: { "copy_latency_orientation" => nil })
+
+        expect(page.copy_latency_orientation).to eq("reverse")
+      end
+
+      context "with samples recorded before the latency existed" do
+        it "reads none" do
+          create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794 })
+
+          expect(page.copy_latency_orientation).to be_nil
+        end
+      end
     end
 
     it "draws the conserved core of the samples that carry one" do

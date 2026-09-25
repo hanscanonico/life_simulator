@@ -181,6 +181,18 @@
       tapes.
     </dd>
 
+    <dt class="mono">lineage_variation_oriented</dt>
+    <dd>
+      The same reading after each cell's tape is put the way round — as it is, or last byte
+      first — that sits closer to its lineage's modal tape, keeping it as it is on a tie. The
+      replicators of every emerged world copy themselves in reverse, so a lineage of
+      near-clones is half one tape and half its reverse, and the aligned reading counts
+      every reversed cell as most of a tape of variation. A tape that grew is reversed over
+      the bytes it holds, not its whole slot. Lineages themselves are still inherited
+      aligned, so after a takeover one lineage can hold many unrelated tapes, and neither
+      reading can see past that. Null on every sample recorded before it existed.
+    </dd>
+
     <dt class="mono">copy_cost</dt>
     <dd>
       What one copy costs the dominant replicator, in interpreter steps. The replicator
@@ -188,6 +200,21 @@
       copied, read off the most populous tape that passes the test. Null when no tested
       tape replicates. It is the observable a world that got better at copying itself would
       move: the hand-written replicator the engine tests itself against needs 1 794 steps.
+    </dd>
+
+    <dt class="mono">copy_latency</dt>
+    <dd>
+      How soon the dominant tape has written itself, in interpreter steps: the step at which
+      the partner half first holds a byte-exact copy of the tape, in either orientation,
+      whatever the program goes on to do. <span class="mono">copy_cost</span> counts the
+      steps of a copy that halted, and the reverse copiers that dominate every emerged world
+      never halt — their loop runs out the step budget — so it reads nothing there. This is
+      the median of five trials against fresh random partners, null when fewer than half of
+      them complete a copy. <span class="mono">copy_latency_orientation</span> says which
+      way round that copy lies: forward, reverse, or both for a palindrome. The hand-written
+      replicator reads 1 790 steps, forward; a 64-byte reverse copier that copies a byte
+      every four steps reads 255, reverse. Null on the Life substrate and on every sample
+      recorded before they existed.
     </dd>
 
     <dt class="mono">dominant_compressed_len</dt>
@@ -241,6 +268,15 @@
       there and agrees with nobody. A lineage of identical tapes reads its whole tape length.
       Null where no lineage holds two cells, on the Life substrate, and on every sample
       recorded before they existed.
+    </dd>
+
+    <dt class="mono">conserved_core_bytes_oriented</dt>
+    <dd>
+      The same core, read after each member of the lineage is put the way round that sits
+      closer to its modal tape, as <span class="mono">lineage_variation_oriented</span> puts
+      them; <span class="mono">conserved_core_ops_oriented</span> counts its instructions. A
+      lineage of a tape and its reverse agrees on almost no position aligned, and on its
+      whole length oriented.
     </dd>
 
     <dt class="mono">lineage_compressed_len</dt>

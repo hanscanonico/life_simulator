@@ -81,6 +81,13 @@
   the ratio below is near 1 for junk and well under 1 for a tape with structure in it — and
   read complexity off <span class="mono">dominant_instruction_count</span>.
 </p>
+<% if @show.copy_latency_orientation %>
+  <p class="text-muted text-sm" id="copy-latency-orientation">
+    At its latest sample that read a copy latency, the dominant tape copied itself
+    <strong><%= @show.copy_latency_orientation %></strong>
+    (<span class="mono">copy_latency_orientation</span>).
+  </p>
+<% end %>
 <% if @show.charts_empty? %>
   <p class="text-muted">This run has not reported a sample yet.</p>
 <% else %>

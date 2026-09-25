@@ -171,6 +171,11 @@ mod tests {
             replicator_share: None,
             replicator_share_rotated: None,
             dominant_self_replicates: None,
+            lineage_variation_oriented: 0.0,
+            conserved_core_bytes_oriented: None,
+            conserved_core_ops_oriented: None,
+            copy_latency: None,
+            copy_latency_orientation: None,
         }
     }
 

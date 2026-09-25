@@ -377,6 +377,26 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
+    context "with a sample that read a copy latency" do
+      it "says which way round the dominant tape copied itself" do
+        create(:sample, run: run, epoch: 100, values: { "copy_latency" => 511, "copy_latency_orientation" => "reverse" })
+
+        get run_path(run)
+
+        expect(response.body).to include("copy-latency-orientation", "<strong>reverse</strong>")
+      end
+    end
+
+    context "with samples recorded before the copy latency existed" do
+      it "says nothing about its orientation" do
+        create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794 })
+
+        get run_path(run)
+
+        expect(response.body).not_to include("copy-latency-orientation")
+      end
+    end
+
     it "links the CSV of its samples" do
       get run_path(run)
 

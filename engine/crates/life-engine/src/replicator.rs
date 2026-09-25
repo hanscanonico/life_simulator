@@ -125,6 +125,37 @@ pub fn self_replicates(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -
     }
 }
 
+/// How long `tape` takes to write a complete image of itself (`copy_latency`, DESIGN §1.2):
+/// the step at which the partner half first holds the tape byte-exact, in either
+/// orientation, whatever the program goes on to do. `copy_cost` reads the steps of a run
+/// that halted, which a copier whose loop never exits cannot give; this reads the copy
+/// itself. The detector's setup: `SELF_REP_TRIALS` runs of the fixed `2·len` buffer against
+/// fresh noise from `rng` under `max_steps`, one generation each. The reading is the median
+/// trial, a trial that never completes an image ranking after every one that does, so it is
+/// `None` where fewer than half the trials complete one — and the median trial's image
+/// says which way round the copy lies.
+pub fn copy_latency(tape: &[u8], max_steps: u32, ops: OpSet, rng: &mut Rng) -> Option<bff::Image> {
+    let len = tape.len();
+    if len == 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; len * 2];
+    let mut images: Vec<bff::Image> = (0..SELF_REP_TRIALS)
+        .filter_map(|_| {
+            buf[..len].copy_from_slice(tape);
+            for byte in &mut buf[len..] {
+                *byte = rng::byte(rng);
+            }
+            bff::first_image(&mut buf, tape, max_steps, ops)
+        })
+        .collect();
+    if images.len() * 2 < SELF_REP_TRIALS as usize {
+        return None;
+    }
+    images.sort_unstable();
+    images.get((SELF_REP_TRIALS as usize - 1) / 2).copied()
+}
+
 /// Whether enough positions of `tape` agree, by majority over the trials, with the carried
 /// halves read `rotation` bytes on. Gives up on a rotation as soon as too many positions
 /// have disagreed for it to pass, which is almost at once for a tape that copies nothing.
@@ -533,5 +564,75 @@ mod tests {
     fn a_tape_of_no_ops_does_not_replicate() {
         let mut rng = rng::seeded(13, 0, 0);
         assert!(!is_replicator(&[b'a'; 64], 8192, OpSet::ALL, &mut rng));
+    }
+
+    fn latency(tape: &[u8], seed: u64) -> Option<bff::Image> {
+        copy_latency(tape, 8192, OpSet::ALL, &mut rng::seeded(seed, 0, 0))
+    }
+
+    /// `{` and `[` take two steps, then each pass of `.>{]` copies one byte in four, and
+    /// the image is whole at the `.` that writes the last one: 2 + 4·(L − 1) + 1 = 4L − 1,
+    /// whatever the noise — the copier overwrites every byte of it. `copy_cost` reads
+    /// nothing here: the loop never exits.
+    #[test]
+    fn a_reverse_copiers_latency_is_four_steps_a_byte() {
+        let tape = handwritten_reverse_replicator(64);
+        assert_eq!(
+            latency(&tape, 3),
+            Some(bff::Image {
+                steps: 255,
+                orientation: bff::Orientation::Reverse
+            })
+        );
+        assert_eq!(
+            assay(&tape, 8192, OpSet::ALL, &mut rng::seeded(3, 0, 0)).copy_cost,
+            None
+        );
+        for len in LENGTHS {
+            let read = latency(&handwritten_reverse_replicator(len), 3);
+            assert_eq!(
+                read.map(|image| image.steps),
+                Some(4 * len as u32 - 1),
+                "{len}"
+            );
+        }
+    }
+
+    /// The forward copier's image is whole four steps before the run halts: after the `.`
+    /// that lands the last byte come `>`, `}`, the `]` that falls through on the copied
+    /// zero, and the `[` that halts on it.
+    #[test]
+    fn a_forward_copiers_latency_is_the_step_its_last_byte_lands() {
+        let read = latency(&handwritten_replicator(), 3).expect("a copier");
+        assert_eq!(read.orientation, bff::Orientation::Forward);
+        assert_eq!(read.steps, COPY_COST - 4);
+    }
+
+    #[test]
+    fn a_tape_that_copies_nothing_has_no_latency() {
+        assert_eq!(latency(&[b'a'; 64], 3), None);
+        assert_eq!(latency(&filler(64), 3), None);
+        assert_eq!(latency(&[], 3), None);
+    }
+
+    /// Half the trials or more must complete an image: the parity-gated copier completes
+    /// one against half its partners, so across seeds it reads a latency on some and none
+    /// on others, and whenever it reads one it is the median of the completing trials.
+    #[test]
+    fn a_latency_needs_half_the_trials_to_complete_an_image() {
+        let tape = parity_gated_replicator();
+        let reads: Vec<Option<bff::Image>> = (0..12).map(|seed| latency(&tape, seed)).collect();
+        assert!(reads.iter().any(Option::is_some), "{reads:?}");
+        assert!(reads.iter().any(Option::is_none), "{reads:?}");
+    }
+
+    /// A palindrome that copies itself writes both images at once.
+    #[test]
+    fn a_palindromic_copiers_image_lies_both_ways_round() {
+        let tape = handwritten_reverse_replicator(64);
+        let mut palindrome = tape[..32].to_vec();
+        palindrome.extend(tape[..32].iter().rev());
+        let read = latency(&palindrome, 3).expect("a copier");
+        assert_eq!(read.orientation, bff::Orientation::Both);
     }
 }

@@ -1524,3 +1524,73 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
      re-run and finishes, since its samples stop short of its budget. The parents' pool is
      settled when every candidate is terminal and every finished one that kept its world
      has been read.
+- 2026-09-25 — **Oriented companions for heredity and adaptation: the lineage readings
+  read the way round, and `copy_latency` beside `copy_cost`.** The pilot recorded in the
+  entry "The replicator census is blind to replicators that copy in reverse" found that an
+  emerged world is a population of tapes `X` and `reverse(X)`, byte-exact reverse copiers
+  whose loop never exits and runs the full `max_steps`. Two more families of observables
+  cannot read such a population, and this entry adds a companion beside each. It relocks
+  nothing: every existing observable, every pinned hash and every run stays as it was to the
+  bit, and the new fields are appended at the end of `Metrics`.
+
+  **Heredity, rung 2.** `lineage_variation` and `conserved_core_bytes` / `_ops` compare
+  aligned bytes, so a lineage of near-clones copied two ways round reads most of a tape of
+  variation and a core of only the positions `X` and its reverse happen to share: the
+  pilot's run 1007 continued at mutation 0 reads `lineage_variation` 100.6 with 22 distinct
+  tapes left. `lineage_variation_oriented` and `conserved_core_bytes_oriented` /
+  `conserved_core_ops_oriented` put each member of a lineage the way round — its live bytes
+  as they are, or last to first — that is Hamming-closer to its lineage's modal tape, a tie
+  keeping it as it is, and then read exactly as the aligned definitions do. A tape that grew
+  is reversed over its own live length. They draw nothing.
+
+  **Adaptation, rung 3.** `copy_cost` stays as locked: interpreter steps per byte-exact
+  copy, the median over the passing trials of the replicator test. It is undefined for a
+  copier that never halts, which is every dominant copier of the emerged corpus, so the
+  rung-3 question — do later replicators copy more cheaply — had no reading there.
+  `copy_latency` is that reading: the step at which the partner half first holds a complete
+  byte-exact image of the dominant tape in either orientation, whether or not the program
+  ever halts. It uses the orientation-aware detector's setup — the fixed `2·len` buffer, a
+  fresh noise partner, `max_steps` — one generation per trial over `SELF_REP_TRIALS` trials;
+  the reading is the median trial, null where fewer than half complete an image, and
+  `copy_latency_orientation` says whether that trial's image lies `forward`, `reverse` or
+  `both` (a palindrome). Its noise comes from a stream of its own
+  (`STREAM_COPY_LATENCY`, `0x4c41_5445_0000_0000`), apart from every stream the run, the
+  census and the detector draw on. The watch for a complete image runs in a replica of the
+  interpreter kept for this reading alone, pinned step for step against `bff::run_with`;
+  the interpreter the soup runs gains no per-step check.
+
+  **What they cost and what they read.** On run 1007's stored world at epoch 20 000 with
+  its own params (`sample_every` 10), the three companions add about 10 ms to a sample:
+  5.3 ms for the oriented variation, 4.7 ms for the oriented core and 0.04 ms for the
+  latency, whose five trials stop at the first complete image. A sample period there —
+  ten epochs and one sample — takes about 2 s, so they add about 0.5% to a run. There they
+  read `lineage_variation` 120.8 against 115.8 oriented, a core of 0 bytes both ways,
+  `copy_cost` null and `copy_latency` 4 845 steps, `reverse`. The same world continued at
+  mutation 0 to epoch 25 000 (the pilot's arm iii, seed 71) reproduces the pilot's 22
+  distinct tapes and `lineage_variation` 100.6; oriented it reads 74.7, and a core of 1 byte
+  against 0, with `copy_latency` 5 099, `reverse`. The oriented reading does what it is for
+  — 4 018 cells sit at distance 0 from the modal tape oriented, 2 030 aligned — and shows
+  what the pilot's summary missed: the 22 tapes are **eleven** tapes and their reverses,
+  eleven different programs 20 to 127 bytes apart even under the best rotation, all under
+  one lineage tag. The variation that remains is the tag's, not the orientation's (below).
+
+  **The readings pass.** The new keys are not added to `oriented_census/1`: rows are
+  already stored under it without them, its resume skip treats a world read under `/1` as
+  read, and `OrientedSummary`, `OrientedArmsService` and `Lab::DescendantReading` read it.
+  Widening `/1` would leave it meaning two things. `oriented_census/2` reads everything `/1`
+  reads and the five new keys, each beside the aligned reading it accompanies
+  (`lineage_variation`, `conserved_core_bytes` / `_ops`, `copy_cost`) as a control against
+  the live sample. `runner readings-corpus --instrument` selects it; `/1` stays the default,
+  so a `/1` pass reads exactly what it read. A `/2` pass is the lab's to run when asked.
+
+  **What this does not change.** The from-emerged pre-registration's readings: they read
+  `replicator_share`, `dominant_self_replicates`, `dominant_instruction_count`, the
+  secondary `steal_rate` and `distinct_tapes`, and the `/1` readings, none of which moves,
+  and none of these keys. The lineage **tags** are not
+  touched either: a cell still takes its partner's tag when its new tape is Hamming-closer,
+  aligned, to its partner's arriving tape. That rule is world state stored in every
+  snapshot, and changing it would change existing runs. So after a takeover a cell
+  overwritten by `reverse(A)` can keep its own tag, tags stop tracking descent, and one
+  lineage can hold unrelated tapes; the oriented readings correct the orientation of the
+  members they are given, not which members a lineage holds. That limitation stands until a
+  record entry changes the rule.
