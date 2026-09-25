@@ -451,7 +451,10 @@ docs/              this file, design_record.md, findings
   seconds it covers (`interval_seconds`, optional) which the app sums into the run's
   `compute_seconds`, so a run's cost survives resumes. A run claimed but not
   heartbeated for 5 min is released. Several runs execute in parallel (one thread each,
-  `RUNNER_PARALLELISM`, default = cores − 2).
+  `RUNNER_PARALLELISM`, default = cores − 2). A descendant run (the claim carries
+  `parent_run_id` and `parent_epoch`) with no snapshot of its own starts from its parent's
+  stored world at `parent_epoch` under its own params and seed (`World::descend`), and
+  fails rather than ever starting from soup when that world cannot be fetched or read.
 - **The viewer** is a `<canvas>` driven by the wasm build through one Stimulus controller.
   The engine exposes `World.new(params_json, seed)`, `step(n)`, `render_rgba(buffer)`,
   `metrics_json()`. No other custom JavaScript.

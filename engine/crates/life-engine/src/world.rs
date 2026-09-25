@@ -261,6 +261,40 @@ impl World {
         })
     }
 
+    /// A descendant run's world: the stored world of a finished parent, carried on under
+    /// `params` and `seed` that may differ from the parent's in dynamics only. The cells,
+    /// lineage tags and live lengths carry over — a lineage of the parent is a lineage of
+    /// the child — and the stocks are re-read against the child's economy
+    /// (`descended_stock`). The transition tracker starts fresh: a descendant is not
+    /// measured for the transition its parent already made, and its start lies past the
+    /// baseline window, so its relative reading has no baseline and reads nothing — that is
+    /// why a world still inside the window is refused rather than descended. Neither
+    /// reading of the parent's transition carries over; the child's own constant reading
+    /// is measured like any run's.
+    ///
+    /// Under the parent's own params and seed the descendant is the parent continued,
+    /// byte for byte: the RNG is keyed by seed, stream and epoch and holds no state.
+    pub fn descend(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
+        let restored = snapshot::decode_for_descent(params, bytes)?;
+        let epoch = restored.header.epoch;
+        if epoch <= metrics::TRANSITION_BASELINE_EPOCHS {
+            return Err(SnapshotError::InsideBaselineWindow { epoch });
+        }
+        Ok(Self {
+            params: params.clone(),
+            seed,
+            epoch,
+            cells: restored.cells,
+            scratch: life_scratch(params),
+            transition: TransitionTracker::default(),
+            copy_rate: 0.0,
+            steal_rate: 0.0,
+            lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
+            lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
+            stock: descended_stock(params, restored.stock)?,
+        })
+    }
+
     /// Fills `buf` with `width × height` RGBA pixels, top-left first.
     pub fn render_rgba(&self, buf: &mut [u8]) {
         let pixels = self.params.cell_count();
@@ -871,6 +905,24 @@ fn restored_stock(params: &Params, stock: Option<Vec<u32>>) -> Result<Vec<u32>, 
         _ => Err(SnapshotError::Mismatch {
             field: "energy_influx",
         }),
+    }
+}
+
+/// The stock a descendant starts with. A descendant's economy is a treatment, so unlike a
+/// resume it may differ from the parent's: a parent that held no energy hands every cell a
+/// full stock at the child's cap, as a fresh run starts; a stocked parent under a child
+/// with no influx drops its stocks; and a stocked parent under a stocked child keeps each
+/// cell's stock, clamped to the child's cap.
+fn descended_stock(params: &Params, stock: Option<Vec<u32>>) -> Result<Vec<u32>, SnapshotError> {
+    match (stock, params.stocked()) {
+        (Some(stock), true) if stock.len() == params.cell_count() => Ok(stock
+            .into_iter()
+            .map(|held| held.min(params.energy_stock_cap))
+            .collect()),
+        (Some(_), true) => Err(SnapshotError::Mismatch {
+            field: "cell count",
+        }),
+        _ => Ok(fresh_stock(params)),
     }
 }
 
@@ -2923,6 +2975,212 @@ mod tests {
             Err(SnapshotError::Mismatch {
                 field: "energy_influx"
             })
+        ));
+    }
+
+    /// Past the baseline window, where a descendant can start, on a world small and cheap
+    /// enough to step there.
+    const DESCENT_EPOCH: u64 = metrics::TRANSITION_BASELINE_EPOCHS + 10;
+
+    fn descent_params() -> Params {
+        Params {
+            width: 8,
+            height: 8,
+            ..stocked_params()
+        }
+    }
+
+    fn unstocked(params: &Params) -> Params {
+        Params {
+            energy_influx: 0,
+            energy_stock_cap: 0,
+            ..params.clone()
+        }
+    }
+
+    /// The continuation arm: a child under its parent's params and seed is the parent
+    /// carried on — cells, lineages and stocks — since no stream holds state of its own.
+    /// The parent is a stocked colony, so by the descent its lineage census has moved off
+    /// the one-id-per-cell a fresh world mints and a child that dropped it would show.
+    #[test]
+    fn a_descendant_with_its_parents_params_and_seed_continues_the_parent() {
+        let params = Params {
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            ..colony_params()
+        };
+        let mut parent = colony(&params, 11);
+        for _ in 0..DESCENT_EPOCH {
+            parent.step();
+        }
+        assert_ne!(parent.lineages, fresh_lineages(&params));
+        let mut child = World::descend(&params, 11, &parent.snapshot()).unwrap();
+        assert_eq!(child.epoch(), DESCENT_EPOCH);
+
+        for _ in 0..20 {
+            parent.step();
+            child.step();
+        }
+
+        assert_eq!(child.epoch(), parent.epoch());
+        assert_eq!(child.lineages, parent.lineages);
+        assert_eq!(child.stock, parent.stock);
+        assert_eq!(child.world_hash(), parent.world_hash());
+    }
+
+    #[test]
+    fn two_descendants_with_different_seeds_diverge() {
+        let params = descent_params();
+        let blob = stepped(&params, 11, DESCENT_EPOCH).snapshot();
+        let mut one = World::descend(&params, 11, &blob).unwrap();
+        let mut other = World::descend(&params, 12, &blob).unwrap();
+
+        for _ in 0..5 {
+            one.step();
+            other.step();
+        }
+
+        assert_ne!(one.world_hash(), other.world_hash());
+    }
+
+    #[test]
+    fn an_unstocked_parent_descends_into_a_full_stock() {
+        let stocked = descent_params();
+        let blob = stepped(&unstocked(&stocked), 11, DESCENT_EPOCH).snapshot();
+
+        let child = World::descend(&stocked, 11, &blob).unwrap();
+
+        assert_eq!(
+            child.stock,
+            vec![stocked.energy_stock_cap; stocked.cell_count()]
+        );
+    }
+
+    #[test]
+    fn a_stocked_parent_descends_into_no_stock() {
+        let stocked = descent_params();
+        let blob = stepped(&stocked, 11, DESCENT_EPOCH).snapshot();
+
+        let child = World::descend(&unstocked(&stocked), 11, &blob).unwrap();
+
+        assert!(child.stock.is_empty());
+    }
+
+    #[test]
+    fn a_stocked_parent_descends_into_its_stocks_clamped_to_the_childs_cap() {
+        let stocked = descent_params();
+        let parent = stepped(&stocked, 11, DESCENT_EPOCH);
+        let tighter = Params {
+            energy_stock_cap: stocked.energy_influx * 2,
+            ..stocked.clone()
+        };
+        assert!(
+            parent
+                .stock
+                .iter()
+                .any(|held| *held > tighter.energy_stock_cap),
+            "some cell must hold more than the tighter cap: {:?}",
+            parent.stock
+        );
+
+        let child = World::descend(&tighter, 11, &parent.snapshot()).unwrap();
+
+        let clamped: Vec<u32> = parent
+            .stock
+            .iter()
+            .map(|held| (*held).min(tighter.energy_stock_cap))
+            .collect();
+        assert_eq!(child.stock, clamped);
+    }
+
+    /// A parent that transitioned long ago, on both readings: resumed, it reports both
+    /// epochs; descended, it reports neither, and the child has no baseline to read its
+    /// already-compressible start against.
+    #[test]
+    fn a_descendant_reports_no_transition_of_its_parent() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(16, 16)
+        };
+        let restored = snapshot::decode(&params, &quiet_diverse_soup(&params).snapshot()).unwrap();
+        let header = snapshot::Header {
+            epoch: 600,
+            transition: metrics::TransitionState {
+                settled: Some(100),
+                last_epoch: Some(598),
+                relative: metrics::RelativeState {
+                    baseline_sum: 0.98,
+                    baseline_count: 1,
+                    settled: Some(550),
+                    ..metrics::RelativeState::default()
+                },
+                ..metrics::TransitionState::default()
+            },
+            ..restored.header
+        };
+        let blob = snapshot::encode(
+            &header,
+            &restored.cells,
+            &restored.lineages.unwrap_or_default(),
+            &restored.lens.unwrap_or_default(),
+            &restored.stock.unwrap_or_default(),
+        );
+        let resumed = World::from_snapshot(&params, 3, &blob).unwrap();
+        assert_eq!(resumed.transition_epoch(), Some(100));
+        assert_eq!(resumed.transition_epoch_relative(), Some(550));
+
+        let mut child = World::descend(&params, 3, &blob).unwrap();
+        assert_eq!(child.transition_epoch(), None);
+        for _ in 0..8 {
+            child.step();
+            child.metrics();
+            assert_eq!(child.transition_epoch_relative(), None);
+            assert!(
+                child.transition_epoch().is_none_or(|epoch| epoch > 600),
+                "{:?}",
+                child.transition_epoch()
+            );
+        }
+    }
+
+    #[test]
+    fn a_descendant_with_a_different_tape_cap_is_refused() {
+        let blob = stepped(&roomy_soup(96), 11, 2).snapshot();
+
+        assert!(matches!(
+            World::descend(&roomy_soup(128), 11, &blob),
+            Err(SnapshotError::Mismatch {
+                field: "max_tape_len"
+            })
+        ));
+    }
+
+    #[test]
+    fn a_descendant_of_a_different_width_is_refused() {
+        let params = descent_params();
+        let blob = stepped(&params, 11, DESCENT_EPOCH).snapshot();
+        let wider = Params {
+            width: params.width * 2,
+            ..params
+        };
+
+        assert!(matches!(
+            World::descend(&wider, 11, &blob),
+            Err(SnapshotError::Mismatch { field: "width" })
+        ));
+    }
+
+    /// Inside the baseline window the child's relative baseline would be read on the
+    /// parent's world, so there is no descending from it.
+    #[test]
+    fn a_world_inside_its_baseline_window_cannot_be_descended_from() {
+        let params = descent_params();
+        let blob = stepped(&params, 11, metrics::TRANSITION_BASELINE_EPOCHS).snapshot();
+
+        assert!(matches!(
+            World::descend(&params, 11, &blob),
+            Err(SnapshotError::InsideBaselineWindow { epoch: 500 })
         ));
     }
 

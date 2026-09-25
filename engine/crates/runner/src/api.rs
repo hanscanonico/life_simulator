@@ -67,6 +67,17 @@ pub struct ClaimedRun {
     pub seed: u64,
     pub epochs: u64,
     pub epochs_done: u64,
+    /// The stored world a descendant run starts from; `None` for a run that starts from
+    /// `(params, seed)`.
+    pub parent: Option<ParentWorld>,
+}
+
+/// Where a descendant run starts: its parent's world at `epoch`, read under the child's
+/// own params and seed (`World::descend`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParentWorld {
+    pub run: i64,
+    pub epoch: u64,
 }
 
 /// A world the lab has stored, with everything needed to read it again: `runner rescore`
@@ -208,6 +219,7 @@ impl LabClient {
             seed: number(&claimed, "seed")?,
             epochs: number(&claimed, "epochs")?,
             epochs_done: number(&claimed, "epochs_done")?,
+            parent: parent_world(&claimed)?,
         }))
     }
 
@@ -679,6 +691,19 @@ fn corpus_run(run: &Value) -> Result<CorpusRun> {
     })
 }
 
+/// The claim's `parent_run_id` and `parent_epoch`: both absent or null for an ordinary run,
+/// which is every claim an app older than descendants answers. One without the other is a
+/// claim the runner cannot start honestly, so it is refused rather than read as no parent.
+fn parent_world(claimed: &Value) -> Result<Option<ParentWorld>> {
+    match (&claimed["parent_run_id"], &claimed["parent_epoch"]) {
+        (Value::Null, Value::Null) => Ok(None),
+        _ => Ok(Some(ParentWorld {
+            run: number(claimed, "parent_run_id")? as i64,
+            epoch: number(claimed, "parent_epoch")?,
+        })),
+    }
+}
+
 fn number(value: &Value, key: &str) -> Result<u64> {
     value[key]
         .as_u64()
@@ -722,6 +747,50 @@ mod tests {
             lab.request("POST /api/runs/claim")["runner_id"],
             json!("runner-1")
         );
+    }
+
+    #[test]
+    fn a_claim_without_parent_fields_starts_from_its_params_and_seed() {
+        let lab = MockLab::start();
+
+        let claimed = client(&lab).claim("runner-1").unwrap().unwrap();
+
+        assert_eq!(claimed.parent, None);
+    }
+
+    #[test]
+    fn a_claim_with_null_parent_fields_starts_from_its_params_and_seed() {
+        let lab = MockLab::start();
+        lab.set_null_parent();
+
+        let claimed = client(&lab).claim("runner-1").unwrap().unwrap();
+
+        assert_eq!(claimed.parent, None);
+    }
+
+    #[test]
+    fn a_descendant_claim_carries_its_parents_world() {
+        let lab = MockLab::start();
+        lab.set_parent(41, 20_000);
+
+        let claimed = client(&lab).claim("runner-1").unwrap().unwrap();
+
+        assert_eq!(
+            claimed.parent,
+            Some(ParentWorld {
+                run: 41,
+                epoch: 20_000
+            })
+        );
+    }
+
+    #[test]
+    fn a_parent_run_without_its_epoch_is_refused() {
+        let claimed = json!({ "parent_run_id": 41, "parent_epoch": null });
+
+        let error = parent_world(&claimed).unwrap_err().to_string();
+
+        assert!(error.contains("parent_epoch"), "{error}");
     }
 
     #[test]
