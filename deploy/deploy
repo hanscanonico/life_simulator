@@ -72,8 +72,16 @@ fi
 # wasm-bindgen version pinned in engine/Cargo.lock. An app-only merge changes
 # none of those, so BuildKit reuses the cached layers verbatim: the runner image
 # keeps the same image ID, `up -d` sees the runner container already on that
-# image and leaves it running, and the runs in flight are not interrupted.
+# image and leaves it running, and the runs in flight are not interrupted. That
+# only holds with `provenance: false` on the build (see docker-compose.yml).
+runner_before=$(docker image inspect --format '{{.Id}}' "$runner_image" 2>/dev/null || true)
 $compose build app runner
+runner_after=$(docker image inspect --format '{{.Id}}' "$runner_image" 2>/dev/null || true)
+if [ -n "$runner_before" ] && [ "$runner_before" = "$runner_after" ]; then
+  echo "Runner image unchanged; the runner container keeps its runs."
+else
+  echo "Runner image rebuilt; the runner container will be recreated."
+fi
 
 if start_stack; then
   echo "Deployed and healthy."

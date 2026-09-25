@@ -80,6 +80,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      provenance: false
     restart: unless-stopped
     logging: *logging
     environment:
@@ -132,6 +133,13 @@ services:
       context: ..
       dockerfile: Dockerfile
       target: runner
+      # The daemon uses the containerd image store, where an image ID is the digest
+      # of the image index, and BuildKit's default provenance attestation sits in
+      # that index. The attestation records each build afresh, so with it the ID
+      # moved on every deploy even when every layer came from cache, and compose
+      # recreated this container (#173). Without it, identical layers mean an
+      # identical ID.
+      provenance: false
     # The image's ENTRYPOINT is `runner`, so this is the subcommand and its flags.
     command: lab --api http://app:8080 --parallelism ${RUNNER_PARALLELISM:-12}
     restart: unless-stopped

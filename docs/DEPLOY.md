@@ -86,6 +86,13 @@ or a build cache the daemon has evicted. An engine edit that leaves the binary
 byte-identical — a comment, a doc — moves nothing, because the layers are addressed by
 their content.
 
+Both builds set `provenance: false`. The daemon uses the containerd image store, where an
+image ID is the digest of the image index, and BuildKit's default provenance attestation
+is a manifest in that index that records each build afresh. With it, the runner's ID
+moved on every deploy even though every layer came from cache (`docker image ls --tree`
+showed `:latest` and `:previous` over the same `linux/amd64` manifest), and compose
+recreated the container (#173). `deploy/deploy` prints whether the runner image moved.
+
 `deploy/deploy` builds both (`docker compose build app runner`), tags both `:previous`
 before building, and rolls both back together. To check the behaviour by hand after an
 app-only commit:

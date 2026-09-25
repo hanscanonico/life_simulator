@@ -562,6 +562,8 @@ Copied from the `grid_commanders`/`stock_market` pattern on the mini-pc
   binary in lab mode, talking to `app`), `cloudflared` (token from `.env`).
 - `deploy/deploy`: fetch + ff-only merge, build, `up -d`, wait healthy, roll back to the
   `:previous` image on failure. Same shape as `grid_commanders/deploy/web/deploy`.
+  App and runner are separate images built without provenance attestations, so an
+  app-only change leaves the runner's image ID, and its container, untouched.
 - `deploy/systemd/`: nightly `pg_dump` timer like the stock market one.
 - Cloudflare: one tunnel `life-simulator` in the existing account, public hostname
   `simulator-life.com` → `http://app:8080`.
