@@ -31,6 +31,10 @@ const CENSUS_DRAWS: u32 = 8;
 /// (`docs/design_record.md`, 2026-09-25).
 const STREAM_SELF_REP: u64 = 0x5345_4c46_0000_0000;
 const STREAM_SELF_REP_DOMINANT: u64 = STREAM_SELF_REP | 1;
+/// The stream `copy_latency`'s trials draw their noise partners on — its own, far from
+/// every id above, so the latency moves no draw the run, the census or the detector makes
+/// (`docs/design_record.md`, 2026-09-25).
+const STREAM_COPY_LATENCY: u64 = 0x4c41_5445_0000_0000;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -560,6 +564,7 @@ impl World {
         let (distinct_lineages, top_lineage_share) = metrics::lineage_census(&self.lineages);
         let census = self.replicator_census(&ranked);
         let core = self.conserved_core();
+        let core_oriented = self.conserved_core_oriented();
         let lineage = self.lineage_complexity();
         let share = self.replicator_share();
 
@@ -592,6 +597,14 @@ impl World {
             replicator_share: share.map(|read| read.aligned),
             replicator_share_rotated: share.map(|read| read.rotated),
             dominant_self_replicates: census.dominant_self_replicates,
+            lineage_variation_oriented: metrics::lineage_variation_oriented(
+                self.tapes(),
+                &self.lineages,
+            ),
+            conserved_core_bytes_oriented: core_oriented.map(|read| read.bytes),
+            conserved_core_ops_oriented: core_oriented.map(|read| read.ops),
+            copy_latency: census.copy_latency.map(|image| image.steps),
+            copy_latency_orientation: census.copy_latency.map(|image| image.orientation),
         }
     }
 
@@ -646,6 +659,14 @@ impl World {
         metrics::conserved_core(self.tapes(), &self.lineages, self.params.op_set())
     }
 
+    /// The same core read over members put the way round their lineage's modal tape is.
+    fn conserved_core_oriented(&self) -> Option<metrics::ConservedCore> {
+        if self.params.substrate != Substrate::Soup {
+            return None;
+        }
+        metrics::conserved_core_oriented(self.tapes(), &self.lineages, self.params.op_set())
+    }
+
     /// Cells holding one of the `top_k` most common tapes that passes the replicator test,
     /// and what the dominant tape costs and carries. The dominant tape is the first tape to
     /// pass — `ranked` being in population order — and, when none of the tested tapes
@@ -672,6 +693,15 @@ impl World {
             dominant_self_replicates: first.dominant.map(|tape| {
                 let mut rng = rng::seeded(self.seed, STREAM_SELF_REP_DOMINANT, self.epoch);
                 self.self_replicates(tape, &mut rng).aligned
+            }),
+            copy_latency: first.dominant.and_then(|tape| {
+                let mut rng = rng::seeded(self.seed, STREAM_COPY_LATENCY, self.epoch);
+                replicator::copy_latency(
+                    tape,
+                    self.params.max_steps,
+                    self.params.op_set(),
+                    &mut rng,
+                )
             }),
             counts: draws.iter().map(|draw| draw.count).collect(),
         }
@@ -725,6 +755,8 @@ struct ReplicatorCensus {
     /// Whether that same tape passes the orientation-aware detector, on a stream of its
     /// own. `None` on the life substrate.
     dominant_self_replicates: Option<bool>,
+    /// When that same tape first completes an image of itself, on a stream of its own.
+    copy_latency: Option<bff::Image>,
     /// What each of the `CENSUS_DRAWS` draws counted, draw 0 first — the count above being
     /// that first draw's. Empty on the life substrate, where no assay runs at all.
     counts: Vec<u64>,
@@ -1093,6 +1125,27 @@ mod tests {
     const PINNED_SEEDED_SELF_REP: &str = "reverse_copy_rate=0.0 \
          replicator_share=Some(0.99609375) replicator_share_rotated=Some(0.99609375) \
          dominant_self_replicates=Some(true)";
+
+    /// And the five oriented companions of the lineage readings and of `copy_cost`
+    /// (`docs/design_record.md`, 2026-09-25), pinned apart again.
+    const PINNED_ORIENTED: &str = "lineage_variation_oriented=31.5 \
+         conserved_core_bytes_oriented=Some(1) conserved_core_ops_oriented=Some(0) \
+         copy_latency=None copy_latency_orientation=None";
+    const PINNED_SEEDED_ORIENTED: &str = "lineage_variation_oriented=0.8623853211009175 \
+         conserved_core_bytes_oriented=Some(253) conserved_core_ops_oriented=Some(15) \
+         copy_latency=Some(1790) copy_latency_orientation=Some(Forward)";
+
+    fn oriented_digest(measured: &Metrics) -> String {
+        format!(
+            "lineage_variation_oriented={:?} conserved_core_bytes_oriented={:?} \
+             conserved_core_ops_oriented={:?} copy_latency={:?} copy_latency_orientation={:?}",
+            measured.lineage_variation_oriented,
+            measured.conserved_core_bytes_oriented,
+            measured.conserved_core_ops_oriented,
+            measured.copy_latency,
+            measured.copy_latency_orientation,
+        )
+    }
 
     fn self_rep_digest(measured: &Metrics) -> String {
         format!(
@@ -1536,6 +1589,7 @@ mod tests {
             PINNED_LINEAGE_COMPLEXITY
         );
         assert_eq!(self_rep_digest(&measured), PINNED_SELF_REP);
+        assert_eq!(oriented_digest(&measured), PINNED_ORIENTED);
     }
 
     #[test]
@@ -1556,6 +1610,7 @@ mod tests {
             PINNED_SEEDED_LINEAGE_COMPLEXITY
         );
         assert_eq!(self_rep_digest(&measured), PINNED_SEEDED_SELF_REP);
+        assert_eq!(oriented_digest(&measured), PINNED_SEEDED_ORIENTED);
     }
 
     /// The census only reads the world: it draws on streams of its own, moves no cell and
@@ -1933,6 +1988,11 @@ mod tests {
         assert_eq!(measured.replicator_share, None);
         assert_eq!(measured.replicator_share_rotated, None);
         assert_eq!(measured.dominant_self_replicates, None);
+        assert_eq!(measured.lineage_variation_oriented, 0.0);
+        assert_eq!(measured.conserved_core_bytes_oriented, None);
+        assert_eq!(measured.conserved_core_ops_oriented, None);
+        assert_eq!(measured.copy_latency, None);
+        assert_eq!(measured.copy_latency_orientation, None);
     }
 
     #[test]
@@ -3808,6 +3868,36 @@ mod tests {
             measured.reverse_copy_rate > 0.3 && measured.copy_rate < 0.05,
             "{measured:?}"
         );
+    }
+
+    /// The oriented companions over the same colony: its dominant tape is the reverse
+    /// copier, whose image is whole at step 4L − 1 and lies reversed, where `copy_cost`
+    /// reads nothing because the loop never exits.
+    #[test]
+    fn a_reverse_copying_colony_reads_a_latency_where_it_reads_no_copy_cost() {
+        let measured = reverse_colony().metrics();
+
+        assert_eq!(measured.copy_cost, None);
+        assert_eq!(measured.copy_latency, Some(4 * 64 - 1));
+        assert_eq!(
+            measured.copy_latency_orientation,
+            Some(bff::Orientation::Reverse)
+        );
+        assert!(measured.lineage_variation_oriented <= measured.lineage_variation);
+    }
+
+    /// `copy_latency` draws its noise on a stream of its own, apart from every stream the
+    /// run, the census and the detector draw on.
+    #[test]
+    fn the_latency_draws_on_a_stream_no_other_reading_uses() {
+        let mut taken: Vec<u64> = vec![
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+        ];
+        taken.extend((0..CENSUS_DRAWS).map(census_stream));
+        assert!(!taken.contains(&STREAM_COPY_LATENCY));
     }
 
     #[test]

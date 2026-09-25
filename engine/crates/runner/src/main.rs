@@ -137,8 +137,8 @@ enum Command {
         dry_run: bool,
     },
     /// Read the orientation-aware observables off every stored world of an experiment and
-    /// store them as snapshot readings under `oriented_census/1`, skipping the worlds an
-    /// earlier pass already read.
+    /// store them as snapshot readings under the instrument named, skipping the worlds an
+    /// earlier pass of that instrument already read.
     ReadingsCorpus {
         /// Base URL of the app, e.g. `http://app:8080`.
         #[arg(long, env = "RUNNER_API")]
@@ -149,6 +149,10 @@ enum Command {
         /// The experiment whose terminal runs to read, by slug.
         #[arg(long)]
         experiment: String,
+        /// The instrument to read with and store under: `oriented_census/2` reads the
+        /// oriented lineage readings and `copy_latency` beside everything `/1` reads.
+        #[arg(long, value_enum, default_value_t = readings::Instrument::OrientedCensus1)]
+        instrument: readings::Instrument,
         /// Which stored worlds of each run to read.
         #[arg(long, value_enum, default_value_t = rescore::Epochs::All)]
         epochs: rescore::Epochs,
@@ -275,6 +279,7 @@ fn main() -> Result<()> {
             api,
             token,
             experiment,
+            instrument,
             epochs,
             limit,
             dry_run,
@@ -284,6 +289,7 @@ fn main() -> Result<()> {
                 api,
                 token,
                 experiment,
+                instrument,
                 epochs,
                 limit,
                 dry_run,

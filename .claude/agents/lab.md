@@ -146,6 +146,12 @@ before trusting it: the `replicator_count` of a row at E must equal the run's ow
 mismatch means the restore does not reproduce the run, so stop and report it. The readings
 come back as CSV from `https://simulator-life.com/experiments/<slug>/readings.csv?instrument=oriented_census/1`.
 The pass changes no run, no param and no default.
+`--instrument oriented_census/2` is a second pass of its own, stored under that name and
+skipping only the worlds a `/2` pass already read: it reads everything `/1` does plus
+`lineage_variation_oriented`, the oriented conserved core and `copy_latency` with its
+orientation, each beside its aligned reading. `/1` stays the default, and nothing that reads
+`/1` (the from-emerged reading, the oriented summaries) reads `/2`; run a `/2` pass only when
+asked for one.
 
 The runner writes an `event=` line for each thing a slot does, in the shape
 `event=<name> runner=<id> slot=<n> ...`: `claim`, `resume`, `progress` (each heartbeat,

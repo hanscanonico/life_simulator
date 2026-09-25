@@ -1,6 +1,8 @@
 //! The BFF interpreter (`docs/DESIGN.md` §1.1): ten ops over a byte buffer that is both
 //! the program and the data, with two heads that wrap around the whole buffer.
 
+use serde::{Deserialize, Serialize};
+
 pub const HEAD0_LEFT: u8 = b'<';
 pub const HEAD0_RIGHT: u8 = b'>';
 pub const HEAD1_LEFT: u8 = b'{';
@@ -341,6 +343,151 @@ fn match_backward(tape: &[u8], ip: usize) -> Option<usize> {
         }
     }
     None
+}
+
+/// Which way round a copy holds its source: the source's own bytes in order, its bytes last
+/// to first, or both at once, which only a palindrome can be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Orientation {
+    Forward,
+    Reverse,
+    Both,
+}
+
+/// The first moment a watched run held a complete image: the steps executed by then, and
+/// which way round the image lies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Image {
+    pub steps: u32,
+    pub orientation: Orientation,
+}
+
+/// Runs `pair` — a tape and its partner, the fixed `2·len` buffer of the replicator test —
+/// as `run_with` runs it, and stops at the first step after which the partner half holds
+/// `source` byte-exact, in either orientation. `None` when the budget runs out or the
+/// program ends first. `copy_latency` reads this (DESIGN §1.2).
+///
+/// A replica of `run_stealing` on a buffer that cannot grow, with the steal byte off and
+/// every byte code, so it executes the identical instruction stream; the tests pin it step
+/// for step against `run_with`. It is a separate loop so the watch — two counts of the
+/// partner positions that still disagree with the image, kept current at every write —
+/// never costs the soup's own interactions anything.
+pub fn first_image(
+    pair: &mut [u8],
+    source: &[u8],
+    max_steps: u32,
+    enabled: OpSet,
+) -> Option<Image> {
+    let half = source.len();
+    let len = pair.len();
+    if half == 0 || len != 2 * half {
+        return None;
+    }
+    let enabled = enabled.table();
+    let mut watch = ImageWatch::new(pair, source);
+
+    let mut ip = 0usize;
+    let mut head0 = 0usize;
+    let mut head1 = 0usize;
+    let mut steps = 0u32;
+    while ip < len {
+        if let Some(orientation) = watch.complete() {
+            return Some(Image { steps, orientation });
+        }
+        if steps == max_steps {
+            return None;
+        }
+        steps += 1;
+
+        let write = match pair[ip] {
+            byte if !enabled[byte as usize] => None,
+            HEAD0_LEFT => {
+                head0 = (head0 + len - 1) % len;
+                None
+            }
+            HEAD0_RIGHT => {
+                head0 = (head0 + 1) % len;
+                None
+            }
+            HEAD1_LEFT => {
+                head1 = (head1 + len - 1) % len;
+                None
+            }
+            HEAD1_RIGHT => {
+                head1 = (head1 + 1) % len;
+                None
+            }
+            INC => Some((head0, pair[head0].wrapping_add(1))),
+            DEC => Some((head0, pair[head0].wrapping_sub(1))),
+            COPY_TO_HEAD1 => Some((head1, pair[head0])),
+            COPY_TO_HEAD0 => Some((head0, pair[head1])),
+            LOOP_START if pair[head0] == 0 => {
+                ip = match_forward(pair, ip)?;
+                None
+            }
+            LOOP_END if pair[head0] != 0 => {
+                ip = match_backward(pair, ip)?;
+                None
+            }
+            _ => None,
+        };
+        if let Some((at, byte)) = write {
+            watch.write(pair, at, byte);
+        }
+
+        ip += 1;
+    }
+    watch
+        .complete()
+        .map(|orientation| Image { steps, orientation })
+}
+
+/// How many partner positions still disagree with the source read forward and read
+/// reversed, so a complete image is two comparisons with zero rather than a scan.
+struct ImageWatch<'a> {
+    source: &'a [u8],
+    forward: usize,
+    reverse: usize,
+}
+
+impl<'a> ImageWatch<'a> {
+    fn new(pair: &[u8], source: &'a [u8]) -> Self {
+        let partner = &pair[source.len()..];
+        Self {
+            source,
+            forward: partner.iter().zip(source).filter(|(a, b)| a != b).count(),
+            reverse: partner
+                .iter()
+                .zip(source.iter().rev())
+                .filter(|(a, b)| a != b)
+                .count(),
+        }
+    }
+
+    fn write(&mut self, pair: &mut [u8], at: usize, byte: u8) {
+        let half = self.source.len();
+        if at >= half {
+            let position = at - half;
+            let forward = self.source[position];
+            let reverse = self.source[half - 1 - position];
+            let old = pair[at];
+            self.forward =
+                self.forward + usize::from(byte != forward) - usize::from(old != forward);
+            self.reverse =
+                self.reverse + usize::from(byte != reverse) - usize::from(old != reverse);
+        }
+        pair[at] = byte;
+    }
+
+    fn complete(&self) -> Option<Orientation> {
+        match (self.forward == 0, self.reverse == 0) {
+            (true, true) => Some(Orientation::Both),
+            (true, false) => Some(Orientation::Forward),
+            (false, true) => Some(Orientation::Reverse),
+            (false, false) => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -699,5 +846,95 @@ mod tests {
 
         let mut inert = vec![b'a'; 4];
         assert_eq!(run_bounded(&mut inert, 100, OpSet::ALL, 4, 4), outcome);
+    }
+
+    /// What `first_image` must read, found the slow way: run the pair under every budget
+    /// from 0 up with `run_with` itself, and take the first that leaves an image.
+    fn first_image_by_rerunning(pair: &[u8], source: &[u8], max_steps: u32) -> Option<Image> {
+        let half = source.len();
+        let reversed: Vec<u8> = source.iter().rev().copied().collect();
+        (0..=max_steps).find_map(|budget| {
+            let mut run = pair.to_vec();
+            let outcome = run_with(&mut run, budget, OpSet::ALL);
+            let partner = &run[half..];
+            let orientation = match (partner == source, partner == reversed.as_slice()) {
+                (true, true) => Orientation::Both,
+                (true, false) => Orientation::Forward,
+                (false, true) => Orientation::Reverse,
+                (false, false) => return None,
+            };
+            Some(Image {
+                steps: outcome.steps,
+                orientation,
+            })
+        })
+    }
+
+    /// The watched run is `run_with` step for step: over random short pairs drawn mostly
+    /// from the ten ops, it stops at the very step the interpreter itself first leaves an
+    /// image, and leaves the buffer exactly as `run_with` does under that budget.
+    #[test]
+    fn the_first_image_is_the_step_the_interpreter_itself_first_leaves_one_at() {
+        const ALPHABET: &[u8] = b"<>{}+-.,[]\0\0a";
+        let mut rng = crate::rng::seeded(17, 0, 0);
+        let mut images = 0;
+        for _ in 0..20_000 {
+            let half = 2 + crate::rng::below(&mut rng, 3) as usize;
+            let pair: Vec<u8> = (0..2 * half)
+                .map(|_| ALPHABET[crate::rng::below(&mut rng, ALPHABET.len() as u64) as usize])
+                .collect();
+            let source = pair[..half].to_vec();
+
+            let mut watched = pair.clone();
+            let read = first_image(&mut watched, &source, 60, OpSet::ALL);
+
+            assert_eq!(
+                read,
+                first_image_by_rerunning(&pair, &source, 60),
+                "{pair:?}"
+            );
+            let mut expected = pair.clone();
+            run_with(
+                &mut expected,
+                read.map_or(60, |image| image.steps),
+                OpSet::ALL,
+            );
+            assert_eq!(watched, expected, "{pair:?}");
+            images += usize::from(read.is_some());
+        }
+        assert!(images > 100, "only {images} pairs ever held an image");
+    }
+
+    #[test]
+    fn an_image_the_partner_already_holds_is_complete_before_the_first_step() {
+        let mut pair = b"abab".to_vec();
+        assert_eq!(
+            first_image(&mut pair, b"ab", 100, OpSet::ALL),
+            Some(Image {
+                steps: 0,
+                orientation: Orientation::Forward
+            })
+        );
+    }
+
+    /// `{` puts head1 on the pair's last byte and `.` writes the tape's first byte there,
+    /// which completes the image at the second step; the source reads the same both ways.
+    #[test]
+    fn a_palindromes_image_lies_both_ways_round() {
+        let mut pair = b"{..{{..z".to_vec();
+        assert_eq!(
+            first_image(&mut pair, b"{..{", 100, OpSet::ALL),
+            Some(Image {
+                steps: 2,
+                orientation: Orientation::Both
+            })
+        );
+    }
+
+    #[test]
+    fn a_pair_that_never_holds_an_image_reads_none() {
+        let mut pair = b"+++aaaaa".to_vec();
+        assert_eq!(first_image(&mut pair, b"+++a", 100, OpSet::ALL), None);
+        assert_eq!(pair, b".++aaaaa", "the run went on to its end");
     }
 }

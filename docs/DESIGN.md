@@ -192,6 +192,17 @@ claim rests on it.
   alone in its lineage sits at distance 0 from itself, and the crowd of them a young soup
   carries would dilute a drifting colony to nothing. The 8 is a constant of the engine
   (`metrics::VARIATION_TOP_LINEAGES`), not a parameter. The life substrate reports 0.
+- `lineage_variation_oriented`: `lineage_variation` read after each member of those same
+  lineages is put **the way round** — its live bytes as they are, or last to first — that is
+  Hamming-closer to its lineage's modal tape, a tie keeping it as it is; the modal tape and
+  the pooled mean are then read exactly as above, over the oriented members. A companion
+  (docs/design_record.md 2026-09-25): the emerged replicators copy themselves in reverse, so
+  a lineage of near-clones is half `X` and half `reverse(X)`, and the aligned reading counts
+  every reversed member as most of a tape of variation. A tape that grew is reversed over
+  its own live length, never over its slot. The lineage tags themselves are still inherited
+  by the aligned rule above, so after a takeover one lineage can hold unrelated tapes and
+  neither reading can see past that. It draws nothing; the life substrate reports 0, and
+  every sample recorded before it existed carries none.
 - `conserved_core_bytes` / `conserved_core_ops`: what the largest lineage holds
   invariant across its members — the reading that tells a conserved copy loop with junk
   around it from turnover at a flat size, which `lineage_variation` alone cannot. The
@@ -210,6 +221,12 @@ claim rests on it.
   holds two cells, on the life substrate, and on every sample recorded before they existed.
   The reading costs one pass over the top lineage's tapes — members × tape length — per
   sample.
+- `conserved_core_bytes_oriented` / `conserved_core_ops_oriented`: the same two counts over
+  the same lineage, read after each member is put the way round that is Hamming-closer to
+  that lineage's modal tape, as `lineage_variation_oriented` puts them. A lineage of a tape
+  and its reverse agrees aligned only on the positions the two happen to share, and on its
+  whole length oriented. Null exactly where the aligned counts are, and on every sample
+  recorded before they existed.
 - `copy_cost`: interpreter steps per byte-exact copy by the **dominant replicator** — the
   most populous tape among the `top_k` tested that passes the replicator test. The test
   already executes four trials per tape; the reading is the **median** of the steps the
@@ -218,6 +235,22 @@ claim rests on it.
   It is read off the runs the test performs — same order, same stream, no trial re-run —
   so it moves no tape byte and draws nothing. The hand-written replicator of the engine's
   test suite costs 1 794 steps.
+- `copy_latency` / `copy_latency_orientation`: how soon the **dominant tape** — the tape
+  `dominant_replicates` describes — has written itself: the interpreter step at which the
+  partner half first holds a complete byte-exact image of the tape, **in either
+  orientation**, whatever the program goes on to do. A companion of `copy_cost`
+  (docs/design_record.md 2026-09-25), which stays as locked: it prices a copy that halted,
+  and is undefined for the reverse copiers that dominate every emerged world, whose loop
+  never exits and runs out `max_steps`. The setup is the orientation-aware detector's —
+  the fixed `2·len` buffer, a fresh noise partner, `max_steps` — one generation per trial
+  over `SELF_REP_TRIALS` (5) trials, on a stream of its own. The reading is the **median**
+  trial, a trial that never completes an image ranking after every one that does, so it is
+  null where fewer than half the trials complete one; the orientation is that trial's —
+  `forward`, `reverse`, or `both` for a palindrome. The watch runs in a replica of the
+  interpreter kept only for this reading, pinned step for step against it, so the soup's own
+  interactions pay nothing for it. The hand-written replicator reads 1 790 steps forward, four
+  before it halts; a reverse copier that copies a byte every four steps reads `4L − 1`,
+  reverse. Null on the life substrate and on every sample recorded before they existed.
 - `dominant_compressed_len` / `dominant_instruction_count` / `dominant_replicates`: how much
   tape the **dominant tape** is, read two ways — the length in bytes of its tape under the
   same zlib compressor `compress_ratio` uses, and how many of its bytes the run's own
@@ -521,7 +554,12 @@ docs/              this file, design_record.md, findings
   `runner readings-corpus` is that pass for the orientation-aware observables: it reads
   the census companions at each stored epoch E (with `replicator_count` as the control
   against the live sample), then steps to the next sample epoch E′ and reads both copy
-  rates there, which is the only place a restored world can count them.
+  rates there, which is the only place a restored world can count them. What an instrument
+  version reads never changes once readings exist under it: `oriented_census/2` reads
+  everything `/1` reads and adds `lineage_variation_oriented`, the oriented conserved core
+  and `copy_latency` with its orientation, each beside the aligned reading it accompanies.
+  It is a pass of its own (`--instrument oriented_census/2`); `/1` stays the default, and
+  every summary that reads `/1` goes on reading it.
 - **The runner is a stateless worker.** In lab mode it polls `POST /api/runs/claim` with
   a bearer token, executes the run, streams sample batches to
   `POST /api/runs/:id/samples`, snapshots to `POST /api/runs/:id/snapshots`, and finishes

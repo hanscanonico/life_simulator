@@ -21,14 +21,37 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::thread;
 
-/// The instrument the readings are stored under; bump the version when what it reads
-/// changes, so the new readings never overwrite the old ones.
-pub const INSTRUMENT: &str = "oriented_census/1";
+/// The instrument a pass reads with and stores its readings under. A version is never
+/// changed once readings exist under it — what it reads is part of its name — so reading
+/// more is a new version with its own pass, and the old readings stay as they were.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum Instrument {
+    /// The census's orientation-aware companions and both copy rates (#248). What every
+    /// reading of the from-emerged pre-registration and `OrientedSummary` is read off.
+    #[default]
+    #[value(name = "oriented_census/1")]
+    OrientedCensus1,
+    /// Everything `/1` reads, and the oriented companions of the lineage readings and of
+    /// `copy_cost` (`docs/design_record.md`, 2026-09-25), each beside the aligned reading
+    /// it accompanies.
+    #[value(name = "oriented_census/2")]
+    OrientedCensus2,
+}
+
+impl Instrument {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::OrientedCensus1 => "oriented_census/1",
+            Self::OrientedCensus2 => "oriented_census/2",
+        }
+    }
+}
 
 pub struct Options {
     pub api: String,
     pub token: String,
     pub experiment: String,
+    pub instrument: Instrument,
     pub epochs: Epochs,
     /// How many unread worlds to start from at most; all of them when `None`.
     pub limit: Option<usize>,
@@ -87,8 +110,9 @@ struct RunPlan<'a> {
 /// read is a failure.
 pub fn execute_corpus(options: Options) -> Result<Summary> {
     let client = lab_client(&options);
-    let runs = client.corpus(&options.experiment, Some(INSTRUMENT))?;
-    let plans = plan(&runs, options.epochs, options.limit);
+    let instrument = options.instrument;
+    let runs = client.corpus(&options.experiment, Some(instrument.name()))?;
+    let plans = plan(&runs, instrument, options.epochs, options.limit);
     let next = AtomicUsize::new(0);
     let total = Mutex::new(Summary::default());
 
@@ -97,7 +121,7 @@ pub fn execute_corpus(options: Options) -> Result<Summary> {
             scope.spawn(|| {
                 let client = lab_client(&options);
                 while let Some(plan) = plans.get(next.fetch_add(1, Ordering::Relaxed)) {
-                    let done = read_run(&client, plan, options.dry_run);
+                    let done = read_run(&client, plan, instrument, options.dry_run);
                     total.lock().unwrap().add(done);
                 }
             });
@@ -113,8 +137,13 @@ pub fn execute_corpus(options: Options) -> Result<Summary> {
         );
     }
     println!(
-        "event=readings_done experiment={} instrument={INSTRUMENT} worlds={} failed={} skipped={} stored={}",
-        options.experiment, total.worlds, total.failed, total.skipped, total.stored
+        "event=readings_done experiment={} instrument={} worlds={} failed={} skipped={} stored={}",
+        options.experiment,
+        instrument.name(),
+        total.worlds,
+        total.failed,
+        total.skipped,
+        total.stored
     );
     Ok(total)
 }
@@ -128,13 +157,18 @@ fn lab_client(options: &Options) -> LabClient {
 
 /// The worlds to start from, in corpus order: each run's newest stored world or all of
 /// them, less the ones a reading already exists at, cut at `limit` worlds.
-fn plan(runs: &[CorpusRun], epochs: Epochs, limit: Option<usize>) -> Vec<RunPlan<'_>> {
+fn plan(
+    runs: &[CorpusRun],
+    instrument: Instrument,
+    epochs: Epochs,
+    limit: Option<usize>,
+) -> Vec<RunPlan<'_>> {
     let mut left = limit.unwrap_or(usize::MAX);
     let mut plans = Vec::new();
     for run in runs {
         let read: BTreeSet<u64> = run
             .read_epochs
-            .get(INSTRUMENT)
+            .get(instrument.name())
             .into_iter()
             .flatten()
             .copied()
@@ -166,7 +200,12 @@ fn plan(runs: &[CorpusRun], epochs: Epochs, limit: Option<usize>) -> Vec<RunPlan
     plans
 }
 
-fn read_run(client: &LabClient, plan: &RunPlan<'_>, dry_run: bool) -> Summary {
+fn read_run(
+    client: &LabClient,
+    plan: &RunPlan<'_>,
+    instrument: Instrument,
+    dry_run: bool,
+) -> Summary {
     let id = plan.run.id;
     let mut summary = Summary {
         skipped: plan.skipped,
@@ -183,7 +222,9 @@ fn read_run(client: &LabClient, plan: &RunPlan<'_>, dry_run: bool) -> Summary {
             .and_then(|stored| {
                 stored.ok_or_else(|| anyhow!("run {id} no longer holds a world at epoch {source}"))
             })
-            .and_then(|stored| read_walk(&stored, |epoch| plan.unread.contains(&epoch)));
+            .and_then(|stored| {
+                read_walk(&stored, instrument, |epoch| plan.unread.contains(&epoch))
+            });
         match walk {
             Ok(walk) => {
                 summary.worlds += walk.worlds.len();
@@ -202,7 +243,7 @@ fn read_run(client: &LabClient, plan: &RunPlan<'_>, dry_run: bool) -> Summary {
 
     if !dry_run && !readings.is_empty() {
         let rows: Vec<Value> = readings.iter().map(|reading| json!(reading)).collect();
-        match client.post_readings(id, INSTRUMENT, &rows) {
+        match client.post_readings(id, instrument.name(), &rows) {
             Ok(()) => summary.stored = rows.len(),
             Err(error) => {
                 summary.failed += summary.worlds;
@@ -228,7 +269,11 @@ fn read_run(client: &LabClient, plan: &RunPlan<'_>, dry_run: bool) -> Summary {
 /// function of its seed), so the walk reads it there and goes on to its own next sample
 /// epoch instead of leaving it to be restored and read again. Every reading carries E as
 /// its `source_epoch`: the world it was actually restored from.
-pub fn read_walk(stored: &StoredWorld, continues: impl Fn(u64) -> bool) -> Result<Walk> {
+pub fn read_walk(
+    stored: &StoredWorld,
+    instrument: Instrument,
+    continues: impl Fn(u64) -> bool,
+) -> Result<Walk> {
     stored.params.validate().map_err(anyhow::Error::msg)?;
     let mut world = World::from_snapshot(&stored.params, stored.seed, &stored.blob)?;
     let source = world.epoch();
@@ -237,7 +282,7 @@ pub fn read_walk(stored: &StoredWorld, continues: impl Fn(u64) -> bool) -> Resul
         readings: vec![Reading {
             epoch: source,
             source_epoch: source,
-            values: static_values(&world.metrics()),
+            values: static_values(&world.metrics(), instrument),
         }],
     };
     if !steps_to_a_sample(&stored.params) {
@@ -249,7 +294,7 @@ pub fn read_walk(stored: &StoredWorld, continues: impl Fn(u64) -> bool) -> Resul
         walk.readings.push(Reading {
             epoch,
             source_epoch: source,
-            values: in_situ_values(&world.metrics()),
+            values: in_situ_values(&world.metrics(), instrument),
         });
         if !continues(epoch) {
             return Ok(walk);
@@ -276,20 +321,39 @@ fn step_to_next_sample(world: &mut World) {
 }
 
 /// What a restored world reads exactly as the live run read it. `replicator_count` rides
-/// along as the control: it must equal the run's own sample at the same epoch.
-fn static_values(metrics: &Metrics) -> Value {
-    json!({
+/// along as the control: it must equal the run's own sample at the same epoch. `/2` adds
+/// the oriented lineage readings and `copy_latency`, each with the aligned reading it
+/// accompanies riding along as a control of its own.
+fn static_values(metrics: &Metrics, instrument: Instrument) -> Value {
+    let mut values = json!({
         "replicator_count": metrics.replicator_count,
         "replicator_share": metrics.replicator_share,
         "replicator_share_rotated": metrics.replicator_share_rotated,
         "dominant_self_replicates": metrics.dominant_self_replicates,
-    })
+    });
+    if instrument == Instrument::OrientedCensus2 {
+        let oriented = json!({
+            "lineage_variation": metrics.lineage_variation,
+            "lineage_variation_oriented": metrics.lineage_variation_oriented,
+            "conserved_core_bytes": metrics.conserved_core_bytes,
+            "conserved_core_bytes_oriented": metrics.conserved_core_bytes_oriented,
+            "conserved_core_ops": metrics.conserved_core_ops,
+            "conserved_core_ops_oriented": metrics.conserved_core_ops_oriented,
+            "copy_cost": metrics.copy_cost,
+            "copy_latency": metrics.copy_latency,
+            "copy_latency_orientation": metrics.copy_latency_orientation,
+        });
+        for (key, value) in oriented.as_object().expect("an object") {
+            values[key] = value.clone();
+        }
+    }
+    values
 }
 
 /// The stepped world's readings: the static ones at E', and the copy rates the step into
 /// it counted — `copy_rate` the control a live sample at E' holds too.
-fn in_situ_values(metrics: &Metrics) -> Value {
-    let mut values = static_values(metrics);
+fn in_situ_values(metrics: &Metrics, instrument: Instrument) -> Value {
+    let mut values = static_values(metrics, instrument);
     values["copy_rate"] = json!(metrics.copy_rate);
     values["reverse_copy_rate"] = json!(metrics.reverse_copy_rate);
     values
@@ -345,7 +409,7 @@ mod tests {
         step_to(&mut live, 10);
         let expected = live.metrics();
 
-        let walk = read_walk(&restored, |_| false).unwrap();
+        let walk = read_walk(&restored, Instrument::OrientedCensus1, |_| false).unwrap();
 
         let stepped = &walk.readings[1];
         assert_eq!((stepped.epoch, stepped.source_epoch), (10, 7));
@@ -363,7 +427,7 @@ mod tests {
         let mut live = copying_world();
         step_to(&mut live, 5);
 
-        let walk = read_walk(&stored(&live), |_| false).unwrap();
+        let walk = read_walk(&stored(&live), Instrument::OrientedCensus1, |_| false).unwrap();
 
         let epochs: Vec<(u64, u64)> = walk
             .readings
@@ -380,9 +444,12 @@ mod tests {
         let restored = stored(&live);
         let expected = live.metrics();
 
-        let walk = read_walk(&restored, |_| false).unwrap();
+        let walk = read_walk(&restored, Instrument::OrientedCensus1, |_| false).unwrap();
 
-        assert_eq!(walk.readings[0].values, static_values(&expected));
+        assert_eq!(
+            walk.readings[0].values,
+            static_values(&expected, Instrument::OrientedCensus1)
+        );
         assert!(expected.replicator_share.is_some_and(|share| share > 0.0));
         assert_eq!(
             walk.readings[0].values["replicator_count"],
@@ -400,12 +467,15 @@ mod tests {
         step_to(&mut live, 10);
         let at_ten = live.metrics();
 
-        let walk = read_walk(&restored, |epoch| epoch == 10).unwrap();
+        let walk = read_walk(&restored, Instrument::OrientedCensus1, |epoch| epoch == 10).unwrap();
 
         assert_eq!(walk.worlds, vec![5, 10]);
         let epochs: Vec<u64> = walk.readings.iter().map(|reading| reading.epoch).collect();
         assert_eq!(epochs, vec![5, 10, 15]);
-        assert_eq!(walk.readings[1].values, in_situ_values(&at_ten));
+        assert_eq!(
+            walk.readings[1].values,
+            in_situ_values(&at_ten, Instrument::OrientedCensus1)
+        );
         assert_eq!(walk.readings[2].source_epoch, 5);
     }
 
@@ -420,7 +490,7 @@ mod tests {
         let mut world = World::new(&params, 3).expect("legal params");
         step_to(&mut world, 3);
 
-        let walk = read_walk(&stored(&world), |_| true).unwrap();
+        let walk = read_walk(&stored(&world), Instrument::OrientedCensus1, |_| true).unwrap();
 
         assert_eq!(walk.readings.len(), 1);
         assert_eq!(walk.readings[0].values["replicator_share"], Value::Null);
@@ -455,6 +525,7 @@ mod tests {
             api: lab.base_url(),
             token: TOKEN.to_string(),
             experiment: "radius".to_string(),
+            instrument: Instrument::OrientedCensus1,
             epochs,
             limit: None,
             dry_run: false,
@@ -492,7 +563,7 @@ mod tests {
         );
         assert_eq!(lab.count("POST /api/runs/1/readings"), 1);
         let body = lab.request("POST /api/runs/1/readings");
-        assert_eq!(body["instrument"], json!(INSTRUMENT));
+        assert_eq!(body["instrument"], json!("oriented_census/1"));
         assert_eq!(
             posted_epochs(&lab, 1),
             vec![(0, 0), (2, 0), (4, 4), (6, 4), (8, 4)]
@@ -523,9 +594,75 @@ mod tests {
         );
     }
 
+    /// `/2` is a pass of its own: it reads the worlds `/1` has already read, stores under
+    /// its own name, and adds the oriented readings to every row `/1` would have written.
+    #[test]
+    fn the_second_version_reads_again_under_its_own_name() {
+        let lab = corpus_lab(json!({ "oriented_census/1": [0, 2, 4, 6, 8] }));
+        let options = Options {
+            instrument: Instrument::OrientedCensus2,
+            ..options(&lab, Epochs::All)
+        };
+
+        let summary = execute_corpus(options).unwrap();
+
+        assert_eq!((summary.worlds, summary.skipped), (6, 0));
+        let body = lab.request("POST /api/runs/1/readings");
+        assert_eq!(body["instrument"], json!("oriented_census/2"));
+        let rows = body["readings"].as_array().unwrap();
+        let values = rows[0]["values"].as_object().unwrap();
+        for key in [
+            "replicator_share",
+            "lineage_variation",
+            "lineage_variation_oriented",
+            "conserved_core_bytes_oriented",
+            "conserved_core_ops_oriented",
+            "copy_cost",
+            "copy_latency",
+            "copy_latency_orientation",
+        ] {
+            assert!(values.contains_key(key), "{key}: {values:?}");
+        }
+        assert!(
+            rows[1]["values"]["reverse_copy_rate"].is_number(),
+            "{rows:?}"
+        );
+    }
+
+    #[test]
+    fn the_second_version_reads_the_live_oriented_readings() {
+        let mut live = copying_world();
+        step_to(&mut live, 5);
+        let restored = stored(&live);
+        let expected = live.metrics();
+
+        let walk = read_walk(&restored, Instrument::OrientedCensus2, |_| false).unwrap();
+
+        let values = &walk.readings[0].values;
+        assert_eq!(
+            values["lineage_variation_oriented"],
+            json!(expected.lineage_variation_oriented)
+        );
+        assert_eq!(values["copy_latency"], json!(expected.copy_latency));
+        assert!(expected.copy_latency.is_some(), "{expected:?}");
+        assert_eq!(
+            values["copy_latency_orientation"],
+            json!(expected.copy_latency_orientation)
+        );
+        assert_eq!(
+            values["replicator_count"],
+            static_values(&expected, Instrument::OrientedCensus1)["replicator_count"]
+        );
+    }
+
+    #[test]
+    fn a_pass_reads_with_the_first_version_unless_told_otherwise() {
+        assert_eq!(Instrument::default().name(), "oriented_census/1");
+    }
+
     #[test]
     fn a_world_already_read_is_skipped() {
-        let lab = corpus_lab(json!({ INSTRUMENT: [0, 2, 4], "other/1": [6] }));
+        let lab = corpus_lab(json!({ "oriented_census/1": [0, 2, 4], "other/1": [6] }));
 
         let summary = execute_corpus(options(&lab, Epochs::All)).unwrap();
 
@@ -537,7 +674,7 @@ mod tests {
     /// from the world before it rewrites its row with them, and restores it no more.
     #[test]
     fn a_world_read_one_sample_on_gains_its_copy_rates() {
-        let lab = corpus_lab(json!({ INSTRUMENT: [0, 2, 6, 8] }));
+        let lab = corpus_lab(json!({ "oriented_census/1": [0, 2, 6, 8] }));
 
         let summary = execute_corpus(options(&lab, Epochs::All)).unwrap();
 
@@ -560,7 +697,7 @@ mod tests {
 
     #[test]
     fn a_run_read_through_is_not_posted_again() {
-        let lab = corpus_lab(json!({ INSTRUMENT: [0, 2, 4, 6, 8] }));
+        let lab = corpus_lab(json!({ "oriented_census/1": [0, 2, 4, 6, 8] }));
 
         execute_corpus(options(&lab, Epochs::All)).unwrap();
 

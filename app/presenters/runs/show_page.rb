@@ -19,12 +19,16 @@ module Runs
       "distinct_lineages" => "Distinct lineages",
       "top_lineage_share" => "Share of the largest lineage",
       "lineage_variation" => "Variation within a lineage",
+      "lineage_variation_oriented" => "Variation within a lineage, oriented",
       "copy_cost" => "Copy cost (steps)",
+      "copy_latency" => "Copy latency (steps)",
       "dominant_compressed_len" => "Compressed length of the dominant tape (bytes)",
       "dominant_instruction_count" => "Instructions in the dominant tape",
       "dominant_raw_len" => "Length of the dominant tape (bytes)",
       "conserved_core_bytes" => "Conserved core of the largest lineage (bytes)",
       "conserved_core_ops" => "Instructions in that conserved core",
+      "conserved_core_bytes_oriented" => "Conserved core, oriented (bytes)",
+      "conserved_core_ops_oriented" => "Instructions in that oriented core",
       "steal_rate" => "Steal rate",
       "replicator_pass_rate" => "Census pass rate",
       "replicator_count_mean" => "Mean census count",
@@ -78,6 +82,14 @@ module Runs
     def turnover_points
       @turnover_points ||= tape_hashes.each_cons(2)
                                       .map { |(_, before), (epoch, after)| [epoch, after == before ? 0 : 1] }
+    end
+
+    # Which way round the dominant tape's copy lay at the last sample that read a
+    # `copy_latency`: a word, so it has no chart of its own and is read beside that one.
+    def copy_latency_orientation
+      @copy_latency_orientation ||= dominant_readings.reverse_each.lazy
+                                                     .map { |_, values| values["copy_latency_orientation"] }
+                                                     .find { |orientation| orientation.is_a?(String) }
     end
 
     def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)
