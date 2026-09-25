@@ -73,6 +73,10 @@
                                               plateau_band: @show.plateau_band %>
 <% end %>
 
+<% if @show.descendant_reading %>
+  <%= render "experiments/descendant_reading", reading: @show.descendant_reading %>
+<% end %>
+
 <% if @show.rescores? %>
   <%= render "experiments/rescores_table", summary: @show.rescore_summary %>
 <% end %>

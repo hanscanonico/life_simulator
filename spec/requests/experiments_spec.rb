@@ -499,6 +499,58 @@ RSpec.describe "Experiments", type: :request do
         expect(response).to have_http_status(:ok)
         expect(response.body.squish).to include("continuation", "host")
       end
+
+      context "with the children sampled" do
+        before do
+          # 100 own samples a child, so each decile holds the 10 a child is measured on.
+          experiment.runs.each do |run|
+            rising = run.params["energy_influx"] == 2**11
+            insert_own_samples(run, Array.new(100) do |index|
+              { "replicator_share" => 0.9, "dominant_self_replicates" => true,
+                "dominant_instruction_count" => rising && index >= 90 ? 60 : 40 }
+            end, every: 50)
+          end
+        end
+
+        it "reads the sweep as pre-registered, labelled interim while its children run" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#descendant-reading").text.squish
+          expect(section).to include("The pre-registered reading interim",
+                                     "continuation", "economy 2048", "economy 8192", "host mode",
+                                     "H-economy, economy 2048 against the continuation: not shown",
+                                     "3 pairs measured on both sides: 3 favour the treatment, 0 the continuation, " \
+                                     "0 tie; one-sided sign test p = 0.125",
+                                     "H-host, host mode against the continuation: refuted",
+                                     "H-persistence, the continuation children hold: held")
+        end
+
+        it "draws the median share per treatment" do
+          get experiment_path(experiment)
+
+          expect(response.body).to include("Median replicator share per 1000 epochs past the parent")
+        end
+
+        it "never prints the raw bundle label as a treatment's name" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#descendant-reading").text).not_to include("2048×1024")
+        end
+
+        it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+        end
+      end
+    end
+
+    context "with a sweep that starts from no parent" do
+      it "shows no descendant reading" do
+        get experiment_path(experiment)
+
+        expect(response.body).not_to include("descendant-reading")
+      end
     end
 
     context "with a corpus pass over the sweep" do

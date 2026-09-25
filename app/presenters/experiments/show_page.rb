@@ -109,7 +109,9 @@ module Experiments
       @complexity_arms ||= cached("complexity_arms") { ComplexityArmsService.call(experiment: experiment) }
     end
 
-    def complexity_reading? = complexity_arms.any?
+    # A descendant sweep is read under its own rule (`descendant_reading`): this one would
+    # read its children under the conserved-core clause that sweep's entry drops.
+    def complexity_reading? = experiment.parents.blank? && complexity_arms.any?
 
     def rise_margin = ComplexityArmsService::RISE_MARGIN
 
@@ -128,6 +130,16 @@ module Experiments
     # The orientation-aware census (#245) beside the detector and the emergence rule. Read
     # afresh, not cached: a corpus pass writes its readings without touching the run.
     def oriented_arms = @oriented_arms ||= OrientedArmsService.call(experiment: experiment)
+
+    # The from-emerged sweep's pre-registered reading, on a sweep with a parent rule only.
+    # Whether it is final also turns on the parent pool, whose runs belong to another
+    # experiment and so are not in the cache key: it is read afresh on every request.
+    def descendant_reading
+      return nil if experiment.parents.blank?
+
+      @descendant_reading ||= cached("descendant_reading") { FromEmergedReadingService.call(experiment: experiment) }
+                              .with(final: DescendantSweepSettledService.call(experiment))
+    end
 
     private
 
