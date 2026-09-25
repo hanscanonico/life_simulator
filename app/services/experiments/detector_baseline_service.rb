@@ -138,7 +138,7 @@ module Experiments
     end
 
     def scope
-      runs = Run.terminal.order(:id).includes(:experiment)
+      runs = Run.founding.terminal.order(:id).includes(:experiment)
 
       @experiment ? runs.where(experiment: @experiment) : runs
     end

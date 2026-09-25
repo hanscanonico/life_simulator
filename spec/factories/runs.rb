@@ -29,6 +29,21 @@ FactoryBot.define do
       emergence_witness { Runs::Emergence::CENSUS }
     end
 
+    # A run started from an emerged parent's stored world at its last epoch, carrying the
+    # parent's emergence as Run.descend_from would.
+    trait :descendant do
+      parent_run { association :run, :emerged, epochs: 1_000, params: params }
+      parent_epoch { 1_000 }
+      epochs { parent_epoch + 1_000 }
+      epochs_done { parent_epoch }
+      emergence_epoch { parent_run.emergence_epoch }
+      emergence_witness { parent_run.emergence_witness }
+
+      before(:create) do |run|
+        run.parent_run.snapshots.find_or_create_by!(epoch: run.parent_epoch) { |snapshot| snapshot.blob = "world" }
+      end
+    end
+
     trait :stale do
       claimed
       heartbeat_at { 10.minutes.ago }

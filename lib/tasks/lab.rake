@@ -96,7 +96,7 @@ namespace :lab do
 
   desc "Recompute transition_epoch from the stored samples of terminal runs (one experiment, or all)"
   task :backfill_transitions, [:slug] => :environment do |_task, args|
-    runs = Run.terminal.order(:id)
+    runs = Run.founding.terminal.order(:id)
     if args[:slug].present?
       experiment = Experiment.find_by(slug: args[:slug])
       raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
@@ -121,7 +121,7 @@ namespace :lab do
   desc "Fill transition_epoch_relative from the stored samples of terminal runs (one experiment, or all). " \
        "Leaves transition_epoch, the locked reading, alone"
   task :backfill_relative_transitions, [:slug] => :environment do |_task, args|
-    runs = Run.terminal.order(:id)
+    runs = Run.founding.terminal.order(:id)
     if args[:slug].present?
       experiment = Experiment.find_by(slug: args[:slug])
       raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
@@ -145,7 +145,7 @@ namespace :lab do
 
   desc "Confirm the crossing of every terminal run against its stored census and copy rate (one experiment, or all)"
   task :backfill_emergence, [:slug] => :environment do |_task, args|
-    runs = Run.terminal.order(:id)
+    runs = Run.founding.terminal.order(:id)
     if args[:slug].present?
       experiment = Experiment.find_by(slug: args[:slug])
       raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?

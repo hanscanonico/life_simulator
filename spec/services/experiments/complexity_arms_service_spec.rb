@@ -328,4 +328,22 @@ RSpec.describe Experiments::ComplexityArmsService do
     end
     run
   end
+
+  # A descendant carries its parent's emergence, which lies before any sample of its own:
+  # its span is the samples it took itself, from the parent epoch on.
+  describe "a descendant" do
+    it "reads its span from its own samples" do
+      parent = create(:run, :emerged, emergence_epoch: 100, params: control_params, epochs: 1_000)
+      20.times { |index| create(:sample, run: parent, epoch: 100 + (index * 10), values: { "dominant_instruction_count" => 1 }) }
+      child = create(:run, :descendant, parent_run: parent, experiment: experiment, status: "finished",
+                                        params: control_params)
+      (([10] * 10) + ([30] * 10)).each_with_index do |count, index|
+        create(:sample, run: child, epoch: 1_000 + (index * 10),
+                        values: { "dominant_instruction_count" => count, "conserved_core_bytes" => 40 })
+      end
+
+      expect(arms.sole).to have_attributes(emerged_count: 1, measured_count: 1, rising_count: 1)
+      expect(arms.sole.instructions).to have_attributes(first: 10, last: 30)
+    end
+  end
 end

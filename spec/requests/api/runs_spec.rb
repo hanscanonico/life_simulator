@@ -72,7 +72,21 @@ RSpec.describe "Api::Runs", type: :request do
       post claim_api_runs_path, params: { runner_id: "runner-1" }, headers: headers, as: :json
 
       expect(response.parsed_body).to eq("id" => run.id, "params" => run.params, "seed" => 7,
-                                         "epochs" => 20_000, "epochs_done" => 0)
+                                         "epochs" => 20_000, "epochs_done" => 0,
+                                         "parent_run_id" => nil, "parent_epoch" => nil)
+    end
+
+    # The runner restores a descendant from its parent's world rather than from a random
+    # fill, so the claim names that world.
+    context "with a descendant run" do
+      it "names the parent world the run starts from" do
+        child = create(:run, :descendant, experiment: experiment, priority: 10)
+
+        post claim_api_runs_path, params: { runner_id: "runner-1" }, headers: headers, as: :json
+
+        expect(response.parsed_body).to include("id" => child.id, "parent_run_id" => child.parent_run_id,
+                                                "parent_epoch" => 1_000, "epochs" => 2_000, "epochs_done" => 1_000)
+      end
     end
 
     it "marks the run claimed" do
@@ -473,6 +487,18 @@ RSpec.describe "Api::Runs", type: :request do
       get world_api_run_path(run), headers: headers, as: :json
 
       expect(response).to have_http_status(:ok)
+    end
+
+    # A descendant's runner holds the child, never the finished parent it restores from.
+    it "serves a descendant's runner the parent world it starts from" do
+      child = create(:run, :descendant, :claimed, experiment: experiment)
+      parent = child.parent_run
+      parent.snapshots.find_by(epoch: 1_000).update!(blob: "parent-world")
+
+      get world_api_run_path(parent), params: { epoch: 1_000, runner_id: child.runner_id }, headers: headers, as: :json
+
+      expect(response.parsed_body.values_at("id", "epoch", "blob"))
+        .to eq([parent.id, 1_000, Base64.strict_encode64("parent-world")])
     end
   end
 

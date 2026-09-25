@@ -212,7 +212,7 @@ module Findings
     def sampled_runs
       return [] unless experiment
 
-      @sampled_runs ||= experiment.runs.where("EXISTS (SELECT 1 FROM samples WHERE samples.run_id = runs.id)")
+      @sampled_runs ||= experiment.runs.founding.where("EXISTS (SELECT 1 FROM samples WHERE samples.run_id = runs.id)")
                                   .order(:id).select(:id, :params, :status, :emergence_epoch).to_a
     end
 

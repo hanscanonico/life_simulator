@@ -46,6 +46,15 @@ RSpec.describe "lab:backfill_relative_transitions" do
     expect { invoke("lab:backfill_relative_transitions", "colour") }.to raise_error(/Unknown experiment "colour"/)
   end
 
+  it "leaves a descendant without a transition" do
+    child = create(:run, :descendant, experiment: experiment, status: "finished")
+    store(child, 0.98, 0.5)
+
+    invoke("lab:backfill_relative_transitions")
+
+    expect(child.reload.transition_epoch_relative).to be_nil
+  end
+
   def store(run, start, fallen)
     (0..50).each { |sample| create(:sample, run: run, epoch: sample * 10, values: values(start)) }
     (51..80).each { |sample| create(:sample, run: run, epoch: sample * 10, values: values(fallen)) }

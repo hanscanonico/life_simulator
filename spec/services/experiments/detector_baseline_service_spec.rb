@@ -98,6 +98,15 @@ RSpec.describe Experiments::DetectorBaselineService do
     expect(CSV.parse(report.to_csv).first).to eq(described_class::COLUMNS)
   end
 
+  context "with a descendant, which starts from its parent's world" do
+    it "leaves it out of the arm" do
+      child = create(:run, :descendant, experiment: experiment, status: "finished", params: params_for(512))
+      create(:sample, run: child, epoch: 1_100, values: { "compress_ratio" => 0.3 })
+
+      expect(arm("512").runs).to eq(1)
+    end
+  end
+
   def arm(label) = report.arms.find { |candidate| candidate.label == label }
 
   def sampled(max_tape_len:, ratios:, status: "finished", sweep: nil, params: {})

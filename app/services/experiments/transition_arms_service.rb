@@ -78,7 +78,7 @@ module Experiments
     end
 
     def sampled_runs
-      @sampled_runs ||= experiment.runs.where(id: sampled_run_ids).order(:id)
+      @sampled_runs ||= experiment.runs.founding.where(id: sampled_run_ids).order(:id)
                                   .select(:id, :params, :transition_epoch).to_a
     end
 

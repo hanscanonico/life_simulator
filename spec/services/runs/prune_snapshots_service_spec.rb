@@ -120,4 +120,17 @@ RSpec.describe Runs::PruneSnapshotsService do
       expect(described_class.prunable(since: 1.day.ago)).to be_empty
     end
   end
+
+  # A colony that relapsed is descended from the world where it stood highest, which need
+  # be neither the last snapshot nor a multiple of keep_every.
+  context "with a snapshot a descendant starts from" do
+    it "keeps it" do
+      run = snapshotted((100..1_000).step(100).to_a)
+      create(:run, :descendant, parent_run: run, parent_epoch: 500)
+
+      described_class.call(run: run, keep_every: 300)
+
+      expect(kept(run)).to eq([100, 300, 500, 600, 900, 1_000])
+    end
+  end
 end

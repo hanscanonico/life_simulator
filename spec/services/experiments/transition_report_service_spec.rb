@@ -373,6 +373,20 @@ RSpec.describe Experiments::TransitionReportService do
     end
   end
 
+  context "with a descendant, which crosses nothing of its own" do
+    let!(:child) do
+      create(:run, :descendant, experiment: experiment, status: "finished",
+                                params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244)).tap do |run|
+        create(:sample, run: run, epoch: 1_100,
+                        values: sample(0.4, entropy: 2.0, replicators: 9, copy_rate: 0.005, tapes: 120, top_share: 0.4))
+      end
+    end
+
+    it "reads no row for it" do
+      expect(row_for(child)).to be_nil
+    end
+  end
+
   def row_for(run) = report.rows.find { |row| row.run_id == run.id }
 
   def sampled(transition_epoch:, samples:, status: "finished")

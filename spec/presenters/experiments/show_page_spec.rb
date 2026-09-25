@@ -454,4 +454,33 @@ RSpec.describe Experiments::ShowPage do
       expect([arm.flagged_only, arm.replicated_only, arm.both]).to eq([1, 1, 1])
     end
   end
+
+  # A descendant carries its parent's emergence and no crossing of its own: it is a
+  # finished run, but neither a transition nor a run without one.
+  context "with a finished descendant" do
+    before do
+      finished_run(radius: 1, transition_epoch: 100)
+      finished_run(radius: 2)
+      create(:run, :descendant, experiment: experiment, status: "finished",
+                                params: Lab::Schema.run_defaults.merge("radius" => 2))
+    end
+
+    it "counts it among the runs finished" do
+      expect(page.finished_count).to eq(3)
+    end
+
+    it "reads the transition rate over the founding runs alone" do
+      expect([page.transition_rate.fraction, page.founding_finished_count, page.emerged_finished]).to eq([0.5, 2, 1])
+    end
+
+    it "leaves it out of the arm it would have emerged in" do
+      arm = page.arms.values.sole.find { |candidate| candidate.label == "2" }
+
+      expect([arm.emerged, arm.runs_finished]).to eq([0, 1])
+    end
+
+    it "leaves it out of the time to emergence" do
+      expect(page.survivals.values.sole.pooled.runs).to eq(1)
+    end
+  end
 end

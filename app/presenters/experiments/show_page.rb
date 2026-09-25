@@ -71,14 +71,18 @@ module Experiments
 
     def findings = @findings ||= Findings::Registry.for_experiment(experiment.slug)
 
-    def finished_count = finished_runs.size
+    def finished_count = @finished_count ||= experiment.runs.where(status: "finished").count
 
-    def transitioned_finished = finished_runs.count { |run| run.transition_epoch.present? }
+    # A descendant inherits its parent's reading and crosses nothing of its own, so every
+    # transition and emergence count below is over the founding runs alone.
+    def founding_finished_count = founding_finished_runs.size
+
+    def transitioned_finished = founding_finished_runs.count { |run| run.transition_epoch.present? }
 
     # The detector flags a candidate crossing on `compress_ratio` alone; a run emerged when
     # the census or the copy rate backed it (docs/design_record.md, 2026-09-15). The page
     # prints both counts, never the flagged one alone.
-    def emerged_finished = finished_runs.count(&:emerged?)
+    def emerged_finished = founding_finished_runs.count(&:emerged?)
 
     # Runs still under way can already carry a transition epoch, and they are not in the
     # rate's denominator: the page reports them separately rather than diluting the share.
@@ -97,7 +101,7 @@ module Experiments
                                                       title: "Detector against replicator census, per arm")
     end
 
-    def transition_report? = finished_count.positive? && transition_arms.any?
+    def transition_report? = founding_finished_count.positive? && transition_arms.any?
 
     # The pre-registered complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm, so a sweep
     # whose runs carry no such sample shows none of it.
@@ -113,7 +117,7 @@ module Experiments
 
     def transition_threshold = TransitionReportService::THRESHOLD
 
-    def transition_rate = TransitionRate.new(transitioned: transitioned_finished, finished: finished_count)
+    def transition_rate = TransitionRate.new(transitioned: transitioned_finished, finished: founding_finished_count)
 
     # Only a sweep a corpus pass has read carries this section: without rescores there is
     # nothing to say about `top_k`.
@@ -146,7 +150,8 @@ module Experiments
 
     def survival_for(axis)
       arms = axis.values.map do |value|
-        observations = observed_runs.select { |run| axis.matches?(run.params, value) }.map { |run| observation(run) }
+        observations = founding_observed_runs.select { |run| axis.matches?(run.params, value) }
+                                             .map { |run| observation(run) }
         Charts::Survival::Arm.new(label: axis.label_of(value), observations: observations.compact)
       end
       Charts::Survival.new(arms: arms, title: "Time to emergence vs #{axis.name.to_s.humanize.downcase}")
@@ -173,8 +178,13 @@ module Experiments
 
     def observed_runs
       @observed_runs ||= experiment.runs.where.not(status: "pending")
-                                   .select(:id, :params, :status, :epochs_done, :emergence_epoch, :persistence).to_a
+                                   .select(:id, :params, :status, :epochs_done, :emergence_epoch, :persistence,
+                                           :parent_run_id).to_a
     end
+
+    # A descendant's emergence is its parent's, which it never waited for: time to
+    # emergence is read over founding runs alone.
+    def founding_observed_runs = observed_runs.reject(&:descendant?)
 
     # One grouped query for the whole page, never one per row, served by
     # `index_samples_on_run_id_replicated` — whose predicate this `where` has to keep
@@ -201,7 +211,7 @@ module Experiments
 
     def arms_for(axis)
       axis.values.map do |value|
-        runs = finished_runs.select { |run| axis.matches?(run.params, value) }
+        runs = founding_finished_runs.select { |run| axis.matches?(run.params, value) }
         emerged, rest = runs.partition(&:emerged?)
         flagged_only, unflagged = rest.partition { |run| run.transition_epoch.present? }
         ArmSummary.new(label: axis.label_of(value), emergence_epochs: emerged.map(&:emergence_epoch),
@@ -211,9 +221,9 @@ module Experiments
 
     def page = @page ||= @paginate.call(experiment.runs.order(:id))
 
-    def finished_runs
-      @finished_runs ||= experiment.runs.where(status: "finished")
-                                   .select(:id, :params, :transition_epoch, :emergence_epoch).to_a
+    def founding_finished_runs
+      @founding_finished_runs ||= experiment.runs.founding.where(status: "finished")
+                                            .select(:id, :params, :transition_epoch, :emergence_epoch).to_a
     end
 
     def groups_for(axis)
