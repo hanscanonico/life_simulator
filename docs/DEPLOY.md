@@ -86,13 +86,25 @@ or a build cache the daemon has evicted. An engine edit that leaves the binary
 byte-identical — a comment, a doc — moves nothing, because the layers are addressed by
 their content.
 
-`deploy/deploy` builds both (`docker compose build app runner`), tags both `:previous`
-before building, and rolls both back together. To check the behaviour by hand after an
-app-only commit:
+`deploy/deploy` builds with `BUILDX_NO_DEFAULT_ATTESTATIONS=1`. The daemon uses the
+containerd image store, where an image ID is the digest of the image index, and
+BuildKit's default provenance attestation is a manifest in that index that records each
+build afresh. With it, the runner's ID moved on every deploy even though every layer came
+from cache (`docker image ls --tree` showed `:latest` and `:previous` over the same
+`linux/amd64` manifest), and compose recreated the container (#173). The compose file
+sets no `provenance:` key: Compose 2.40.3's built-in builder swaps the arguments when it
+reads `provenance: false` and asks for a max-mode attestation instead, and any such key
+stops it from reading the variable (docker/compose#14111, fixed only on compose main at
+the time). Revisit after a compose upgrade. `deploy/deploy` prints whether the new runner
+image differs from the one the running container uses.
+
+`deploy/deploy` builds both (`docker compose build app runner`, without attestations),
+tags both `:previous` before building, and rolls both back together. To check the
+behaviour by hand after an app-only commit:
 
 ```sh
 docker image inspect --format '{{.Id}}' life-simulator-runner:latest   # before
-docker compose -f deploy/docker-compose.yml build app runner
+BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose -f deploy/docker-compose.yml build app runner
 docker image inspect --format '{{.Id}}' life-simulator-runner:latest   # same id
 docker compose -f deploy/docker-compose.yml up -d                      # runner: Running
 ```
