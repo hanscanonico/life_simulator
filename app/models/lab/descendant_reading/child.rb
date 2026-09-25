@@ -5,8 +5,10 @@ module Lab
     # One child's own samples — `[[epoch, values], ...]` at epochs above its parent epoch, in
     # epoch order — read under the entry's two per-child rules. A decile is the sweeps 9 and
     # 10 decile (Experiments::ComplexityArmsService): the first or last `ceil(n / 10)` of the
-    # child's `n` own samples. A median is Findings::Median's lower middle. A value the
-    # engine did not report as a number drops out of its decile, as it does there.
+    # child's `n` own samples, cut before the self-replicating ones are picked out of it
+    # (the first of the entry's clarifications, `docs/design_record.md`, 2026-09-25). A
+    # median is Findings::Median's lower middle. A value the engine did not report as a
+    # number drops out of its decile, as it does there.
     class Child
       # What the rules read off the samples, kept apart from them so a sweep's reading can
       # be cached without its samples.

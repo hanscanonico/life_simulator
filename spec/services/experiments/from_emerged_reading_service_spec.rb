@@ -136,10 +136,12 @@ RSpec.describe Experiments::FromEmergedReadingService do
     end
   end
 
-  it "reads a child's own samples only, never its parent's epochs" do
+  # Its first two own samples sit below the floor: with the sample at its parent epoch they
+  # would make the three running that read as a relapse.
+  it "reads a child's own samples only, never one at its parent epoch" do
     run = children(0).first
     create(:sample, run: run, epoch: run.parent_epoch, values: { "replicator_share" => 0.0 })
-    sample(run)
+    sample(run, share: ->(index) { index < 2 ? 0.05 : 0.9 })
 
     expect(report.children.find { |child| child.run_id == run.id }.reading.persistence).to eq(:held)
   end
@@ -186,6 +188,17 @@ RSpec.describe Experiments::FromEmergedReadingService do
       end
 
       it "is interim" do
+        expect(report).to be_interim
+      end
+    end
+
+    context "with a child that failed" do
+      before do
+        experiment.runs.each { |run| sample(run) }
+        experiment.runs.first.update!(status: "failed")
+      end
+
+      it "is interim until it is re-run: the entry reads every child finished" do
         expect(report).to be_interim
       end
     end

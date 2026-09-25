@@ -42,12 +42,19 @@ module Experiments
 
     def skip_reason(run)
       return :unfinished unless run.finished?
-      return :no_terminal_world unless run.snapshots.restorable.exists?(epoch: run.epochs)
+      return :no_terminal_world unless terminal_worlds.include?(run.id)
 
       share = terminal_shares[run.id]
       return :no_reading if share.nil?
 
       :below_share if share < @rule.fetch("min_share")
+    end
+
+    # The candidates that kept a world at their last epoch, in one statement: the reading
+    # asks this of the whole pool on every page request.
+    def terminal_worlds
+      @terminal_worlds ||= Snapshot.restorable.joins(:run).where(run_id: candidates.map(&:id))
+                                   .where("snapshots.epoch = runs.epochs").distinct.pluck(:run_id).to_set
     end
 
     # The qualifying value of each candidate's reading at its last epoch, by run id.

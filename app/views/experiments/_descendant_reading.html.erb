@@ -53,7 +53,7 @@
             <tr>
               <td><%= arm.name %></td>
               <td class="numeric"><%= arm.children.size %></td>
-              <td class="numeric"><%= arm.terminal_count %></td>
+              <td class="numeric"><%= arm.finished_count %></td>
               <% Lab::DescendantReading::VERDICTS.each do |verdict| %>
                 <td class="numeric"><%= arm.verdict_count(verdict) %></td>
               <% end %>

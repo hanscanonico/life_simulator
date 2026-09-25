@@ -109,7 +109,9 @@ module Experiments
       @complexity_arms ||= cached("complexity_arms") { ComplexityArmsService.call(experiment: experiment) }
     end
 
-    def complexity_reading? = complexity_arms.any?
+    # A descendant sweep is read under its own rule (`descendant_reading`): this one would
+    # read its children under the conserved-core clause that sweep's entry drops.
+    def complexity_reading? = experiment.parents.blank? && complexity_arms.any?
 
     def rise_margin = ComplexityArmsService::RISE_MARGIN
 

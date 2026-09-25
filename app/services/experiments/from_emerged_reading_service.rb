@@ -7,7 +7,7 @@ module Experiments
   # against the continuation over paired (parent, seed) children
   # (Lab::DescendantReading::Comparison), and the continuation read for persistence. It is
   # interim until every candidate parent is terminal and read, and every child of every
-  # qualifying parent is terminal.
+  # qualifying parent has finished.
   #
   # It reads stored samples and changes nothing.
   class FromEmergedReadingService
@@ -24,20 +24,11 @@ module Experiments
       def hypothesis = bundle.key?("interaction") ? "H-host" : "H-economy"
     end
 
-    ChildRow = Data.define(:run_id, :parent_id, :seed, :treatment, :status, :parent_epoch, :emergence_epoch,
-                           :reading) do
-      def terminal? = Run::TERMINAL_STATUSES.include?(status)
-
-      def colony_age_at(epoch) = emergence_epoch && epoch && (epoch - emergence_epoch)
-
-      def relapse_colony_age = colony_age_at(reading.relapse_epoch)
-
-      # The colony ages the child was watched over, from its parent epoch to its last sample.
-      def watched_colony_ages
-        return nil unless emergence_epoch && reading.sampled?
-
-        [colony_age_at(parent_epoch), colony_age_at(reading.last_epoch)]
-      end
+    # `relapse_colony_age` and `watched_colony_ages` are Run#colony_age_at, counted from the
+    # parent's emergence; nil where the parent has none.
+    ChildRow = Data.define(:run_id, :parent_id, :seed, :treatment, :status, :reading, :relapse_colony_age,
+                           :watched_colony_ages) do
+      def finished? = status == "finished"
 
       def cells
         [run_id, parent_id, seed, treatment.name, status, reading.persistence, reading.relapse_epoch,
@@ -122,11 +113,21 @@ module Experiments
     def children_of(treatment) = children.select { |child| child.treatment == treatment }
 
     def children
-      @children ||= child_runs.map do |run|
-        ChildRow.new(run_id: run.id, parent_id: run.parent_run_id, seed: run.seed, treatment: treatment_of(run),
-                     status: run.status, parent_epoch: run.parent_epoch, emergence_epoch: run.emergence_epoch,
-                     reading: read(run))
-      end
+      @children ||= child_runs.map { |run| child_row(run, read(run)) }
+    end
+
+    def child_row(run, reading)
+      ChildRow.new(run_id: run.id, parent_id: run.parent_run_id, seed: run.seed, treatment: treatment_of(run),
+                   status: run.status, reading: reading,
+                   relapse_colony_age: reading.relapse_epoch && run.colony_age_at(reading.relapse_epoch),
+                   watched_colony_ages: watched_colony_ages(run, reading))
+    end
+
+    # The colony ages a child was watched over, from its parent epoch to its last sample.
+    def watched_colony_ages(run, reading)
+      return nil unless run.emerged? && reading.sampled?
+
+      [run.colony_age_at(run.parent_epoch), run.colony_age_at(reading.last_epoch)]
     end
 
     def read(run)

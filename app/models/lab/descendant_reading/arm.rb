@@ -8,7 +8,7 @@ module Lab
     Arm = Data.define(:treatment, :children) do
       delegate :name, to: :treatment
 
-      def terminal_count = children.count(&:terminal?)
+      def finished_count = children.count(&:finished?)
 
       # A verdict of either rule, over the children sampled so far: one nothing has been
       # sampled from yet is no reading, not an unmeasured one.
@@ -36,7 +36,7 @@ module Lab
       end
 
       def cells
-        [name, children.size, terminal_count, *VERDICTS.map { |verdict| verdict_count(verdict) }, steal_rate,
+        [name, children.size, finished_count, *VERDICTS.map { |verdict| verdict_count(verdict) }, steal_rate,
          median_of(DISTINCT_TAPES)]
       end
     end

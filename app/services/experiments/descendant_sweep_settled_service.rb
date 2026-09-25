@@ -4,7 +4,9 @@ module Experiments
   # Whether a descendant sweep's reading is final (`docs/design_record.md`, 2026-09-25):
   # no parent can still qualify — every candidate is terminal, and every finished one that
   # kept its world has been read — and every child of every qualifying parent, one per
-  # treatment and seed, has ended. Anything printed before that is interim.
+  # treatment and seed, has finished: a failed child's samples stop short of its budget,
+  # so it holds the reading back until it is re-run. Anything printed before that is
+  # interim.
   class DescendantSweepSettledService
     include Callable
 
@@ -24,7 +26,7 @@ module Experiments
 
     def settled?(parent)
       statuses = children.fetch([parent.id, parent.epochs], [])
-      statuses.size == expected_children && statuses.all? { |status| Run::TERMINAL_STATUSES.include?(status) }
+      statuses.size == expected_children && statuses.all?("finished")
     end
 
     def children

@@ -536,6 +536,12 @@ RSpec.describe "Experiments", type: :request do
 
           expect(response.parsed_body.at_css("#descendant-reading").text).not_to include("2048×1024")
         end
+
+        it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+        end
       end
     end
 

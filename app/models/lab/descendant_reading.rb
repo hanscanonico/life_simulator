@@ -2,8 +2,9 @@
 
 module Lab
   # The numbers the from-emerged sweep was pre-registered with (`docs/design_record.md`,
-  # 2026-09-25, "Runs that start from an emerged world"): which parents it starts from, and
-  # how a child's own samples read. The sweep's builder reads the parent rule from here and
+  # 2026-09-25, "Runs that start from an emerged world", and "The from-emerged reading: six
+  # clarifications" after it): which parents it starts from, and how a child's own samples
+  # read. The sweep's builder reads the parent rule from here and
   # the sweep's reading reads the rest, so the entry and the code name one set of values.
   module DescendantReading
     # The orientation-aware census that sees reverse copiers (#245, #247); the engine's
@@ -48,7 +49,7 @@ module Lab
       complexity first_decile_instructions last_decile_instructions
     ].freeze
     ARM_COLUMNS = %w[
-      treatment children terminal held relapsed rises plateau mixed unmeasured last_decile_steal_rate
+      treatment children finished held relapsed rises plateau mixed unmeasured last_decile_steal_rate
       last_decile_distinct_tapes
     ].freeze
     COMPARISON_COLUMNS = %w[
