@@ -197,7 +197,13 @@ RSpec.describe Lab do
 
       it "gives every arm ninety seeds, the control included" do
         expect(definition.values_at(:seeds, :epochs)).to eq([(1..90).to_a, 20_000])
-        expect(definition).not_to have_key(:seeds_by_arm)
+      end
+
+      it "gives the one rising arm and the controls at both caps two hundred and seventy seeds" do
+        expect(definition.fetch(:seeds_by_arm).to_h { |arm| arm.values_at("params", "seeds") })
+          .to eq({ "energy_influx" => 2**11, "steal_amount" => 2**10, "max_tape_len" => 128 } => (1..270).to_a,
+                 { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128 } => (1..270).to_a,
+                 { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 256 } => (1..270).to_a)
       end
     end
 
@@ -252,10 +258,37 @@ RSpec.describe Lab do
 
     it "overrides the seeds of arms its own grid carries" do
       Lab::SWEEPS.each_value do |definition|
-        definition.fetch(:seeds_by_arm, {}).each do |name, seeds_by_value|
-          expect(definition.fetch(:param_grid).fetch(name)).to include(*seeds_by_value.keys)
+        points = grid_points(definition.fetch(:param_grid))
+
+        arms(definition.fetch(:seeds_by_arm, {})).each do |arm|
+          expect(points).to include(a_hash_including(arm))
         end
       end
+    end
+
+    # The builder gives a grid point the seeds of the first arm it matches, so two arms
+    # sharing a point would hand the second its seeds silently.
+    it "names no grid point by two arms" do
+      Lab::SWEEPS.each_value do |definition|
+        named = arms(definition.fetch(:seeds_by_arm, {}))
+
+        grid_points(definition.fetch(:param_grid)).each do |point|
+          expect(named.count { |arm| point >= arm }).to be <= 1
+        end
+      end
+    end
+
+    # Every arm an override names, as the parameters it must match, in either of the two
+    # shapes Experiments::SweepBuilderService reads.
+    def arms(seeds_by_arm)
+      return seeds_by_arm.map { |arm| arm.fetch("params") } if seeds_by_arm.is_a?(Array)
+
+      seeds_by_arm.flat_map { |name, seeds_by_value| seeds_by_value.keys.map { |value| { name => value } } }
+    end
+
+    def grid_points(param_grid)
+      head, *tail = param_grid.map { |name, values| values.map { |value| value.is_a?(Hash) ? value : { name => value } } }
+      head.product(*tail).map { |parts| parts.reduce({}, :merge) }
     end
 
     # An axis whose values are hashes is a bundle of parameters travelling together, so it
