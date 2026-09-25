@@ -28,6 +28,11 @@
           <p class="finding-meta text-sm text-muted">
             <span class="badge <%= row.finding.badge_class %>" title="<%= row.finding.status_meaning %>"><%= row.finding.status_label %></span>
             <time datetime="<%= row.finding.date.iso8601 %>"><%= l row.finding.date, format: :long %></time>
+            <% if row.finding.instrument_note? %>
+              <%= link_to "instrument note", finding_path(row.finding, anchor: "instrument-note"),
+                          class: "badge badge-pro instrument-note-badge",
+                          title: "Some of this finding's claims rest on readings that miss or confound the replicators that copy in reverse." %>
+            <% end %>
           </p>
           <h2 class="finding-title"><%= link_to row.finding.title, finding_path(row.finding) %></h2>
           <p><%= row.finding.summary %></p>

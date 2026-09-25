@@ -52,5 +52,9 @@ module Findings
     def status_label = status.to_s
 
     def status_meaning = STATUS_MEANINGS.fetch(status)
+
+    def instrument_note = InstrumentNotes.for(slug)
+
+    def instrument_note? = instrument_note.present?
   end
 end

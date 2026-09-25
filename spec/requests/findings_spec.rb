@@ -19,6 +19,21 @@ RSpec.describe "Findings", type: :request do
       expect(response.body.squish).to include(*Findings::Finding::STATUS_MEANINGS.values)
     end
 
+    it "badges the findings that carry an instrument note, and only those" do
+      get findings_path
+
+      badged = response.parsed_body.css(".finding-card").select { |card| card.at_css(".instrument-note-badge") }
+                       .map { |card| card.at_css(".finding-title a")["href"] }
+      expect(badged).to match_array(Findings::InstrumentNotes::NOTES.keys.map { |slug| finding_path(slug) })
+    end
+
+    it "links each instrument-note badge to the note on its finding" do
+      get findings_path
+
+      expect(response.parsed_body.css(".instrument-note-badge").pluck("href"))
+        .to include(finding_path("emergence-can-be-left", anchor: "instrument-note"))
+    end
+
     it "points at the glossary for the words the write-ups use" do
       get findings_path
 
@@ -102,6 +117,41 @@ RSpec.describe "Findings", type: :request do
   end
 
   describe "GET /findings/:slug" do
+    context "with a finding that rests on the replicator census" do
+      it "shows its instrument note above the narrative" do
+        get finding_path("emergence-can-be-left")
+
+        note = response.parsed_body.at_css("#instrument-note")
+        expect(note.text.squish).to include("the most exposed on the site")
+        expect(response.body.index("instrument-note")).to be < response.body.index("Question")
+      end
+
+      it "links the census issue and the orientation-aware observable" do
+        get finding_path("emergence-can-be-left")
+
+        links = response.parsed_body.css("#instrument-note a").pluck("href")
+        expect(links).to include(Findings::InstrumentNotes::ISSUE_URL,
+                                 how_it_works_path(anchor: "replicator-share"))
+      end
+    end
+
+    context "with a finding the census does not touch" do
+      it "shows no instrument note" do
+        get finding_path("radius-locality")
+
+        expect(response.parsed_body.at_css("#instrument-note")).to be_nil
+      end
+    end
+
+    it "links issue #245 from every note" do
+      Findings::InstrumentNotes::NOTES.each_key do |slug|
+        get finding_path(slug)
+
+        expect(response.parsed_body.css("#instrument-note a").pluck("href"))
+          .to include(Findings::InstrumentNotes::ISSUE_URL), slug
+      end
+    end
+
     it "renders the narrative even with no sweep in the lab" do
       get finding_path(finding)
 

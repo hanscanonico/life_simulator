@@ -137,6 +137,12 @@ RSpec.describe "Pages", type: :request do
       expect(terms).to include("transition", "flagged", "replicator", "census", "emergence", "arm")
     end
 
+    it "anchors the orientation-aware observable the instrument notes link to" do
+      get how_it_works_path
+
+      expect(response.parsed_body.at_css("dt#replicator-share").text).to eq("replicator_share")
+    end
+
     it "lists the ten instructions and the opt-in steal byte" do
       get how_it_works_path
 
