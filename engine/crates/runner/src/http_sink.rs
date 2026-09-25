@@ -167,6 +167,10 @@ mod tests {
             replicator_count_mean: None,
             lineage_compressed_len: None,
             lineage_instruction_count: None,
+            reverse_copy_rate: 0.0,
+            replicator_share: None,
+            replicator_share_rotated: None,
+            dominant_self_replicates: None,
         }
     }
 

@@ -118,6 +118,20 @@
     <dt class="mono">replicator_count_mean</dt>
     <dd>The mean of what those eight draws counted.</dd>
 
+    <dt class="mono">replicator_share</dt>
+    <dd>
+      The share of 256 cells, drawn at random, whose tape reproduces itself in either
+      orientation: it runs five generations down a chain against fresh noise, and the copy
+      four generations on must agree with the original on three quarters of its bytes, by
+      majority over five chains. The census above asks for a same-orientation copy of one
+      of the sixteen commonest tapes, and the replicators that dominate every emerged world
+      copy themselves in reverse, so the census reads them as nothing. This reading exists
+      beside it rather than replacing it. <span class="mono">replicator_share_rotated</span>
+      also accepts a copy that lands a few bytes round, and
+      <span class="mono">dominant_self_replicates</span> says whether the dominant tape
+      passes. Null on the Life substrate and on every sample recorded before they existed.
+    </dd>
+
     <dt class="mono">entropy_bits</dt>
     <dd>The Shannon entropy of the byte distribution.</dd>
 
@@ -135,6 +149,12 @@
       byte-exactly over the other half, among the pairs whose halves started out
       different. It catches replication in situ, including replicators that only copy with
       a particular partner.
+    </dd>
+
+    <dt class="mono">reverse_copy_rate</dt>
+    <dd>
+      The same count with the copy reversed: one half ends holding the other's tape last
+      byte first. A palindrome's copy counts in both rates.
     </dd>
 
     <dt class="mono">distinct_lineages</dt>

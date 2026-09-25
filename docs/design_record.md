@@ -1233,11 +1233,127 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   against colony age for rung 1, and the complexity rule of sweeps 9 and 10 over the child's
   span, since a child starts post-emergence. This entry takes the decision and names those
   questions; it designs none of them.
+- 2026-09-25 — **The replicator census is blind to replicators that copy in reverse.** The
+  worlds the programme reads as near-monocultures that mostly fail the replicator test
+  (previous entry) are, by a pilot's reading, worlds of working replicators the test cannot
+  count. This entry records the pilot, adds orientation-aware companion observables beside
+  the census, and relocks nothing: `replicator_count`, `copy_rate`, the emergence rule and
+  every finding stand as they are until the user decides what follows.
+
+  **The pilot** (2026-09-25; every number below is a pilot's, from read-only lab data). The
+  terminal snapshots of the nine emerged sweep-9 worlds — cap 128: runs 944, 950, 967, 991,
+  1007; cap 256: runs 1029, 1087, 1089, 1103 — and of three `bff-control` runs (182 at
+  mutation 0, 184 and 185 at 2^-12; fixed 64-byte tapes) were restored and stepped with the
+  engine's own code by a scratch crate, the repository untouched and the mini-pc read with
+  SELECTs only. The pipeline reproduces the lab: run 1007's epoch-19 000 snapshot stepped
+  forward reproduces its stored samples 19 010–19 100 exactly, and run 967 replayed from
+  13 000 to 13 890 reproduces the stored census of 246 and its dominant tape hash.
+
+  | world | cap | census | cells ≥ 0.99 reversed (aligned) | cells ≥ 0.9 reversed (best rotation) | in-situ forward copy | in-situ reverse copy |
+  |---|---|---|---|---|---|---|
+  | 944 | 128 | 0 | 0.82 | 0.93 | 0.0007 | 0.64 |
+  | 950 | 128 | 0 | 0.91 | 0.93 | 0.0001 | 0.71 |
+  | 967 | 128 | 0 | 0.89 | 0.96 | 0.0013 | 0.71 |
+  | 991 | 128 | 0 | 0.51 | 0.74 | 0.0010 | 0.39 |
+  | 1007 | 128 | 0 | 0.97 | 0.98 | 0.0008 | 0.71 |
+  | 1029 | 256 | 0 | 0.90 | 0.97 | 0.0012 | 0.69 |
+  | 1087 | 256 | 0 | 0.01 | 0.95 | 0.0007 | 0.005 |
+  | 1089 | 256 | 0 | 0.65 | 0.99 | 0.0002 | 0.52 |
+  | 1103 | 256 | 0 | 0.89 | 0.98 | 0.0002 | 0.71 |
+  | BFF 184 (2^-12) | 64 fixed | 0 | 0.78 | 0.83 | 0.0000 | 0.91 |
+  | BFF 185 (2^-12) | 64 fixed | 0 | 0.97 | 0.97 | 0.0000 | 0.95 |
+  | BFF 182 (0) | 64 fixed | 0 | 0.25 | 0.32 | 0.0014 | 0.23 |
+
+  A cell's "reversed" fidelity is the share of its partner half that holds its tape
+  reversed after one interaction, over 500 random cells × 50 world partners (rotation: 300
+  cells × 20 partners); the in-situ rates are 16 384 neighbour pairs under the engine's own
+  pairing and copy rule. Before the interaction the reversed fidelity is 0.07–0.18. The
+  in-situ forward rate of run 1007, 0.00079, is its stored `copy_rate` at epoch 20 000. Every
+  top-10 tape of every world passes the engine's own test 0 times in 4 on all 8 draws, and
+  writes its exact reverse 64 times in 64 in all but run 1087's (reversed with a rotation of
+  2) and one of run 1103's ten.
+
+  **The mechanism.** Run 1007's commonest tape, skeleton `{[.<>>{]>]{>.><[{`: `{` moves
+  head1 from 0 to the pair's last byte, and the loop `[.<>>{]` copies head0 onto head1 with
+  head0 moving right and head1 left, so the partner half becomes `reverse(T)` byte-exact
+  whatever it held. The tape holds no zero byte, so the loop never exits, runs out the 8 192
+  steps and leaves its own half as it was. The tail mirrors the loop, so `reverse(T)` runs the
+  same program and writes `T` back: the population is `X` and `reverse(X)`, a two-generation
+  replicator (in 1007, 15 163 of 16 384 cells have their exact reverse elsewhere in the
+  world). The replicator test asks for `T` itself in the partner (`replicator.rs`,
+  `&buf[len..] == tape`), and `copy_rate` for a same-orientation image, so neither can
+  count it. **The census positives on record are exact palindromes** (`T == reverse(T)`):
+  at run 967's epoch 13 890, census 246, the tapes that passed are palindromes among the top
+  16, and all 16 tested tapes there pass the reversed and two-generation tests.
+
+  **The error-threshold reading of this morning is contradicted.** The previous entry named
+  a lowered mutation rate as a candidate continuation, on an estimate of about eight
+  mutations a copy. Measured, the worlds make about 0.7 new exact reversed copies per cell
+  per epoch against 1/64 (1/32 at cap 256) mutation hits per tape per epoch: copying
+  outpaces mutation 20–45×. Continued from their own terminal worlds at mutation 0, runs
+  1007, 1029 and 1103 go clonal — distinct tapes fall from 4 018, 7 143 and 5 742 to 22, 265
+  and 47, and run 1007 ends 5 000 epochs later with every sampled cell a perfect reverse
+  copier — while the census never reads above 0; in run 967 lowering mutation *reduced* the share of samples
+  with a positive census, from 0.40 to 0.004–0.014, because the palindromic variants were
+  lost.
+
+  **The same class elsewhere.** The 2024 BFF paper's canonical replicator
+  (`[[{.>]-] ]-]>.{[[`) is a palindrome copied in reverse. cubff also starts both heads at 0
+  and wraps modulo the pair, so `{` from 0 lands on the partner's last byte there too; in
+  short seeded cubff runs, 36–37% of tapes pass cubff's own detector at the transition and
+  every one writes `reverse(parent)` (preliminary; stopped early). The 2026 paper's detector
+  (arXiv 2607.01483, Algorithm 1; cubff's `CheckSelfRep`) sees them because it runs an odd
+  chain of five runs against noise and compares the final first half with the original:
+  over nine chains it counts the positions that hold the original byte in at least three
+  of them (cubff: more than three of thirteen), scores the second halves' agreement with
+  one another the same way, keeps the smaller score and passes at 48 of 64 bytes.
+
+  **Decision: add orientation-aware companions, relocking nothing.** DESIGN §1.2 gains the
+  orientation-aware detector (`replicator::self_replicates`: the paper's chain of 5, 5
+  trials, a strict majority of them per position — stricter than the paper's three of
+  nine — 3/4 of positions, the carried first half alone, and a separate rotated verdict)
+  and four sampled observables: `replicator_share` and `replicator_share_rotated`, the share
+  of 256 cells drawn uniformly with replacement whose tape passes aligned and under rotation;
+  `dominant_self_replicates`; and `reverse_copy_rate`, `copy_rate` with the image reversed.
+  They draw only from streams of their own and write nothing back: every pinned hash and
+  every pinned observable string of the engine passes unmodified, and `replicator_count`,
+  `copy_rate` and every other observable read what they read before. The per-sample cost is
+  about 4% (3.7–4.1%) of the ten epochs a sample reads, measured on the terminal worlds of
+  runs 1007, 1029 and 1087, the worst case (every interaction runs out the step budget). On
+  run 1007's world the new readings give `replicator_share` 0.96 and `reverse_copy_rate`
+  0.73 where the census reads 0. Run 1087's copy reflects about an axis one byte off the
+  pair's centre (the pilot's rotation of 2, `B[(254 − i) mod 256] = A[i]`), so its
+  `reverse_copy_rate` stays near 0; but the next copy reflects about the same axis and
+  undoes the offset, so the five-run chain passes it aligned, `replicator_share` 0.91 and
+  rotated 0.94. Random tapes, a fresh soup a few hundred epochs in, and the dominant
+  tapes of runs 1007, 967 and 1087 with their `.` removed or their bytes shuffled all fail.
+
+  **For the user to decide.** Whether `replicator_count`, the emergence confirmation
+  (2026-09-15, #172/#189) and the persistence and relapse readings relock on the
+  orientation-aware detector. That decision comes after the stored corpus is rescored with
+  the detector (the next slice) and the findings that rest on the census can be read both
+  ways. Exposed until then:
+  - census-confirmed emergence in every sweep, where a crossing was confirmed by the census
+    rather than by `copy_rate`;
+  - `emergence-can-be-left`: its relapses are census zeros, which in these worlds read
+    reverse copiers as absent;
+  - the persistence summaries, read off the same census;
+  - the dominant-replicator readings — `dominant_replicates` and `copy_cost`, and with them
+    `copy-cost-adaptation` — which price only same-orientation copiers and palindromes;
+  - the lineage observables: `inherits_partner`, `lineage_variation` and
+    `conserved_core_bytes` compare aligned bytes, so a population of `X` and `reverse(X)`
+    reads as two drifting halves (run 1007 continued at mutation 0 ends at a
+    `lineage_variation` of 100.6 bytes and a conserved core of 0 over 22 near-clones). A
+    stated limitation; nothing here fixes it;
+  - the census's `top_k` = 16 window, whose tapes cover 2–4% of the cells of these worlds,
+    so even an orientation-aware top-16 census would count a few percent of a world of
+    replicators. The companions draw from the whole world instead.
 - 2026-09-25 — **Runs that start from an emerged world: the from-emerged sweep,
-  pre-registered.** Option 3 of the entry of 2026-09-24, chosen by the previous entry, which
-  named what this one must lock. It is §1.3 item 11, experiment `from-emerged` (sweep key
-  `from_emerged` in `Lab::SWEEPS`). One finding changed the question after the previous
-  entry was written, and the entry starts from it.
+  pre-registered.** Option 3 of the entry of 2026-09-24, chosen by the next-step entry
+  above ("The next step after sweeps 9 and 10"), which named what this one must lock. It
+  is §1.3 item 11, experiment `from-emerged` (sweep key `from_emerged` in `Lab::SWEEPS`).
+  One finding changed the question after the next-step entry was written, and the entry
+  starts from it.
 
   **What an emerged world is made of** (#245, a pilot on the nine worlds the previous
   entry lists, all numbers pilot). They are not relapsed monocultures. In 74–99% of their
@@ -1245,7 +1361,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   into its partner on nearly every interaction; its reverse runs the same program, so the
   population is X and reverse(X). The locked replicator census and `copy_rate` compare in
   the same orientation only, so they read about zero in worlds that are about 95%
-  replicators, and copying outpaces mutation 20 to 45 times. So the previous entry's framing
+  replicators, and copying outpaces mutation 20 to 45 times. So the next-step entry's framing
   — rung 1 first, under what continuation does the census hold, with a lowered mutation rate
   as an error-threshold arm — is contradicted: the colonies held, the instrument did not see
   them. Descendant runs are therefore for **rung 4**: does an existing replicator keep
@@ -1268,7 +1384,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
 
   **The parent rule.** A parent is a finished run of experiment `host-parasite` in one of
   sweep 9's two economy-off controls, `{energy_influx 0, steal_amount 0, max_tape_len 128}`
-  and the same at `max_tape_len 256`, seeds 1–270 as the previous entry extended them. The
+  and the same at `max_tape_len 256`, seeds 1–270 as the next-step entry extended them. The
   world a child starts from is the parent's **last stored world**, its terminal snapshot at
   `epochs`: every finished run stores it and thinning never removes it, so the rule names
   the same world for every parent and needs no choice of a post-crossing epoch. A parent
@@ -1302,7 +1418,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   is read against the continuation child of the same (parent, seed). Budget 20 000 epochs
   past the parent, so a child of a 20 000-epoch parent runs 20 000 → 40 000. Priority 50,
   ahead of sweep 9's extension (seed-major, 0 − seed). That is **12 children per qualifying
-  parent**. The expected pool today is the nine emerged controls the previous entry lists.
+  parent**. The expected pool today is the nine emerged controls the next-step entry lists.
   #247 read four of their terminal worlds with the detector the gate reads, at epoch
   20 000: `replicator_share` 0.96 for 1007, 0.91 for 1087, 0.95 for 967 and 0.71 for 991,
   each with a self-replicating dominant tape. 1087 passes aligned although its copy
@@ -1312,7 +1428,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   that reads below 0.5 is skipped and reported, not re-gated. The extension to seeds
   91–270 adds about 18 more emerged worlds. So about 108 children now and about 320 once the
   extension is terminal. **Cost**, from sweep 9's measured `compute_seconds` at 12 runs at a
-  time (the previous entry's figures): about 21 minutes a 20 000-epoch run at cap 128 and 30
+  time (the next-step entry's figures): about 21 minutes a 20 000-epoch run at cap 128 and 30
   at cap 256 for the economy off, 13 for the 2 048-influx arm. An emerged world is dearer
   than those means, which average over worlds that mostly never emerged: its copier loops
   never exit and spend the whole step budget of every interaction. Taking 30 minutes a child

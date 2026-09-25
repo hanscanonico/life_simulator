@@ -46,7 +46,8 @@ RSpec.describe "Pages", type: :request do
          copy_rate distinct_lineages top_lineage_share lineage_variation copy_cost dominant_compressed_len
          dominant_instruction_count dominant_raw_len dominant_tape_hash conserved_core_bytes
          conserved_core_ops steal_rate replicator_pass_rate replicator_count_mean
-         lineage_compressed_len lineage_instruction_count transition_epoch]
+         lineage_compressed_len lineage_instruction_count reverse_copy_rate replicator_share
+         replicator_share_rotated dominant_self_replicates transition_epoch]
     end
 
     it "defines the substrate and links to the sweeps" do
