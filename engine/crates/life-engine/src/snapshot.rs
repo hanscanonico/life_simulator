@@ -67,8 +67,15 @@ pub enum SnapshotError {
     Truncated,
     BadMagic,
     UnsupportedVersion(u8),
-    Mismatch { field: &'static str },
+    Mismatch {
+        field: &'static str,
+    },
     Corrupt(std::io::Error),
+    /// A world at or before `metrics::TRANSITION_BASELINE_EPOCHS`, which a descendant
+    /// cannot start from: its own baseline would be read on its parent's world.
+    InsideBaselineWindow {
+        epoch: u64,
+    },
 }
 
 impl fmt::Display for SnapshotError {
@@ -79,6 +86,11 @@ impl fmt::Display for SnapshotError {
             Self::UnsupportedVersion(v) => write!(f, "unsupported snapshot version {v}"),
             Self::Mismatch { field } => write!(f, "snapshot {field} does not match the params"),
             Self::Corrupt(e) => write!(f, "snapshot payload is corrupt: {e}"),
+            Self::InsideBaselineWindow { epoch } => write!(
+                f,
+                "a world at epoch {epoch} is inside the transition baseline window and \
+                 cannot be descended from"
+            ),
         }
     }
 }
@@ -285,6 +297,17 @@ fn inflate_bounded(payload: &[u8], expected: usize) -> Result<Vec<u8>, SnapshotE
 
 /// Reads a snapshot back, checking it describes the world `params` describes.
 pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> {
+    decode_within(params, bytes, params.energy_stock_cap)
+}
+
+/// The same reading for a descendant's start, whose economy may differ from its parent's:
+/// the stocks are not held to the child's cap, since the child clamps them to it rather
+/// than being refused (`World::descend`).
+pub fn decode_for_descent(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> {
+    decode_within(params, bytes, u32::MAX)
+}
+
+fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restored, SnapshotError> {
     if bytes.len() < HEADER_LEN_V1 {
         return Err(SnapshotError::Truncated);
     }
@@ -454,7 +477,7 @@ pub fn decode(params: &Params, bytes: &[u8]) -> Result<Restored, SnapshotError> 
         .map(|payload| decode_lineages(params, payload))
         .transpose()?;
     let stock = stock_payload
-        .map(|payload| decode_stock(params, payload))
+        .map(|payload| decode_stock(params, payload, stock_cap))
         .transpose()?;
     Ok(Restored {
         header,
@@ -498,9 +521,10 @@ fn decode_lens(params: &Params, payload: &[u8]) -> Result<Vec<u32>, SnapshotErro
     Ok(lens)
 }
 
-/// The energy stocks, refused unless there is one per cell and none holds more than the
-/// world's cap: a blob written under a richer economy cannot be restored into a poorer one.
-fn decode_stock(params: &Params, payload: &[u8]) -> Result<Vec<u32>, SnapshotError> {
+/// The energy stocks, refused unless there is one per cell and none holds more than `cap`
+/// — on a restore the world's own cap: a blob written under a richer economy cannot be
+/// restored into a poorer one.
+fn decode_stock(params: &Params, payload: &[u8], cap: u32) -> Result<Vec<u32>, SnapshotError> {
     let expected = params.cell_count() * WORD_BYTES;
     let bytes = inflate_bounded(payload, expected)?;
     if bytes.len() != expected {
@@ -509,7 +533,7 @@ fn decode_stock(params: &Params, payload: &[u8]) -> Result<Vec<u32>, SnapshotErr
         });
     }
     let stock = words_from(&bytes);
-    if stock.iter().any(|held| *held > params.energy_stock_cap) {
+    if stock.iter().any(|held| *held > cap) {
         return Err(SnapshotError::Mismatch {
             field: "energy_stock_cap",
         });
