@@ -1856,3 +1856,135 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
      is its finished founding runs per radius with a confirmed `emergence_epoch`: that sweep
      sampled no `replicator_share`, so its count carries no share clause, where this sweep's
      does.
+- 2026-09-25 — **The corpus read by the orientation-aware detector: what the census and the
+  emergence gate got right and wrong.** The census entry above deferred its relock question
+  — do `replicator_count`, the emergence confirmation and the persistence readings relock on
+  the orientation-aware detector? — until the stored corpus had been read both ways. The
+  readings pass (#248) has now read every kept world of every finished founding run, and
+  this entry records what that reading shows and puts the question to the user. **It
+  relocks nothing.**
+
+  **The reading** (lab visit 2026-09-25 about 21:25Z, read-only). Instrument
+  `oriented_census/1` (#246), static readings only (`epoch = source_epoch`), taken at the
+  worlds pruning keeps, about one every 1 000 epochs; a run is measured once every kept
+  world is read. `flagged` is `transition_epoch` present; `emerged` is `emergence_epoch`
+  present, the 2026-09-15 rule (a crossing confirmed by the census or `copy_rate`);
+  `replicator worlds` are measured runs whose peak `replicator_share` is at least 0.5;
+  `held to end`, a last reading at least 0.5. `lab:oriented_report[all]` (#250):
+
+  | experiment | runs | measured | flagged | emerged | replicator worlds | held to end | replicators, not emerged | emerged, no replicators | median first replicator epoch (coarse) |
+  |---|---|---|---|---|---|---|---|---|---|
+  | `mutation-rate` | 100 | 100 | 5 | 4 | 4 | 4 | 1 | 1 | 15 000 |
+  | `world-size` | 40 | 40 | 4 | 4 | 3 | 3 | 0 | 1 | 17 000 |
+  | `radius` | 40 | 40 | 6 | 5 | 5 | 3 | 1 | 1 | 13 000 |
+  | `bff-control` | 6 | 5 | 6 | 6 | 2 | 2 | 0 | 3 | 5 550 |
+  | `mutation-rate-long` | 40 | 40 | 8 | 8 | 4 | 4 | 0 | 4 | 20 000 |
+  | `max-steps` | 40 | 40 | 2 | 2 | 1 | 1 | 0 | 1 | 8 000 |
+  | `ops` | 60 | 60 | 4 | 3 | 1 | 1 | 0 | 2 | 8 000 |
+  | `max-tape-len` | 240 | 240 | 42 | 13 | 12 | 12 | 0 | 1 | 8 000 |
+  | `energy-per-epoch` | 120 | 120 | 8 | 7 | 5 | 5 | 0 | 2 | 9 000 |
+  | `environmental-structure` | 210 | 210 | 11 | 11 | 7 | 6 | 0 | 4 | 8 000 |
+  | `host-parasite` | 1 329 | 1 323 | 27 | 27 | 25 | 24 | 0 | 2 | 11 000 |
+  | `asymmetric-execution` | 360 | 360 | 9 | 9 | 9 | 9 | 0 | 0 | 9 000 |
+  | all (founding, finished) | 2 629 | 2 578 | 134 | 101 | 78 | 74 | 2 | 22 | 10 000 |
+
+  The twelve rows sum to 2 585 runs, 2 578 measured, 132 flagged and 99 emerged; the `all`
+  row also counts 44 finished founding runs of experiments with no row here, none of them
+  measured, 2 flagged and 2 emerged. Direct SELECTs over the measured runs, taken as the
+  pass finished (2 582–2 584 measured at query time, 131 of them flagged):
+  - **(a) Flagged, never at a share of 0.5: 53 of 131.** `max-tape-len` 30, all but one in
+    the cap-512 arm — the cap confound of 2026-09-19, an arm that is always flagged and
+    almost never confirmed; `mutation-rate-long` 4, `environmental-structure` 4,
+    `bff-control` 3 (runs 182, 183 and 186, all confirmed emerged), `energy-per-epoch` 3,
+    `ops` 3, `host-parasite` 2, and one each in `max-steps`, `mutation-rate`, `radius` and
+    `world-size`. About 22 of the 53 are confirmed emerged, the table's 22.
+  - **(b) Never flagged, ever at 0.5: 0.** No run the detector passed over holds a kept
+    world that is half replicators.
+  - **(c) Of 98 measured emerged runs, 76 ever reach 0.5**, the first reading at 0.5 a
+    median of +790 epochs after `emergence_epoch` (range +20 to +7 180), never before it.
+  - **(d) 67 of those 76 (88%) stay at 0.5 or more at every later reading**; over all 98
+    emerged runs, 68% both reach and hold.
+  - **(e) Replicators at a run's end.** The census (`replicator_count` > 0 at the final
+    sample) sees them in 1 run of 2 584; the share (at least 0.5 at the last reading) in 74.
+
+  **What it shows.**
+  - *Which worlds hold replicators, the detector found.* Every world that ever held a
+    half-replicator population was flagged (b), and all but 2 of them were confirmed: a
+    `mutation-rate` run at 2^-12 and a `radius` run at radius 4 hold replicators and were
+    never confirmed: no witness of the 2026-09-15 rule, both orientation-blind, backed their
+    crossings.
+  - *What happens after emergence, the census got wrong.* It reads 1 world holding
+    replicators at the end where the share reads 74, and colonies hold: 88% of the worlds
+    that reach 0.5 never fall below it at a later reading. The persistence and relapse
+    readings stated in the census describe the instrument, not the worlds.
+  - *The emergence confirmation admits worlds that never become half replicators.* 22 of
+    98 confirmed emergences never reach 0.5. Not all are empty: `bff-control`'s
+    zero-mutation runs are among them, and #245's pilot read run 182 at about 25% reverse
+    copiers (X and reverse(X) holding 26.5%) — replicators present, a minority. The 22 are
+    worlds below the 0.5 bar, and the bar is a choice.
+  - *The detector's false alarms are dominated by the cap confound*: 29 of the 53 flagged
+    runs that never reach 0.5 are cap-512 `max-tape-len` runs.
+  - The lag in (c) is mostly the reading's own resolution, a kept world every ~1 000
+    epochs, plus the time a replicator takes to fill half the world.
+
+  **For the user to decide.** Four options, none taken. The findings named under each are
+  the ones whose headline numbers would move, read from the finding bodies and the
+  instrument notes of #252 (`Findings::InstrumentNotes`).
+  1. **Relock the census, `replicator_count`, onto the orientation-aware detector** —
+     `replicator_share` over 256 sampled cells, the chain test — in place of the top-16
+     same-orientation test. The census numbers move on: `mutation-rate-window` (the census
+     agreeing with the detector, and fading after its peak); `mutation-rate-long-horizon`
+     (6 of 40 census-confirmed, the two runs flagged with an empty census, the census peaks
+     and with them the lower cutoff); `world-size-scaling` (the census counts 0, 0, 0 and 3,
+     and the 128² flagged run read as a collapse); `interaction-budget` (the census peaks
+     and "the detector and the census agree everywhere"); `bff-control` (its census
+     readings, and the reasoning that with no mutation nothing that replicates emerges);
+     `emergence-can-be-left` (its census split and census peaks). The emergence gate reads
+     the census as a witness, so this option either carries option 2 with it or keeps the
+     old test as the gate's witness under another name. The dominant-replicator readings
+     (`dominant_replicates`, `copy_cost`, and through them `copy-cost-adaptation`,
+     `replicator-complexity-plateau` and the complexity findings' dominant series) are a
+     separate same-orientation test and do not move under this option alone.
+  2. **Relock the emergence confirmation (2026-09-15, #172/#189) onto "a detector crossing
+     confirmed by `replicator_share` ≥ θ within the run".** θ is open: 0.5, or lower to
+     admit minority populations like run 182's. At θ = 0.5, from the table, 22 runs leave
+     and 2 enter: `mutation-rate` 4 → 4 (one out, one in), `world-size` 4 → 3, `radius` 5 → 5
+     (one out, one in), `bff-control` 6 → 3 (its one unmeasured run unread),
+     `mutation-rate-long` 8 → 4, `max-steps` 2 → 1, `ops` 3 → 1, `max-tape-len` 13 → 12,
+     `energy-per-epoch` 7 → 5, `environmental-structure` 11 → 7, `host-parasite` 27 → 25,
+     `asymmetric-execution` 9 → 9. Emerged counts move on: `complexity-under-contest`
+     (`host-parasite`, 27 → 25, and the arm readings built on them); `complexity-keeps-rising`
+     (`energy-per-epoch`, `environmental-structure`, `max-tape-len`, as above, and each
+     arm's verdict against its control); `replicator-complexity-plateau` (its population is
+     every emerged run); `mutation-rate-long-horizon` (eight emerged, four at θ = 0.5);
+     `bff-control` (its confirmed zero-mutation runs). `complexity-under-asymmetry` does not
+     move (9 → 9), nor the detector counts of `mutation-rate-window`, `radius-locality`,
+     `world-size-scaling` and `interaction-budget`; the experiment pages' emerged columns and
+     survival curves move with the column. The two rung-2 readings (from-emerged,
+     lineage-diversity) already carry a share clause at 0.5 and do not move, except the
+     lineage-diversity reading's `radius` reference count, which swaps one run for another.
+  3. **Relock the persistence and relapse readings onto the share**: a world is in the state
+     while its `replicator_share` holds, rather than while `compress_ratio` does. Moves
+     `emergence-can-be-left` (its persisted/relapsed split, its census split and peaks, and
+     the reading of a zero-census relapse as a soup that stopped compressing),
+     `mutation-rate-long-horizon` (the confirmed run that fell back to a soup's
+     `compress_ratio`) and `radius-locality` (the transition that "did not hold"). The
+     from-emerged reading already reads relapse on the share.
+  4. **Leave everything locked and read the companions beside it, as now.** No number moves;
+     the #252 instrument notes stay as each page's caveat, and the site keeps stating
+     persistence through an instrument that sees 1 colony at the end where there are 74.
+
+  **The pending `transition_epoch` relock (#229, #237) is separate and still awaits the
+  user.** It moves the flag, not the gate: at cap 512 the constant rule flags 30 of 30 runs
+  and the relative rule keeps only the one the census confirms, so it would drop 28 or 29 of
+  the 53 flagged runs that never reach 0.5, while `emergence_epoch` stays on the constant
+  crossing series and no emergence count above moves. Option 3 and #237 touch the same
+  persistence summary — #237 re-anchors it on the relative crossing, option 3 changes what
+  it qualifies a sample by — so whichever lands second is written against the first.
+
+  **Not claimed.** The 0.5 bar and the 256-cell draw are choices, not properties of the
+  worlds: a lower bar reads more of the 22 as replicator worlds. The readings are ~1 000
+  epochs coarse, so (b) says no kept world of an unflagged run reads 0.5, not that none
+  ever held it between two kept worlds, and first-reach epochs are bounded by the spacing.
+  The lineage tags of every existing run remain `aligned` (#257), so nothing here reads
+  lineages oriented.
