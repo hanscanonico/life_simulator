@@ -225,6 +225,20 @@ module Lab
       # this very substrate — sweep 8's 128 and 256 arms — left one emerged run under each
       # cap, one short of a reading.
       seeds: (1..90).to_a,
+      # Two hundred and seventy for the one priced arm that read keeps rising, on one of its
+      # two measured runs, and for its control, so the arm is decided against the control at
+      # its cap; and for the control at cap 256, whose emerged worlds join cap 128's as the
+      # parent pool of runs started from an emerged world (`docs/design_record.md`,
+      # 2026-09-25). An arm is a bundle and a cap together, so each is named by all three of
+      # its parameters.
+      seeds_by_arm: [
+        { "params" => { "energy_influx" => 2**11, "steal_amount" => 2**10, "max_tape_len" => 128 },
+          "seeds" => (1..270).to_a },
+        { "params" => { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128 },
+          "seeds" => (1..270).to_a },
+        { "params" => { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 256 },
+          "seeds" => (1..270).to_a }
+      ],
       epochs: 20_000
     },
     "asymmetric_execution" => {

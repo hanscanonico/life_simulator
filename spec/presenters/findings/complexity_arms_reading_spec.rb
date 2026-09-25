@@ -160,6 +160,22 @@ RSpec.describe Findings::ComplexityArmsReading do
         "0×512 128 (0 of 20) emerged in none of its runs and reads barren: an arm holding no replicator to read."
       )
     end
+
+    context "with seeds of the control still under way" do
+      before do
+        %w[pending running].each do |status|
+          run = create(:run, experiment: experiment, params: off.merge("max_tape_len" => 256), status: status)
+          create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+        end
+      end
+
+      it "counts them neither as emerged nor as runs that did not emerge" do
+        expect(arm_named("0 256")).to have_attributes(terminal_count: 20, emerged_count: 1,
+                                                      emergence_fraction: "1 of 20")
+        expect(reading.emergence_p_value(arm_named("0×512 256")))
+          .to eq(Stats::FisherExact.two_sided([[3, 17], [1, 19]]))
+      end
+    end
   end
 
   describe "the pre-registered rule" do

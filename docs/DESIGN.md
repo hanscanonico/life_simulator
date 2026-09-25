@@ -339,7 +339,11 @@ a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
    the richest, and never the zero a smaller amount would round to. Every arm runs 90 seeds,
    the control included: every priced arm so far lowered the emergence rate, the reading
    needs two emerged runs, and thirty seeds of this very substrate — sweep 8's 128 and 256
-   arms — left one emerged run under each cap.
+   arms — left one emerged run under each cap. Three arms then run seeds 1–270
+   (`docs/design_record.md`, 2026-09-25): `(2^11, 2^10)` at cap 128, the one priced arm that
+   read keeps rising at 90 seeds, on one of two measured runs, and its `(0, 0)` control at
+   cap 128, so more emerged runs decide it; and the `(0, 0)` control at cap 256, whose
+   emerged worlds join cap 128's as the parent pool of runs started from an emerged world.
    Dependent variables: `transition_epoch` and the confirmed `emergence_epoch` as in every
    sweep, then `dominant_instruction_count` and `conserved_core_bytes` as the complexity
    pair, with `dominant_compressed_len` and `steal_rate` beside them.

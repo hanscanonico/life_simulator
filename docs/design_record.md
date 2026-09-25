@@ -1124,3 +1124,108 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   9 and 10, where it reads each crossing 10 to 30 epochs later. And any future sweep whose
   control is the default substrate at caps 128/256 on seeds 1–90 can read sweep 9's 180
   stored worlds, for any observable they record, rather than run them a fourth time.
+- 2026-09-25 — **The next step after sweeps 9 and 10: decide the one rising arm now, and
+  build runs that start from an emerged world.** The open decision the previous entry ends
+  on, an experimental choice made by the orchestrator after the user's instruction of
+  2026-09-25: "continue the experimentation of this project to create life — You are free
+  to do whatever you think is best, look at issues, run things on the mini pc, other things
+  etc". It is a choice of which experiment runs next, not a change to any rule or locked
+  decision of the programme. Two of the six options are chosen, in order: option 1 now, on
+  compute alone, and option 3 next, as engineering. Options 2, 4, 5 and 6 are not taken;
+  option 2 and rung 1's persistence sweep ride on option 3's machinery (below), and options
+  4 and 5 wait on what option 3 reads. The relock of `transition_epoch` (#229, #237) remains
+  pending the user's approval, as the previous entry states, and nothing here depends on it.
+
+  **What the emerged worlds hold after their crossing** (two read-only lab queries,
+  2026-09-25, SELECTs only). Sweep 9's economy-off arms emerged in nine worlds — cap 128:
+  runs 944, 950, 967, 991, 1007 (seeds 8, 14, 31, 55, 71); cap 256: runs 1029, 1087, 1089,
+  1103 (seeds 3, 61, 63, 77) — and sweep 8's cap-128 and cap-256 arms and sweep 10's `concat`
+  arms emerged on exactly the same seeds, so these are the only emerged default-substrate
+  worlds at these caps lab-wide. None is a colony that held and then died: in each, the
+  replicator census is intermittent from the crossing on, positive in 23 of 1 050, 139 of
+  959, 8 of 1 412, 2 of 313, 3 of 1 184, 7 of 1 239 and 152 of 1 232 post-emergence samples
+  of runs 944, 967, 1007, 1029, 1087, 1089 and 1103, and never positive in 950 and 991, which
+  `copy_rate` alone confirmed. `dominant_replicates` and an above-baseline `copy_rate` appear
+  only on those samples. What does change steadily after the crossing is the lineage
+  structure: `distinct_lineages` falls from hundreds to 1–2 and `top_lineage_share` rises to
+  0.6–1.0. An emerged world is a single-lineage monoculture that mostly fails the replicator
+  test, copying at a `copy_rate` of 10^-4 to 2·10^-3, with `dominant_raw_len` at the cap
+  before and after the crossing. Cap 64 is no better (sweep 8's runs 367 and 371: one census
+  burst peaking at 867 and gone within about 600 epochs, then intermittent bursts until
+  15 430), and lab-wide, of the 66 finished runs with a confirmed emergence and any census
+  above zero — `mutation-rate-long`'s 60 000-epoch runs and `bff-control` included — one
+  (run 1357, `host-parasite` cap 128, seed 61) still has a census above zero at its final
+  sample. **So the complexity spans sweeps 9 and 10 read were read over monocultures whose
+  census is mostly zero**, and rung 1's question — does a colony persist — comes before
+  rung 4's.
+
+  **Now: sweep 9 is amended so three arms run seeds 1–270 instead of 1–90.** The arms are
+  `1024×2048 128` (`energy_influx` 2^11, `steal_amount` 2^10, `max_tape_len` 128), its
+  control `0 128` (the economy off, cap 128) and the other control `0 256` (the economy off,
+  cap 256). The first two are option 1 as the previous entry states it: `1024×2048 128` is
+  the only priced arm in the corpus that reads keeps rising, on 1 of its 2 measured runs,
+  beside a control holding 1 rising run of 5, and the host–parasite entry of 2026-09-24 names
+  more seeds on these two arms as what decides it. At the rates they showed (2 and 5 emerged
+  of 90), 180 more seeds add roughly 4 emerged runs to the arm and 10 to its control.
+  `0 256` is in for option 3: the economy-off controls are the emerged default-substrate
+  worlds option 3 starts from, and at 4 of 90 the cap-256 control adds roughly 8, so the
+  pool of parent worlds grows by about 18 beside today's 9 — roughly three times as many.
+  Cost, from sweep 9's measured `compute_seconds` at 12 runs at a time: about 13 minutes a
+  run for the 2 048-influx arm and, by the controls' medians (1 111 s and 1 652 s), 19 at
+  `0 128` and 28 at `0 256` — 540 runs and about 15 hours of the mini-pc.
+
+  The amendment adds seeds to arms sweep 9 already defines. It changes no rule, no
+  observable, no arm and no stored run: the new seeds are new `(params, seed)` points, so
+  nothing stored moves, and seeding is idempotent on canonical params and seed, so re-running
+  `lab:sweep[host_parasite]` queues exactly the 540 new runs. Seeds 91–270 are not in sweep 8
+  or sweep 10, so the "same 180 worlds, read three times" of the previous entry stays true of
+  seeds 1–90 only; sweep 10's control keeps its 90 seeds and its reading does not move. An
+  arm here is an economy bundle and a cap together, so `seeds_by_arm` gains a form that names
+  an arm by several parameters at once; the one-parameter form sweeps 7 and 8 stored still
+  reads.
+
+  **How `complexity-under-contest` is re-read once the new seeds are terminal.** The same
+  rule — the 2026-09-21 amended measured-run rule, with the pre-registered rule's reading
+  printed beside it — and the same pairing, each treated arm against the economy-off control
+  at its `max_tape_len`. At cap 128 the question becomes `1024×2048 128` at n = 270 against
+  `0 128` at n = 270; every other priced arm keeps n = 90 and is compared, by Fisher's exact
+  test on emergence as before, against a control that now has 270. Until then the page counts
+  terminal runs only, so a pending seed is neither an emerged run nor an unemerged one. The
+  finding stays `partial`, and its claim is rewritten in its own entry when the runs finish.
+
+  **Next: option 3, runs that start from an emerged world ("descendant runs").** A run whose
+  start is a stored post-emergence snapshot of a parent run, with params that may switch a
+  treatment on (the economy, host mode) and a fresh continuation seed. Chosen over options
+  2, 4, 5 and 6 because every treated arm of the five bets emerged less often than its
+  control, and host mode never: sweeps 9 and 10 read the complexity question on 0 to 5 runs
+  an arm, and asymmetry is unreadable rather than refuted. Starting from an emerged world
+  decouples "does X keep complexity rising" from "does X let a replicator arise", which is
+  Tierra's framing — a hand-written ancestor, never a spontaneous one. The same machinery
+  carries option 2 (a descendant with its parent's own params is a longer horizon without
+  replaying the first 20 000 epochs) and rung 1's persistence hypothesis (2026-09-11: the
+  relapse hazard against colony age needs many emerged colonies watched for a long time, and
+  a handful of spontaneous emergences cannot give that). Given the monocultures above, **the
+  first question descendant runs answer is rung 1's: under what continuation does the census
+  hold?** The candidate arms are the parent's own params; a lowered mutation rate, an
+  error-threshold reading (at 2^-13 a 128-byte tape takes about 1/64 of a mutation an epoch,
+  against about 0.002 copies a cell an epoch); the economy; and host mode. Rung 4's question
+  is read on the same children only where a census holds. Options 4 and 5 wait on
+  what option 3 reads: if an existing replicator does not keep complicating under the
+  economy or host mode either, the instruction set becomes the leading suspect and option 5
+  the next bet; if it does, the BFF substrate was never the binding constraint, emergence
+  was.
+
+  Option 3 changes what a run's identity means — a parent snapshot becomes an input — so it
+  is pre-registered in its own entry, with its sweep as §1.3 item 11, once the machinery
+  exists. That entry must lock: **the child's identity** (the parent snapshot's digest, the
+  child's params and its continuation seed, and nothing else); **the parent snapshot**, the
+  world a child starts from — an emerged run's terminal snapshot, at epoch 20 000, which all
+  nine worlds above have stored and thinning never removes, is the one this entry expects,
+  and the exact rule is that entry's to lock; **which params may differ** from the parent's,
+  and which may not (world size, tape length, anything the snapshot's shape fixes); **epoch
+  numbering**, whether a child counts on from
+  its parent's epoch or from zero, which decides what "the last decile" and a colony's age
+  mean; and **the readings**: the relapse hazard against colony age for rung 1, and the
+  complexity rule of sweeps 9 and 10 over the child's span, since a child starts
+  post-emergence. This entry takes the decision and names those questions; it designs none
+  of them.

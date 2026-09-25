@@ -290,12 +290,40 @@ RSpec.describe "lab:sweep" do
   end
 
   describe "host_parasite" do
-    it "builds every arm at ninety seeds, the control included" do
+    it "builds every arm at ninety seeds but the rising arm and the two controls, at two hundred and seventy" do
       build_sweep("host_parasite")
 
-      expect(Experiment.find_by(slug: "host-parasite").runs_count).to eq(1_260)
-      expect(Run.group("params->>'energy_influx'").count)
-        .to eq("0" => 180, "512" => 360, "2048" => 360, "8192" => 360)
+      expect(Experiment.find_by(slug: "host-parasite").runs_count).to eq(1_800)
+      expect(Run.group(Arel.sql("params->>'energy_influx'"), Arel.sql("params->>'steal_amount'"),
+                       Arel.sql("params->>'max_tape_len'")).count.select { |_, count| count > 90 })
+        .to eq(%w[2048 1024 128] => 270, %w[0 0 128] => 270, %w[0 0 256] => 270)
+    end
+
+    context "with the sweep already seeded at the ninety seeds every arm first ran" do
+      before { seed_sweep_at("host_parasite", (1..90).to_a) }
+
+      it "queues only the hundred and eighty new seeds of each of the three widened arms" do
+        expect { build_sweep("host_parasite") }.to change(Run, :count).by(3 * 180)
+        expect(Run.where(seed: 91..).distinct.pluck(Arel.sql("params->>'energy_influx'"),
+                                                    Arel.sql("params->>'max_tape_len'")).sort)
+          .to eq([%w[0 128], %w[0 256], %w[2048 128]])
+      end
+
+      it "touches none of the runs the lab already holds" do
+        held = Run.order(:id).pluck(:id, :params, :seed, :updated_at)
+
+        build_sweep("host_parasite")
+
+        expect(Run.where(seed: ..90).order(:id).pluck(:id, :params, :seed, :updated_at)).to eq(held)
+      end
+
+      it "leaves no two runs sharing a (params, seed)" do
+        build_sweep("host_parasite")
+
+        experiment = Experiment.find_by(slug: "host-parasite")
+
+        expect(Runs::DiscardDuplicatesService.call(experiment: experiment)).to be_empty
+      end
     end
 
     it "pairs every influx with theft on and off, and never theft without a stock" do

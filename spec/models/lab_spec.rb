@@ -197,7 +197,13 @@ RSpec.describe Lab do
 
       it "gives every arm ninety seeds, the control included" do
         expect(definition.values_at(:seeds, :epochs)).to eq([(1..90).to_a, 20_000])
-        expect(definition).not_to have_key(:seeds_by_arm)
+      end
+
+      it "gives the one rising arm and the controls at both caps two hundred and seventy seeds" do
+        expect(definition.fetch(:seeds_by_arm).to_h { |arm| arm.values_at("params", "seeds") })
+          .to eq({ "energy_influx" => 2**11, "steal_amount" => 2**10, "max_tape_len" => 128 } => (1..270).to_a,
+                 { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128 } => (1..270).to_a,
+                 { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 256 } => (1..270).to_a)
       end
     end
 
@@ -252,10 +258,23 @@ RSpec.describe Lab do
 
     it "overrides the seeds of arms its own grid carries" do
       Lab::SWEEPS.each_value do |definition|
-        definition.fetch(:seeds_by_arm, {}).each do |name, seeds_by_value|
-          expect(definition.fetch(:param_grid).fetch(name)).to include(*seeds_by_value.keys)
+        arm_params(definition.fetch(:seeds_by_arm, {})).each do |name, value|
+          expect(grid_values(definition.fetch(:param_grid), name)).to include(value)
         end
       end
+    end
+
+    # Every (parameter, value) an override names, in either of the two shapes
+    # Experiments::SweepBuilderService reads.
+    def arm_params(seeds_by_arm)
+      return seeds_by_arm.flat_map { |arm| arm.fetch("params").to_a } if seeds_by_arm.is_a?(Array)
+
+      seeds_by_arm.flat_map { |name, seeds_by_value| seeds_by_value.keys.map { |value| [name, value] } }
+    end
+
+    def grid_values(param_grid, name)
+      param_grid.values.flat_map { |values| values.grep(Hash).filter_map { |bundle| bundle[name] } } +
+        param_grid.fetch(name, [])
     end
 
     # An axis whose values are hashes is a bundle of parameters travelling together, so it
