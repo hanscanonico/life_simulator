@@ -9,9 +9,20 @@ module Experiments
   # interim until every candidate parent is terminal and read, and every child of every
   # qualifying parent has finished.
   #
-  # It reads stored samples and changes nothing.
+  # It reads stored samples and changes nothing but the cache: each child's reading is held
+  # on its own, so a view while the sweep runs reads again only the children that posted
+  # samples since the last one.
   class FromEmergedReadingService
     include Callable
+
+    # A child's reading is the code's as much as its samples': these are the files that take
+    # it, and the Data it is held in (whose Marshal no longer loads once a member is added).
+    # A deploy that changes one reads every child afresh. Digested once per boot.
+    READING_VERSION = Digest::SHA256.hexdigest(
+      %w[app/services/experiments/from_emerged_reading_service.rb app/models/lab/descendant_reading.rb
+         app/models/lab/descendant_reading/child.rb app/presenters/findings/median.rb]
+        .map { |path| Rails.root.join(path).binread }.join
+    )
 
     SAMPLE_KEYS = [Lab::DescendantReading::SHARE_KEY, Lab::DescendantReading::REPLICATING_KEY,
                    Lab::DescendantReading::COMPLEXITY_KEY, *Lab::DescendantReading::DESCRIPTIVE_KEYS].freeze
@@ -113,7 +124,26 @@ module Experiments
     def children_of(treatment) = children.select { |child| child.treatment == treatment }
 
     def children
-      @children ||= child_runs.map { |run| child_row(run, read(run)) }
+      @children ||= child_runs.map { |run| child_row(run, readings.fetch(run.id)) }
+    end
+
+    # Every sample a child records goes in with an update of its run (Runs::RecordSamplesService),
+    # so a reading keyed on the run's `updated_at` moves with its samples and no other's.
+    def readings
+      @readings ||= begin
+        runs_by_key = child_runs.index_by { |run| reading_key(run) }
+        runs_by_key.empty? ? {} : fetch_readings(runs_by_key)
+      end
+    end
+
+    def fetch_readings(runs_by_key)
+      Rails.cache.fetch_multi(*runs_by_key.keys) { |key| read(runs_by_key.fetch(key)) }
+           .transform_keys { |key| runs_by_key.fetch(key).id }
+    end
+
+    def reading_key(run)
+      ["experiments/from_emerged_reading/child", READING_VERSION, run.id, run.parent_epoch, run.status,
+       run.updated_at.iso8601(6)]
     end
 
     def child_row(run, reading)
@@ -139,7 +169,7 @@ module Experiments
     def child_runs
       @child_runs ||= experiment.runs.where.not(parent_run_id: nil).order(:parent_run_id, :seed, :id)
                                 .select(:id, :parent_run_id, :parent_epoch, :seed, :params, :status,
-                                        :emergence_epoch).to_a
+                                        :emergence_epoch, :updated_at).to_a
     end
 
     # One child's samples at a time, and of each only the keys read here: the sweep's

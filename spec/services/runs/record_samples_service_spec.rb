@@ -48,6 +48,12 @@ RSpec.describe Runs::RecordSamplesService do
       expect(run.samples.sole.values).to include("steal_rate" => 0.25)
     end
 
+    it "still touches the run" do
+      described_class.call(run: run, samples: batch(300, 400))
+
+      expect { described_class.call(run: run, samples: batch(100, 200)) }.to(change { run.reload.updated_at })
+    end
+
     it "stores no duplicate rows" do
       described_class.call(run: run, samples: batch(100, 200))
 

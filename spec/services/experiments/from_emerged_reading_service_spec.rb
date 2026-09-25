@@ -203,4 +203,49 @@ RSpec.describe Experiments::FromEmergedReadingService do
       end
     end
   end
+
+  # A running sweep's children touch their runs with every sample batch, so each child's
+  # reading is held on its own; the test environment's null store would hide that.
+  describe "each child's reading, held on its own" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+
+    before do
+      experiment.runs.each { |run| sample(run, share: ->(index) { 0.6 + (index % 7 * 0.05) }) }
+      children(1).each { |run| run.samples.delete_all && sample(run, last: 120) }
+    end
+
+    def with_cache
+      RSpec::Mocks.with_temporary_scope do
+        allow(Rails).to receive(:cache).and_return(cache)
+        yield
+      end
+    end
+
+    # The runs whose samples were read, by the run id each sample query is bound to.
+    def runs_read(&)
+      runs = []
+      collect = lambda do |*, payload|
+        runs << payload[:binds].first.value if payload[:sql].include?("FROM \"samples\"")
+      end
+      ActiveSupport::Notifications.subscribed(collect, "sql.active_record", &)
+      runs
+    end
+
+    it "reads the same from the cache as from the samples" do
+      uncached = described_class.call(experiment: experiment)
+      with_cache { described_class.call(experiment: experiment) }
+      cached = with_cache { described_class.call(experiment: experiment) }
+
+      expect([cached.children, cached.to_text, cached.to_csv])
+        .to eq([uncached.children, uncached.to_text, uncached.to_csv])
+    end
+
+    it "reads a child's samples again only once it has posted more" do
+      with_cache { described_class.call(experiment: experiment) }
+      posting = children(0).first
+      Runs::RecordSamplesService.call(run: posting, samples: [{ "epoch" => 5_000, "replicator_share" => 0.01 }])
+
+      expect(runs_read { with_cache { described_class.call(experiment: experiment) } }).to eq([posting.id])
+    end
+  end
 end
