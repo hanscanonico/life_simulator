@@ -1775,8 +1775,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     against an exact 0.061, and at three runs in each of four arms 39 reads 0.044 against
     0.052. Monophyletic worlds can read exactly 1.0, so ties are expected, and dealing the
     observed values handles them with no correction. A complete enumeration is out of reach
-    past a few runs an arm (4.7 × 10^21 dealings at ten each), and the (1 + b) / (1 + 100 000)
-    estimate never rejects more often than its level.
+    past a few runs an arm (4.7 × 10^21 dealings at ten each), and the estimate
+    (1 + b) / (1 + 100 000) never rejects more often than its level.
   - **Shown** when both halves hold: the trend at p < 0.05, **and** the read arm of shortest
     reach has a median last-decile `lineage_effective_count` of at least 2, polyphyletic. A
     significant trend among worlds that all read monophyletic is reported as a trend, not as
