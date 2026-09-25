@@ -145,7 +145,7 @@ pub fn execute(options: Options) -> Result<Report> {
 /// only a pass where nothing at all could be read is a failure.
 pub fn execute_corpus(options: CorpusOptions) -> Result<CorpusSummary> {
     let client = LabClient::new(&options.api, &options.token);
-    let runs = client.corpus(&options.experiment)?;
+    let runs = client.corpus(&options.experiment, None)?;
     let mut summary = CorpusSummary::default();
 
     for (run, epoch) in selected(&runs, options.epochs, options.limit) {
