@@ -189,4 +189,16 @@ RSpec.describe Experiments::SweepBuilderService do
       expect(experiment.runs.pluck(:params).uniq).to eq([Lab::Schema.run_defaults])
     end
   end
+
+  context "with a descendant sweep" do
+    let(:experiment) do
+      create(:experiment, parents: Lab::SWEEPS.fetch("from_emerged").fetch(:parents),
+                          param_grid: { "treatment" => [{}] }, seeds: [1001])
+    end
+
+    it "hands the sweep to the descendant builder and starts no run from a random fill" do
+      expect(build_sweep).to be_a(Experiments::DescendantSweepBuilderService::Report)
+      expect(experiment.runs).to be_empty
+    end
+  end
 end

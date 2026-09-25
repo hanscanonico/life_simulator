@@ -19,6 +19,9 @@ module Experiments
   # Seeding is idempotent: a run is identified by (canonical params, seed), so re-running a
   # sweep whose grid gained an arm creates that arm's runs and nothing else. See
   # Lab::CanonicalParams for why the comparison cannot be a plain hash equality.
+  #
+  # A descendant sweep, whose runs start from other runs' worlds, is built by
+  # DescendantSweepBuilderService instead, and its report is what this returns.
   class SweepBuilderService
     include Callable
 
@@ -27,6 +30,8 @@ module Experiments
     end
 
     def call
+      return DescendantSweepBuilderService.call(@experiment) if @experiment.descendant_sweep?
+
       Experiment.transaction do
         param_sets.each do |params|
           seeds_for(params).each { |seed| build_run(params, seed) }

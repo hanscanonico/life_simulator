@@ -232,6 +232,52 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the from-emerged descendant sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("from_emerged") }
+      let(:host_parasite) { Lab::SWEEPS.fetch("host_parasite") }
+      let(:treatments) { definition[:param_grid].fetch("treatment") }
+
+      it "draws its parents from sweep 9's two economy-off controls" do
+        controls = host_parasite.fetch(:seeds_by_arm).map { |arm| arm.fetch("params") }
+                                .select { |arm| arm.fetch("energy_influx").zero? }
+
+        expect(definition[:parents]).to include("experiment" => "host-parasite", "arms" => controls)
+      end
+
+      it "qualifies a parent on the oriented census of its terminal world, at half replicators" do
+        expect(definition[:parents].values_at("instrument", "share_key", "min_share"))
+          .to eq(["oriented_census/1", "replicator_share", 0.5])
+      end
+
+      it "pairs the continuation with sweep 9's rising arm, the rich economy and host mode" do
+        expect(treatments).to eq(
+          [{},
+           { "energy_influx" => 2**11, "steal_amount" => 2**10, "energy_stock_cap" => 2**15, "steal_loss" => 0.5 },
+           { "energy_influx" => 2**13, "steal_amount" => 2**10, "energy_stock_cap" => 2**15, "steal_loss" => 0.5 },
+           { "interaction" => "host" }]
+        )
+      end
+
+      it "changes no parameter that shapes the parent's world" do
+        expect(treatments.flat_map(&:keys) & Lab::CanonicalParams::STRUCTURAL_KEYS).to be_empty
+      end
+
+      it "runs the same three seeds under every treatment, none a parent's own" do
+        parent_seeds = host_parasite.fetch(:seeds_by_arm).flat_map { |arm| arm.fetch("seeds") }
+
+        expect(definition[:seeds]).to eq([1001, 1002, 1003])
+        expect(definition[:seeds] & parent_seeds).to be_empty
+      end
+
+      it "gives every child twenty thousand epochs past its parent" do
+        expect(definition[:epochs]).to eq(20_000)
+      end
+
+      it "runs ahead of sweep 9's seed-major extension" do
+        expect(definition[:priority]).to be > 0
+      end
+    end
+
     describe "the bff_control positive control" do
       let(:definition) { Lab::SWEEPS.fetch("bff_control") }
 

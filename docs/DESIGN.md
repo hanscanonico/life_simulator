@@ -110,8 +110,9 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   bytes, on native and on wasm. RNG is `xoshiro256**` seeded from the run seed; per-epoch
   visiting order and neighbour choice come from that stream only. A **descendant** run,
   which starts from a finished parent run's stored world instead of an initial state, is
-  fully determined by `(parent run's world at parent_epoch, params, seed)` (the rule
-  lands with its record entry in `docs/design_record.md`).
+  fully determined by `(parent run's world at parent_epoch, params, seed)`, its epoch count
+  continuing the parent's; it may change the parent's dynamics but not the world's shape
+  (`docs/design_record.md`, 2026-09-25, "Runs that start from an emerged world").
 
 The ordinary Game of Life (`B3/S23`) is also shipped, as the `Life` substrate, because it
 is what visitors recognise. It shares the viewer and the run pipeline but no research
@@ -409,6 +410,17 @@ a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
     lineages from fixating. Refuted if the `host` arms plateau where their own `concat`
     controls plateau — same caps, same rate, same world — which would say an asymmetric
     interaction buys this substrate no structure.
+11. **From an emerged world** — does an existing replicator keep getting more
+    complicated once a treatment is switched on, and does it hold at all? A descendant
+    sweep: every run starts from the terminal world of a sweep-9 economy-off control whose
+    orientation-aware census reads at least half replicators, and continues it under its
+    parent's own dynamics (the control), sweep 9's rising priced arm, the rich economy, or
+    host mode — seeds 1001–1003 under every treatment, paired by (parent, seed), 20 000
+    epochs past the parent. Readings per child over its own samples: persistence (held or
+    relapsed, on `replicator_share`) and complexity (`dominant_instruction_count` over the
+    samples whose dominant tape self-replicates), with paired sign tests against the
+    continuation. Pre-registered in `docs/design_record.md`, 2026-09-25, "Runs that start
+    from an emerged world", whose numbers live in `Lab::DescendantReading`.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no

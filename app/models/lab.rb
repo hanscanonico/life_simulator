@@ -269,6 +269,49 @@ module Lab
       seeds: (1..90).to_a,
       epochs: 20_000
     },
+    "from_emerged" => {
+      name: "From an emerged world",
+      description: "Does an existing replicator keep getting more complicated once a " \
+                   "treatment is switched on, and does it hold at all? Each run starts " \
+                   "from the last stored world of a host–parasite control that is at least " \
+                   "half replicators, and carries on under its parent's own dynamics, the " \
+                   "one priced economy that read keeps rising, a rich economy, or host mode.",
+      # A descendant sweep (`docs/design_record.md`, 2026-09-25, "Runs that start from an
+      # emerged world"): no run starts from a random fill. The parents are sweep 9's two
+      # economy-off controls, each at its last stored world — the terminal snapshot pruning
+      # always keeps — qualified on the orientation-aware census of that world, since the
+      # engine's census cannot see the reverse copiers emerged worlds are made of (#245).
+      # A parent with no such reading yet is skipped until the readings pass reaches it.
+      parents: {
+        "experiment" => slug_for("host_parasite"),
+        "arms" => [
+          { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128 },
+          { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 256 }
+        ],
+        "instrument" => DescendantReading::INSTRUMENT,
+        "share_key" => DescendantReading::SHARE_KEY,
+        "min_share" => DescendantReading::QUALIFYING_SHARE
+      },
+      # Each bundle is merged over its parent's params, so the empty one is the exact
+      # continuation and the control every treatment is paired against. The priced bundles
+      # restate sweep 9's hoard ceiling and loss, which the parents already carry.
+      param_grid: {
+        "treatment" => [
+          {},
+          { "energy_influx" => 2**11, "steal_amount" => 2**10, "energy_stock_cap" => 4 * (2**13), "steal_loss" => 0.5 },
+          { "energy_influx" => 2**13, "steal_amount" => 2**10, "energy_stock_cap" => 4 * (2**13), "steal_loss" => 0.5 },
+          { "interaction" => "host" }
+        ]
+      },
+      # The same continuation seeds under every treatment, so each (parent, seed) is read
+      # under all four, and none a parent's own seed (sweep 9's run 1–270).
+      seeds: [1001, 1002, 1003],
+      # A descendant sweep's `epochs` is each child's own budget past its parent epoch: a
+      # child of a 20 000-epoch parent stops at 40 000.
+      epochs: 20_000,
+      # Ahead of sweep 9's extension, which runs seed-major at 0 − seed.
+      priority: 50
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \
