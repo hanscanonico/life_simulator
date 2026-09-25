@@ -5,11 +5,16 @@ module Runs
   # peak and the epoch it stood at, how many epochs the world held the transitioned state,
   # and whether it left that state before its last sample.
   #
-  # "In the transitioned state" is the engine's own rule, sample by sample
-  # (Lab::TransitionRule). Leaving it is read with the tracker's hold in reverse: the state
-  # ends at the first of `hold_samples + 1` consecutive samples the rule rejects, so a
-  # single sample flickering back above the threshold is no more a relapse than a single
-  # sample below it is a transition. A state that never ends persisted to the last sample.
+  # "In the transitioned state" is the rule `transition_epoch` itself is read by, applied
+  # sample by sample (`Lab::TransitionRule`): `compress_ratio` at or below the fraction of
+  # the run's own baseline, with no alphabet collapse (docs/design_record.md, 2026-09-21).
+  # Every sample at or after a transition lies outside the baseline window by construction
+  # — the tracker reads nothing until the window closes — so the relative predicate is well
+  # defined over the whole span this reads, and a run that has no baseline has no reading
+  # at all. Leaving the state is read with the tracker's hold in reverse: the state ends at
+  # the first of `hold_samples + 1` consecutive samples the rule rejects, so a single
+  # sample flickering back above the threshold is no more a relapse than a single sample
+  # below it is a transition. A state that never ends persisted to the last sample.
   #
   # It reads stored samples and changes nothing — not the detector, not a metric, not a run.
   class PersistenceSummaryService
@@ -20,7 +25,7 @@ module Runs
     end
 
     def call
-      return nil if @run.transition_epoch.nil? || transitioned_samples.empty?
+      return nil if @run.transition_epoch.nil? || baseline.nil? || transitioned_samples.empty?
 
       Persistence.new(census_peak: census_peak, peak_epoch: peak_epoch,
                       epochs_persisted: epochs_persisted, relapsed: exit_index.present?)
@@ -29,6 +34,14 @@ module Runs
     private
 
     def samples = @samples ||= @run.samples.order(:epoch).pluck(:epoch, :values)
+
+    def baseline
+      return @baseline if defined?(@baseline)
+
+      @baseline = Lab::TransitionRule.baseline_of(samples)
+    end
+
+    def transitioned?(values) = Lab::TransitionRule.qualifies_relative?(values, baseline: baseline)
 
     def transitioned_samples
       @transitioned_samples ||= samples.drop_while { |epoch, _| epoch < @run.transition_epoch }
@@ -40,7 +53,7 @@ module Runs
     # rule accepts before the exit, or before the end of the series when there is none.
     def persisted_through
       held = exit_index ? transitioned_samples.take(exit_index) : transitioned_samples
-      last = held.reverse.find { |_, values| Lab::TransitionRule.qualifies?(values) }
+      last = held.reverse.find { |_, values| transitioned?(values) }
 
       (last || transitioned_samples.first).first
     end
@@ -48,7 +61,7 @@ module Runs
     def exit_index
       return @exit_index if defined?(@exit_index)
 
-      qualifying = transitioned_samples.map { |_, values| Lab::TransitionRule.qualifies?(values) }
+      qualifying = transitioned_samples.map { |_, values| transitioned?(values) }
       exit_samples = Persistence::EXIT_SAMPLES
       @exit_index = (0..(qualifying.size - exit_samples)).find { |index| qualifying[index, exit_samples].none? }
     end

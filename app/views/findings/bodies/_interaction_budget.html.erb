@@ -42,11 +42,16 @@
   <span class="mono">2<sup>-<%= rate_exponent %></sup></span>, the rate of the first run of
   the programme to show emergence, so an arm that shows nothing cannot be explained by
   sitting outside the region where anything ever happened; every other parameter is at its
-  default. The dependent variable is the transition epoch of DESIGN §1.2 — the first
+  default. The dependent variable is the transition epoch of DESIGN §1.2, and beside it the
+  <span class="mono">replicator_count</span> census. The verdict below was stated
+  under the constant threshold DESIGN §1.2 defined it by until 2026-09-21 — the first
   sampled epoch at which <span class="mono">compress_ratio</span> falls below 0.6 and stays
-  below for three further samples — and beside it the
-  <span class="mono">replicator_count</span> census. A run that never crosses is censored at
-  <%= epochs %> epochs, not counted as a zero.
+  below it for three further samples — and the figures are read here under the rule it
+  was relocked on, the same fall measured against each run's own baseline. Over the whole
+  rescored corpus the two rules part only in the room-to-grow sweep's cap-512 arm, so they
+  read the same crossings in every arm of this one
+  (<span class="mono">docs/design_record.md</span>, 2026-09-21).
+  A run that never crosses is censored at <%= epochs %> epochs, not counted as a zero.
 </p>
 
 <h2>Result</h2>

@@ -43,10 +43,15 @@
   epoch <%= short_epochs %>, and then keeps going: this is a re-run rather than a new
   sample, which is what makes the two sweeps directly comparable and also what stops the
   overlap from counting twice. The dependent variable is the transition epoch of DESIGN
-  §1.2 — the first sampled epoch at which <span class="mono">compress_ratio</span> falls
-  below 0.6 and stays below for three further samples — and beside it the
-  <span class="mono">replicator_count</span> census. A run is called census-confirmed here
-  when both fire in it.
+  §1.2, and beside it the <span class="mono">replicator_count</span> census; a run is called
+  census-confirmed here when both fire in it. The verdict below was stated
+  under the constant threshold DESIGN §1.2 defined it by until 2026-09-21 — the first
+  sampled epoch at which <span class="mono">compress_ratio</span> falls below 0.6 and stays
+  below it for three further samples — and the figures are read here under the rule it
+  was relocked on, the same fall measured against each run's own baseline. Over the whole
+  rescored corpus the two rules part only in the room-to-grow sweep's cap-512 arm, so they
+  read the same crossings in every arm of this one
+  (<span class="mono">docs/design_record.md</span>, 2026-09-21).
 </p>
 
 <h2>Result</h2>

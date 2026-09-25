@@ -10,8 +10,10 @@ module Runs
   # 2026-09-15).
   #
   # `samples` is [epoch, values] in epoch order; it reads them and changes nothing. Given
-  # a `baseline`, the same hold machine runs over the relative rule instead of the
-  # constant one (`docs/design_record.md`, 2026-09-19).
+  # a `baseline` it runs the transition rule, and without one the constant companion of
+  # `docs/design_record.md`, 2026-09-21 — which is what the crossing *series* is read by:
+  # the relative rule cannot judge a crossing inside its own baseline window, and a second
+  # crossing would be judged against a baseline the first one contaminated.
   class CrossingsService
     include Callable
 
@@ -49,7 +51,7 @@ module Runs
     private
 
     def qualifies?(values)
-      return Lab::TransitionRule.qualifies?(values) if @baseline.nil?
+      return Lab::TransitionRule.qualifies_constant?(values) if @baseline.nil?
 
       Lab::TransitionRule.qualifies_relative?(values, baseline: @baseline)
     end

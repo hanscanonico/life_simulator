@@ -32,9 +32,7 @@ module Api
     end
 
     def samples
-      Runs::RecordSamplesService.call(run: @run, samples: body_params.fetch("samples", []),
-                                      transition_epoch: params[:transition_epoch],
-                                      transition_epoch_relative: params[:transition_epoch_relative])
+      Runs::RecordSamplesService.call(run: @run, samples: body_params.fetch("samples", []), **transitions)
       head :no_content
     end
 
@@ -81,13 +79,21 @@ module Api
     end
 
     def finish
-      Runs::FinishService.call(run: @run, transition_epoch: params[:transition_epoch],
-                               transition_epoch_relative: params[:transition_epoch_relative],
+      Runs::FinishService.call(run: @run, **transitions,
                                summary: body_params["summary"], error: params[:error])
       head :no_content
     end
 
     private
+
+    # A runner posts each reading under the rule that made it rather than under the role
+    # it plays, so a runner built before the 2026-09-21 relock is read correctly by the app
+    # that deploys ahead of it: its `transition_epoch` was the constant reading, which is
+    # the companion column now, and its relative reading is the observable.
+    def transitions
+      { transition_epoch: params[:transition_epoch_relative],
+        transition_epoch_constant: params[:transition_epoch_constant] || params[:transition_epoch] }
+    end
 
     def set_run
       @run = Run.find(params.fetch(:id))

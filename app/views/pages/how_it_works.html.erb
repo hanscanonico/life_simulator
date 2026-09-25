@@ -248,13 +248,19 @@
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which
-      <span class="mono">compress_ratio</span> drops below 0.6 and stays below it for the
+      <span class="mono">compress_ratio</span> drops to 0.61 of the run's own starting
+      level — the mean of its samples over the first 500 epochs — and stays there for the
       next 3 samples, counting only samples whose alphabet is alive —
       <span class="mono">op_density</span> at most 0.9 and
-      <span class="mono">alphabet_size</span> at least 16. Null until it happens. It is the primary dependent variable of every
-      sweep. A flagged run is the signal we sweep on, not a proof of self-replication: the
-      replicator census can still read zero, and
-      <%= link_to "the findings", findings_path %> say where the two disagree.
+      <span class="mono">alphabet_size</span> at least 16. Null until it happens. It is the
+      primary dependent variable of every sweep. The fall is read against each run's own
+      start because a fresh soup's compressibility depends on how long its tapes may grow,
+      so one constant threshold measures different falls at different tape caps; the
+      constant reading it replaced, <span class="mono">compress_ratio</span> below 0.6, is
+      kept beside it as <span class="mono">transition_epoch_constant</span>. A flagged run
+      is the signal we sweep on, not a proof of self-replication: the replicator census can
+      still read zero, and <%= link_to "the findings", findings_path %> say where the two
+      disagree.
     </dd>
   </dl>
   <p>
@@ -270,8 +276,9 @@
   <dl class="facts facts-prose">
     <dt>transition</dt>
     <dd>
-      The detector's event: <span class="mono">compress_ratio</span> under 0.6, held for 3
-      samples. It is a property of the compression series, nothing more.
+      The detector's event: <span class="mono">compress_ratio</span> down to 0.61 of the
+      run's own starting level, held for 3 samples. It is a property of the compression
+      series, nothing more.
     </dd>
 
     <dt>flagged</dt>

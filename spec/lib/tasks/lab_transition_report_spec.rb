@@ -8,6 +8,7 @@ RSpec.describe "lab:transition_report" do
 
   let!(:run) do
     created = create(:run, experiment: experiment, status: "finished", transition_epoch: 100,
+                           transition_epoch_constant: 100,
                            params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.001))
     create(:sample, run: created, epoch: 100,
                     values: { "compress_ratio" => 0.5, "distinct_tapes" => 200, "top_share" => 0.3,
@@ -29,7 +30,7 @@ RSpec.describe "lab:transition_report" do
 
   it "prints the arm summary" do
     expect(invoke("lab:transition_report", "mutation-rate"))
-      .to match(/arm\s+n\s+n_terminal\s+flagged\s+relative\s+both_rules\s+replicators\s+both/)
+      .to match(/arm\s+n\s+n_terminal\s+flagged\s+constant\s+both_rules\s+replicators\s+both/)
   end
 
   context "with a run still going" do

@@ -11,15 +11,16 @@ pub struct RunResult {
     pub seed: u64,
     pub epochs: u64,
     pub transition_epoch: Option<u64>,
-    /// The same measurement read against the run's own baseline (`docs/design_record.md`,
-    /// 2026-09-19). `transition_epoch` above stays the run's dependent variable.
-    pub transition_epoch_relative: Option<u64>,
+    /// The same measurement read against the constant threshold the observable was
+    /// defined by before the 2026-09-21 relock — the companion beside the run's dependent
+    /// variable above (`docs/design_record.md`, 2026-09-21).
+    pub transition_epoch_constant: Option<u64>,
     pub wall_seconds: f64,
     pub epochs_per_second: f64,
 }
 
 /// Why the loop took a snapshot: the epoch cadence, the wall-clock ceiling on snapshot
-/// age, the first sample that crosses the transition threshold, the sample that settled
+/// age, the first sample that crosses under the transition rule, the sample that settled
 /// the transition, or a census rising off zero. Lab mode
 /// logs it so a shift's restart cost can be read off the log rather than inferred from
 /// the snapshot epochs.
@@ -44,24 +45,24 @@ impl SnapshotReason {
     }
 }
 
-/// The two transition readings the engine has settled on so far: the constant-threshold
-/// one every finding reads, and the relative one beside it.
+/// The two transition readings the engine has settled on so far: `transition_epoch`, read
+/// against the run's own baseline, and the constant-threshold companion beside it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Transitions {
     pub epoch: Option<u64>,
-    pub relative: Option<u64>,
+    pub constant: Option<u64>,
 }
 
 impl Transitions {
     pub fn of(world: &life_engine::World) -> Self {
         Self {
             epoch: world.transition_epoch(),
-            relative: world.transition_epoch_relative(),
+            constant: world.transition_epoch_constant(),
         }
     }
 
     pub fn settled(&self) -> bool {
-        self.epoch.is_some() || self.relative.is_some()
+        self.epoch.is_some() || self.constant.is_some()
     }
 }
 

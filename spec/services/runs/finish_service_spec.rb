@@ -52,7 +52,7 @@ RSpec.describe Runs::FinishService do
                       values: { "compress_ratio" => ratio, "replicator_count" => index })
     end
 
-    described_class.call(run: run, transition_epoch: 100)
+    described_class.call(run: run, transition_epoch: 100, transition_epoch_constant: 100)
 
     expect(run.reload).to have_attributes(emergence_epoch: 100, emergence_witness: "census")
   end
@@ -69,11 +69,11 @@ RSpec.describe Runs::FinishService do
   end
 
   it "confirms against the transition epoch the finish settled on, not the one reported" do
-    run.update!(transition_epoch: 100)
+    run.update!(transition_epoch_constant: 100)
     create(:sample, run: run, epoch: 100, values: { "replicator_count" => 4 })
     create(:sample, run: run, epoch: 100_000, values: { "replicator_count" => 0 })
 
-    described_class.call(run: run, transition_epoch: 100_000)
+    described_class.call(run: run, transition_epoch_constant: 100_000)
 
     expect(run.reload.emergence_epoch).to eq(100)
   end

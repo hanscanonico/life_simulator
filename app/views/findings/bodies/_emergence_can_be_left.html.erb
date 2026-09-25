@@ -2,7 +2,8 @@
 <% outcome = survey.outcome %>
 <% hold = Lab::TransitionRule::HOLD_SAMPLES %>
 <% exit_samples = Runs::Persistence::EXIT_SAMPLES %>
-<% threshold = Lab::TransitionRule::THRESHOLD %>
+<% fraction = Lab::TransitionRule::RELATIVE_FRACTION %>
+<% window = Lab::TransitionRule::BASELINE_EPOCHS %>
 
 <h2>Question</h2>
 <p>
@@ -23,8 +24,12 @@
   through the persistence summary derived from its own stored samples
   (<span class="mono">Runs::PersistenceSummaryService</span>). "In the transitioned state"
   is the engine's own rule applied sample by sample — <span class="mono">compress_ratio</span>
-  below <%= threshold %> with no alphabet collapse — so Rails re-reads a stored series by the
-  criterion the engine used to flag it and never invents a second one. Leaving the state is
+  at or below <%= fraction %> of the run's own baseline, the mean of its samples over the
+  first <%= number_with_delimiter window %> epochs, with no alphabet collapse — so Rails
+  re-reads a stored series by the criterion the engine used to flag it and never invents a
+  second one. That is the rule the transition itself was relocked on
+  (<span class="mono">docs/design_record.md</span>, 2026-09-21), and every sample read here
+  falls outside the baseline window, which is what makes it readable that far out. Leaving the state is
   that rule's hold in reverse: the state ends at the first of <%= exit_samples %> consecutive
   samples the rule rejects, mirroring the <%= hold %> further qualifying samples that confirm
   an entry, so a single sample flickering back over the threshold is no more a relapse than a
@@ -36,6 +41,17 @@
   This is a survey and not a sweep. The runs below come from different grids at different
   budgets, chosen by nothing but having transitioned, so what follows is a count of outcomes
   and never a hazard.
+</p>
+<p>
+  <strong>The population moved when the rule did.</strong> Until 2026-09-21 a run entered
+  this survey on the constant threshold, <span class="mono">compress_ratio</span> below 0.6,
+  which a wide-tape soup can sit under from its first epoch. The 29 cap-512 runs of the
+  <%= link_to "room-to-grow sweep", finding_path("complexity-keeps-rising") %> whose crossing
+  was that initial condition rather than anything that happened in them have left the table;
+  no run entered it, since over the rescored corpus there is no crossing the relative rule
+  finds and the constant one misses. The runs that stayed are anchored on the relocked
+  crossing, which lands on the constant one or up to 30 epochs after it, so their spans are
+  read from there.
 </p>
 
 <h2>Result</h2>

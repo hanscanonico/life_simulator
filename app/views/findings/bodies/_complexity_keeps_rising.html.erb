@@ -149,15 +149,16 @@
 
 <h3>The same sweep under both detector rules</h3>
 <p>
-  This sweep is flagged by the detector of DESIGN §1.2, which reads a constant threshold:
+  This sweep was flagged by the detector's original rule, a constant threshold:
   <span class="mono">compress_ratio</span> at or below 0.6, held. A fresh soup's ratio
   depends on the cap, and the dependence straddles that line — over its first 500 epochs the
   512 arm means 0.754 with a minimum of 0.618, against 0.984 at cap 64
-  (<span class="mono">docs/design_record.md</span>, 2026-09-19). A second reading was added
-  beside it, <span class="mono">transition_epoch_relative</span>: the same fall taken against
-  each run's own baseline, the mean <span class="mono">compress_ratio</span> of its samples
-  at epoch 500 or earlier. The stored corpus was rescored under it on 2026-09-19, without
-  re-running anything. Both readings of this sweep:
+  (<span class="mono">docs/design_record.md</span>, 2026-09-19). So a second reading was
+  taken against each run's own baseline, the mean <span class="mono">compress_ratio</span>
+  of its samples at epoch 500 or earlier, and the stored corpus was rescored under it
+  without re-running anything. On 2026-09-21 that relative rule became the rule
+  <span class="mono">transition_epoch</span> is read by, and the constant one the companion
+  <span class="mono">transition_epoch_constant</span>. Both readings of this sweep:
 </p>
 
 <div class="table-scroll" id="max-tape-len-detector-rules" tabindex="0" role="region"
@@ -167,8 +168,8 @@
       <tr>
         <th><span class="mono">max_tape_len</span></th>
         <th class="numeric">Terminal runs</th>
-        <th class="numeric">Crossings, constant rule</th>
-        <th class="numeric">Crossings, relative rule</th>
+        <th class="numeric">Crossings, companion constant rule</th>
+        <th class="numeric">Crossings, transition rule</th>
         <th class="numeric">Confirmed by a replicator</th>
       </tr>
     </thead>
@@ -186,15 +187,15 @@
   </table>
 </div>
 <p class="text-sm text-muted">
-  Rescored with <span class="mono">lab:backfill_relative_transitions</span> over 1 729
+  Rescored with <span class="mono">lab:backfill_transitions</span> over 1 729
   terminal runs of the whole corpus, 2026-09-19 (GitHub #174).
 </p>
 
 <p>
   The 512 arm's 30 constant crossings are the initial condition rather than anything that
-  happened in the world: the arm starts within a hair of the threshold, and every one of
-  those 30 runs crosses by epoch 1 000. Under the relative rule that arm keeps
-  <strong>1</strong> crossing — the same run the replicator census confirms. The three
+  happened in the world: the arm starts within a hair of the constant threshold, and every
+  one of those 30 runs crosses it by epoch 1 000. Under the rule the observable now reads
+  that arm keeps <strong>1</strong> crossing — the same run the replicator census confirms. The three
   narrower caps read the same crossings under both rules, and so does every arm of the other
   six experiments, 35 arms in all. Over the whole rescored corpus — 1 729 terminal runs — the
   512 arm is the only place the two rules part, and there is no crossing the relative rule
@@ -209,14 +210,14 @@
   unchanged.
 </p>
 <p>
-  <strong>What the flag counts cannot be read for.</strong> Under the relative rule the
+  <strong>What the flag counts cannot be read for.</strong> Under the transition rule the
   crossings by cap read 3 / 5 / 4 / 1 — flat, then falling at the widest cap — so nothing
   here says that a bigger cap transitions more often or sooner. "Room to grow" is read on
   this page for the height of the plateau the dominant replicator reaches, which is the
   verdict above, and not for how often life started.
-  <span class="mono">transition_epoch</span> under the constant rule remains the locked
-  observable of DESIGN §1.2; whether the detector is relocked on the relative reading is a
-  design-record decision and is not made here.
+  <span class="mono">transition_epoch</span> is the relative reading since the
+  2026-09-21 record entry relocked it; the constant column beside it is the reading every
+  finding was stated in before that.
 </p>
 
 <h2>Does anything keep rising?</h2>

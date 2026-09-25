@@ -134,45 +134,70 @@ RSpec.describe "the lab queue tasks" do
   describe "lab:backfill_transitions" do
     let(:experiment) { create(:experiment, slug: "bff-control", status: "finished") }
 
-    def run_with_drop(**attributes)
+    # A baseline window at `start`, then a fall to `fallen` past it: at 0.98 and 0.5 both
+    # rules read the crossing at epoch 510, the arms the constant threshold was chosen on.
+    def run_with_drop(start: 0.98, fallen: 0.5, **attributes)
       create(:run, experiment: experiment, status: "finished", **attributes).tap do |run|
-        [0.94, 0.5, 0.4, 0.3, 0.2].each_with_index do |ratio, index|
-          create(:sample, run: run, epoch: index * 10, values: { "compress_ratio" => ratio })
-        end
+        (0..50).each { |sample| create(:sample, run: run, epoch: sample * 10, values: values(start)) }
+        (51..80).each { |sample| create(:sample, run: run, epoch: sample * 10, values: values(fallen)) }
       end
     end
 
-    it "rewrites the transition epoch of a terminal run measured before the resume fix" do
-      run = run_with_drop(transition_epoch: 40)
+    def values(ratio) = { "compress_ratio" => ratio, "op_density" => 0.5, "alphabet_size" => 200 }
+
+    it "fills the transition epoch of a run measured before the relock" do
+      run = run_with_drop(transition_epoch: nil, transition_epoch_constant: 510)
 
       invoke("lab:backfill_transitions", "bff-control")
 
-      expect(run.reload.transition_epoch).to eq(10)
+      expect(run.reload).to have_attributes(transition_epoch: 510, transition_epoch_constant: 510)
+    end
+
+    it "clears the epoch of a run that never fell far from its own start" do
+      run = run_with_drop(start: 0.75, fallen: 0.46, transition_epoch: 510, transition_epoch_constant: 510)
+
+      invoke("lab:backfill_transitions", "bff-control")
+
+      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_constant: 510)
     end
 
     it "recomputes the persistence summary against the epoch it has just rewritten" do
-      run = run_with_drop(transition_epoch: 40)
+      run = run_with_drop(transition_epoch: nil)
 
       invoke("lab:backfill_transitions", "bff-control")
 
-      expect(run.reload.persistence_summary).to have_attributes(epochs_persisted: 30, relapsed: false)
+      expect(run.reload.persistence_summary).to have_attributes(epochs_persisted: 290, relapsed: false)
     end
 
     it "clears a transition epoch the samples do not support" do
-      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 900)
+      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 900,
+                         transition_epoch_constant: 900)
 
       invoke("lab:backfill_transitions", "bff-control")
 
-      expect(run.reload.transition_epoch).to be_nil
+      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_constant: nil)
     end
 
-    it "leaves a run whose recorded epoch already matches its samples alone" do
-      run = run_with_drop(transition_epoch: 10)
+    it "leaves a run whose epochs and summary already match its samples alone" do
+      run = run_with_drop(transition_epoch: 510, transition_epoch_constant: 510)
+      Runs::PersistenceRefreshService.call(run: run)
       output = nil
 
       expect { output = invoke("lab:backfill_transitions", "bff-control") }
         .not_to(change { run.reload.updated_at })
       expect(output).to eq("backfilled 0 of 1 terminal runs\n")
+    end
+
+    # The relock renamed the columns rather than moving their contents, so a run can carry
+    # the epochs the rule now says it has and a summary read by the rule it replaced.
+    it "resummarises a run whose epochs did not move" do
+      run = run_with_drop(transition_epoch: 510, transition_epoch_constant: 510,
+                          persistence: { "census_peak" => nil, "peak_epoch" => nil,
+                                         "epochs_persisted" => 390, "relapsed" => false })
+
+      expect(invoke("lab:backfill_transitions", "bff-control"))
+        .to include("run #{run.id}: persistence", "backfilled 1 of 1 terminal runs")
+      expect(run.reload.persistence_summary.epochs_persisted).to eq(290)
     end
 
     it "leaves the runs still in the queue alone" do
@@ -183,21 +208,21 @@ RSpec.describe "the lab queue tasks" do
       expect(run.reload.transition_epoch).to eq(900)
     end
 
-    it "prints each run's old and new epoch and a total" do
-      run = run_with_drop(transition_epoch: 40)
+    it "prints each run's old and new epochs and a total" do
+      run = run_with_drop(transition_epoch: nil, transition_epoch_constant: 510)
 
       expect(invoke("lab:backfill_transitions", "bff-control"))
-        .to include("run #{run.id}: 40 → 10", "backfilled 1 of 1 terminal runs")
+        .to include("run #{run.id}: none → 510, constant 510 → 510", "backfilled 1 of 1 terminal runs")
     end
 
     it "covers every experiment with no slug given" do
-      run = run_with_drop(transition_epoch: 40)
+      run = run_with_drop(transition_epoch: nil)
       other = create(:run, experiment: create(:experiment, slug: "radius"), status: "finished",
                            transition_epoch: 900)
 
       invoke("lab:backfill_transitions")
 
-      expect([run.reload.transition_epoch, other.reload.transition_epoch]).to eq([10, nil])
+      expect([run.reload.transition_epoch, other.reload.transition_epoch]).to eq([510, nil])
     end
 
     it "refuses an experiment it does not know" do

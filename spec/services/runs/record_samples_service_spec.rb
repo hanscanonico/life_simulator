@@ -80,13 +80,13 @@ RSpec.describe Runs::RecordSamplesService do
     end
   end
 
-  context "with a relative transition epoch already recorded" do
+  context "with a constant transition epoch already recorded" do
     it "keeps the earliest of the two" do
-      run.update!(transition_epoch_relative: 300)
+      run.update!(transition_epoch_constant: 300)
 
-      described_class.call(run: run, samples: batch(900), transition_epoch_relative: 900)
+      described_class.call(run: run, samples: batch(900), transition_epoch_constant: 900)
 
-      expect(run.reload.transition_epoch_relative).to eq(300)
+      expect(run.reload.transition_epoch_constant).to eq(300)
     end
   end
 

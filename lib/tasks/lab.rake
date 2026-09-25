@@ -94,7 +94,7 @@ namespace :lab do
     puts "#{moves.size} runs moved"
   end
 
-  desc "Recompute transition_epoch from the stored samples of terminal runs (one experiment, or all)"
+  desc "Recompute both transition readings from the stored samples of terminal runs (one experiment, or all)"
   task :backfill_transitions, [:slug] => :environment do |_task, args|
     runs = Run.terminal.order(:id)
     if args[:slug].present?
@@ -106,38 +106,24 @@ namespace :lab do
 
     terminal = runs.to_a
     backfilled = terminal.count do |run|
-      recomputed = Runs::TransitionEpochService.call(run: run)
-      next false if recomputed == run.transition_epoch
+      samples = run.samples.order(:epoch).pluck(:epoch, :values)
+      recomputed = { transition_epoch: Runs::TransitionEpochService.call(samples: samples),
+                     transition_epoch_constant: Runs::ConstantTransitionEpochService.call(samples: samples) }
+      moved = recomputed.any? { |reading, epoch| run.public_send(reading) != epoch }
+      if moved
+        puts "run #{run.id}: #{run.transition_epoch || 'none'} → #{recomputed[:transition_epoch] || 'none'}, " \
+             "constant #{run.transition_epoch_constant || 'none'} → " \
+             "#{recomputed[:transition_epoch_constant] || 'none'}"
+        run.update!(recomputed)
+      end
+      # Every run is resummarised, not only the ones whose epochs moved: the summary is
+      # read by the same rule as `transition_epoch`, so a run stored under an older reading
+      # of that rule is stale at an epoch that did not move (docs/design_record.md,
+      # 2026-09-21).
+      resummarised = Runs::PersistenceRefreshService.call(run: run)
+      puts "run #{run.id}: persistence #{run.persistence.presence || 'no transition'}" if resummarised && !moved
 
-      puts "run #{run.id}: #{run.transition_epoch || 'none'} → #{recomputed || 'none'}"
-      run.update!(transition_epoch: recomputed)
-      Runs::PersistenceRefreshService.call(run: run)
-      true
-    end
-
-    puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
-  end
-
-  desc "Fill transition_epoch_relative from the stored samples of terminal runs (one experiment, or all). " \
-       "Leaves transition_epoch, the locked reading, alone"
-  task :backfill_relative_transitions, [:slug] => :environment do |_task, args|
-    runs = Run.terminal.order(:id)
-    if args[:slug].present?
-      experiment = Experiment.find_by(slug: args[:slug])
-      raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
-
-      runs = runs.where(experiment: experiment)
-    end
-
-    terminal = runs.to_a
-    backfilled = terminal.count do |run|
-      recomputed = Runs::RelativeTransitionEpochService.call(run: run)
-      next false if recomputed == run.transition_epoch_relative
-
-      puts "run #{run.id}: constant #{run.transition_epoch || 'none'}, " \
-           "relative #{run.transition_epoch_relative || 'none'} → #{recomputed || 'none'}"
-      run.update!(transition_epoch_relative: recomputed)
-      true
+      moved || resummarised
     end
 
     puts "backfilled #{backfilled} of #{terminal.size} terminal runs"
@@ -163,12 +149,12 @@ namespace :lab do
         puts "run #{run.id}: WARNING clearing emergence #{stored.epoch} by #{stored.witness} — no crossing confirms"
       end
       run.update!(emergence.attributes) unless emergence == stored
-      next if run.transition_epoch.nil?
+      next if run.transition_epoch_constant.nil?
 
       flagged += 1
       confirmed += 1 if emergence.confirmed?
       outcome = emergence.confirmed? ? "emerged at #{emergence.epoch} by #{emergence.witness}" : "unconfirmed"
-      puts "run #{run.id}: crossing #{run.transition_epoch} → #{outcome}"
+      puts "run #{run.id}: crossing #{run.transition_epoch_constant} → #{outcome}"
     end
 
     puts "confirmed #{confirmed} of #{flagged} flagged runs, over #{terminal.size} terminal runs"

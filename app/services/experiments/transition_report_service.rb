@@ -4,10 +4,12 @@ require "csv"
 
 module Experiments
   # Reconciles the transition detector with the replicator census over an experiment's
-  # stored samples. `transition_epoch` fires on `compress_ratio` alone, so a run can be
-  # flagged with no replicator ever counted, and a run whose replicator count rose can go
-  # unflagged; a claim about emergence has to hold on both observables (DESIGN.md §1.2),
-  # and this is where the two are read side by side, run by run and arm by arm.
+  # stored samples, under both of the detector's readings — the transition rule and the
+  # constant companion of `docs/design_record.md`, 2026-09-21. A crossing fires on
+  # `compress_ratio` alone, so a run can be flagged with no replicator ever counted, and a
+  # run whose replicator count rose can go unflagged; a claim about emergence has to hold
+  # on both observables (DESIGN.md §1.2), and this is where the two are read side by side,
+  # run by run and arm by arm.
   #
   # It reads stored samples and changes nothing — not the detector, not a metric, not a run.
   class TransitionReportService
@@ -17,10 +19,10 @@ module Experiments
     CONFIRM_WINDOW = Runs::EmergenceEpochService::CONFIRM_WINDOW
 
     RUN_COLUMNS = %w[run_id seed status].freeze
-    ARM_COLUMNS = %w[arm n n_terminal flagged relative both_rules replicators both either_but_not_both].freeze
+    ARM_COLUMNS = %w[arm n n_terminal flagged constant both_rules replicators both either_but_not_both].freeze
     READING_COLUMNS = ComplexityArmsService::COLUMNS
     SAMPLE_COLUMNS = %w[
-      transition_epoch transition_epoch_relative collapse_epoch crossings confirmed_epoch confirmed_by
+      transition_epoch transition_epoch_constant collapse_epoch crossings confirmed_epoch confirmed_by
       min_entropy_bits
       min_entropy_epoch peak_replicator_count peak_replicator_epoch first_replicator_epoch
       peak_copy_rate peak_copy_rate_epoch final_compress_ratio final_distinct_tapes final_top_share
@@ -32,7 +34,7 @@ module Experiments
       compress_ratio op_density alphabet_size entropy_bits replicator_count copy_rate distinct_tapes top_share
     ].freeze
 
-    Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :transition_epoch_relative,
+    Row = Data.define(:run_id, :seed, :status, :params, :transition_epoch, :transition_epoch_constant,
                       :collapse_epoch, :crossings,
                       :confirmed_epoch, :confirmed_by, :min_entropy_bits, :min_entropy_epoch, :peak_replicator_count,
                       :peak_replicator_epoch, :first_replicator_epoch, :peak_copy_rate,
@@ -46,12 +48,12 @@ module Experiments
 
       def flagged? = transition_epoch.present?
 
-      def flagged_relative? = transition_epoch_relative.present?
+      def flagged_constant? = transition_epoch_constant.present?
 
       def replicated? = peak_replicator_count.to_f.positive?
     end
 
-    Arm = Data.define(:label, :runs, :terminal, :flagged, :relative, :both_rules, :replicated, :both) do
+    Arm = Data.define(:label, :runs, :terminal, :flagged, :constant, :both_rules, :replicated, :both) do
       def flagged_only = flagged - both
 
       def replicated_only = replicated - both
@@ -59,7 +61,7 @@ module Experiments
       def either_but_not_both = flagged_only + replicated_only
 
       def cells
-        [label, runs, terminal, flagged, relative, both_rules, replicated, both, either_but_not_both]
+        [label, runs, terminal, flagged, constant, both_rules, replicated, both, either_but_not_both]
       end
     end
 
@@ -139,8 +141,8 @@ module Experiments
     end
 
     def counts_of(rows)
-      { flagged: rows.count(&:flagged?), relative: rows.count(&:flagged_relative?),
-        both_rules: rows.count { |row| row.flagged? && row.flagged_relative? },
+      { flagged: rows.count(&:flagged?), constant: rows.count(&:flagged_constant?),
+        both_rules: rows.count { |row| row.flagged? && row.flagged_constant? },
         replicated: rows.count(&:replicated?),
         both: rows.count { |row| row.flagged? && row.replicated? } }
     end
@@ -188,18 +190,20 @@ module Experiments
       { run_id: run.id, seed: run.seed, status: run.status, params: param_keys.index_with { |key| run.params[key] } }
     end
 
-    # `collapse_epoch` is the bare first crossing of the threshold, where
-    # `transition_epoch` also demands the hold: the gap between them is a candidate that
+    # `collapse_epoch` is the bare first crossing of the constant threshold, where the
+    # companion reading also demands the hold: the gap between them is a candidate that
     # never settled. `crossings` counts every crossing that did settle, the detector having
-    # stored only the first — a run with two of them can be confirmed on the second.
+    # stored only the first — a run with two of them can be confirmed on the second. The
+    # confirmation is read against the constant crossing series, as
+    # `Runs::EmergenceEpochService` reads it.
     def detector_of(run, samples)
       entropy = extreme(samples, "entropy_bits", :min_by)
 
       { transition_epoch: run.transition_epoch,
-        transition_epoch_relative: Runs::RelativeTransitionEpochService.call(samples: samples),
+        transition_epoch_constant: Runs::ConstantTransitionEpochService.call(samples: samples),
         collapse_epoch: samples.find { |(_, values)| below_threshold?(values) }&.first,
         crossings: Runs::CrossingsService.call(samples: samples).size,
-        **confirmation_of(run.transition_epoch, samples),
+        **confirmation_of(run.transition_epoch_constant, samples),
         min_entropy_bits: value_of(entropy, "entropy_bits"), min_entropy_epoch: entropy&.first }
     end
 

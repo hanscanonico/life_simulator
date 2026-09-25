@@ -244,32 +244,42 @@ claim rests on it.
   possible. 0 wherever the steal op is off, which is every run at the defaults, and on the
   life substrate.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
-  appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
-  0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard
-  against alphabet collapse, which produces a compressible world with no replication at
-  all (run 183: two byte values, `op_density` exactly 1.0, `copy_rate` 0). Null until it
-  happens. The primary dependent variable of every sweep is this number. The engine's
-  tracker is the single authority on this rule; Rails only re-reads stored samples by it,
-  from the one place that spells the predicate out (`Lab::TransitionRule`) — to recover
-  the epoch of a run measured before the tracker survived a resume
-  (`Runs::TransitionEpochService`) and to read what became of the world after that epoch
-  (`Runs::PersistenceSummaryService`). Samples recorded before `alphabet_size` existed
-  are read by the `op_density` half of the guard alone. The crossing is a *candidate*: it
-  reads `compress_ratio` and its two guards, never a copier, so a world whose random fill
-  merely settled can carry one. `emergence_epoch` is the first of the run's crossings a
-  witness confirms, the detector's stored one or any later crossing its samples hold
-  (`Runs::CrossingsService`) — the replicator census or `copy_rate` positive within the
-  confirmation window (`Runs::EmergenceEpochService`, docs/design_record.md 2026-09-15) —
-  and it, not `transition_epoch`, is what the open-endedness findings read.
-- `transition_epoch_relative` (per run, once): the same measurement read against the run's
-  own start instead of the constant threshold — the first sampled epoch at which
-  `compress_ratio <= 0.61 x baseline` and the next 3 samples do too, under the same two
-  collapse guards, where `baseline` is the mean `compress_ratio` of the samples with epoch
-  <= 500 (docs/design_record.md 2026-09-19). A **companion** reading: a fresh soup's
-  `compress_ratio` depends on `max_tape_len`, so the constant threshold means different
-  things across the cap, and this says how far a run fell in its own terms.
-  `transition_epoch` above remains the primary dependent variable of every sweep and what
-  every finding is stated in; this one is reported beside it and relocks nothing.
+  appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <=
+  0.61 x baseline` **and** `op_density <= 0.9` **and** `alphabet_size >= 16`, where
+  `baseline` is the mean `compress_ratio` of the run's samples with epoch `<= 500` — the
+  fall read against the run's own start, the last two guarding against alphabet collapse,
+  which produces a compressible world with no replication at all (run 183: two byte
+  values, `op_density` exactly 1.0, `copy_rate` 0). Null until it happens, and null for a
+  run with no sample inside the baseline window or none past it. The primary dependent
+  variable of every sweep is this number. It was a constant `compress_ratio < 0.6` until
+  the 2026-09-21 record entry relocked it: a fresh soup's ratio depends on `max_tape_len`,
+  so the constant threshold measured different falls at different caps (docs/design_record.md,
+  2026-09-19 and 2026-09-21). The engine's tracker is the single authority on this rule;
+  Rails only re-reads stored samples by it, from the one place that spells the predicate
+  out (`Lab::TransitionRule`) — to recover the epoch of a run measured before the tracker
+  read it this way (`Runs::TransitionEpochService`) and to read what became of the world
+  after that epoch (`Runs::PersistenceSummaryService`). Samples recorded before
+  `alphabet_size` existed are read by the `op_density` half of the guard alone. The
+  crossing is a *candidate*: it reads `compress_ratio` and its two guards, never a copier,
+  so a world whose random fill merely settled can carry one. `emergence_epoch` is the
+  first of the run's crossings a witness confirms, the detector's stored one or any later
+  crossing its samples hold (`Runs::CrossingsService`) — the replicator census or
+  `copy_rate` positive within the confirmation window (`Runs::EmergenceEpochService`,
+  docs/design_record.md 2026-09-15) — and it, not `transition_epoch`, is what the
+  open-endedness findings read. The crossing *series* — `Runs::CrossingsService`, and
+  `emergence_epoch` through it — is read by the constant companion below, which needs no
+  baseline: the relative rule judges no crossing inside its own window, and a second
+  crossing would be judged against a baseline the first one contaminated. Everything read
+  *after* a transition, `Runs::PersistenceSummaryService` included, is read by the rule
+  above, whose window every such sample lies outside by construction
+  (docs/design_record.md, 2026-09-21).
+- `transition_epoch_constant` (per run, once): the same measurement read against the
+  constant threshold the observable was defined by before the relock — the first sampled
+  epoch at which `compress_ratio < 0.6` and the next 3 samples do too, under the same two
+  collapse guards. A **companion** reading, reported beside `transition_epoch` in the
+  transition report and on the room-to-grow finding, which states both counts: every
+  finding stated before the relock was stated in it, and it is known to be cap-confounded
+  above `max_tape_len` 256 (docs/design_record.md, 2026-09-19).
 
 **Replicator test**: a tape `T` is a replicator if executing `T ++ R` for a random tape
 `R` (fresh, seeded) yields `T` in the second half for at least 3 of 4 trials. Run on the
@@ -440,8 +450,12 @@ docs/              this file, design_record.md, findings
   `snapshots` (compressed world bytes + a PNG thumbnail rendered by the engine). Each
   snapshot records why the run loop took it: `cadence` (an epoch multiple of
   `snapshot_every`), `age` (the runner's wall-clock ceiling on snapshot age),
-  `crossing` (the first *qualifying* sample — the epoch `transition_epoch` names, stored
-  before the next 3 samples confirm it; at most one per `snapshot_every` epochs),
+  `crossing` (the first sample the tracker can *judge* as qualifying under the transition
+  rule: the epoch `transition_epoch` names when the fall happens past the baseline window,
+  and the first qualifying sample after the window closes when the fall began inside it,
+  since nothing inside the window can be judged until the baseline is known — stored before
+  the next 3 samples confirm it, at most one per `snapshot_every` epochs, which is why the
+  world stored can sit well after the epoch the observable names, GitHub #185),
   `transition` (the sample that settled the transition) or `census` (the replicator census
   rising off zero, at most one per `snapshot_every` epochs).
 - **The runner is a stateless worker.** In lab mode it polls `POST /api/runs/claim` with

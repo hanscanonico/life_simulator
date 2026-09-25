@@ -9,8 +9,11 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Write;
 
-/// `compress_ratio` below this, held for `TRANSITION_HOLD_SAMPLES` further samples, is
-/// what counts as the transition to life.
+/// The companion reading's constant: `compress_ratio` below this, held for
+/// `TRANSITION_HOLD_SAMPLES` further samples. It was the transition rule until the
+/// 2026-09-21 record entry relocked `transition_epoch` on the relative rule below, and it
+/// is reported beside the primary reading ever since — a run's fall read on the one scale
+/// every finding stated before the relock.
 pub const TRANSITION_THRESHOLD: f64 = 0.6;
 pub const TRANSITION_HOLD_SAMPLES: u32 = 3;
 /// Above this `op_density`, and below this `alphabet_size`, a compressible world is a
@@ -20,14 +23,14 @@ pub const TRANSITION_HOLD_SAMPLES: u32 = 3;
 pub const TRANSITION_MAX_OP_DENSITY: f64 = 0.9;
 pub const TRANSITION_MIN_ALPHABET_SIZE: u32 = 16;
 
-/// The companion rule, read against the run's own start instead of the constant above: a
+/// The transition rule, read against the run's own start rather than the constant above: a
 /// fresh soup's `compress_ratio` depends on `max_tape_len` — measured 2026-09-19, the mean
 /// over the first `TRANSITION_BASELINE_EPOCHS` epochs falls 0.984 → 0.853 → 0.788 → 0.754
 /// as the cap goes 64 → 128 → 256 → 512, so a wide-tape soup starts at the constant
 /// threshold and crosses it with nothing replicating. The fraction is that constant
 /// expressed against the cap-64 start, 0.6 / 0.984 ≈ 0.61, so the arms the threshold was
 /// chosen on read the crossings they always did (`docs/design_record.md`, 2026-09-19).
-/// `transition_epoch` stays the locked observable; this is a second reading beside it.
+/// `transition_epoch` is this reading since the 2026-09-21 entry relocked it.
 pub const TRANSITION_RELATIVE_FRACTION: f64 = 0.61;
 /// The last epoch counted into a run's baseline. A run whose first sample comes later has
 /// no baseline, and so no relative reading at all.
@@ -115,13 +118,14 @@ pub struct Metrics {
 }
 
 impl Metrics {
-    /// Whether this sample counts towards a transition: a compressible world that is not
-    /// simply an alphabet that collapsed onto a handful of instruction bytes.
-    pub fn transition_candidate(&self) -> bool {
+    /// Whether this sample counts towards the companion constant reading: a world
+    /// compressed below `TRANSITION_THRESHOLD` that is not simply an alphabet collapsed
+    /// onto a handful of instruction bytes.
+    pub fn constant_candidate(&self) -> bool {
         self.compress_ratio < TRANSITION_THRESHOLD && self.uncollapsed()
     }
 
-    /// The collapse half of the rule on its own, which the relative reading applies too.
+    /// The collapse half of the rule on its own, which both readings apply.
     fn uncollapsed(&self) -> bool {
         self.op_density <= TRANSITION_MAX_OP_DENSITY
             && self.alphabet_size >= TRANSITION_MIN_ALPHABET_SIZE
@@ -572,8 +576,10 @@ pub(crate) fn hamming_distance(one: &[u8], other: &[u8]) -> u64 {
 }
 
 /// The first sampled epoch at which a qualifying sample appears and holds — the primary
-/// dependent variable of every sweep. A sample qualifies on `Metrics::transition_candidate`:
-/// `compress_ratio` below the threshold, and neither of the two collapse guards tripped.
+/// dependent variable of every sweep. A sample qualifies when `compress_ratio` has fallen
+/// to `TRANSITION_RELATIVE_FRACTION` of the run's own baseline and neither collapse guard
+/// is tripped (`docs/design_record.md`, 2026-09-21). The constant-threshold reading the
+/// observable was defined by until then is kept beside it, and settles independently.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransitionTracker {
     constant: Hold,
@@ -592,7 +598,7 @@ pub struct TransitionState {
     pub relative: RelativeState,
 }
 
-/// The relative reading's state: the baseline as the sum and count it is a mean of, the
+/// The primary reading's state: the baseline as the sum and count it is a mean of, the
 /// samples inside the baseline window that cannot be judged until it closes, and the hold
 /// machine that judges them.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -661,6 +667,10 @@ struct RelativeTracker {
     baseline_count: u32,
     pending: Vec<PendingSample>,
     hold: Hold,
+    /// Whether the sample last observed qualified. Never `true` while the baseline window
+    /// is open, where no sample can be judged yet, and not part of the state a snapshot
+    /// carries: it is read by the run loop of the sample it just took.
+    crossed: bool,
 }
 
 impl RelativeTracker {
@@ -674,6 +684,7 @@ impl RelativeTracker {
                 held: state.held,
                 settled: state.settled,
             },
+            crossed: false,
         }
     }
 
@@ -689,6 +700,7 @@ impl RelativeTracker {
     }
 
     fn observe(&mut self, epoch: u64, measured: &Metrics) {
+        self.crossed = false;
         if self.hold.settled.is_some() {
             return;
         }
@@ -710,7 +722,9 @@ impl RelativeTracker {
             .into_iter()
             .chain(std::iter::once(sample))
         {
-            self.hold.observe(held.epoch, held.qualifies(baseline));
+            let qualifies = held.qualifies(baseline);
+            self.crossed = qualifies && held.epoch == epoch;
+            self.hold.observe(held.epoch, qualifies);
         }
     }
 
@@ -747,19 +761,26 @@ impl TransitionTracker {
             return;
         }
         self.last_epoch = Some(epoch);
-        self.constant
-            .observe(epoch, measured.transition_candidate());
+        self.constant.observe(epoch, measured.constant_candidate());
         self.relative.observe(epoch, measured);
     }
 
     pub fn epoch(&self) -> Option<u64> {
+        self.relative.hold.settled
+    }
+
+    /// The same measurement made against the constant threshold the observable was defined
+    /// by before the 2026-09-21 relock: the companion reading, never the run's own.
+    pub fn constant_epoch(&self) -> Option<u64> {
         self.constant.settled
     }
 
-    /// The same measurement made against the run's own baseline rather than the constant
-    /// threshold. Locked nothing: `epoch` above is the observable every finding reads.
-    pub fn relative_epoch(&self) -> Option<u64> {
-        self.relative.hold.settled
+    /// Whether the sample last observed crossed under the primary rule — what the run
+    /// loop stores a `crossing` world for. A sample inside the baseline window reads
+    /// `false`: until the window closes there is no baseline to judge it against, and the
+    /// crossing it may turn out to have been is only known later.
+    pub fn crossed(&self) -> bool {
+        self.relative.crossed
     }
 }
 
@@ -1352,23 +1373,33 @@ mod tests {
         }
     }
 
+    /// The hold machine the constant companion runs, which needs no baseline and so can
+    /// settle on the run's first samples.
     #[test]
-    fn transition_settles_on_the_first_epoch_of_a_sustained_drop() {
+    fn the_constant_reading_settles_on_the_first_epoch_of_a_sustained_drop() {
         let mut tracker = TransitionTracker::default();
         tracker.observe(10, &reading(0.9));
         tracker.observe(20, &reading(0.5));
         tracker.observe(30, &reading(0.9));
-        assert_eq!(tracker.epoch(), None, "the drop did not hold");
+        assert_eq!(tracker.constant_epoch(), None, "the drop did not hold");
 
         tracker.observe(40, &reading(0.5));
         tracker.observe(50, &reading(0.4));
         tracker.observe(60, &reading(0.4));
-        assert_eq!(tracker.epoch(), None, "only two further samples so far");
+        assert_eq!(
+            tracker.constant_epoch(),
+            None,
+            "only two further samples so far"
+        );
         tracker.observe(70, &reading(0.3));
-        assert_eq!(tracker.epoch(), Some(40));
+        assert_eq!(tracker.constant_epoch(), Some(40));
 
         tracker.observe(80, &reading(0.99));
-        assert_eq!(tracker.epoch(), Some(40), "settled epochs never move");
+        assert_eq!(
+            tracker.constant_epoch(),
+            Some(40),
+            "settled epochs never move"
+        );
     }
 
     /// The shape of production run 41's series, sampled every ten epochs: noise for 500
@@ -1382,13 +1413,13 @@ mod tests {
         tracker.observe(5000, &reading(0.725));
         tracker.observe(5010, &reading(0.526));
         tracker.observe(5020, &reading(0.052));
-        assert_eq!(tracker.epoch(), None, "the drop has not held yet");
+        assert_eq!(tracker.constant_epoch(), None, "the drop has not held yet");
 
         let mut resumed = TransitionTracker::from_state(tracker.state());
         for sample in 1..=1500u64 {
             resumed.observe(5020 + sample * 10, &reading(0.05));
         }
-        assert_eq!(resumed.epoch(), Some(5010));
+        assert_eq!(resumed.constant_epoch(), Some(5010));
     }
 
     #[test]
@@ -1402,33 +1433,37 @@ mod tests {
         for sample in 0..100u64 {
             tracker.observe(sample * 10, &collapsed);
         }
-        assert_eq!(tracker.epoch(), None, "run 183's shape is not a transition");
+        assert_eq!(
+            tracker.constant_epoch(),
+            None,
+            "run 183's shape is not a transition"
+        );
     }
 
     #[test]
     fn each_guard_disqualifies_a_sample_on_its_own() {
-        assert!(reading(0.5).transition_candidate());
-        assert!(!reading(0.6).transition_candidate());
+        assert!(reading(0.5).constant_candidate());
+        assert!(!reading(0.6).constant_candidate());
         assert!(!Metrics {
             op_density: 0.91,
             ..reading(0.5)
         }
-        .transition_candidate());
+        .constant_candidate());
         assert!(Metrics {
             op_density: 0.9,
             ..reading(0.5)
         }
-        .transition_candidate());
+        .constant_candidate());
         assert!(!Metrics {
             alphabet_size: 15,
             ..reading(0.5)
         }
-        .transition_candidate());
+        .constant_candidate());
         assert!(Metrics {
             alphabet_size: 16,
             ..reading(0.5)
         }
-        .transition_candidate());
+        .constant_candidate());
     }
 
     #[test]
@@ -1453,12 +1488,8 @@ mod tests {
             tracker.observe(sample * 10, &reading(0.58));
         }
 
-        assert_eq!(tracker.epoch(), Some(510));
-        assert_eq!(
-            tracker.relative_epoch(),
-            None,
-            "0.58 is 94% of its baseline"
-        );
+        assert_eq!(tracker.constant_epoch(), Some(510));
+        assert_eq!(tracker.epoch(), None, "0.58 is 94% of its baseline");
     }
 
     /// A run that starts where the threshold was chosen — cap 64, mean 0.984 — and falls
@@ -1474,8 +1505,8 @@ mod tests {
             tracker.observe(sample * 10, &reading(0.55));
         }
 
+        assert_eq!(tracker.constant_epoch(), Some(510));
         assert_eq!(tracker.epoch(), Some(510));
-        assert_eq!(tracker.relative_epoch(), Some(510));
     }
 
     /// The baseline is the run's own start, so a crossing inside the baseline window is
@@ -1488,27 +1519,23 @@ mod tests {
         for sample in 2..=5u64 {
             tracker.observe(sample * 100, &reading(0.2));
         }
-        assert_eq!(
-            tracker.relative_epoch(),
-            None,
-            "the window has not closed yet"
-        );
+        assert_eq!(tracker.epoch(), None, "the window has not closed yet");
 
         tracker.observe(600, &reading(0.2));
-        assert_eq!(tracker.relative_epoch(), Some(200));
+        assert_eq!(tracker.epoch(), Some(200));
     }
 
     /// A run whose first sample comes after the window has no baseline to be read
     /// against, and so no relative reading at all.
     #[test]
-    fn a_run_with_no_sample_inside_the_baseline_window_reads_no_relative_epoch() {
+    fn a_run_with_no_sample_inside_the_baseline_window_reads_no_transition_epoch() {
         let mut tracker = TransitionTracker::default();
         for sample in 0..20u64 {
             tracker.observe(600 + sample * 10, &reading(0.05));
         }
 
-        assert_eq!(tracker.epoch(), Some(600));
-        assert_eq!(tracker.relative_epoch(), None);
+        assert_eq!(tracker.constant_epoch(), Some(600));
+        assert_eq!(tracker.epoch(), None);
     }
 
     /// A collapsed world is compressible against any baseline, so the relative reading
@@ -1528,9 +1555,9 @@ mod tests {
             tracker.observe(sample * 10, &collapsed);
         }
 
-        assert_eq!(tracker.epoch(), None);
+        assert_eq!(tracker.constant_epoch(), None);
         assert_eq!(
-            tracker.relative_epoch(),
+            tracker.epoch(),
             None,
             "0.143 is a seventh of the baseline and still not a transition"
         );
@@ -1560,9 +1587,9 @@ mod tests {
             resumed.observe(*epoch, &reading(*ratio));
         }
 
-        assert_eq!(uninterrupted.relative_epoch(), Some(510));
-        assert_eq!(resumed.relative_epoch(), uninterrupted.relative_epoch());
+        assert_eq!(uninterrupted.epoch(), Some(510));
         assert_eq!(resumed.epoch(), uninterrupted.epoch());
+        assert_eq!(resumed.constant_epoch(), uninterrupted.constant_epoch());
     }
 
     /// A run that fell inside its baseline window and was snapshotted before the window
@@ -1589,8 +1616,45 @@ mod tests {
             resumed.observe(*epoch, &reading(*ratio));
         }
 
-        assert_eq!(uninterrupted.relative_epoch(), Some(210));
-        assert_eq!(resumed.relative_epoch(), uninterrupted.relative_epoch());
+        assert_eq!(uninterrupted.epoch(), Some(210));
+        assert_eq!(resumed.epoch(), uninterrupted.epoch());
+    }
+
+    /// The primary reading settles on the first of four qualifying samples past the
+    /// baseline window, the same hold the companion runs.
+    #[test]
+    fn the_transition_settles_on_the_first_epoch_of_a_sustained_drop_past_the_window() {
+        let mut tracker = TransitionTracker::default();
+        for sample in 0..=50u64 {
+            tracker.observe(sample * 10, &reading(0.98));
+        }
+        tracker.observe(510, &reading(0.55));
+        tracker.observe(520, &reading(0.98));
+        assert_eq!(tracker.epoch(), None, "the drop did not hold");
+
+        for sample in 53..=55u64 {
+            tracker.observe(sample * 10, &reading(0.55));
+        }
+        assert_eq!(tracker.epoch(), None, "only two further samples so far");
+        tracker.observe(560, &reading(0.55));
+        assert_eq!(tracker.epoch(), Some(530));
+    }
+
+    /// What the run loop stores a `crossing` world for: the sample that just crossed under
+    /// the primary rule. Inside the baseline window nothing can be judged, so nothing
+    /// crosses there — the fall is read once the window closes, three samples before the
+    /// hold settles it.
+    #[test]
+    fn a_sample_crosses_only_once_its_baseline_window_has_closed() {
+        let mut tracker = TransitionTracker::default();
+        tracker.observe(0, &reading(0.98));
+        tracker.observe(100, &reading(0.2));
+        assert!(!tracker.crossed(), "no baseline to be judged against yet");
+
+        tracker.observe(600, &reading(0.2));
+        assert!(tracker.crossed());
+        tracker.observe(700, &reading(0.98));
+        assert!(!tracker.crossed());
     }
 
     /// The tracker's state as a snapshot carries it: written into a blob at `epoch` and
@@ -1628,6 +1692,6 @@ mod tests {
         for _ in 0..10 {
             tracker.observe(5, &reading(0.1));
         }
-        assert_eq!(tracker.epoch(), None);
+        assert_eq!(tracker.constant_epoch(), None);
     }
 }
