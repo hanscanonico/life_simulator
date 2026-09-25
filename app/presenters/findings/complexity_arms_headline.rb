@@ -43,10 +43,10 @@ module Findings
     end
 
     # The secondary reading: a treated arm's last-decile distinct_lineages against its
-    # control's at the same cap. An arm with no measured run has no lineage span to set
-    # beside anything, so it is unreadable rather than below.
+    # control's at the same cap. A span reads on the two measured runs an arm's complexity
+    # reading needs, so an arm with fewer is unreadable rather than above or below.
     def lineages_sentence
-      readable, unreadable = treated.partition { |arm| arm.lineages && control_for(arm)&.lineages }
+      readable, unreadable = treated.partition { |arm| lineages_readable?(arm) && lineages_readable?(control_for(arm)) }
       parts = readable.map { |arm| lineages_comparison(arm) }
       parts << unreadable_lineages_clause(unreadable) if unreadable.any?
       return "The secondary reading has no #{treated_name} to read yet." if parts.empty?
@@ -123,20 +123,30 @@ module Findings
         "#{paired.label}'s (#{paired.lineages.last})"
     end
 
+    def lineages_readable?(arm) = arm.present? && arm.lineages_run_count >= ComplexityArmsReading::MIN_ARM_RUNS
+
     def unreadable_lineages_clause(arms)
-      without_runs, without_control = arms.partition { |arm| arm.lineages.nil? }
+      without_span, without_control = arms.partition { |arm| !lineages_readable?(arm) }
+      unmeasured, too_few = without_span.partition { |arm| arm.measured_count.zero? }
       clauses = []
-      if without_runs.any?
-        clauses << "#{sentence_of(without_runs.map(&:label))} " \
-                   "#{verb_for(without_runs.size, %w[has have])} no measured emerged run and so no " \
-                   "distinct_lineages span to set above #{control_possessive(without_runs.size)}"
-      end
+      clauses << unmeasured_lineages_clause(unmeasured) if unmeasured.any?
+      clauses.concat(too_few.map { |arm| too_few_lineages_clause(arm) })
       if without_control.any?
         clauses << "#{sentence_of(without_control.map(&:label))} " \
                    "#{verb_for(without_control.size, %w[has have])} no #{control_name} span at " \
                    "#{without_control.one? ? 'its' : 'their'} cap to set against"
       end
       clauses.join("; ")
+    end
+
+    def unmeasured_lineages_clause(arms)
+      "#{sentence_of(arms.map(&:label))} #{verb_for(arms.size, %w[has have])} no measured emerged run and so no " \
+        "distinct_lineages span to set above #{control_possessive(arms.size)}"
+    end
+
+    def too_few_lineages_clause(arm)
+      "#{arm.label} has #{counted(arm.lineages_run_count, 'measured emerged run')} carrying distinct_lineages, " \
+        "fewer than the #{ComplexityArmsReading::MIN_ARM_RUNS} an arm reads on"
     end
 
     def control_possessive(count) = count == 1 ? "the #{control_name}'s" : "the #{control_name.pluralize}'"

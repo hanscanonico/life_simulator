@@ -969,7 +969,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   observable moves.
 - 2026-09-24 — **The asymmetric-execution finding states its claim: every host arm is
   barren, so the refutation condition cannot be evaluated.** Sweep 10 finished on
-  2026-09-21, 360 runs, every one terminal, 90 per arm. Read under the amended measured-run
+  2026-09-20, 360 runs, every one terminal, 90 per arm. Read under the amended measured-run
   rule of 2026-09-21 (`FORMAT=csv lab:transition_report[asymmetric-execution]`, 2026-09-24):
 
   | arm | emerged / 90 | measured | pre-registered unmeasured | rising | plateau | reading |

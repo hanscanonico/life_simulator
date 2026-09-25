@@ -312,7 +312,8 @@ RSpec.describe Findings::ComplexityArmsReading do
 
       it "reads the verdict as barren rather than refuted or not rising" do
         expect(reading).to have_attributes(verdict: :barren, verdict_label: "no host arm held a replicator",
-                                           badge_class: "badge-error", refutation_met?: false)
+                                           badge_class: "badge-error", refutation_met?: false,
+                                           barren_beside_emerged_controls?: true)
       end
 
       it "says the condition cannot be evaluated from the controls alone" do
@@ -355,6 +356,31 @@ RSpec.describe Findings::ComplexityArmsReading do
           "The one host arm is barren — host 128 (0 of 10) held no replicator at all, with no concat control at " \
           "the same cap to set against — so there is no complexity in it to read and the refutation condition " \
           "cannot be evaluated."
+        )
+        expect(reading.barren_beside_emerged_controls?).to be(false)
+      end
+    end
+
+    context "with the host arm and its concat control both barren" do
+      let(:complexity_arms) { [arm(concat, 128, runs: []), arm(host, 128, runs: [])] }
+
+      it "does not read the host arm's barrenness as the treatment's" do
+        expect(reading).to have_attributes(verdict: :barren, barren_beside_emerged_controls?: false)
+      end
+    end
+
+    context "with a host arm and a control each holding one measured run" do
+      let(:complexity_arms) do
+        [arm(concat, 128, runs: %i[plateau plateau], lineages: [30, 4]),
+         arm(concat, 256, runs: %i[plateau], lineages: [30, 4]),
+         arm(host, 128, runs: %i[plateau], lineages: [30, 9]),
+         arm(host, 256, runs: %i[plateau plateau], lineages: [30, 9])]
+      end
+
+      it "reads no lineage span on fewer runs than an arm reads on" do
+        expect(reading.lineages_sentence).to eq(
+          "The secondary reading is unreadable: host 128 has 1 measured emerged run carrying distinct_lineages, " \
+          "fewer than the 2 an arm reads on; host 256 has no concat control span at its cap to set against."
         )
       end
     end

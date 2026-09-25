@@ -19,12 +19,14 @@
     <% end %>
   <% end %>
 </p>
-<p>
-  <strong>Pooled over runs, descriptive only.</strong>
-  <%= reading.treated_rising_count %> of the <%= reading.treated_measured_count %> measured
-  runs of the <%= reading.treated_name.pluralize %> keep rising, against
-  <%= reading.control_rising_count %> of the <%= reading.control_measured_count %> of the
-  <%= reading.control_name.pluralize %>. This count is not part of the pre-registered
-  reading, which is made arm by arm, and decides nothing: it is printed so a rising arm can
-  be weighed against the runs around it.
-</p>
+<% if reading.treated_measured_count.positive? %>
+  <p>
+    <strong>Pooled over runs, descriptive only.</strong>
+    <%= reading.treated_rising_count %> of the <%= reading.treated_measured_count %> measured
+    runs of the <%= reading.treated_name.pluralize %> keep rising, against
+    <%= reading.control_rising_count %> of the <%= reading.control_measured_count %> of the
+    <%= reading.control_name.pluralize %>. This count is not part of the pre-registered
+    reading, which is made arm by arm, and decides nothing: it is printed so a rising arm can
+    be weighed against the runs around it.
+  </p>
+<% end %>

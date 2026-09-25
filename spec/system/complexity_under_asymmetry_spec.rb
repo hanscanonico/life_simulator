@@ -25,7 +25,9 @@ RSpec.describe "The complexity-under-asymmetry finding", type: :system do
       "concat 128, the concat control at the same cap — so there is no complexity in it to read and the " \
       "refutation condition cannot be evaluated."
     )
+    expect(page).to have_text("beside controls that held replicators it kept replication from arising at all")
     expect(page).to have_text("not refuted by a plateau")
+    expect(page).to have_no_text("measured runs of the host arms keep rising")
   end
 
   it "tables how often life emerged, the barren arm against its control" do

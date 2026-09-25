@@ -203,21 +203,10 @@ module Experiments
     end
 
     def reading_of(run)
-      series = series_of(run)
+      spans = spans_by_run.fetch(run.id, {})
 
-      Reading.new(instructions: span_of(series[INSTRUCTIONS]), core: span_of(series[CORE]),
-                  compressed: span_of(series[COMPRESSED]), lineages: span_of(series[LINEAGES]))
-    end
-
-    # Nothing to compare on a single reading, so a run sampled once is unmeasured rather
-    # than flat. The decile is rounded up, so a run with a handful of samples reads its
-    # first and last rather than nothing at all.
-    def span_of(values)
-      return nil if values.blank? || values.size < 2
-
-      decile = (values.size / 10.0).ceil
-
-      Span.new(first: Findings::Median.of(values.first(decile)), last: Findings::Median.of(values.last(decile)))
+      Reading.new(instructions: spans[INSTRUCTIONS], core: spans[CORE], compressed: spans[COMPRESSED],
+                  lineages: spans[LINEAGES])
     end
 
     def peak_steal_rate_of(runs)
@@ -231,31 +220,65 @@ module Experiments
                                   .order(:id).select(:id, :params, :status, :emergence_epoch).to_a
     end
 
+    # A run no `steal_rate` was sampled on groups to a null peak, which drops out like a
+    # missing one. The type test sits inside the aggregate rather than in a WHERE: as a
+    # filter the planner took it for a rare row and sorted the sweep's samples to disk on
+    # the way to the group, ten times the cost of hashing them (issue #236).
     def steal_peaks
-      @steal_peaks ||= numeric_samples(STEAL_RATE).where(run_id: sampled_run_ids)
-                                                  .group(:run_id).maximum(value_of(STEAL_RATE))
+      @steal_peaks ||= Sample.where(run_id: experiment.runs.select(:id))
+                             .group(:run_id).maximum(value_of(STEAL_RATE))
     end
 
-    # One query for one run's series, and one run's samples held at a time: the four
-    # readings are written into the same sample, and a sample the engine reported a null
-    # for drops out of that observable's series while staying in the others'. The
-    # post-crossing samples of every emerged run read at once were most of the 400 MiB
-    # lab:transition_report peaked at on an all-emerged corpus (issue #226).
-    def series_of(run)
-      rows = run.samples.where(epoch: run.emergence_epoch..).order(:epoch)
-                .pluck(*SERIES.map { |observable| value_of(observable) })
+    # The four spans of every emerged run, reduced in Postgres so no sample leaves the
+    # database: one statement for the sweep, where one per run cost the page a round trip
+    # each and every post-crossing sample held in Ruby (issues #226, #236).
+    def spans_by_run
+      @spans_by_run ||= read_spans
+    end
 
-      SERIES.each_with_index.to_h do |observable, index|
-        [observable, rows.filter_map { |row| row[index]&.to_i }]
+    def read_spans
+      emerged_ids = sampled_runs.select(&:emerged?).map(&:id)
+      return {} if emerged_ids.empty?
+
+      Sample.connection.select_all(spans_sql(emerged_ids)).cast_values
+            .each_with_object({}) do |(run_id, observable, first, last), spans|
+        (spans[run_id] ||= {})[observable] = Span.new(first: first.to_i, last: last.to_i)
       end
+    end
+
+    # The rule the Ruby reading had, term for term. A sample the engine reported a null or
+    # a non-number for drops out of that observable's series only, and each reading is
+    # truncated to an integer as `to_i` did. A series of fewer than two readings has no
+    # span. The decile is `ceil(n / 10)` readings in epoch order, and a decile's median is
+    # Findings::Median's lower middle: `percentile_disc(0.5)` returns the reading at
+    # position `ceil(k / 2)` of `k` sorted, which is the 0-based `(k - 1) / 2` Median reads.
+    def spans_sql(run_ids)
+      ActiveRecord::Base.sanitize_sql_array([<<~SQL.squish, SERIES, run_ids])
+        WITH readings AS (
+          SELECT samples.run_id, series.observable, samples.epoch,
+                 trunc((samples.values ->> series.observable)::numeric) AS value
+          FROM samples
+          JOIN runs ON runs.id = samples.run_id
+          CROSS JOIN unnest(ARRAY[?]::text[]) AS series(observable)
+          WHERE runs.id IN (?) AND samples.epoch >= runs.emergence_epoch
+            AND jsonb_typeof(samples.values -> series.observable) = 'number'
+        ), ranked AS (
+          SELECT run_id, observable, value,
+                 row_number() OVER (PARTITION BY run_id, observable ORDER BY epoch) AS position,
+                 count(*) OVER (PARTITION BY run_id, observable) AS size
+          FROM readings
+        )
+        SELECT run_id, observable,
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY value) FILTER (WHERE position <= (size + 9) / 10),
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY value) FILTER (WHERE position > size - (size + 9) / 10)
+        FROM ranked
+        WHERE size >= 2
+        GROUP BY run_id, observable
+      SQL
     end
 
     # jsonb sorts numbers above strings and nulls, so a reading stored as anything but a
     # number is no reading here and the cast behind the guard is safe.
-    def numeric_samples(observable)
-      Sample.where("jsonb_typeof(samples.values -> :observable) = 'number'", observable: observable)
-    end
-
     def value_of(observable)
       Arel.sql(ActiveRecord::Base.sanitize_sql_array(
         ["CASE WHEN jsonb_typeof(samples.values -> ?) = 'number' " \
