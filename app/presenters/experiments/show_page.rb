@@ -15,6 +15,12 @@ module Experiments
       def census_only? = counted? && !transitioned
     end
 
+    # The readings held in the cache are the code's as much as the runs', and the cache
+    # outlives a deploy: a deploy that changes how a reading is taken, or a Data it is held
+    # in (whose Marshal no longer loads once a member is added), reads it afresh rather than
+    # serve the last deploy's. Digested once per boot.
+    CODE_VERSION = Digest::SHA256.hexdigest(Rails.root.glob("app/**/*.rb").sort.map(&:binread).join)
+
     def self.build(experiment:, paginate:)
       new(experiment: experiment, paginate: paginate)
     end
@@ -42,7 +48,7 @@ module Experiments
     # One lineage and complexity series set per axis: what the sweep's parameter did to
     # descent and to the dominant replicator, arm against arm. A sweep whose runs carry no
     # such sample shows none of it.
-    def series = @series ||= axes.index_with { |axis| ArmSeries.build(axis: axis, runs: observed_runs) }
+    def series = @series ||= ArmSeries.for_axes(axes: axes, means: arm_means)
 
     # One column per swept axis, headed and filled with the same label the phase diagram
     # and the arm table use, so a row of the runs table can be matched to an arm.
@@ -95,7 +101,9 @@ module Experiments
 
     # The pre-registered complexity reading of DESIGN §1.3 sweeps 9 and 10, arm by arm, so a sweep
     # whose runs carry no such sample shows none of it.
-    def complexity_arms = @complexity_arms ||= ComplexityArmsService.call(experiment: experiment)
+    def complexity_arms
+      @complexity_arms ||= cached("complexity_arms") { ComplexityArmsService.call(experiment: experiment) }
+    end
 
     def complexity_reading? = complexity_arms.any?
 
@@ -114,6 +122,27 @@ module Experiments
     def rescores? = rescore_summary.any?
 
     private
+
+    def arm_means
+      cached("arm_means") { ArmMeans.read(axes: axes, runs: observed_runs, series: ArmSeries::EVERY) }
+    end
+
+    # The two readings that pass over every sample of the sweep, held per experiment: a pass
+    # is seconds of disk on the lab's database at the host-parasite sweep's 2.5 M samples,
+    # and a finished sweep's samples never change (issue #236). Every write behind them
+    # goes through a run — its samples are recorded with an update of its summary, its
+    # crossing and its status are columns of it, and a grid change moves the axes — so the
+    # key moves with any run of the experiment, with its grid and with the code.
+    def cached(name, &)
+      Rails.cache.fetch(["experiments/show_page", CODE_VERSION, experiment.id, name, runs_version], &)
+    end
+
+    def runs_version = @runs_version ||= Digest::SHA256.hexdigest([experiment.param_grid, run_versions].to_json)
+
+    def run_versions
+      experiment.runs.order(:id).pluck(:id, :status, :updated_at)
+                .map { |id, status, updated_at| [id, status, updated_at.iso8601(6)] }
+    end
 
     def survival_for(axis)
       arms = axis.values.map do |value|
