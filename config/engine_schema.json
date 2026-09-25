@@ -188,6 +188,12 @@
       "type": "integer"
     }
   ],
+  "self_replication": {
+    "agreement": 0.75,
+    "generations": 5,
+    "sample_cells": 256,
+    "trials": 5
+  },
   "transition": {
     "baseline_epochs": 500,
     "hold_samples": 3,

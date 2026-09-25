@@ -130,6 +130,20 @@ claim rests on it.
   tape passed. A tape at the edge of the test passes or fails at random, so this is what
   says whether a count of 0 is an empty world or a draw that missed.
 - `replicator_count_mean`: the mean of what those 8 draws counted.
+- `replicator_share` / `replicator_share_rotated` / `dominant_self_replicates`: the
+  **orientation-aware companions** of the census. `replicator_share` is the share of 256
+  cells, drawn uniformly with replacement, whose tape passes the orientation-aware detector
+  (below) aligned; `replicator_share_rotated` reads the same draw under the detector's best
+  rotation, so it is never below the first; `dominant_self_replicates` says whether the
+  dominant tape — the one `dominant_replicates` describes — passes aligned.
+  `replicator_count` and `copy_rate` stay exactly as locked, and they are orientation-blind
+  by definition: each asks for a copy in the tape's own orientation. These companions exist
+  because the dominant replicators of the corpus copy themselves in **reverse**, which both
+  locked readings count as nothing (docs/design_record.md 2026-09-25). They draw from
+  streams of their own, a pure function of `(seed, epoch)`, and write nothing back, so no
+  run and no other observable moves. The census's `top_k` window does not bound them: the
+  cells are drawn from the whole world. Null on the life substrate and on every sample
+  recorded before they existed.
 - `entropy_bits`: Shannon entropy of the byte distribution.
 - `alphabet_size`: how many of the 256 byte values the world still holds, 1–256. Only
   `+` and `-` can mint a byte value, so with `mutation_rate = 0` the alphabet is a
@@ -147,6 +161,13 @@ claim rests on it.
   halves of equal length both readings are the plain equality they always were. Replication caught in situ, so it sees the replicators the
   replicator test misses — those that only copy with a kin partner or into a particular
   layout. Counted only on the epochs a sample reads; the life substrate reports 0.
+- `reverse_copy_rate`: `copy_rate` with the image reversed — the share of the same
+  interactions that ended with one half holding the byte-exact **reverse** of the tape its
+  partner arrived with, read from the half's first byte over the partner's arriving length,
+  among the pairs that did not arrive that way. A companion (docs/design_record.md
+  2026-09-25): `copy_rate` is untouched by it to the bit. A palindrome's copy satisfies both
+  rules and counts in both rates. Counted only on the epochs a sample reads; the life
+  substrate reports 0, and every sample recorded before it existed carries none.
 - `distinct_lineages`: how many lineage ids the cells hold. Every cell starts its own at
   init; after an interaction a cell takes its partner's lineage id when the tape it ends
   with is closer — Hamming distance over the tape's bytes — to the tape its partner
@@ -281,7 +302,28 @@ holding a tape that passed. The trial is seeded per epoch, so a rescore of a sto
 is comparable only with the live sample at the same epoch (docs/design_record.md
 2026-09-18). The census runs the test **8 times**, each draw on its own seeded stream and
 a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
-`replicator_pass_rate` and `replicator_count_mean` read across all eight.
+`replicator_pass_rate` and `replicator_count_mean` read across all eight. The test asks for
+`T` itself in the partner, so a tape that writes `reverse(T)` fails it however exactly it
+copies; it stays locked as it is, and the orientation-aware detector below reads beside it.
+
+**Orientation-aware detector** (`replicator::self_replicates`, the 2026 BFF paper's
+Algorithm 1 and cubff's `CheckSelfRep`): a chain of **5** runs, each the soup's own
+interaction — the tape of the moment and fresh seeded noise of its length on the fixed
+`2·len` buffer, `max_steps` as the run's. After each run the partner half carries forward
+into the first half and fresh noise refills the second; after the fifth, the first half —
+the fourth copy down the chain — is compared with the original, position by position. The
+chain is odd so that a tape whose copy is its own reverse is read after an even number of
+copies, back in its own orientation. **5** independent chains per tape; a position agrees
+when a strict majority of them hold the original byte there, and the tape passes
+**aligned** when at least **3 of every 4** positions agree (the paper's 48 of 64 bytes, as
+a ratio of integers so it scales to any length). It passes **rotated** when some cyclic
+rotation of the comparison, one rotation for all five chains, passes the same bar — a
+separate boolean, so the aligned reading stays the paper's. The census companions run it
+on **256** cells a sample. The chain length, the trials, the 3/4 and the 256 are constants
+of the engine (`replicator::SELF_REP_*`), exported through `runner schema` under
+`self_replication`; they are not parameters. Measured on the terminal world of run 1007
+(128×128, cap 128, every interaction running out the step budget), one sample's companions
+cost 3.7% of the ten epochs they sample.
 
 ### 1.3 The sweeps (in order; each is one `Experiment`)
 

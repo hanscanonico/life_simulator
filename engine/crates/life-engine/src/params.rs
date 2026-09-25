@@ -6,6 +6,10 @@ use crate::metrics::{
     TRANSITION_BASELINE_EPOCHS, TRANSITION_HOLD_SAMPLES, TRANSITION_MAX_OP_DENSITY,
     TRANSITION_MIN_ALPHABET_SIZE, TRANSITION_RELATIVE_FRACTION, TRANSITION_THRESHOLD,
 };
+use crate::replicator::{
+    SELF_REP_AGREEMENT_DENOMINATOR, SELF_REP_AGREEMENT_NUMERATOR, SELF_REP_GENERATIONS,
+    SELF_REP_SAMPLE_CELLS, SELF_REP_TRIALS,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -520,6 +524,13 @@ impl Params {
                 "min_alphabet_size": TRANSITION_MIN_ALPHABET_SIZE,
                 "relative_fraction": TRANSITION_RELATIVE_FRACTION,
                 "baseline_epochs": TRANSITION_BASELINE_EPOCHS,
+            },
+            "self_replication": {
+                "generations": SELF_REP_GENERATIONS,
+                "trials": SELF_REP_TRIALS,
+                "agreement": SELF_REP_AGREEMENT_NUMERATOR as f64
+                    / SELF_REP_AGREEMENT_DENOMINATOR as f64,
+                "sample_cells": SELF_REP_SAMPLE_CELLS,
             },
         }))
         .expect("schema always serialises")
@@ -1067,6 +1078,20 @@ mod tests {
             TRANSITION_RELATIVE_FRACTION
         );
         assert_eq!(transition["baseline_epochs"], TRANSITION_BASELINE_EPOCHS);
+    }
+
+    #[test]
+    fn schema_carries_the_orientation_aware_detector_the_census_companions_read_by() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        assert_eq!(
+            schema["self_replication"],
+            serde_json::json!({
+                "generations": 5,
+                "trials": 5,
+                "agreement": 0.75,
+                "sample_cells": 256,
+            })
+        );
     }
 
     #[test]

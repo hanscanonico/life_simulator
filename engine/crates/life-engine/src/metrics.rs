@@ -112,6 +112,24 @@ pub struct Metrics {
     pub lineage_compressed_len: Option<u32>,
     /// How many of that same representative's bytes the run's instruction set executes.
     pub lineage_instruction_count: Option<u32>,
+    /// `copy_rate` with the image reversed: the share of the sampled epoch's interactions
+    /// that ended with one half holding the byte-exact reverse of the tape its partner
+    /// arrived with, among the pairs that did not arrive that way. `copy_rate` is locked and
+    /// orientation-blind, and the dominant replicators of the corpus copy in reverse
+    /// (`docs/design_record.md`, 2026-09-25). A palindrome's copy counts in both. 0 on the
+    /// life substrate.
+    pub reverse_copy_rate: f64,
+    /// The share of `replicator::SELF_REP_SAMPLE_CELLS` cells, drawn uniformly with
+    /// replacement, whose tape passes the orientation-aware detector aligned: a companion
+    /// of `replicator_count`, which asks for a same-orientation copy of one of the `top_k`
+    /// tapes. `None` on the life substrate.
+    pub replicator_share: Option<f64>,
+    /// The same draw read under the detector's best rotation, so never below
+    /// `replicator_share`.
+    pub replicator_share_rotated: Option<f64>,
+    /// Whether the dominant tape — the one `dominant_replicates` describes — passes the
+    /// orientation-aware detector aligned. `None` on the life substrate.
+    pub dominant_self_replicates: Option<bool>,
 }
 
 impl Metrics {
@@ -1349,6 +1367,10 @@ mod tests {
             replicator_count_mean: None,
             lineage_compressed_len: None,
             lineage_instruction_count: None,
+            reverse_copy_rate: 0.0,
+            replicator_share: None,
+            replicator_share_rotated: None,
+            dominant_self_replicates: None,
         }
     }
 
