@@ -1930,6 +1930,26 @@ mod tests {
         ));
     }
 
+    /// The oriented rule reads a tape and its reverse as one tape: a cell holding `X`
+    /// that ends an exact forward copy of a partner holding `reverse(X)` is at distance 0
+    /// from both arrivals, a tie, and keeps its own tag; the aligned rule hands it over.
+    #[test]
+    fn a_tape_and_its_reverse_are_one_tape_under_the_oriented_rule() {
+        let (own, partner) = (b"abcdefgh", b"hgfedcba");
+        assert!(inherits_partner(
+            LineageRule::Aligned,
+            partner,
+            own,
+            partner
+        ));
+        assert!(!inherits_partner(
+            LineageRule::Oriented,
+            partner,
+            own,
+            partner
+        ));
+    }
+
     /// A tape that grew is set against the reverse of the live bytes its partner arrived
     /// with, read from its own first byte; the bytes it gained count against both.
     #[test]
@@ -3136,8 +3156,9 @@ mod tests {
     }
 
     /// The oriented lineage rule on the pinned soup: it moves no byte, so the world is the
-    /// pinned one exactly, and in a random soup no copy is nearer its source reversed, so
-    /// the tags are the aligned rule's too.
+    /// pinned one exactly. On this world no interaction in 50 epochs leaves a tape nearer
+    /// an arrival reversed, so the tags are the aligned rule's too; a larger random soup
+    /// can already part on a handful of cells.
     #[test]
     fn pinned_lineage_determinism_of_a_random_soup_under_the_oriented_rule() {
         let params = Params {

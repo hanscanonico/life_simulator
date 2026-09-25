@@ -1632,7 +1632,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   `oriented` for tags that follow descent through reverse copies.** The entry "Oriented
   companions for heredity and adaptation" found that on run 1007's world continued at
   mutation 0 the 22 distinct tapes are eleven programs and their reverses, 20 to 127 bytes
-  apart, **all under one lineage tag**. The tag is inherited by the rule of the 2026-09-13
+  from the modal tape, **all under one lineage tag**. The tag is inherited by the rule of the 2026-09-13
   entry: a cell takes its partner's tag when its tape ends Hamming-closer, aligned, to the
   partner's arriving tape than to its own. A cell overwritten by `reverse(A)` is aligned-far
   from `A`, so it keeps its own tag while its bytes descend from `A`. After a takeover by a
@@ -1653,14 +1653,19 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   denied it to the cell would tilt every close call toward the partner. It would also move a
   cell whose own bytes came back to it reversed to another lineage, although nothing of
   anyone else's reached it. The tie still keeps the cell's own tag, and a palindrome's copy
-  inherits under both rules.
+  inherits under both rules. It follows that the oriented rule reads a tape and its reverse
+  as one tape: a cell holding `X` overwritten by an exact forward copy of a partner holding
+  `reverse(X)` is a tie and keeps its own tag, where the aligned rule hands it the
+  partner's.
 
   **What it moves.** Nothing but tags. The rule reads the pair each interaction already keeps,
   draws nothing and writes no byte, so a world's bytes and every RNG stream are the same
   under both rules. Every pinned hash and observable digest stays as it was. New pins lock
   the oriented rule from the start. The 32×32 soup at seed 42, stepped 50 epochs, has the
   bytes `PINNED_SOUP_HASH` under `oriented` and the same tags as under `aligned`
-  (`0x4d38_1366_823a_e560`): a random soup has no copy that is nearer its source reversed.
+  (`0x4d38_1366_823a_e560`): no interaction there leaves a tape nearer an arrival reversed.
+  That is this world's reading, not a property of random soups: a 64×64 soup at seed 7 or
+  seed 1 parts on 3 or 4 cells by epoch 50.
   A 16×16 world half seeded with the handwritten reverse replicator at the default mutation
   rate, seed 5, 50 epochs, has one set of bytes (`0x752c_1e85_b477_d74e`) and two sets of
   tags. It reads 39 distinct lineages aligned and 15 oriented. A reverse copier whose

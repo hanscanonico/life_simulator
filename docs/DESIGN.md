@@ -200,9 +200,9 @@ claim rests on it.
   it reversed keeps its tag; the tie still keeps the cell's own tag. The rule is dynamics,
   not structure: it moves no byte and draws nothing, so a world's bytes are the same
   under both rules and only the tags differ, and a descendant may switch it. Tags sit
-  beside the tapes: they are never written into a tape,
-  never drawn from the RNG stream, and mutation never moves one, so a run's bytes are what
-  they were before lineages existed. A snapshot (format version 3) carries the tags beside
+  beside the tapes: they are never written into a tape, never drawn from the RNG stream,
+  and mutation never moves one, so a run's bytes are what they were before lineages
+  existed. A snapshot (format version 3) carries the tags beside
   the tapes, so a run resumed from one continues the census it was keeping; a version 1 or
   2 blob, written before the tags existed, restores with one id per cell. The life
   substrate reports 0.
@@ -228,8 +228,8 @@ claim rests on it.
   its own live length, never over its slot. The lineage tags themselves are inherited by
   the run's lineage rule above; under the default `aligned` rule a takeover by a reverse
   copier leaves one lineage holding unrelated tapes, and neither reading can see past
-  that — which is what `lineage_rule = oriented` is for. It draws nothing; the life substrate reports 0, and
-  every sample recorded before it existed carries none.
+  that — which is what `lineage_rule = oriented` is for. It draws nothing; the life
+  substrate reports 0, and every sample recorded before it existed carries none.
 - `conserved_core_bytes` / `conserved_core_ops`: what the largest lineage holds
   invariant across its members — the reading that tells a conserved copy loop with junk
   around it from turnover at a flat size, which `lineage_variation` alone cannot. The
