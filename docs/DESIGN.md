@@ -506,6 +506,10 @@ docs/              this file, design_record.md, findings
   so a repeat pass overwrites. Samples are the live record, written only while the run
   runs, and an instrument added later must not rewrite that record or pass for it.
   Readings outlive the worlds they came from: pruning snapshots never deletes them.
+  `runner readings-corpus` is that pass for the orientation-aware observables: it reads
+  the census companions at each stored epoch E (with `replicator_count` as the control
+  against the live sample), then steps to the next sample epoch E′ and reads both copy
+  rates there, which is the only place a restored world can count them.
 - **The runner is a stateless worker.** In lab mode it polls `POST /api/runs/claim` with
   a bearer token, executes the run, streams sample batches to
   `POST /api/runs/:id/samples`, snapshots to `POST /api/runs/:id/snapshots`, and finishes
