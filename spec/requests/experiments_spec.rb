@@ -545,6 +545,53 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the lineage-diversity sweep" do
+      let(:experiment) { lineage_diversity_experiment }
+
+      before do
+        # Samples a complexity reading would read too, had the page not left it out.
+        extra = { "dominant_instruction_count" => 40, "conserved_core_bytes" => 30 }
+        [5.0, 4.0].each { |effective| lineage_run(experiment, radius: 1, effective: effective, extra: extra) }
+        [1.0, 1.2].each { |effective| lineage_run(experiment, radius: 0, effective: effective, extra: extra) }
+        lineage_run(experiment, radius: 2, status: "running")
+      end
+
+      it "reads the sweep as pre-registered, labelled interim while a run is under way" do
+        get experiment_path(experiment)
+
+        section = response.parsed_body.at_css("#lineage-diversity-reading").text.squish
+        expect(section).to include("The pre-registered reading interim", "well-mixed", "radius 1", "unread",
+                                   "neither shown nor refuted",
+                                   "One-sided Jonckheere–Terpstra trend over well-mixed < radius 1: statistic 4",
+                                   "The read arm of shortest reach, radius 1, has a median effective count of 4",
+                                   "Unread: radius 2")
+      end
+
+      it "prints the trend's permutation p" do
+        get experiment_path(experiment)
+
+        p_value = Experiments::LineageDiversityReadingService.call(experiment: experiment).hypothesis.p_value
+        expect(response.parsed_body.at_css("#lineage-diversity-reading").text.squish)
+          .to include("p = #{ActiveSupport::NumberHelper.number_to_rounded(p_value.to_f, precision: 3,
+                                                                                         significant: true,
+                                                                                         strip_insignificant_zeros: true)}")
+      end
+
+      it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+        get experiment_path(experiment)
+
+        expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+      end
+    end
+
+    context "with a sweep other than the lineage-diversity one" do
+      it "shows no lineage-diversity reading" do
+        get experiment_path(experiment)
+
+        expect(response.body).not_to include("lineage-diversity-reading")
+      end
+    end
+
     context "with a sweep that starts from no parent" do
       it "shows no descendant reading" do
         get experiment_path(experiment)

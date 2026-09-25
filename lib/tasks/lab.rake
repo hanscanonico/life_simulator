@@ -276,6 +276,17 @@ namespace :lab do
     print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
+  desc "Read the lineage-diversity sweep as pre-registered: every run, every arm, the hypothesis " \
+       "(FORMAT=csv for CSV)"
+  task lineage_diversity_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("lineage_diversity"))
+    raise "The lineage-diversity sweep is not seeded." if experiment.nil?
+
+    report = Experiments::LineageDiversityReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"
   task prune_snapshots: :environment do
     deleted = Run.terminal.find_each.sum { |run| Runs::PruneSnapshotsService.call(run: run) }

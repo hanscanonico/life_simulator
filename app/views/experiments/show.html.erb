@@ -77,6 +77,10 @@
   <%= render "experiments/descendant_reading", reading: @show.descendant_reading %>
 <% end %>
 
+<% if @show.lineage_diversity_reading %>
+  <%= render "experiments/lineage_diversity_reading", reading: @show.lineage_diversity_reading %>
+<% end %>
+
 <% if @show.rescores? %>
   <%= render "experiments/rescores_table", summary: @show.rescore_summary %>
 <% end %>
