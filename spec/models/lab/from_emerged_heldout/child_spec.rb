@@ -15,10 +15,10 @@ RSpec.describe Lab::FromEmergedHeldout::Child do
   end
 
   describe "the settled relapse" do
-    context "with three samples below the floor ending at the window's edge" do
+    context "with three samples below the floor starting at the window's edge" do
       let(:samples) do
-        series(from: window_end - 20, count: 3) { { "replicator_share" => 0.05 } } +
-          series(from: window_end + 10, count: 50) { { "replicator_share" => 0.9 } }
+        series(from: window_end, count: 3) { { "replicator_share" => 0.05 } } +
+          series(from: window_end + 30, count: 50) { { "replicator_share" => 0.9 } }
       end
 
       it "reads none: the window's last epoch is the switch's transient" do
@@ -115,7 +115,7 @@ RSpec.describe Lab::FromEmergedHeldout::Child do
     context "with samples that do not carry latency as a number" do
       let(:samples) do
         latencies(100, first: 4_000, last: 2_000) +
-          series(from: window_end + 5_000, count: 50) { { "replicator_share" => 0.9, "copy_latency" => nil } }
+          series(from: window_end + 5_000, count: 200) { { "replicator_share" => 0.9, "copy_latency" => nil } }
       end
 
       it "cuts the deciles over the samples that carry it" do

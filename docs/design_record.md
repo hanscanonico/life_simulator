@@ -1950,4 +1950,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   substrate, one budget and correlated children per parent: it guards against reading
   noise the look found into rules the look wrote, not against those limits. `copy_latency`
   is measured on the dominant tape against noise, not in situ, so a lower ratio says the
-  dominant copier copies faster in isolation, not that the colony replicates faster.
+  dominant copier copies faster in isolation, not that the colony replicates faster. Both
+  tests condition on surviving the treatment: H3-latency leaves out extinct children and
+  H4-survivors every pair with a settled relapse or an extinct child. A treatment that
+  kills the colonies that would not have sped up or complicated leaves survivors that did,
+  so a shown result is read on the survivors, with the settled-relapse and extinction
+  counts beside it, not as the treatment's effect on every colony it touched.
