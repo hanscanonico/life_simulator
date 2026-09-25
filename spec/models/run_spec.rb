@@ -10,6 +10,7 @@ RSpec.describe Run, type: :model do
   it { is_expected.to have_many(:descendants).class_name("Run").dependent(:restrict_with_exception) }
   it { is_expected.to have_many(:samples).dependent(:destroy) }
   it { is_expected.to have_many(:snapshots).dependent(:destroy) }
+  it { is_expected.to have_many(:snapshot_readings).dependent(:destroy) }
   it { is_expected.to validate_numericality_of(:epochs).only_integer.is_greater_than(0) }
 
   describe "indexes" do
@@ -247,6 +248,25 @@ RSpec.describe Run, type: :model do
 
     it "never takes a relative crossing a descendant reports" do
       expect(build(:run, parent_run_id: 1, parent_epoch: 1_000)).not_to be_earlier_transition_epoch_relative(1_200)
+    end
+  end
+
+  describe "#readings_series" do
+    let(:run) { create(:run) }
+
+    it "reads one key of one instrument's readings in epoch order" do
+      create(:snapshot_reading, run: run, epoch: 205, source_epoch: 200, values: { "replicator_share" => 0.5 })
+      create(:snapshot_reading, run: run, epoch: 105, source_epoch: 100, values: { "replicator_share" => 0.0 })
+      create(:snapshot_reading, run: run, instrument: "other_census/1", epoch: 105, source_epoch: 100,
+                                values: { "replicator_share" => 1.0 })
+
+      expect(run.readings_series("oriented_census/1", "replicator_share")).to eq([[105, 0.0], [205, 0.5]])
+    end
+
+    it "reads nil for a reading that lacks the key" do
+      create(:snapshot_reading, run: run, epoch: 105, source_epoch: 100, values: {})
+
+      expect(run.readings_series("oriented_census/1", "replicator_share")).to eq([[105, nil]])
     end
   end
 end

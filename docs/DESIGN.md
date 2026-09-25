@@ -499,6 +499,13 @@ docs/              this file, design_record.md, findings
   before the next 3 samples confirm it; at most one per `snapshot_every` epochs),
   `transition` (the sample that settled the transition) or `census` (the replicator census
   rising off zero, at most one per `snapshot_every` epochs).
+- **Readings from stored worlds live in `snapshot_readings`, never in `samples`.** A
+  pass over the corpus restores a kept world at `source_epoch`, steps it a few epochs
+  and reads it with a named, versioned instrument (`oriented_census/1`); the runner posts
+  the engine's values to `POST /api/runs/:id/readings`, keyed `(run, instrument, epoch)`
+  so a repeat pass overwrites. Samples are the live record, written only while the run
+  runs, and an instrument added later must not rewrite that record or pass for it.
+  Readings outlive the worlds they came from: pruning snapshots never deletes them.
 - **The runner is a stateless worker.** In lab mode it polls `POST /api/runs/claim` with
   a bearer token, executes the run, streams sample batches to
   `POST /api/runs/:id/samples`, snapshots to `POST /api/runs/:id/snapshots`, and finishes
