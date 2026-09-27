@@ -74,6 +74,15 @@ module Findings
                                 control: ->(params) { interaction_of(params) == "concat" })
     end
 
+    # Sweep 12 read under its own pre-registered rule, from the report its sweep page draws.
+    # Nil where the sweep is not in the lab.
+    def lineages_after_emergence
+      return @lineages_after_emergence if defined?(@lineages_after_emergence)
+
+      report = evidence&.lineage_diversity_reading
+      @lineages_after_emergence = report && LineagesAfterEmergence.build(report)
+    end
+
     def diagrams = evidence ? evidence.diagrams : []
 
     def runs_done = evidence ? evidence.finished_count : 0

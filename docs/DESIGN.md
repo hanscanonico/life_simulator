@@ -556,6 +556,9 @@ sample.
     polyphyletic.
     Pre-registered in `docs/design_record.md`, 2026-09-25, "Lineage diversity after a
     transition", whose numbers live in `Lab::LineageDiversityReading`.
+    **Result** (2026-09-27, final): none of the 32 emerged worlds stayed polyphyletic — 27
+    monophyletic, 5 between, median effective count 1 in every arm — and the trend is
+    neither shown nor refuted (p = 0.079); finding `lineages-after-emergence`, `negative`.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no

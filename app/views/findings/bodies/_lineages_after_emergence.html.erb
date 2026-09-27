@@ -1,0 +1,159 @@
+<% sweep = Lab::SWEEPS.fetch("lineage_diversity") %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% rate_exponent = -Math.log2(Lab::EMERGENT_MUTATION_RATE).round %>
+<% record_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/design_record.md" %>
+
+<h2>Question</h2>
+<p>
+  Rung 2 of the programme asks what a world does after it has made replicators. The
+  <%= link_to "radius sweep", finding_path("radius-locality") %> asked it first and left it
+  open: locality was supposed to keep a world diverse once a lineage exists, by stopping one
+  winner from reaching every cell, and that sweep read only whether locality bought
+  emergence. DESIGN §1.3 sweep 12 asks the diversity half on its own: <strong>after a
+  transition, does a world stay polyphyletic, and do more lineages survive as a cell's
+  reach shrinks?</strong>
+</p>
+
+<h2>Method</h2>
+<p>
+  The radius sweep's four arms — <span class="mono">radius</span> 1, 2, 4 and 0, the
+  well-mixed world — on a 128×128 torus of tapes held at 64 bytes, at the emergent mutation
+  rate <span class="mono">2<sup>-<%= rate_exponent %></sup></span>, with
+  <span class="mono">lineage_rule = oriented</span>, <%= sweep.fetch(:seeds).size %> seeds per
+  arm and <%= epochs %> epochs per run. <span class="mono">oriented</span> is the point of the
+  sweep: the replicators of every emerged world copy themselves in reverse, and under the
+  aligned rule a reverse copy passes no tag on, so the tags would count the survivors of a
+  takeover rather than descent from it.
+</p>
+<p>
+  The reading is <strong>pre-registered</strong>, and was clarified in five places before any
+  run was read: <%= link_to "docs/design_record.md", record_url %>, 2026-09-25, "Lineage
+  diversity after a transition" and "The lineage-diversity reading: five clarifications".
+  A run is emerged where it has a confirmed emergence epoch and reads
+  <span class="mono">replicator_share</span> of at least one half at some sample after it.
+  Each emerged run is read on the median <span class="mono">lineage_effective_count</span> —
+  the effective number of lineages, 1 for a world one lineage holds — over the last tenth of
+  its samples since emergence: polyphyletic at 2 or more, monophyletic below 1.5, between
+  otherwise. The trend across the arms is a one-sided Jonckheere–Terpstra test with a
+  permutation p, and the hypothesis is shown only where that trend holds at p &lt; 0.05 and
+  the arm of shortest reach is itself polyphyletic.
+</p>
+
+<% reading = @show.lineages_after_emergence %>
+<h2>Result</h2>
+<% if reading&.any? %>
+  <p>
+    <span class="badge <%= reading.hypothesis.badge_class %>"><%= reading.hypothesis.outcome_label %></span>
+    <strong><%= reading.claim_sentence %></strong>
+  </p>
+  <p>
+    <% if reading.hypothesis.testable? %>
+      The trend toward more lineages at shorter reach reads permutation
+      p = <%= metric_value reading.hypothesis.p_value.to_f %>: the locked hypothesis is
+      <%= reading.hypothesis.outcome_label %>.
+      <% if reading.verdict_count(:polyphyletic).zero? %>
+        After emergence one lineage takes the world whatever the reach, and the half of the
+        hypothesis that says a transitioned world stays polyphyletic is not supported.
+      <% end %>
+    <% else %>
+      Fewer than two arms are read, so no trend is tested yet.
+    <% end %>
+    <% if reading.interim? %>
+      Not every run of the sweep has finished, so this reading is interim.
+    <% end %>
+  </p>
+  <% if reading.between_rows.any? %>
+    <p>
+      The worlds that read between one lineage and two:
+      <%= safe_join(reading.between_rows.map do |row|
+            "#{Lab::LineageDiversityReading::Arm.label_of(row.radius)} seed #{row.seed} " \
+              "(#{metric_value row.reading.effective_count})"
+          end, ", ") %>.
+      None reaches 2.
+    </p>
+  <% end %>
+  <p class="text-sm text-muted">
+    Every count on this page is read from the sweep's stored runs at render time, through the
+    same reading <%= link_to "the sweep page", experiment_path("lineage-diversity", anchor: "lineage-diversity-reading") %>
+    draws.
+  </p>
+
+  <%= render "experiments/lineage_diversity_reading", reading: reading.report %>
+
+  <h2 class="mt-6">Emergence by reach, descriptively</h2>
+  <p>
+    The sweep was built to read lineages, not emergence, and this is <strong>not a
+    pre-registered test</strong>. <%= reading.emerged_total %> of its
+    <%= reading.finished_total %> finished runs emerged, and not evenly across the arms. The
+    radius sweep beside it ran ten seeds an arm at another rate and saw one or two emergences
+    in each, so it can neither confirm nor contradict the spread.
+  </p>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Emergence per arm">
+    <table class="data-table" id="lineage-emergence">
+      <thead>
+        <tr>
+          <th>Arm</th>
+          <th class="numeric">Finished</th>
+          <th class="numeric">Confirmed crossing</th>
+          <th class="numeric">Emerged</th>
+          <th class="numeric">Crossed, share below one half</th>
+          <th class="numeric">Radius sweep emerged</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% reading.emergence.each do |arm| %>
+          <tr>
+            <td><%= arm.label %></td>
+            <td class="numeric"><%= arm.finished %></td>
+            <td class="numeric"><%= arm.crossed %></td>
+            <td class="numeric"><%= arm.emerged %> of <%= arm.finished %></td>
+            <td class="numeric"><%= arm.share_failed %></td>
+            <td class="numeric"><%= arm.radius_sweep? ? "#{arm.radius_emerged} of #{arm.radius_finished}" : "—" %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-sm text-muted">
+    A run with a confirmed crossing that never read <span class="mono">replicator_share</span>
+    of one half after it is not emerged here: the census that confirms a crossing is blind to
+    reverse copiers, and the share clause asks that the world was, at some point, mostly
+    replicators. The radius sweep sampled no share, so its count carries no such clause.
+    <% if reading.emergence_p %>
+      Descriptively, a Freeman–Halton exact test (Fisher's, extended to
+      <%= reading.emergence.size %> arms) of emerged against not emerged reads
+      p = <%= metric_value reading.emergence_p %>. It is a candidate for a sweep that
+      pre-registers emergence against reach, not a result.
+    <% end %>
+  </p>
+<% else %>
+  <p class="text-muted">
+    No run of <%= link_to "the sweep", experiment_path("lineage-diversity") %> is in this
+    database, so there is no arm to read here. This page reads the arms at render time and
+    states the claim from them.
+  </p>
+<% end %>
+
+<h2>What is not claimed</h2>
+<ul>
+  <li>
+    <strong>Lineage tags approximate descent.</strong> A cell takes its partner's tag when its
+    final tape is closer to what the partner brought than to what it brought itself. They are
+    not a phylogeny: two lineages that converge on one tape stay two, and a copy overwritten
+    by a stranger's partial write may keep or lose its tag on a byte count.
+  </li>
+  <li>
+    <strong>The tags are <span class="mono">oriented</span> ones.</strong> They follow descent
+    through reverse copies, which the aligned rule every earlier sweep ran under does not, so
+    these counts are not comparable with the <span class="mono">distinct_lineages</span> of
+    earlier sweeps.
+  </li>
+  <li>
+    <strong><%= epochs %> epochs.</strong> A world read monophyletic at its last tenth may
+    split again later; what is read is the end of the budget, not an equilibrium.
+  </li>
+  <li>
+    <strong>One world size.</strong> Every run is 128×128. A larger torus gives a reach of 1
+    more room to hold colonies that never meet, and that is untested.
+  </li>
+</ul>
