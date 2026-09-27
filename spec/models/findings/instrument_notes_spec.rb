@@ -30,4 +30,10 @@ RSpec.describe Findings::InstrumentNotes do
       expect(finding.instrument_note?).to be(false)
     end
   end
+
+  context "with a finding built on the orientation-aware instrument" do
+    it "carries no note" do
+      expect(Findings::Registry.find("lineages-after-emergence").instrument_note?).to be(false)
+    end
+  end
 end

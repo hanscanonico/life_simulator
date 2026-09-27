@@ -7,6 +7,25 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "lineages-after-emergence",
+        title: "After emergence, one lineage takes the world at every reach",
+        date: Date.new(2026, 9, 27),
+        experiment_slug: "lineage-diversity",
+        related_finding_slugs: %w[radius-locality],
+        status: :negative,
+        summary: "DESIGN §1.3 sweep 12 asked rung 2's question: once a world has made " \
+                 "replicators, does it stay polyphyletic, and do more lineages survive as a " \
+                 "cell's reach shrinks? All 360 runs finished and 32 emerged. Read by the " \
+                 "pre-registered rule, on lineage tags that follow descent through reverse " \
+                 "copies, none of them stayed polyphyletic: 27 read monophyletic, 5 between " \
+                 "one lineage and two, and the median effective number of lineages is 1 in " \
+                 "every arm, well-mixed to radius 1. The trend toward more lineages at shorter " \
+                 "reach is neither shown nor refuted, at a permutation p of 0.079. Emergence " \
+                 "itself differed by reach — 3, 16, 9 and 4 runs of 90, well-mixed then radius " \
+                 "4, 2 and 1 — which the sweep was not designed to test and is reported " \
+                 "descriptively only."
+      ),
+      Finding.new(
         slug: "complexity-under-contest",
         title: "Does complexity keep rising when energy is contested?",
         date: Date.new(2026, 9, 18),

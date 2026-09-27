@@ -556,6 +556,9 @@ sample.
     polyphyletic.
     Pre-registered in `docs/design_record.md`, 2026-09-25, "Lineage diversity after a
     transition", whose numbers live in `Lab::LineageDiversityReading`.
+    **Result** (2026-09-27, final): none of the 32 emerged worlds stayed polyphyletic — 27
+    monophyletic, 5 between, median effective count 1 in every arm — and the trend is
+    neither shown nor refuted (p = 0.079); finding `lineages-after-emergence`, `negative`.
 13. **Locality and emergence** — the speed half of item 3 again, on how often a world
     crosses at all: does emergence peak at an intermediate reach? Sweep 12's world (128²,
     fixed 64-byte tapes, the emergent rate, `lineage_rule = oriented`) at radius

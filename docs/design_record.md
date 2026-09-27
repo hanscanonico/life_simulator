@@ -2101,6 +2101,60 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   kills the colonies that would not have sped up or complicated leaves survivors that did,
   so a shown result is read on the survivors, with the settled-relapse and extinction
   counts beside it, not as the treatment's effect on every colony it touched.
+- 2026-09-27 — **The lineage-diversity finding states its claim: after emergence one
+  lineage takes the world at every reach.** Sweep 12 finished on 2026-09-26, 360 runs, every
+  one finished, 90 per arm. Read under the pre-registered rule and its five clarifications of
+  2026-09-25 (`lab:lineage_diversity_report` on the lab, 2026-09-27, "final reading"):
+
+  | arm | runs | emerged | measured | polyphyletic | between | monophyletic | median effective count |
+  |---|---|---|---|---|---|---|---|
+  | well-mixed | 90 | 3 | 3 | 0 | 0 | 3 | 1 |
+  | radius 4 | 90 | 16 | 16 | 0 | 2 | 14 | 1 |
+  | radius 2 | 90 | 9 | 9 | 0 | 2 | 7 | 1 |
+  | radius 1 | 90 | 4 | 4 | 0 | 1 | 3 | 1 |
+
+  Every arm is read. The trend over well-mixed < 4 < 2 < 1 reads JT = 193.5, permutation
+  p = 0.07930: **the hypothesis is neither shown nor refuted**. Not shown, because the trend
+  misses 0.05 and radius 1 is not polyphyletic; not refuted, because five runs read between
+  rather than monophyletic — radius 4 seeds 23 (1.88) and 66 (1.61), radius 2 seeds 39
+  (1.73) and 65 (1.99), radius 1 seed 51 (1.88), last-decile effective counts; a SELECT
+  re-deriving the class from the samples finds the same five. Descriptively, every arm's
+  median `lineages_over_one_percent` is 1, its oriented conserved core 0 bytes and 0 ops,
+  its `lineage_variation_oriented` 34.7, 40.1, 51.1 and 45.2, and its `copy_latency` first →
+  last decile 1087 → 908, 955 → 1013, 712 → 736 and 469 → 663.
+
+  **The claim**: none of the 32 emerged worlds stayed polyphyletic. 27 read monophyletic and
+  5 between, none reaching 2, and the median effective number of lineages is 1 in every arm.
+  After emergence one lineage takes the world whatever the reach. The locked hypothesis's
+  first half, that a transitioned world stays polyphyletic, is not supported; its second
+  half, more lineages at shorter reach, is not shown, and at p = 0.079 over 32 worlds a small
+  trend among near-monophyletic worlds is not excluded either.
+
+  **Registry status `negative`**, finding `lineages-after-emergence`: every run finished and
+  the reading is final, so `partial` ("cannot yet be read as final") does not apply, and the
+  hypothesis is not shown, so `published` does not either. `negative` ("the sweep finished
+  and the effect was not there") is the registry's convention for a finished sweep whose
+  effect did not appear even where it was not formally refuted — as the radius-locality
+  finding reads the speed half of sweep 3. The effect the sweep was built to see, worlds
+  holding several lineages after a transition, was not there in any arm. The page renders
+  the per-arm reading at render time from `Experiments::LineageDiversityReadingService`, the
+  report the sweep page draws, and carries no census note: it is built on
+  `replicator_share` and the `oriented` lineage tags, the orientation-aware instrument.
+
+  **What it means for rung 2**: on this substrate diversity does not survive a transition.
+  A reach of 1 on a 128² torus does not keep lineages apart for 20 000 epochs; the winner of
+  the takeover holds the world. Lineage tags approximate descent and are read `oriented`,
+  and the result is one world size and one budget.
+
+  **Emergence by reach, descriptively.** The sweep was not designed to test emergence
+  against radius, and this is not a pre-registered test. Its arms emerged 3, 16, 9 and 4 of 90,
+  well-mixed then radius 4, 2 and 1; a Freeman–Halton exact test on the 4×2 table reads
+  p = 0.0031 (Pearson χ² = 14.5, 3 df, p = 0.0023). A further 17 runs had a confirmed
+  crossing but never read `replicator_share` ≥ 0.5 after it and are not emerged (well-mixed
+  4, radius 4 9, radius 2 3, radius 1 1; a SELECT on the lab agrees). The radius sweep, at
+  the default rate 2^-12, ten seeds an arm and no share clause, saw 2, 1, 1 and 1 of 10. A
+  peak at an intermediate reach is a candidate for a future sweep that pre-registers
+  emergence against radius; it is not a result.
 - 2026-09-27 — **Does emergence peak at an intermediate reach? The `locality-emergence`
   sweep, pre-registered on fresh worlds.** Sweep 12 (`lineage-diversity`, entry of
   2026-09-25) was designed for rung 2 and asked nothing about how often a world crosses. Its

@@ -238,4 +238,25 @@ RSpec.describe Findings::ShowPage do
       expect(reading.treated.map { |arm| arm.params["interaction"] }).to eq(["host"])
     end
   end
+
+  context "with the lineage-diversity sweep" do
+    let(:finding) { Findings::Registry.find("lineages-after-emergence") }
+
+    before do
+      create(:experiment, slug: "lineage-diversity",
+                          param_grid: Lab::SWEEPS.fetch("lineage_diversity").fetch(:param_grid))
+    end
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.lineages_after_emergence.report).to be_a(Lab::LineageDiversityReading::Report)
+    end
+  end
+
+  context "with the lineage-diversity sweep missing" do
+    let(:finding) { Findings::Registry.find("lineages-after-emergence") }
+
+    it "has no reading" do
+      expect(page.lineages_after_emergence).to be_nil
+    end
+  end
 end
