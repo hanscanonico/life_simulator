@@ -18,7 +18,11 @@ module Findings
         "same-orientation replicator test where one does and off the commonest tape of the " \
         "world where none does, so a run's series can switch between two different tapes, " \
         "and the conserved core compares aligned bytes, which a population of reverse " \
-        "copiers and their reverses confounds. Which runs emerged stands for now: read with " \
+        "copiers and their reverses confounds, though the 270-seed reading does not turn on " \
+        "that core: on the 14 emerged runs of the extension that carry the orientation-aware " \
+        "conserved_core_bytes_oriented, that core reads zero at both ends in 13 and no run " \
+        "rises under either core, so the reading rests on dominant_instruction_count. " \
+        "Which runs emerged stands for now: read with " \
         "the orientation-aware detector, every one of the 1 290 finished runs of this sweep " \
         "that did not emerge shows a replicator_share of 0 in its last stored world, and 24 " \
         "of the 27 that did show 0.5 or more. Whether theft evolved does not rest on the census.",

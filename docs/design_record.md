@@ -2258,3 +2258,111 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   on the lab, 2026-09-25 20:24 to 2026-09-26 03:27 UTC. At the same per-run cost, taking the
   new radii at radius 4's, 630 runs are about **145 compute-hours**, about **13–14 hours** of
   wall time at sweep 12's parallelism with the lab to themselves.
+- 2026-09-27 — **The host–parasite finding re-read at 270 seeds on the rising arm and its
+  controls: the one rising arm reads neither, and the finding stays `partial`.** The
+  next-step entry of 2026-09-25 extended three arms of sweep 9 to seeds 1–270 —
+  `1024×2048 128`, its control `0 128` and the control `0 256` — and said the finding would
+  be re-read with the same rule and the same pairing once they were terminal. They are: 1 800
+  of 1 800 `host-parasite` runs finished at 2026-09-26 13:30Z. The extension was chosen after
+  the 90-seed reading was seen, so this re-read decides that reading rather than testing a
+  fresh one. Read under the amended measured-run rule of 2026-09-21
+  (`FORMAT=csv lab:transition_report[host-parasite]`, 2026-09-27):
+
+  | arm | emerged | measured | pre-registered unmeasured | rising | plateau | reading | theft |
+  |---|---|---|---|---|---|---|---|
+  | `0 128` (control) | 11 / 270 | 11 | 10 | 1 | 3 | neither | — |
+  | `0 256` (control) | 7 / 270 | 7 | 7 | 1 | 1 | neither | — |
+  | `0×8192 128` | 2 / 90 | 2 | 2 | 0 | 0 | neither | — |
+  | `0×8192 256` | 2 / 90 | 2 | 2 | 0 | 1 | plateau | — |
+  | `1024×8192 128` | 4 / 90 | 4 | 4 | 0 | 1 | neither | evolved, peak 0.93 |
+  | `1024×8192 256` | 1 / 90 | 1 | 1 | 1 | 0 | unread | evolved, peak 0.85 |
+  | `0×2048 128` | 2 / 90 | 2 | 2 | 0 | 1 | plateau | — |
+  | `0×2048 256` | 1 / 90 | 1 | 1 | 1 | 0 | unread | — |
+  | `1024×2048 128` | 8 / 270 | 8 | 8 | 1 | 3 | neither | evolved, peak 0.35 |
+  | `1024×2048 256` | 3 / 90 | 3 | 2 | 0 | 0 | neither | evolved, peak 0.94 |
+  | `0×512 128` | 0 / 90 | 0 | 0 | 0 | 0 | barren | — |
+  | `0×512 256` | 0 / 90 | 0 | 0 | 0 | 0 | barren | — |
+  | `1024×512 128` | 0 / 90 | 0 | 0 | 0 | 0 | barren | evolved, peak 0.32 |
+  | `1024×512 256` | 0 / 90 | 0 | 0 | 0 | 0 | barren | evolved, peak 0.32 |
+
+  **Emergence**, two-sided Fisher exact against the economy-off control at the same cap, as
+  the finding tests it: `1024×2048 128` 8 of 270 against 11 of 270, p = 0.64; at cap 128
+  `0×8192` p = 0.53, `1024×8192` p = 1, `0×2048` p = 0.53, `0×512` and `1024×512` p = 0.072;
+  at cap 256, against 7 of 270, `0×8192` p = 1, `1024×8192` p = 0.69, `0×2048` p = 0.69,
+  `1024×2048` p = 0.72, `0×512` and `1024×512` p = 0.20. None reaches p < 0.05.
+  `1024×8192 128` (4 of 90) and `1024×2048 256` (3 of 90) sit above their control as point
+  estimates and every other priced arm at or below. Pooled over both caps, descriptive only,
+  the priced arms emerged in 23 of 1 170 runs against 18 of 540 for the controls, p = 0.091.
+  In the extension's seeds 91–270 alone, `1024×2048 128` and `0 128` emerged in 6 of 180
+  each and `0 256` in 3 of 180.
+
+  **The claim**: complexity keeps rising in none of the 12 priced arms. `1024×2048 128`,
+  which read keeps rising at 90 seeds on 1 of its 2 measured runs, reads **neither** at 270:
+  1 rising and 3 plateauing of 8 measured runs, and the rising run is still the seeds-1–90
+  one (run 1733, `dominant_instruction_count` 17 → 21); the 6 runs of seeds 91–270 hold none
+  rising and 3 plateauing. Its control `0 128` reads **neither**, 1 rising and 3 plateauing
+  of 11 (the rising run, 967, is from seeds 1–90 too), and `0 256` reads **neither**, 1
+  rising and 1 plateauing of 7 (the rising run, 1029, likewise). Two priced arms plateau
+  (`0×8192 256`, `0×2048 128`), four read neither, two are unread on one measured run each
+  (`1024×8192 256` and `0×2048 256`, which were not extended, and whose single runs both
+  rise), and the four 512-influx arms are barren. Theft evolved in all six steal arms (peak
+  `steal_rate` 0.32–0.94), so no arm reads the theft-never-evolved null. **Pooled over
+  runs**, descriptive and not part of the pre-registered reading, the priced arms' measured
+  runs rise 3 of 23 against the controls' 2 of 18 (Fisher p = 1), and at cap 128 the pair
+  the extension was for reads 1 of 8 against 1 of 11 (p = 1). The refutation condition as
+  worded — the priced arms plateau where their controls plateau — is still not met, because
+  neither control plateaus.
+
+  **Under the pre-registered measured rule**, 39 of the 41 emerged runs are unmeasured and
+  no arm reads. The two it measures are run 2700 (`0 128`, seed 234, core 52 → 0 bytes) and
+  run 1770 (`1024×2048 256`, seed 24, core 143 → 0), one in each of two arms, and neither
+  rises. Every reading above stands on the amended rule of 2026-09-21, and the page states
+  the pre-registered one beside it.
+
+  **The aligned-core confound.** Both rules read `conserved_core_bytes`, which compares
+  aligned bytes; the 2026-09-25 entries (#245, the census; #255, the oriented lineage) found
+  that a population of X and reverse(X) reads zero there. The amended core clause counts a
+  core at zero at both ends as not falling, so under it the core clause passes nearly every
+  run, and the arm readings rest on `dominant_instruction_count`, which the instrument note
+  of 2026-09-25 marks as exposed in its own right (it is read off the commonest tape that
+  passes the same-orientation replicator test where one does, and off the world's commonest
+  tape where none does). The extension's runs finished after #255's deploy
+  and carry `conserved_core_bytes_oriented`; seeds 1–90 do not. **Descriptive only**, read
+  by a read-only `bin/rails runner` of SELECTs on the lab database (2026-09-27), with the
+  same deciles and lower-middle medians as `Experiments::ComplexityArmsService`: of the 15
+  emerged runs of seeds 91–270 in the three extended arms, 14 carry the oriented core (run
+  2568, `0 128` seed 102, finished before the deploy and does not). It reads zero at both
+  ends of the post-crossing span in 13 of them; run 2700 reads 55 → 1. None of the 14 raises
+  `dominant_instruction_count` by 20% (the largest rise is run 3035's 18 → 21, 17%), so none
+  rises with the oriented core in the clause either, and a pre-registered-style rule on the
+  oriented core would measure run 2700 alone and read no arm. So on these runs the aligned
+  core's confound does not change the reading: the oriented core is at zero too, and no run
+  rose on instructions for a core clause to stop.
+
+  **Registry status stays `partial`.** The 2026-09-24 entry's criterion is met for what it
+  named: the one supporting arm stood on the fewest measured runs the rule reads, beside a
+  control holding a rising run too, and "more seeds on `1024×2048 128` and `0 128` would
+  decide it". They did: at three times the seeds the arm holds four times the measured runs,
+  none of the new ones rises, and it reads neither beside a control that reads neither. That
+  decides the arm, not the sweep. `1024×8192 256` and `0×2048 256`, never extended, hold one
+  measured run each, and both runs rise; the rule reads an arm on two, so both are unread,
+  and the verdict `Findings::ComplexityArmsReading` was built with for this finding (#238,
+  before the extension was chosen) reads a sweep with no rising arm and any unread one as
+  unresolved, not as no arm rising. `negative` — the sweep finished and the effect was not
+  there — would say of those two arms what their one run each cannot, and would set the
+  registry against the page's own verdict badge, so the registry follows the verdict:
+  `partial`, a reading stated that cannot yet be read as final. The pooled count (3 rising of
+  23 priced measured runs against 2 of 18 in the controls) is consistent with the two single
+  runs sitting at the controls' background rate, but it is descriptive and moves no status.
+  With one rising run already, a second measured run can only make either arm read keeps
+  rising or mixed; it takes two more that do not rise for it to read anything else, which at
+  1 emerged run in 90 is roughly another 180 seeds an arm, and the programme does not extend
+  them here. It is not `refuted` either: the refutation condition needs a control plateau to
+  match and neither control plateaus. The finding keeps its instrument note: the
+  reading stands on `dominant_instruction_count` as the census reads it, and a re-read with
+  the orientation-aware dominant tape would be a new reading, not this one. The page renders
+  every count above from the stored runs at render time; the registry summary, the body's
+  Method and Result prose, the instrument note and DESIGN §1.3 item 9 carry the new claim.
+  The asymmetric-execution finding's "seed for seed" control is now scoped to sweep 9's
+  seeds 1–90, as the 2026-09-25 entry said it would be. Nothing about the engine, the rules
+  or any observable moves.
