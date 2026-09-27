@@ -1429,7 +1429,7 @@ RSpec.describe "Findings", type: :request do
                       "clearing both bars reads <em>mixed</em>, never rising",
                       "its runs having mostly fallen, reads <em>neither</em>",
                       "was sampled on, which reads unmeasured")
-        expect(response.body).to include(%(<span class="badge badge-warning">partial</span>))
+        expect(response.body).to include(%(<span class="badge badge-error">negative</span>))
       end
 
       it "says there is no arm to read and points at the sweep" do
