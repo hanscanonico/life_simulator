@@ -46,6 +46,15 @@ RSpec.describe Experiments::LocalityEmergenceReadingService do
         expect(emerged(run)).to be(false)
       end
     end
+
+    context "with a share no cast can read as a number" do
+      it "reads it as no reading rather than failing" do
+        run = locality_run(experiment, radius: 4, share: 0.1)
+        create(:sample, run: run, epoch: 1_010, values: { "replicator_share" => "n/a" })
+
+        expect(emerged(run)).to be(false)
+      end
+    end
   end
 
   context "with every run finished" do

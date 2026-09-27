@@ -23,11 +23,17 @@ module Lab
     # H-shape: a logistic regression of emergence on radius and radius² over the finished
     # runs of SHAPE_RADII, well-mixed left out, fitted by Stats::QuadraticLogistic. It reads
     # "peaks at an intermediate reach" where the radius² coefficient is negative, its
-    # two-sided Wald p is below SHAPE_LEVEL and the fitted peak lies strictly inside
-    # SHAPE_RADII's range. It is fitted only on at least MIN_SHAPE_RADII radii with a
-    # finished run, and with at least one emerged and one not-emerged run among them.
+    # two-sided Wald p is below SHAPE_LEVEL and the fitted peak lies strictly between
+    # SHAPE_PEAK_FLOOR and SHAPE_PEAK_CEILING, with SHAPE_PEAK_FLANK of SHAPE_RADII on each
+    # side of it: a concave curve that only rises or only falls across the radii puts its
+    # vertex just inside an end of their range, and is not a peak. It is fitted only on at
+    # least MIN_SHAPE_RADII radii with a finished run, and with at least one emerged and one
+    # not-emerged run among them.
     SHAPE_RADII = (RADIUS_ORDER - [WELL_MIXED]).freeze
     SHAPE_LEVEL = 0.05
+    SHAPE_PEAK_FLANK = 2
+    SHAPE_PEAK_FLOOR = SHAPE_RADII.sort[SHAPE_PEAK_FLANK - 1]
+    SHAPE_PEAK_CEILING = SHAPE_RADII.sort[-SHAPE_PEAK_FLANK]
     MIN_SHAPE_RADII = 3
 
     OUTCOME_LABELS = { shown: "shown", not_shown: "not shown", refuted: "refuted", untested: "not yet tested",

@@ -564,7 +564,7 @@ sample.
     counts: radius 4 emerges more often than radius 1 and than well-mixed, two one-sided
     Fisher exact tests Holm-corrected at family α = 0.05. H-shape: over the finite radii, a
     logistic regression on radius and radius² whose radius² coefficient is negative at Wald
-    p < 0.05 with its fitted peak inside the radii read. Pre-registered in
+    p < 0.05 with its fitted peak between radius 2 and 6. Pre-registered in
     `docs/design_record.md`, 2026-09-27, "Does emergence peak at an intermediate reach?",
     whose numbers live in `Lab::LocalityEmergenceReading`.
 

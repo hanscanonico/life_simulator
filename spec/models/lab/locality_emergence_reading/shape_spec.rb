@@ -47,6 +47,28 @@ RSpec.describe Lab::LocalityEmergenceReading::Shape do
     end
   end
 
+  context "with a set that rises across the radii, flattening, its vertex just inside radius 8" do
+    let(:arms) { arms_of(1 => 1, 2 => 2, 3 => 5, 4 => 9, 6 => 20, 8 => 22) }
+
+    it "is not shown, though the curvature is significant" do
+      expect(shape.fit.quadratic).to be_negative
+      expect(shape.fit.wald_p).to be < 0.05
+      expect(shape.peak).to be_between(6, 8).exclusive
+      expect(shape.outcome).to eq(:not_shown)
+    end
+  end
+
+  context "with a set that falls across the radii, steepening, its vertex just inside radius 1" do
+    let(:arms) { arms_of(1 => 40, 2 => 38, 3 => 35, 4 => 30, 6 => 18, 8 => 4) }
+
+    it "is not shown, though the curvature is significant" do
+      expect(shape.fit.quadratic).to be_negative
+      expect(shape.fit.wald_p).to be < 0.05
+      expect(shape.peak).to be_between(1, 2).exclusive
+      expect(shape.outcome).to eq(:not_shown)
+    end
+  end
+
   context "with fewer than three finite radii finished" do
     let(:arms) { arms_of(1 => 4, 4 => 16, 0 => 3) }
 

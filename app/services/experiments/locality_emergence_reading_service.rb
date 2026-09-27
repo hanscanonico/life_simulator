@@ -61,8 +61,8 @@ module Experiments
     def emerged_ids
       @emerged_ids ||= Sample.joins(:run).merge(experiment.runs.where(status: "finished"))
                              .where("samples.epoch >= runs.emergence_epoch")
-                             .where("jsonb_typeof(samples.values -> :key) = 'number' " \
-                                    "AND (samples.values ->> :key)::float >= :share",
+                             .where("CASE WHEN jsonb_typeof(samples.values -> :key) = 'number' " \
+                                    "THEN (samples.values ->> :key)::float END >= :share",
                                     key: Lab::LocalityEmergenceReading::SHARE_KEY,
                                     share: Lab::LocalityEmergenceReading::MIN_SHARE)
                              .distinct.pluck(:run_id).to_set

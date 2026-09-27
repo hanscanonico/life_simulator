@@ -79,8 +79,9 @@
     A logistic regression of emergence on radius and radius² over the finished runs of radius
     <%= Lab::LocalityEmergenceReading::SHAPE_RADII.to_sentence %>, read where the radius²
     coefficient is negative at two-sided Wald p &lt; <%= Lab::LocalityEmergenceReading::SHAPE_LEVEL %>
-    and the fitted peak lies between radius <%= Lab::LocalityEmergenceReading::SHAPE_RADII.min %> and
-    <%= Lab::LocalityEmergenceReading::SHAPE_RADII.max %>.
+    and the fitted peak lies between radius <%= Lab::LocalityEmergenceReading::SHAPE_PEAK_FLOOR %> and
+    <%= Lab::LocalityEmergenceReading::SHAPE_PEAK_CEILING %>, with
+    <%= Lab::LocalityEmergenceReading::SHAPE_PEAK_FLANK %> of those radii on each side of it.
     <% if shape.fit %>
       The radius² coefficient is <%= metric_value shape.fit.quadratic %>, Wald
       p = <%= metric_value shape.fit.wald_p %>, and the fitted peak

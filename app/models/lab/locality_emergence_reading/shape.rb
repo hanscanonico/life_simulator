@@ -5,8 +5,9 @@ module Lab
     # H-shape over the finite radii: `fit` is Stats::QuadraticLogistic's over their finished
     # runs, nil where the arms are not testable or the fit did not settle. Shown where the
     # radius² coefficient is negative, its two-sided Wald p below SHAPE_LEVEL and the fitted
-    # peak strictly inside SHAPE_RADII's range; not shown otherwise. Well-mixed is not a
-    # distance: it is left out of the fit and reported beside it.
+    # peak strictly between SHAPE_PEAK_FLOOR and SHAPE_PEAK_CEILING; not shown otherwise. No
+    # fit is labelled as such and is not shown either. Well-mixed is not a distance: it is
+    # left out of the fit and reported beside it.
     Shape = Data.define(:arms, :fit) do
       def self.read(arms)
         probe = new(arms: arms, fit: nil)
@@ -27,8 +28,8 @@ module Lab
       def peak = fit&.peak
 
       def shown?
-        !fit.nil? && fit.quadratic.negative? && fit.wald_p < SHAPE_LEVEL && peak > SHAPE_RADII.min &&
-          peak < SHAPE_RADII.max
+        !fit.nil? && fit.quadratic.negative? && fit.wald_p < SHAPE_LEVEL && peak > SHAPE_PEAK_FLOOR &&
+          peak < SHAPE_PEAK_CEILING
       end
 
       def outcome

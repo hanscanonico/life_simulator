@@ -2129,8 +2129,11 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   **{1, 2, 3, 4, 6, 8, 0 = well-mixed}**. Radius 8 is inside the engine's range (0–64, and a
   positive radius must satisfy 2r + 1 ≤ 128). **Seeds 91–180** in every arm: `lineage_rule`
   changes no byte of a world, so seeds 1–90 at radius 1, 2, 4 and 0 would replay sweep 12's
-  worlds, the exploratory counts included. 20 000 epochs, **630 runs**, priority **30**: after
-  the from-emerged children (50), ahead of sweep 9's extension.
+  worlds, the exploratory counts included. No run on the lab reads these worlds already (a
+  SELECT, 2026-09-27): the only runs at seeds 91–180 are the host-parasite sweep's, at radius
+  1 with `max_tape_len` 128 and 256, energy stock on in most of their arms — variable-length
+  worlds, not these. 20 000 epochs, **630 runs**, priority **30**: after the from-emerged
+  children (50), ahead of sweep 9's extension.
 
   **Emergence** is sweep 12's, unchanged: a run is **emerged** when it has the record's
   confirmed `emergence_epoch` **and** reads `replicator_share ≥ 0.5` at some sample at or
@@ -2148,7 +2151,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **Holm-corrected** at family α = **0.05**: the smaller p is multiplied by 2, the larger
     by 1, and an adjusted p never falls below the one before it.
   - **Shown** where both adjusted p are below 0.05.
-  - **Refuted** where radius 4's rate is at most radius 1's **and** at most well-mixed's.
+  - An arm with no emerged run is tested as it stands: the tables are exact at zero, and
+    radius 4 at 0 emerged against a rival at 0 has p = 1.
+  - **Refuted** where radius 4's rate is at most radius 1's **and** at most well-mixed's —
+    radius 4 at 0 emerged is refuted.
   - **Not shown** otherwise, radius 4 ahead of one rival and not the other included.
   - **Not yet tested** until each of the three arms has a finished run.
 
@@ -2167,10 +2173,13 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     cannot be inverted, is **no fit**: that is what a separated table does.
   - **Shown** where b₂ is negative, its **two-sided Wald p** (b₂ over its standard error from
     the inverse information at the maximum, against the normal) is below **0.05**, and the
-    **fitted peak** −b₁ / (2b₂) lies strictly between radius 1 and radius 8. A downward curve
-    peaking outside the radii read is a curve, not an intermediate peak.
-  - **Not shown** otherwise. The fitted peak radius and b₂ with its p are reported
-    whichever way it reads.
+    **fitted peak** −b₁ / (2b₂) lies strictly between radius 2 and radius 6, so that two of
+    the radii read lie on each side of it. A concave curve that only rises or only falls
+    across the radii puts its vertex outside them or just inside an end — rates of 1, 2, 5,
+    9, 20 and 22 of 90 fit a significant b₂ < 0 with the vertex at 7.5 — and that is a
+    curve, not an intermediate peak.
+  - **Not shown** otherwise, no fit included (it is labelled "no fit"). The fitted peak
+    radius and b₂ with its p are reported whichever way it reads.
   - **Not yet tested** with fewer than three finite radii holding a finished run, or with no
     emerged or no not-emerged run among them.
   - **Well-mixed is left out of the fit** — radius 0 is not a distance — and its count is
@@ -2178,6 +2187,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
 
   **When it is read.** Final when every run of the sweep has finished; before that the page
   and `lab:locality_emergence_report` label it **interim** and count only the finished runs.
+  A failed run keeps the reading interim until it is re-run and finishes, as the
+  lineage-diversity reading's first clarification reads its failed runs. Radius 2, 3, 6 and
+  8 enter H-shape only; well-mixed enters H-peak only.
   The reading is `Experiments::LocalityEmergenceReadingService`.
 
   **What is not claimed.** One world size (128²), one mutation rate (2^-13), one tape length
