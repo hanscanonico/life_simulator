@@ -159,7 +159,10 @@ claim rests on it.
   streams of their own, a pure function of `(seed, epoch)`, and write nothing back, so no
   run and no other observable moves. The census's `top_k` window does not bound them: the
   cells are drawn from the whole world. Null on the life substrate and on every sample
-  recorded before they existed.
+  recorded before they existed. Read over every stored world of the finished corpus, they
+  find a colony at the end of 74 runs where the census finds 1; whether the census, the
+  emergence confirmation and the persistence readings relock on them is the user's to decide
+  (docs/design_record.md 2026-09-25, "The corpus read by the orientation-aware detector").
 - `entropy_bits`: Shannon entropy of the byte distribution.
 - `alphabet_size`: how many of the 256 byte values the world still holds, 1–256. Only
   `+` and `-` can mint a byte value, so with `mutation_rate = 0` the alphabet is a
