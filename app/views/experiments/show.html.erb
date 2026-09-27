@@ -79,6 +79,7 @@
 
 <% if @show.descendant_reading %>
   <%= render "experiments/descendant_reading", reading: @show.descendant_reading %>
+  <%= render "experiments/heldout_reading", reading: @show.descendant_reading %>
 <% end %>
 
 <% if @show.lineage_diversity_reading %>

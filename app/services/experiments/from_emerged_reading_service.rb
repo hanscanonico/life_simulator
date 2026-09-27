@@ -7,7 +7,8 @@ module Experiments
   # against the continuation over paired (parent, seed) children
   # (Lab::DescendantReading::Comparison), and the continuation read for persistence. It is
   # interim until every candidate parent is terminal and read, and every child of every
-  # qualifying parent has finished.
+  # qualifying parent has finished. Beside it, the held-out confirmatory reading of the same
+  # children's samples (Lab::FromEmergedHeldout), restricted to the held-out parents' children.
   #
   # It reads stored samples and changes nothing but the cache: each child's reading is held
   # on its own, so a view while the sweep runs reads again only the children that posted
@@ -20,12 +21,17 @@ module Experiments
     # A deploy that changes one reads every child afresh. Digested once per boot.
     READING_VERSION = Digest::SHA256.hexdigest(
       %w[app/services/experiments/from_emerged_reading_service.rb app/models/lab/descendant_reading.rb
-         app/models/lab/descendant_reading/child.rb app/presenters/findings/median.rb]
+         app/models/lab/descendant_reading/child.rb app/models/lab/from_emerged_heldout.rb
+         app/models/lab/from_emerged_heldout/child.rb app/presenters/findings/median.rb]
         .map { |path| Rails.root.join(path).binread }.join
     )
 
     SAMPLE_KEYS = [Lab::DescendantReading::SHARE_KEY, Lab::DescendantReading::REPLICATING_KEY,
-                   Lab::DescendantReading::COMPLEXITY_KEY, *Lab::DescendantReading::DESCRIPTIVE_KEYS].freeze
+                   Lab::DescendantReading::COMPLEXITY_KEY, *Lab::DescendantReading::DESCRIPTIVE_KEYS,
+                   Lab::FromEmergedHeldout::LATENCY_KEY].freeze
+
+    # What one child's samples read under both entries, held in the cache together.
+    ChildReadings = Data.define(:reading, :heldout)
 
     Treatment = Data.define(:name, :bundle) do
       def continuation? = bundle.empty?
@@ -36,9 +42,10 @@ module Experiments
     end
 
     # `relapse_colony_age` and `watched_colony_ages` are Run#colony_age_at, counted from the
-    # parent's emergence; nil where the parent has none.
+    # parent's emergence; nil where the parent has none. `heldout` is the child's
+    # Lab::FromEmergedHeldout::Child reading.
     ChildRow = Data.define(:run_id, :parent_id, :seed, :treatment, :status, :reading, :relapse_colony_age,
-                           :watched_colony_ages) do
+                           :watched_colony_ages, :heldout) do
       def finished? = status == "finished"
 
       def cells
@@ -79,7 +86,7 @@ module Experiments
 
     def call
       Lab::DescendantReading::Report.new(children: children, arms: arms, comparisons: comparisons,
-                                         persistence: persistence,
+                                         persistence: persistence, heldout: heldout,
                                          final: DescendantSweepSettledService.call(experiment))
     end
 
@@ -123,6 +130,41 @@ module Experiments
 
     def children_of(treatment) = children.select { |child| child.treatment == treatment }
 
+    def heldout
+      held_out = children.select { |child| heldout_parent_ids.include?(child.parent_id) }
+      arms = treatments.map do |treatment|
+        Lab::FromEmergedHeldout::Arm.new(treatment: treatment,
+                                         children: held_out.select { |child| child.treatment == treatment })
+      end
+      Lab::FromEmergedHeldout::Report.new(children: held_out, arms: arms, tests: heldout_tests(arms))
+    end
+
+    # H3-latency and H4-survivors on each economy arm; host mode was refuted and is not
+    # re-tested.
+    def heldout_tests(arms)
+      control = arms.find { |arm| arm.treatment.continuation? }
+      return [] if control.nil?
+
+      controls = control.children.index_by { |child| [child.parent_id, child.seed] }
+      arms.select { |arm| arm.treatment.priced? }.flat_map do |arm|
+        { "H3-latency" => Lab::FromEmergedHeldout::Pairs::Latency,
+          "H4-survivors" => Lab::FromEmergedHeldout::Pairs::Survivors }.map do |hypothesis, pair|
+          pairs = arm.children.map do |child|
+            pair.new(parent_id: child.parent_id, seed: child.seed, treated: child,
+                     control: controls[[child.parent_id, child.seed]])
+          end
+          Lab::FromEmergedHeldout::Test.new(hypothesis: hypothesis, treatment: arm.treatment,
+                                            comparison: Lab::DescendantReading::Comparison.new(pairs: pairs,
+                                                                                               kills: false))
+        end
+      end
+    end
+
+    def heldout_parent_ids
+      @heldout_parent_ids ||= Run.where(id: child_runs.map(&:parent_run_id).uniq).select(:id, :seed)
+                                 .select { |parent| Lab::FromEmergedHeldout.held_out?(parent) }.to_set(&:id)
+    end
+
     def children
       @children ||= child_runs.map { |run| child_row(run, readings.fetch(run.id)) }
     end
@@ -146,9 +188,10 @@ module Experiments
        run.updated_at.iso8601(6)]
     end
 
-    def child_row(run, reading)
+    def child_row(run, readings)
+      reading = readings.reading
       ChildRow.new(run_id: run.id, parent_id: run.parent_run_id, seed: run.seed, treatment: treatment_of(run),
-                   status: run.status, reading: reading,
+                   status: run.status, reading: reading, heldout: readings.heldout,
                    relapse_colony_age: reading.relapse_epoch && run.colony_age_at(reading.relapse_epoch),
                    watched_colony_ages: watched_colony_ages(run, reading))
     end
@@ -161,9 +204,13 @@ module Experiments
     end
 
     def read(run)
-      Lab::DescendantReading::Child.read(own_samples(run), parent_epoch: run.parent_epoch,
-                                                           descriptive: Lab::DescendantReading::DESCRIPTIVE_KEYS,
-                                                           bin: Lab::DescendantReading::TRAJECTORY_BIN)
+      samples = own_samples(run)
+      reading = Lab::DescendantReading::Child.read(samples, parent_epoch: run.parent_epoch,
+                                                            descriptive: Lab::DescendantReading::DESCRIPTIVE_KEYS,
+                                                            bin: Lab::DescendantReading::TRAJECTORY_BIN)
+      ChildReadings.new(reading: reading,
+                        heldout: Lab::FromEmergedHeldout::Child.read(samples, parent_epoch: run.parent_epoch,
+                                                                              last_share: reading.last_share))
     end
 
     def child_runs

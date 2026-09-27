@@ -276,6 +276,18 @@ namespace :lab do
     print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
+  desc "Read the from-emerged sweep's held-out children as pre-registered: every held-out child, " \
+       "every treatment, H3-latency and H4-survivors (FORMAT=csv for CSV)"
+  task from_emerged_heldout_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("from_emerged"))
+    raise "The from-emerged sweep is not seeded." if experiment.nil?
+
+    report = Experiments::FromEmergedReadingService.call(experiment: experiment)
+    heldout = report.heldout
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? heldout.to_csv(final: report.final) : heldout.to_text(final: report.final)
+  end
+
   desc "Read the lineage-diversity sweep as pre-registered: every run, every arm, the hypothesis " \
        "(FORMAT=csv for CSV)"
   task lineage_diversity_report: :environment do

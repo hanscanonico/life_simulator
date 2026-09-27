@@ -6,8 +6,9 @@ module Lab
   module DescendantReading
     # The from-emerged sweep's reading, as Experiments::FromEmergedReadingService assembles
     # it: the per-child table, the per-treatment counts, the paired comparisons with each
-    # parent's agreement, and H-persistence — interim until `final`.
-    Report = Data.define(:children, :arms, :comparisons, :persistence, :final) do
+    # parent's agreement, and H-persistence — interim until `final`. `heldout` is the held-out
+    # confirmatory reading (Lab::FromEmergedHeldout::Report), final with it.
+    Report = Data.define(:children, :arms, :comparisons, :persistence, :heldout, :final) do
       def interim? = !final
 
       delegate :any?, to: :children
