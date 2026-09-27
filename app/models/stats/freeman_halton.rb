@@ -7,7 +7,8 @@ module Stats
   # observed one. Each table's weight is the product of its rows' binomial coefficients, an
   # integer, so the comparison is an exact equality and the division happens once. It
   # enumerates every table the margins allow, which is a few thousand for four arms of
-  # ninety sharing a few dozen events, and grows fast past that.
+  # ninety sharing a few dozen events, and grows as the events to the power of one fewer
+  # than the arms past that.
   class FreemanHalton
     def self.p_value(rows) = new(rows).p_value
 
@@ -21,11 +22,10 @@ module Stats
     def p_value
       return nil if sizes.size < 2 || !sizes.all?(&:positive?)
 
-      threshold = weight(observed)
+      threshold = observed.each_with_index.reduce(1) { |product, (count, row)| product * coefficients[row][count] }
       extreme = 0
       total = 0
-      each_table(0, observed.sum, []) do |table|
-        chance = weight(table)
+      each_weight(0, observed.sum, 1) do |chance|
         total += chance
         extreme += chance if chance <= threshold
       end
@@ -36,17 +36,22 @@ module Stats
 
     attr_reader :sizes, :observed
 
-    def each_table(row, remaining, prefix, &)
+    # C(size, 0..size) for each row, so a table's weight is one lookup per row.
+    def coefficients
+      @coefficients ||= sizes.map do |size|
+        (1..size).each_with_object([1]) { |step, row| row << (row.last * (size - step + 1) / step) }
+      end
+    end
+
+    def each_weight(row, remaining, product, &)
       if row == sizes.size - 1
-        yield [*prefix, remaining] if remaining <= sizes[row]
+        yield product * coefficients[row][remaining] if remaining <= sizes[row]
         return
       end
 
-      (0..[remaining, sizes[row]].min).each { |count| each_table(row + 1, remaining - count, [*prefix, count], &) }
+      (0..[remaining, sizes[row]].min).each do |count|
+        each_weight(row + 1, remaining - count, product * coefficients[row][count], &)
+      end
     end
-
-    def weight(table) = table.zip(sizes).reduce(1) { |product, (count, size)| product * choose(size, count) }
-
-    def choose(outer, inner) = (0...inner).reduce(1) { |product, step| product * (outer - step) / (step + 1) }
   end
 end
