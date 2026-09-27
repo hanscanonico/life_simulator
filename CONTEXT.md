@@ -22,11 +22,11 @@ findings and issues use the locked vocabulary.
   two tapes are concatenated, run as one program for at most `max_steps`, and split back
   (§1.1). Not to be confused with the parameter `interaction` (`concat` default, `host`),
   the execution mode that decides whose bytes the instruction pointer ranges over.
-- **Epoch** — every cell takes one interaction, in a random visiting order, then mutation
-  runs over every byte (§1.1). Samples are taken every `sample_every` epochs.
+- **Epoch** — every cell initiates one interaction, in a random visiting order, then
+  mutation runs over every byte (§1.1). Samples are taken every `sample_every` epochs.
 - **head0 / head1** — the two data heads of the interpreter, both starting at 0 and
-  wrapping over the concatenation; `.` copies head0 → head1, `,` head1 → head0 (§1.1,
-  "Instruction set").
+  wrapping over the concatenation (or claiming a fresh byte under room to grow); `.` copies
+  head0 → head1, `,` head1 → head0 (§1.1, "Instruction set").
 - **Ops** — the ten BFF instructions `< > { } + - . , [ ]`; every other byte is a no-op.
   The parameter `ops` ablates that set (§1.3 sweep 5); the steal op `$` is not one of the
   ten (§1.1, "Steal op").
@@ -44,7 +44,8 @@ findings and issues use the locked vocabulary.
   (2026-09-19). Relocking the transition on it is pending with the user (#229, PR #237).
 - **Emergence / emerged** — `emergence_epoch` (with `emergence_witness`): the earliest of a
   run's crossings that the census or `copy_rate` confirms within
-  `Runs::EmergenceEpochService::CONFIRM_WINDOW` samples (2026-09-15, both entries). A run
+  `Runs::EmergenceEpochService::CONFIRM_WINDOW` (10) samples either side (2026-09-15, both
+  entries; #172, #189). A run
   **emerged** when it has one; the open-endedness findings read it, not
   `transition_epoch`.
 - **Replicator test** — a tape `T` passes when running `T ++ R` on fresh random `R` leaves
@@ -55,9 +56,11 @@ findings and issues use the locked vocabulary.
   2026-09-18, "read over 8 draws"). **Census peak**: its maximum and first epoch, derived
   in Rails (2026-09-11).
 - **`replicator_share` / orientation-aware detector** — the share of 256 randomly drawn
-  cells whose tape passes `replicator::self_replicates`, a 5-run copy chain modelled on the
-  2026 BFF paper that reads a reverse copy as a copy (§1.2, "Orientation-aware detector";
-  #247). With `replicator_share_rotated` and `dominant_self_replicates` it is a companion:
+  cells whose tape passes `replicator::self_replicates` aligned: 5 chains of 5 runs against
+  fresh noise, the carried first half compared with the original, a position agreeing on a
+  strict majority of chains, a pass at 3 of every 4 positions. Modelled on the 2026 BFF
+  paper; the odd chain reads a reverse copier back in its own orientation (§1.2,
+  "Orientation-aware detector"; #247). With `replicator_share_rotated` and `dominant_self_replicates` it is a companion:
   the census, emergence and persistence stay locked, and whether they relock on it is the
   user's decision (2026-09-25, "The corpus read by the orientation-aware detector").
 - **Reverse copier** — a tape that writes a byte-exact `reverse(T)` into its partner, so a
@@ -65,7 +68,8 @@ findings and issues use the locked vocabulary.
   and `copy_rate` count them as nothing; `reverse_copy_rate` sees them (2026-09-25, "The
   replicator census is blind to replicators that copy in reverse").
 - **`copy_rate`** — the share of a sampled epoch's interactions that ended with one half a
-  byte-exact forward copy of its partner's arriving tape (§1.2).
+  byte-exact forward copy of its partner's arriving tape, among pairs that did not arrive
+  as copies already (§1.2).
 
 ## Lineage and complexity
 
@@ -84,8 +88,11 @@ findings and issues use the locked vocabulary.
 - **Persistence / relapse** — a transitioned world **persisted** while its transitioned
   state held and **relapsed** at the first `hold_samples + 1` consecutive rejecting samples,
   a Rails-side rule (`Runs::PersistenceSummaryService`; 2026-09-12). The from-emerged sweep
-  reads it on `replicator_share` instead: **held** or **relapsed** by `Lab::DescendantReading`
-  (2026-09-25). Relocking the locked reading on the share is option 3 before the user.
+  reads persistence on `replicator_share` instead: a child **held** when its last-decile
+  share is at least 0.5 and never sat below 0.1 for 3 samples running, **relapsed**
+  otherwise (`Lab::DescendantReading`; 2026-09-25). Relocking the locked reading on the
+  share is option 3 of 2026-09-25 "The corpus read by the orientation-aware detector",
+  undecided.
 - **Dominant tape / dominant replicator** — the most populous tape among the `top_k` that
   passes the replicator test; where none passes, the world's most populous tape, with
   `dominant_replicates` false (§1.2; 2026-09-15, "read whether or not it replicates").
@@ -96,27 +103,28 @@ findings and issues use the locked vocabulary.
   on, its partner reading (2026-09-16).
 - **Plateau / keeps rising / measured run** — a measured run keeps rising when the median
   instruction count of its last post-crossing decile beats its first by ≥ 20% with the core
-  not falling, and plateaus within ±10%. An arm keeps rising or plateaus when half its
-  measured runs do, reads **mixed** when it clears both bars and **neither** when it clears
+  not falling, and plateaus within ±10%. An arm keeps rising or plateaus when at least half
+  its measured runs do, reads **mixed** when it clears both bars and **neither** when it clears
   none, and reads at all only on two measured emerged runs or a barren block (§1.3 sweep 9).
   **Measured** is the post-hoc amended rule of 2026-09-21.
 - **Copy cost / copy latency** — `copy_cost`: median interpreter steps of the replicator
   test's passing trials for the dominant replicator, null when none passes and undefined for
   a reverse copier, whose loop never halts (2026-09-13). `copy_latency` (with
   `copy_latency_orientation`): the step at which the partner first holds a complete image
-  of the dominant tape in either orientation, its companion (§1.2; 2026-09-25, "Oriented
-  companions"; #255).
+  of the dominant tape in either orientation, median of 5 trials, its companion (§1.2;
+  2026-09-25, "Oriented companions"; #255).
 
 ## The lab record
 
-- **Sweep / experiment** — a sweep is one numbered item of §1.3; each is one `Experiment`
-  row, built from `Lab::SWEEPS` under a sweep key (`from_emerged` → slug `from-emerged`).
-- **Arm** — one parameter point of a sweep; the **control** arm is the substrate every
-  earlier sweep ran. An **economy** is sweep 9's `(energy_influx, steal_amount)` bundle,
+- **Sweep / experiment** — a sweep is one `Lab::SWEEPS` entry and one `Experiment` row: a
+  numbered item of §1.3, or a re-run or control beside them (`mutation_rate_long`,
+  `bff_control`). Its slug is its key in URL form (`from_emerged` → `from-emerged`).
+- **Arm** — one parameter point of a sweep; the **control** arm has the sweep's treatment
+  off. An **economy** is sweep 9's `(energy_influx, steal_amount)` bundle,
   one arm value (§1.3 sweep 9).
 - **Seed / seed-block** — the seed fixes a run given its params; a seed-block is ten seeds.
-  An arm run to a full block with nothing emerged is **barren** ("never emerged"): evidence,
-  not an untested arm (2026-09-15, "An arm run to ten seeds").
+  An arm with ten or more terminal runs and none emerged is **barren** ("never emerged"):
+  evidence, not an untested arm (2026-09-15, "An arm run to ten seeds").
 - **Run** — one `(params, seed)` execution, `pending → claimed → running → finished |
   failed`. A **descendant run** starts from its **parent**'s stored world at
   `parent_epoch` and is determined by `(parent world, params, seed)`; its `epochs` is
@@ -130,7 +138,8 @@ findings and issues use the locked vocabulary.
   and read by a named, versioned **instrument**. `oriented_census/1` reads the census
   companions and both copy rates; `oriented_census/2` adds the oriented lineage variation,
   the oriented core and `copy_latency`. An instrument version never changes once readings
-  exist under it (§2; #246). A **rescore** is the older `top_k` reading, in `rescores`.
+  exist under it (§2; #246). A **rescore** is the older kind: a stored world re-read at
+  another `top_k`, in `rescores` (2026-09-18).
 
 ## How claims are made
 

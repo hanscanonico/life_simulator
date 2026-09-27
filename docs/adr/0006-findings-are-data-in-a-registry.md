@@ -19,7 +19,7 @@ Findings are value objects in the repo. `Findings::Registry::ALL` lists them as
 experiments and findings), and each one names an ERB body under
 `app/views/findings/bodies/`. A status is one of `open`, `partial`, `published` or
 `negative`, and anything else raises. Adding a finding means adding an entry and its body;
-nothing else in the app knows a finding by name. Its evidence is read through the
+nothing else in the app has to change to publish it. Its evidence is read through the
 experiment's own presenter and partials, never a second implementation.
 
 ## Consequences

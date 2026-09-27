@@ -28,9 +28,9 @@ state gets a new version, not a changed one:
 - **5**: plus energy stocks.
 - **6, 7, 8**: versions 3, 4 and 5 with the relative transition block written last.
 
-A world writes the lowest version its state needs, byte for byte what it wrote before.
-Every older version still decodes and restores; a version 1 or 2 blob restores with one
-lineage id per cell.
+The engine now writes only 6, 7 or 8, the lowest its state needs (8 with a stock, 7 with
+ragged tapes, 6 otherwise); 1–5 are read, never written. Every older version still
+decodes and restores; a version 1 or 2 blob restores with one lineage id per cell.
 
 ## Consequences
 
