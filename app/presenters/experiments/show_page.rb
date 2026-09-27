@@ -115,10 +115,10 @@ module Experiments
 
     # A descendant sweep is read under its own rule (`descendant_reading`): this one would
     # read its children under the conserved-core clause that sweep's entry drops.
-    # The lineage-diversity sweep is read under its own rule (`lineage_diversity_reading`):
-    # this one would read its emerged runs without that entry's share clause.
+    # The lineage-diversity and locality-emergence sweeps are read under their own rules:
+    # this one would read their emerged runs without those entries' share clause.
     def complexity_reading?
-      experiment.parents.blank? && !LineageDiversityReadingService.applies_to?(experiment) && complexity_arms.any?
+      experiment.parents.blank? && !own_emergence_rule? && complexity_arms.any?
     end
 
     def rise_margin = ComplexityArmsService::RISE_MARGIN
@@ -164,7 +164,21 @@ module Experiments
       @lineage_diversity_reading ||= LineageDiversityReadingService.call(experiment: experiment)
     end
 
+    # The locality-emergence sweep's pre-registered reading, on that sweep only. Its samples
+    # are recorded with an update of their run, so the page's key holds it.
+    def locality_emergence_reading
+      return nil unless LocalityEmergenceReadingService.applies_to?(experiment)
+
+      @locality_emergence_reading ||= cached("locality_emergence_reading") do
+        LocalityEmergenceReadingService.call(experiment: experiment)
+      end
+    end
+
     private
+
+    def own_emergence_rule?
+      [LineageDiversityReadingService, LocalityEmergenceReadingService].any? { |rule| rule.applies_to?(experiment) }
+    end
 
     def arm_means
       cached("arm_means") { ArmMeans.read(axes: axes, runs: observed_runs, series: ArmSeries::EVERY) }

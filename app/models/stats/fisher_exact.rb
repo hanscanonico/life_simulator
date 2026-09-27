@@ -8,8 +8,12 @@ module Stats
   # chi-square approximation stops being one, so the sum is taken in exact rationals and
   # converted only at the end: a table as likely as the observed one is then recognised by
   # an exact equality, where floats would need the relative slack R's `fisher.test` carries.
+  # `greater` is the one-sided test that the first row's first column is the larger share,
+  # R's `alternative = "greater"`, left an exact rational so a boundary compares exactly.
   class FisherExact
     def self.two_sided(table) = new(table).two_sided
+
+    def self.greater(table) = new(table).greater
 
     def initialize(table)
       @observed, @row_one_rest, @row_two_observed, @row_two_rest = table.flatten
@@ -22,6 +26,14 @@ module Stats
       return nil unless row_one.positive? && row_two.positive?
 
       support.map { |count| probability(count) }.select { |chance| chance <= threshold }.sum.to_f.clamp(0.0, 1.0)
+    end
+
+    # The chance of at least the observed count in the first row's first column, nil on an
+    # empty row as above.
+    def greater
+      return nil unless row_one.positive? && row_two.positive?
+
+      (observed..support.end).sum { |count| probability(count) }
     end
 
     private

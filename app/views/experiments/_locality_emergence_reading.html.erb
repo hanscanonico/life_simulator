@@ -1,0 +1,99 @@
+<%# The locality-emergence sweep's pre-registered reading (docs/design_record.md, 2026-09-27):
+    `reading` is a Lab::LocalityEmergenceReading::Report. The per-run rows stay in
+    `lab:locality_emergence_report`. %>
+<% peak = reading.peak %>
+<% shape = reading.shape %>
+<section class="mt-6" id="locality-emergence-reading">
+  <h2>
+    The pre-registered reading
+    <span class="badge <%= reading.interim? ? 'badge-warning' : 'badge-success' %>">
+      <%= reading.interim? ? "interim" : "final" %>
+    </span>
+  </h2>
+  <p class="text-sm text-muted">
+    <% if reading.interim? %>
+      Interim: not every run of the sweep has finished, and only the finished ones are counted.
+      Nothing here is the sweep's result yet.
+    <% else %>
+      Every run of the sweep has finished.
+    <% end %>
+    A run emerged where it has a confirmed emergence epoch and reads
+    <span class="mono">replicator_share</span> of at least
+    <%= percent_value Lab::LocalityEmergenceReading::MIN_SHARE %> at some sample from it on,
+    as in the lineage-diversity sweep.
+  </p>
+
+  <figure class="table-figure mt-4">
+    <figcaption class="table-caption text-sm text-muted" id="locality-emergence-arms">
+      Runs per arm, counted so far. The rate is emerged over finished.
+    </figcaption>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="locality-emergence-arms">
+      <table class="data-table" aria-labelledby="locality-emergence-arms">
+        <thead>
+          <tr>
+            <th>Arm</th>
+            <th class="numeric">Runs</th>
+            <th class="numeric">Finished</th>
+            <th class="numeric">Emerged</th>
+            <th class="numeric">Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% reading.arms.each do |arm| %>
+            <tr>
+              <td><%= arm.label %></td>
+              <td class="numeric"><%= arm.rows.size %></td>
+              <td class="numeric"><%= arm.finished %></td>
+              <td class="numeric"><%= arm.emerged %></td>
+              <td class="numeric"><%= percent_value arm.rate&.to_f %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3 class="mt-4">H-peak</h3>
+  <p>
+    Radius <%= Lab::LocalityEmergenceReading::PEAK_RADIUS %> emerges more often than radius 1 and than
+    the well-mixed world:
+    <span class="badge <%= peak.badge_class %>"><%= peak.outcome_label %></span>
+  </p>
+  <p class="text-sm text-muted">
+    <% if peak.testable? %>
+      Two one-sided Fisher exact tests, Holm-corrected at family level
+      <%= Lab::LocalityEmergenceReading::FAMILY_ALPHA %>:
+      <%= peak.comparisons.join("; ") %>.
+    <% else %>
+      Untested until radius <%= Lab::LocalityEmergenceReading::PEAK_RADIUS %>, radius 1 and the
+      well-mixed arm each have a finished run.
+    <% end %>
+  </p>
+
+  <h3 class="mt-4">H-shape</h3>
+  <p>
+    Across the finite radii, emergence peaks at an intermediate reach:
+    <span class="badge <%= shape.badge_class %>"><%= shape.outcome_label %></span>
+  </p>
+  <p class="text-sm text-muted">
+    A logistic regression of emergence on radius and radius² over the finished runs of radius
+    <%= Lab::LocalityEmergenceReading::SHAPE_RADII.to_sentence %>, read where the radius²
+    coefficient is negative at two-sided Wald p &lt; <%= Lab::LocalityEmergenceReading::SHAPE_LEVEL %>
+    and the fitted peak lies between radius <%= Lab::LocalityEmergenceReading::SHAPE_RADII.min %> and
+    <%= Lab::LocalityEmergenceReading::SHAPE_RADII.max %>.
+    <% if shape.fit %>
+      The radius² coefficient is <%= metric_value shape.fit.quadratic %>, Wald
+      p = <%= metric_value shape.fit.wald_p %>, and the fitted peak
+      <%= shape.peak ? "is at radius #{metric_value shape.peak}" : "does not exist: the curve opens upward" %>.
+    <% elsif shape.testable? %>
+      The fit did not settle.
+    <% else %>
+      Untested until <%= Lab::LocalityEmergenceReading::MIN_SHAPE_RADII %> finite radii have a
+      finished run, with emerged and not-emerged runs among them.
+    <% end %>
+    <% if shape.well_mixed_arm&.finished? %>
+      Well-mixed is not a distance and is left out of the fit: it emerged
+      <%= shape.well_mixed_arm.emerged %> of <%= shape.well_mixed_arm.finished %>.
+    <% end %>
+  </p>
+</section>

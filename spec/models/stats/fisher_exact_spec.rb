@@ -42,4 +42,25 @@ RSpec.describe Stats::FisherExact do
       expect(described_class.two_sided([[2, 8], [0, 0]])).to be_nil
     end
   end
+
+  describe ".greater" do
+    it "sums the upper tail of the lady tasting tea exactly" do
+      # P(3) + P(4) = (C(4,3)·C(4,1) + C(4,4)·C(4,0)) / C(8,4) = (16 + 1) / 70
+      expect(described_class.greater([[3, 1], [1, 3]])).to eq(Rational(17, 70))
+    end
+
+    it "reads the whole support from a first cell at its least" do
+      expect(described_class.greater([[0, 4], [4, 0]])).to eq(1)
+    end
+
+    it "is not symmetric: the lower tail's table reads high" do
+      expect(described_class.greater([[1, 9], [11, 3]])).to be > 0.99
+    end
+
+    context "with an empty row" do
+      it "declines the test" do
+        expect(described_class.greater([[0, 0], [2, 8]])).to be_nil
+      end
+    end
+  end
 end
