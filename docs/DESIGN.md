@@ -501,7 +501,9 @@ sample.
    `steal_rate` was ever sampled on reads **unmeasured**, which is no null at all.
    **Outcome** (`docs/design_record.md`, 2026-09-27): read at 270 seeds, `(2^11, 2^10)` at
    cap 128 no longer keeps rising — 1 rising and 3 plateauing of 8 measured runs, neither —
-   and both controls read neither, so no priced arm keeps rising; the finding is `negative`.
+   and both controls read neither, so no priced arm the rule reads keeps rising; two
+   unextended arms hold one measured run each, which rises, so the verdict is unresolved and
+   the finding stays `partial`.
 
 10. **Asymmetric execution** — does complexity keep rising when only one partner's code
     runs? Sweep 9 prices energy; this one prices *whose program runs*. Under

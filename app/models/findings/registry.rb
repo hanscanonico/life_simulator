@@ -12,7 +12,7 @@ module Findings
         date: Date.new(2026, 9, 18),
         experiment_slug: "host-parasite",
         related_finding_slugs: %w[complexity-keeps-rising replicator-complexity-plateau],
-        status: :negative,
+        status: :partial,
         summary: "Complexity rises at emergence and then stops rising on every substrate " \
                  "the programme has tested, because a byte off the copy path costs its " \
                  "tape nothing and no quantity in the world is worth taking. DESIGN §1.3 " \
@@ -21,10 +21,12 @@ module Findings
                  "energy did not make life more common: no priced arm emerged significantly " \
                  "more often than the economy-off control at its cap, and the poorest economy held no " \
                  "replicator at all. Theft evolved wherever it was offered. Read arm by arm " \
-                 "on dominant_instruction_count and the conserved core, no priced arm keeps " \
-                 "rising: the one that did at 90 seeds, on one of its two measured runs, " \
-                 "reads neither at 270, beside its control at 270, and the other arms " \
-                 "plateau, read neither, hold too few runs to read or are barren. That " \
+                 "on dominant_instruction_count and the conserved core, no priced arm the " \
+                 "rule reads keeps rising: the one that did at 90 seeds, on one of its two " \
+                 "measured runs, reads neither at 270, beside its control at 270, and the " \
+                 "rest plateau, read neither or are barren. Two arms that were never " \
+                 "extended hold one measured run each, and it rises, too few for the rule " \
+                 "to read, so the verdict is unresolved rather than negative. That " \
                  "reading stands on a measured-run rule amended after the data were seen; " \
                  "as registered, the rule reads almost every emerged run as unmeasured and " \
                  "no arm at all."
@@ -46,8 +48,8 @@ module Findings
                  "them held replicators, so the asymmetry did not lower the plateau, it " \
                  "kept replication from arising. With no host run to read, the " \
                  "pre-registered refutation and the distinct_lineages secondary cannot be " \
-                 "evaluated; the concat controls, the same worlds sweep 9's control ran, " \
-                 "are read as the reference."
+                 "evaluated; the concat controls, the same worlds sweep 9's control ran " \
+                 "on its seeds 1–90, are read as the reference."
       ),
       Finding.new(
         slug: "complexity-keeps-rising",

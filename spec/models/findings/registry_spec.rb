@@ -189,11 +189,12 @@ RSpec.describe Findings::Registry do
     expect(described_class.for_experiment("unwritten")).to be_empty
   end
 
-  it "holds the host-parasite finding at negative once its one rising arm is re-read at 270 seeds" do
+  it "holds the host-parasite finding at partial while two unextended arms stay unread" do
     finding = described_class.find("complexity-under-contest")
 
-    expect(finding).to have_attributes(experiment_slug: "host-parasite", status: :negative)
-    expect(finding.summary).to include("no priced arm keeps rising", "reads neither at 270",
+    expect(finding).to have_attributes(experiment_slug: "host-parasite", status: :partial)
+    expect(finding.summary).to include("no priced arm the rule reads keeps rising", "reads neither at 270",
+                                       "the verdict is unresolved rather than negative",
                                        "amended after the data were seen")
     expect(finding.summary).not_to include("No arm has read yet")
   end

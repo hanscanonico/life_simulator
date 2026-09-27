@@ -2102,7 +2102,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   so a shown result is read on the survivors, with the settled-relapse and extinction
   counts beside it, not as the treatment's effect on every colony it touched.
 - 2026-09-27 — **The host–parasite finding re-read at 270 seeds on the rising arm and its
-  controls: the one rising arm reads neither, and the finding is `negative`.** The
+  controls: the one rising arm reads neither, and the finding stays `partial`.** The
   next-step entry of 2026-09-25 extended three arms of sweep 9 to seeds 1–270 —
   `1024×2048 128`, its control `0 128` and the control `0 256` — and said the finding would
   be re-read with the same rule and the same pairing once they were terminal. They are: 1 800
@@ -2182,21 +2182,30 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   core's confound does not change the reading: the oriented core is at zero too, and no run
   rose on instructions for a core clause to stop.
 
-  **Registry status `partial` → `negative`**, against the 2026-09-24 entry's own criterion:
-  the one supporting arm stood on the fewest measured runs the rule reads, beside a control
-  holding a rising run too, and "more seeds on `1024×2048 128` and `0 128` would decide it".
-  They did: at three times the seeds the arm holds four times the measured runs, none of the
-  new ones rises, and it reads neither beside a control that reads neither. No priced arm
-  keeps rising, pricing energy did not raise emergence at either cap, and theft evolved
-  wherever it was offered, so the sweep finished and the effect it was built to find was not
-  there — the meaning `negative` carries. It is not `refuted`: the refutation condition needs
-  a control plateau to match and neither control plateaus. The page's live verdict badge
-  still reads "unresolved", because two unextended priced arms hold a single measured run
-  each; the 2026-09-24 entry did not name them as what decides the finding, one-run arms sit
-  below the floor the rule reads at, and the programme does not extend them here. The finding
-  also keeps its instrument note: the negative stands on `dominant_instruction_count` as the
-  census reads it, and a re-read with the orientation-aware dominant tape would be a new
-  reading, not this one. The page renders every count above from the stored runs at render
-  time; the registry summary, the body's Method and Result prose, the instrument note and
-  DESIGN §1.3 item 9 carry the new claim. Nothing about the engine, the rules or any
-  observable moves.
+  **Registry status stays `partial`.** The 2026-09-24 entry's criterion is met for what it
+  named: the one supporting arm stood on the fewest measured runs the rule reads, beside a
+  control holding a rising run too, and "more seeds on `1024×2048 128` and `0 128` would
+  decide it". They did: at three times the seeds the arm holds four times the measured runs,
+  none of the new ones rises, and it reads neither beside a control that reads neither. That
+  decides the arm, not the sweep. `1024×8192 256` and `0×2048 256`, never extended, hold one
+  measured run each, and both runs rise; the rule reads an arm on two, so both are unread,
+  and the verdict `Findings::ComplexityArmsReading` was built with for this finding (#238,
+  before the extension was chosen) reads a sweep with no rising arm and any unread one as
+  unresolved, not as no arm rising. `negative` — the sweep finished and the effect was not
+  there — would say of those two arms what their one run each cannot, and would set the
+  registry against the page's own verdict badge, so the registry follows the verdict:
+  `partial`, a reading stated that cannot yet be read as final. The pooled count (3 rising of
+  23 priced measured runs against 2 of 18 in the controls) is consistent with the two single
+  runs sitting at the controls' background rate, but it is descriptive and moves no status.
+  With one rising run already, a second measured run can only make either arm read keeps
+  rising or mixed; it takes two more that do not rise for it to read anything else, which at
+  1 emerged run in 90 is roughly another 180 seeds an arm, and the programme does not extend
+  them here. It is not `refuted` either: the refutation condition needs a control plateau to
+  match and neither control plateaus. The finding keeps its instrument note: the
+  reading stands on `dominant_instruction_count` as the census reads it, and a re-read with
+  the orientation-aware dominant tape would be a new reading, not this one. The page renders
+  every count above from the stored runs at render time; the registry summary, the body's
+  Method and Result prose, the instrument note and DESIGN §1.3 item 9 carry the new claim.
+  The asymmetric-execution finding's "seed for seed" control is now scoped to sweep 9's
+  seeds 1–90, as the 2026-09-25 entry said it would be. Nothing about the engine, the rules
+  or any observable moves.
