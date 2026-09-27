@@ -2101,6 +2101,163 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   kills the colonies that would not have sped up or complicated leaves survivors that did,
   so a shown result is read on the survivors, with the settled-relapse and extinction
   counts beside it, not as the treatment's effect on every colony it touched.
+- 2026-09-27 — **The lineage-diversity finding states its claim: after emergence one
+  lineage takes the world at every reach.** Sweep 12 finished on 2026-09-26, 360 runs, every
+  one finished, 90 per arm. Read under the pre-registered rule and its five clarifications of
+  2026-09-25 (`lab:lineage_diversity_report` on the lab, 2026-09-27, "final reading"):
+
+  | arm | runs | emerged | measured | polyphyletic | between | monophyletic | median effective count |
+  |---|---|---|---|---|---|---|---|
+  | well-mixed | 90 | 3 | 3 | 0 | 0 | 3 | 1 |
+  | radius 4 | 90 | 16 | 16 | 0 | 2 | 14 | 1 |
+  | radius 2 | 90 | 9 | 9 | 0 | 2 | 7 | 1 |
+  | radius 1 | 90 | 4 | 4 | 0 | 1 | 3 | 1 |
+
+  Every arm is read. The trend over well-mixed < 4 < 2 < 1 reads JT = 193.5, permutation
+  p = 0.07930: **the hypothesis is neither shown nor refuted**. Not shown, because the trend
+  misses 0.05 and radius 1 is not polyphyletic; not refuted, because five runs read between
+  rather than monophyletic — radius 4 seeds 23 (1.88) and 66 (1.61), radius 2 seeds 39
+  (1.73) and 65 (1.99), radius 1 seed 51 (1.88), last-decile effective counts; a SELECT
+  re-deriving the class from the samples finds the same five. Descriptively, every arm's
+  median `lineages_over_one_percent` is 1, its oriented conserved core 0 bytes and 0 ops,
+  its `lineage_variation_oriented` 34.7, 40.1, 51.1 and 45.2, and its `copy_latency` first →
+  last decile 1087 → 908, 955 → 1013, 712 → 736 and 469 → 663.
+
+  **The claim**: none of the 32 emerged worlds stayed polyphyletic. 27 read monophyletic and
+  5 between, none reaching 2, and the median effective number of lineages is 1 in every arm.
+  After emergence one lineage takes the world whatever the reach. The locked hypothesis's
+  first half, that a transitioned world stays polyphyletic, is not supported; its second
+  half, more lineages at shorter reach, is not shown, and at p = 0.079 over 32 worlds a small
+  trend among near-monophyletic worlds is not excluded either.
+
+  **Registry status `negative`**, finding `lineages-after-emergence`: every run finished and
+  the reading is final, so `partial` ("cannot yet be read as final") does not apply, and the
+  hypothesis is not shown, so `published` does not either. `negative` ("the sweep finished
+  and the effect was not there") is the registry's convention for a finished sweep whose
+  effect did not appear even where it was not formally refuted — as the radius-locality
+  finding reads the speed half of sweep 3. The effect the sweep was built to see, worlds
+  holding several lineages after a transition, was not there in any arm. The page renders
+  the per-arm reading at render time from `Experiments::LineageDiversityReadingService`, the
+  report the sweep page draws, and carries no census note: it is built on
+  `replicator_share` and the `oriented` lineage tags, the orientation-aware instrument.
+
+  **What it means for rung 2**: on this substrate diversity does not survive a transition.
+  A reach of 1 on a 128² torus does not keep lineages apart for 20 000 epochs; the winner of
+  the takeover holds the world. Lineage tags approximate descent and are read `oriented`,
+  and the result is one world size and one budget.
+
+  **Emergence by reach, descriptively.** The sweep was not designed to test emergence
+  against radius, and this is not a pre-registered test. Its arms emerged 3, 16, 9 and 4 of 90,
+  well-mixed then radius 4, 2 and 1; a Freeman–Halton exact test on the 4×2 table reads
+  p = 0.0031 (Pearson χ² = 14.5, 3 df, p = 0.0023). A further 17 runs had a confirmed
+  crossing but never read `replicator_share` ≥ 0.5 after it and are not emerged (well-mixed
+  4, radius 4 9, radius 2 3, radius 1 1; a SELECT on the lab agrees). The radius sweep, at
+  the default rate 2^-12, ten seeds an arm and no share clause, saw 2, 1, 1 and 1 of 10. A
+  peak at an intermediate reach is a candidate for a future sweep that pre-registers
+  emergence against radius; it is not a result.
+- 2026-09-27 — **Does emergence peak at an intermediate reach? The `locality-emergence`
+  sweep, pre-registered on fresh worlds.** Sweep 12 (`lineage-diversity`, entry of
+  2026-09-25) was designed for rung 2 and asked nothing about how often a world crosses. Its
+  counts of emerged runs, read by that entry's own emergence rule over its 360 finished runs,
+  came out far from flat and not monotone in reach (a SELECT on the lab database,
+  2026-09-27):
+
+  | arm | emerged / finished |
+  |---|---|
+  | radius 1 | 4 / 90 |
+  | radius 2 | 9 / 90 |
+  | radius 4 | 16 / 90 |
+  | well-mixed | 3 / 90 |
+
+  That is an **exploratory** observation: emergence against radius was not sweep 12's
+  pre-registered question, and the pattern was seen before any rule below was written. The
+  radius sweep (entry of 2026-09-11) read locality as not speeding emergence on 10 seeds an
+  arm, 1–2 transitions an arm, at 2^-12 and on the detector's crossing; it ruled out a large
+  effect, not this one. Whether conditions make abiogenesis likely is rung 0's central
+  question, so the pattern is put to fresh worlds under rules fixed first. This is §1.3 item
+  13, experiment `locality-emergence` (sweep key `locality_emergence`), and its numbers live
+  in `Lab::LocalityEmergenceReading`.
+
+  **The sweep.** Sweep 12's world to the byte — 128², `tape_len` = `max_tape_len` = 64,
+  `mutation_rate` 2^-13 (`Lab::EMERGENT_MUTATION_RATE`), `lineage_rule = oriented` — at radius
+  **{1, 2, 3, 4, 6, 8, 0 = well-mixed}**. Radius 8 is inside the engine's range (0–64, and a
+  positive radius must satisfy 2r + 1 ≤ 128). **Seeds 91–180** in every arm: `lineage_rule`
+  changes no byte of a world, so seeds 1–90 at radius 1, 2, 4 and 0 would replay sweep 12's
+  worlds, the exploratory counts included. No run on the lab reads these worlds already (a
+  SELECT, 2026-09-27): the only runs at seeds 91–180 are the host-parasite sweep's, at radius
+  1 with `max_tape_len` 128 and 256, energy stock on in most of their arms — variable-length
+  worlds, not these. 20 000 epochs, **630 runs**, priority **30**: after the from-emerged
+  children (50), ahead of sweep 9's extension.
+
+  **Emergence** is sweep 12's, unchanged: a run is **emerged** when it has the record's
+  confirmed `emergence_epoch` **and** reads `replicator_share ≥ 0.5` at some sample at or
+  after that epoch. A sample without the share, or with anything but a number in it, is no
+  reading. The constants are `Lab::LineageDiversityReading`'s (`SHARE_KEY`, `MIN_SHARE`),
+  named again in `Lab::LocalityEmergenceReading`. Per arm the reading is **emerged over
+  finished**; a run pending, under way or failed is listed and not counted.
+
+  **H-peak (confirmatory: the exploratory pattern).** Radius 4 emerges more often than
+  radius 1, **and** more often than the well-mixed world.
+  - Two **one-sided Fisher exact tests** on the 2×2 tables of emerged and not emerged among
+    finished runs, radius 4 against each rival, each p the hypergeometric upper tail
+    P(X ≥ radius 4's emerged count) (R's `alternative = "greater"`), taken in exact
+    rationals.
+  - **Holm-corrected** at family α = **0.05**: the smaller p is multiplied by 2, the larger
+    by 1, and an adjusted p never falls below the one before it.
+  - **Shown** where both adjusted p are below 0.05.
+  - An arm with no emerged run is tested as it stands: the tables are exact at zero, and
+    radius 4 at 0 emerged against a rival at 0 has p = 1.
+  - **Refuted** where radius 4's rate is at most radius 1's **and** at most well-mixed's —
+    radius 4 at 0 emerged is refuted.
+  - **Not shown** otherwise, radius 4 ahead of one rival and not the other included.
+  - **Not yet tested** until each of the three arms has a finished run.
+
+  At sweep 12's rates (0.178, 0.044, 0.033) the family has a power of about **0.82**; if
+  radius 4's true rate is 0.12, as regression from an exploratory high would make likely,
+  about **0.38** (2 000 simulated sweeps, 2026-09-27). A not-shown result is read with that
+  in mind, not as evidence of no effect.
+
+  **H-shape (descriptive, with one pre-registered test).** Across the six finite radii,
+  emergence peaks at an intermediate reach.
+  - A **binomial logistic regression** of emergence on radius and radius², logit p = b₀ +
+    b₁r + b₂r², over the finished runs of radius 1, 2, 3, 4, 6 and 8, radius in cells,
+    uncentred. It is fitted by maximum likelihood with Newton–Raphson from all coefficients
+    at zero, stopping when every coefficient moves by less than 10⁻¹⁰, within 100 steps
+    (`Stats::QuadraticLogistic`). A fit that does not settle, or whose information matrix
+    cannot be inverted, is **no fit**: that is what a separated table does.
+  - **Shown** where b₂ is negative, its **two-sided Wald p** (b₂ over its standard error from
+    the inverse information at the maximum, against the normal) is below **0.05**, and the
+    **fitted peak** −b₁ / (2b₂) lies strictly between radius 2 and radius 6, so that two of
+    the radii read lie on each side of it. A concave curve that only rises or only falls
+    across the radii puts its vertex outside them or just inside an end — rates of 1, 2, 5,
+    9, 20 and 22 of 90 fit a significant b₂ < 0 with the vertex at 7.5 — and that is a
+    curve, not an intermediate peak.
+  - **Not shown** otherwise, no fit included (it is labelled "no fit"). The fitted peak
+    radius and b₂ with its p are reported whichever way it reads.
+  - **Not yet tested** with fewer than three finite radii holding a finished run, or with no
+    emerged or no not-emerged run among them.
+  - **Well-mixed is left out of the fit** — radius 0 is not a distance — and its count is
+    reported beside it.
+
+  **When it is read.** Final when every run of the sweep has finished; before that the page
+  and `lab:locality_emergence_report` label it **interim** and count only the finished runs.
+  A failed run keeps the reading interim until it is re-run and finishes, as the
+  lineage-diversity reading's first clarification reads its failed runs. Radius 2, 3, 6 and
+  8 enter H-shape only; well-mixed enters H-peak only.
+  The reading is `Experiments::LocalityEmergenceReadingService`.
+
+  **What is not claimed.** One world size (128²), one mutation rate (2^-13), one tape length
+  (64 bytes, fixed), one 20 000-epoch budget, one lineage rule. A peak here says where
+  emergence is likeliest inside that budget on that world; a larger world or a longer budget
+  can move it, and a rate difference inside 20 000 epochs can be a speed difference that a
+  longer budget would erase. The radius sweep's reading of the speed half of item 3 stands
+  where it was measured (2^-12, detector crossings, 10 seeds).
+
+  **Cost.** Sweep 12's 360 runs took **76.2 compute-hours** (runs' `compute_seconds`: mean
+  606 s at radius 1, 811 s at 2, 914 s at 4, 716 s well-mixed) and **7 hours of wall time**
+  on the lab, 2026-09-25 20:24 to 2026-09-26 03:27 UTC. At the same per-run cost, taking the
+  new radii at radius 4's, 630 runs are about **145 compute-hours**, about **13–14 hours** of
+  wall time at sweep 12's parallelism with the lab to themselves.
 - 2026-09-27 — **The host–parasite finding re-read at 270 seeds on the rising arm and its
   controls: the one rising arm reads neither, and the finding stays `partial`.** The
   next-step entry of 2026-09-25 extended three arms of sweep 9 to seeds 1–270 —
