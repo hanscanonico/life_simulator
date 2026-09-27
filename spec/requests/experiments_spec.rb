@@ -673,6 +673,30 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the locality-emergence sweep" do
+      let(:experiment) { locality_emergence_experiment }
+
+      before do
+        locality_run(experiment, radius: 4, share: 0.9)
+        locality_run(experiment, radius: 1)
+        locality_run(experiment, radius: 0, status: "running")
+      end
+
+      it "reads the sweep as pre-registered, labelled interim while a run is under way" do
+        get experiment_path(experiment)
+
+        section = response.parsed_body.at_css("#locality-emergence-reading").text.squish
+        expect(section).to include("The pre-registered reading interim", "radius 4", "radius 1", "well-mixed",
+                                   "H-peak", "H-shape", "not yet tested")
+      end
+
+      it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+        get experiment_path(experiment)
+
+        expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+      end
+    end
+
     context "with a sweep other than the lineage-diversity one" do
       it "shows no lineage-diversity reading" do
         get experiment_path(experiment)

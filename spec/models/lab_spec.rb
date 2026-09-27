@@ -278,6 +278,37 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the locality-emergence sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("locality_emergence") }
+
+      it "runs sweep 12's world at seven reaches, well-mixed included" do
+        expect(definition[:param_grid].except("radius"))
+          .to eq(Lab::SWEEPS.fetch("lineage_diversity")[:param_grid].except("radius"))
+        expect(definition[:param_grid].fetch("radius")).to eq(Lab::LocalityEmergenceReading::RADIUS_ORDER)
+      end
+
+      it "reaches no further than the engine's radius range, nor than the torus allows" do
+        widest = definition[:param_grid].fetch("radius").max
+        expect(widest).to be <= Lab::Schema.field("radius")["max"]
+        expect((2 * widest) + 1).to be <= definition[:param_grid].fetch("width").first
+      end
+
+      it "seeds fresh worlds, none of them sweep 12's" do
+        expect(definition[:seeds]).to eq((91..180).to_a)
+        expect(definition[:seeds] & Lab::SWEEPS.fetch("lineage_diversity")[:seeds]).to be_empty
+      end
+
+      it "gives 630 runs of twenty thousand epochs" do
+        expect(definition[:param_grid].fetch("radius").size * definition[:seeds].size).to eq(630)
+        expect(definition[:epochs]).to eq(20_000)
+      end
+
+      it "runs after the from-emerged children and ahead of the lineage-diversity sweep's priority" do
+        expect(definition[:priority]).to be_between(Lab::SWEEPS.fetch("lineage_diversity")[:priority] + 1,
+                                                    Lab::SWEEPS.fetch("from_emerged")[:priority] - 1)
+      end
+    end
+
     describe "the lineage-diversity sweep" do
       let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
       let(:reading) { Lab::LineageDiversityReading }

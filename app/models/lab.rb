@@ -343,6 +343,31 @@ module Lab
       # After the from-emerged children, ahead of sweep 9's extension.
       priority: 20
     },
+    "locality_emergence" => {
+      name: "Locality and emergence",
+      description: "Does emergence peak at an intermediate reach? The lineage-diversity " \
+                   "sweep saw radius 4 emerge four times as often as radius 1 and five times " \
+                   "as often as the well-mixed world. Its seven reaches, on fresh worlds, " \
+                   "read on how often a world crosses at all.",
+      # §1.3 item 13, pre-registered on 2026-09-27, "Does emergence peak at an intermediate
+      # reach?", whose numbers live in `Lab::LocalityEmergenceReading`. The world is sweep
+      # 12's to the byte, with three more reaches between and beyond its own. Its seeds are
+      # 91–180 because `lineage_rule` changes no byte of a world: seeds 1–90 at radius 1, 2,
+      # 4 and 0 would replay sweep 12's worlds, the exploratory counts included.
+      param_grid: {
+        "radius" => [1, 2, 3, 4, 6, 8, 0],
+        "width" => [128],
+        "height" => [128],
+        "tape_len" => [64],
+        "max_tape_len" => [64],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE],
+        "lineage_rule" => ["oriented"]
+      },
+      seeds: (91..180).to_a,
+      epochs: 20_000,
+      # After the from-emerged children (50), ahead of sweep 9's extension.
+      priority: 30
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

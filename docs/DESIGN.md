@@ -559,6 +559,17 @@ sample.
     **Result** (2026-09-27, final): none of the 32 emerged worlds stayed polyphyletic — 27
     monophyletic, 5 between, median effective count 1 in every arm — and the trend is
     neither shown nor refuted (p = 0.079); finding `lineages-after-emergence`, `negative`.
+13. **Locality and emergence** — the speed half of item 3 again, on how often a world
+    crosses at all: does emergence peak at an intermediate reach? Sweep 12's world (128²,
+    fixed 64-byte tapes, the emergent rate, `lineage_rule = oriented`) at radius
+    `{1, 2, 3, 4, 6, 8, 0 = well-mixed}`, fresh seeds 91–180 per arm, 20 000 epochs, 630
+    runs, emergence read by sweep 12's rule. H-peak, confirming sweep 12's exploratory
+    counts: radius 4 emerges more often than radius 1 and than well-mixed, two one-sided
+    Fisher exact tests Holm-corrected at family α = 0.05. H-shape: over the finite radii, a
+    logistic regression on radius and radius² whose radius² coefficient is negative at Wald
+    p < 0.05 with its fitted peak between radius 2 and 6. Pre-registered in
+    `docs/design_record.md`, 2026-09-27, "Does emergence peak at an intermediate reach?",
+    whose numbers live in `Lab::LocalityEmergenceReading`.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no

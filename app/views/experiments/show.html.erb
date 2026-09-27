@@ -86,6 +86,10 @@
   <%= render "experiments/lineage_diversity_reading", reading: @show.lineage_diversity_reading %>
 <% end %>
 
+<% if @show.locality_emergence_reading %>
+  <%= render "experiments/locality_emergence_reading", reading: @show.locality_emergence_reading %>
+<% end %>
+
 <% if @show.rescores? %>
   <%= render "experiments/rescores_table", summary: @show.rescore_summary %>
 <% end %>
