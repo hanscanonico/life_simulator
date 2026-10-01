@@ -3196,8 +3196,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   name it had before; a pre-relock app files that in its constant column and the relative one
   in its companion column, as it always did. A relocked app reads `transition_epoch_constant`
   first and takes `transition_epoch` as the constant reading only from a pre-relock runner,
-  which sends nothing else. The migration renames columns, so a run in flight keeps every
-  epoch it has stored. Post-deploy, in this order: `lab:backfill_transitions` (both
+  which sends no `transition_epoch_constant`; that runner's `transition_epoch_relative` it
+  files as `transition_epoch`, as it does a relocked runner's. The migration renames
+  columns, so a run in flight keeps every epoch it has stored. Post-deploy, in this order: `lab:backfill_transitions` (both
   readings, and the persistence summary of every founding run it visits), then
   `lab:backfill_emergence`, since a crossing that moved is a different candidate, then
   `lab:backfill_persistence`, which resummarises the descendants the first task does not
@@ -3266,7 +3267,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     reading of the constant flag; a re-run after the backfill reads the relocked one, which
     drops the 29 cap-512 runs it already names.
   - **The evidence above is the 2026-09-19 rescore.** The founding runs stored since are
-    read by the post-deploy backfill, which prints every run whose either reading moves. A
-    founding run at cap `<= 256` whose two readings part is the trigger for a follow-up entry.
+    read by the post-deploy backfill, which prints every run whose either reading moves. It
+    does not print where the two readings part: that is read per arm off
+    `lab:transition_report[<slug>]`, whose `flagged`, `constant` and `both_rules` columns
+    count each rule and their overlap. A founding run at cap `<= 256` whose two readings
+    part is the trigger for a follow-up entry.
   - The migration is re-dated to sort after every migration since the draft; it is the same
     rename.

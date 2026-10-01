@@ -49,14 +49,20 @@ non-idempotent seeding created, keeping one run per (params, seed). Both delete 
 runs only — a claimed, running or terminal run is left where it is — and print the ids they
 removed; quote the whole task name in zsh, brackets and commas included.
 `lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes both
-transition readings from the stored samples of terminal runs — `transition_epoch`, read
-against the run's own baseline, and `transition_epoch_constant`, the constant-threshold
-companion (`docs/design_record.md`, 2026-09-21) — and refreshes the persistence summary of
-every run it visits, whether or not its epochs moved. **Run it after any deploy that
-crosses the 2026-09-21 relock**, then `lab:backfill_emergence`: until it has run, a run
-in flight under a pre-relock runner reads as untransitioned on `transition_epoch`.
-`"lab:backfill_persistence[<slug>]"` is the standalone that rewrites the summaries alone,
-for a run that needs nothing else rescored. `"lab:backfill_emergence[<slug>]"` (or with no slug,
+transition readings from the stored samples of terminal founding runs — `transition_epoch`,
+read against the run's own baseline, and `transition_epoch_constant`, the constant-threshold
+companion (`docs/design_record.md`, 2026-10-01, the relock) — and refreshes the persistence
+summary of every run it visits, whether or not its epochs moved. Descendants record no
+transition and it does not visit them. **After the deploy that carries the relock**, run, one
+task per invocation and in this order: `lab:backfill_transitions`, then
+`lab:backfill_emergence`, then `lab:backfill_persistence`, which resummarises the
+descendants on their founding run's baseline. A run in flight across that deploy is
+filed correctly either way: a pre-relock runner already posts both readings
+(`transition_epoch` constant, `transition_epoch_relative` relative) and the relocked app
+files them under their new names, while a relocked runner also repeats its constant
+reading under `transition_epoch` for an app that has not migrated yet.
+`"lab:backfill_persistence[<slug>]"` is also the standalone that rewrites the summaries
+alone, for a run that needs nothing else rescored. `"lab:backfill_emergence[<slug>]"` (or with no slug,
 every experiment) confirms those crossings: it stores `emergence_epoch` /
 `emergence_witness` on every terminal run whose crossing the replicator census or the copy
 rate backs within the confirmation window — the detector's stored crossing or any later one
@@ -72,7 +78,10 @@ peaks and the final observables, then a per-arm count of the runs the two observ
 disagree on (`FORMAT=csv` for CSV); the per-arm counts read terminal runs only — `n` is
 every sampled run of the arm and `n_terminal` the ones counted, `INCLUDE_RUNNING=1` counts
 the in-flight ones too — and it is how a claim about emergence gets written on both
-observables before it is published. `"lab:snapshot_audit[<slug>]"` checks that each
+observables before it is published. Its per-arm `flagged`, `constant` and `both_rules`
+columns are also where the two transition rules part: an arm at `max_tape_len` 256 or below
+where `flagged` or `constant` differs from `both_rules` is the trigger the 2026-10-01 entry
+names for a follow-up record entry. `"lab:snapshot_audit[<slug>]"` checks that each
 measured transition has a world behind it — per run the snapshot nearest its
 `transition_epoch`, why the loop took it (cadence, age or transition) and how far off it
 fell — and counts the experiment's snapshots by reason. `"lab:cost_report[<slug>]"` reads what an
@@ -86,8 +95,9 @@ tape cap, the mean and minimum `compress_ratio` over the terminal runs' first 50
 the mean epoch of the first crossing and the share of runs that crossed by epoch 1000
 (`FORMAT=csv` for CSV). It is the instrument for issue #174: if the gap to the threshold
 tracks `max_tape_len`, a run whose soup starts compressible crosses on the substrate and
-not on anything that replicated. It measures only — changing the detector to a per-run
-baseline moves a locked observable and starts with a `docs/design_record.md` entry.
+not on anything that replicated. It measures only. The 2026-10-01 entry already relocked
+`transition_epoch` on a per-run baseline, so the threshold this reads against is the
+constant companion's, `transition_epoch_constant`.
 `lab:db_size` and
 `lab:prune_snapshots` are the maintenance tasks.
 `runner rescore` re-reads a run's stored world at other `top_k` settings, for the question
@@ -114,6 +124,46 @@ it has read before rather than duplicating it. It prints
 `event=rescore_done experiment= worlds=` at the end; a world it cannot read logs
 `event=error` and the pass carries on. Like `rescore`, it changes no run, no param and no
 default.
+`runner readings-corpus` reads the orientation-aware observables (`replicator_share`,
+`replicator_share_rotated`, `dominant_self_replicates`, `reverse_copy_rate`) off the stored
+worlds of an experiment, so a finding that rests on the census can be re-read without
+re-running anything. It stores them as snapshot readings under `oriented_census/1`, never
+as samples. Each world costs a few seconds of CPU, so run it as a one-off container beside
+the live runner, never through `exec` inside it: `run --rm --no-deps` shares the runner's
+image and its `RUNNER_TOKEN` (from `deploy/.env`, as for `rescore-corpus`), and it leaves
+the live runner and its runs alone:
+`docker compose -f deploy/docker-compose.yml run --rm --no-deps --entrypoint runner runner readings-corpus --api http://app:8080 --experiment <slug> --jobs 2`
+There are two modes. `--epochs latest` reads only each run's newest stored world. It is the
+quick pass: about an hour for an experiment of ~1800 runs at `--jobs 2`, and it is what a
+descendant sweep chooses parents from. `--epochs all` (the default) reads every stored world
+and takes hours, so start it detached from the SSH session with its log kept:
+`nohup docker compose -f deploy/docker-compose.yml run --rm --no-deps -T --entrypoint runner runner readings-corpus --api http://app:8080 --experiment <slug> --jobs 2 > ~/readings-<slug>.log 2>&1 &`.
+Stepping to E′ dominates the cost and grows with `sample_every` (bff-control samples every
+50, five times the default). A deploy mid-pass is waited out, as lab mode does; a run whose
+readings still could not be stored logs `event=error` and counts its worlds as `failed=`;
+running the pass again stores them. Both skip the worlds an earlier pass already read, so an
+interrupted pass is resumed by running it again, and an `all` pass after a `latest` one
+does not read those worlds twice. Run one experiment at a time and start small: first
+`--dry-run --limit 5` (reads five worlds and stores nothing), then `bff-control`, then
+`max-tape-len`. Each run prints
+`event=readings run= worlds= rows= failed= skipped= stored=`, and the pass ends with
+`event=readings_done`. A world it cannot read logs `event=error`, and the pass carries on.
+Every stored world at epoch E gives a row at E (the census readings plus the engine's own
+`replicator_count`). The world is then stepped to the next sample epoch E′, and a row at
+E′ with `source_epoch` E carries both copy rates. For a run's last world E′ lies one sample
+past the run's end: it reads the world the run stopped at, not a sample the run took, so
+the run's samples have no counterpart there. Spot-check a pass against the live record
+before trusting it: the `replicator_count` of a row at E must equal the run's own sample at E
+(`https://simulator-life.com/runs/<id>/samples.csv`), and `copy_rate` at E′ must equal the sample at E′. A
+mismatch means the restore does not reproduce the run, so stop and report it. The readings
+come back as CSV from `https://simulator-life.com/experiments/<slug>/readings.csv?instrument=oriented_census/1`.
+The pass changes no run, no param and no default.
+`--instrument oriented_census/2` is a second pass of its own, stored under that name and
+skipping only the worlds a `/2` pass already read: it reads everything `/1` does plus
+`lineage_variation_oriented`, the oriented conserved core and `copy_latency` with its
+orientation, each beside its aligned reading. `/1` stays the default, and nothing that reads
+`/1` (the from-emerged reading, the oriented summaries) reads `/2`; run a `/2` pass only when
+asked for one.
 
 The runner writes an `event=` line for each thing a slot does, in the shape
 `event=<name> runner=<id> slot=<n> ...`: `claim`, `resume`, `progress` (each heartbeat,
