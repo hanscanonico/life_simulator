@@ -3303,12 +3303,22 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   ladder whose every rung is a composition of it, so the lower rungs are parts of the higher
   ones and stepping stones exist by construction (Lenski et al. 2003).
 
-  <!-- METABOLISM-READING: filled in by the orchestrator before merge -->
-  **Metabolism's reading** (*interim*; the final H-ladder result replaces this paragraph
-  before the entry merges). As of 2026-10-01 17:16Z, 46 of the 108 Metabolism children had
-  been read: every sample of every one of them shows a loop-task share of exactly 0, and the
-  reward children reach at most 3 capabilities, the one-substitution rungs ECHO, INC and
-  DEC. Nothing is claimed from this interim reading.
+  **Metabolism's reading, final** (`lab:metabolism_report`, 2026-10-01 22:05Z: all 108
+  children finished, none extinct, no settled relapse, all 54 pairs measured).
+  - **H-capability: shown.** 54 pairs favour the reward, 0 the control, 0 ties
+    (p = 5.6 × 10⁻¹⁷). Every one of the 18 parents splits 3–0.
+  - **H-ladder: refuted.** 0 favour the reward and 0 the control, so all 54 pairs tie at zero,
+    which the Metabolism entry reads as refuted. Across all 432 000 samples of the 108
+    children, `task_capability_loop` never leaves 0. The only nonzero loop-task share is one
+    `task_share_double` sample at 1/256.
+  - **H-complexity: shown.** 18 pairs favour the reward and 1 the control, with 35 ties
+    (p = 3.8 × 10⁻⁵). 10 parents lean to the reward, none to the control.
+  - **Unpiloted parents.** The re-reading without them gives the same three outcomes: 42–0,
+    0–0 with 42 ties, and 11–1 (p = 0.003).
+
+  Paid computation climbed ECHO, INC and DEC in nearly every rewarded child (54, 52 and 50
+  of 54). Tasks gave about half the income (0.35–0.55). Nothing climbed past the
+  one-substitution rungs: exactly the stall the landscape measurements predict.
 
   **Two rules on seeding, locked here.**
   - The Logic sweep is **seeded only after the Metabolism reading is final**
