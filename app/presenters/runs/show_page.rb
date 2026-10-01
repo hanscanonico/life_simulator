@@ -74,7 +74,7 @@ module Runs
     attr_reader :run
 
     def charts
-      @charts ||= METRICS.map { |metric, title| chart_of(MetricSeriesService.call(run: run, metric: metric), title) } +
+      @charts ||= METRICS.map { |metric, title| chart_of(series_of(metric), title) } +
                   [chart_of(compressibility_points, COMPRESSIBILITY_TITLE, axis: COMPRESSIBILITY_AXIS),
                    chart_of(turnover_points, TURNOVER_TITLE, axis: TURNOVER_AXIS)]
     end
@@ -213,13 +213,15 @@ module Runs
       end
     end
 
+    def series_of(metric) = MetricSeriesService.call(run: run, metric: metric, samples: dominant_readings)
+
     def chart_of(points, title, axis: title)
       Charts::LineChart.new(points: points, title: title, x_label: "Epoch", y_label: axis,
                             marker: run.transition_epoch)
     end
 
-    # The same rows every series is read from: identical SQL inside one request is served
-    # by the query cache.
+    # The same rows every series is read from, plucked once: the query cache would spare
+    # the database a repeat, but not the parse of every sample's JSON.
     def dominant_readings = @dominant_readings ||= run.samples.order(:epoch).pluck(:epoch, :values)
 
     def emergence_label

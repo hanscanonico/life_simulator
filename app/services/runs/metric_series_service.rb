@@ -7,9 +7,12 @@ module Runs
   class MetricSeriesService
     include Callable
 
-    def initialize(run:, metric:)
+    # A caller drawing many series of one run hands in its rows, `[[epoch, values], …]`
+    # in epoch order, so their JSON is parsed once rather than once per metric.
+    def initialize(run:, metric:, samples: nil)
       @run = run
       @metric = metric
+      @samples = samples
     end
 
     def call
@@ -21,8 +24,6 @@ module Runs
 
     private
 
-    # A page drawing every observable asks for the same rows once per metric; identical
-    # SQL inside one request is served by the query cache.
-    def samples = @run.samples.order(:epoch).pluck(:epoch, :values)
+    def samples = @samples ||= @run.samples.order(:epoch).pluck(:epoch, :values)
   end
 end

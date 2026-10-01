@@ -32,6 +32,15 @@ RSpec.describe Runs::MetricSeriesService do
     expect(described_class.call(run: run, metric: "copy_cost")).to eq([[200, 1_794]])
   end
 
+  context "with the run's rows handed in" do
+    it "reads them rather than querying the samples again" do
+      create(:sample, run: run, epoch: 100, values: { "compress_ratio" => 0.9 })
+      rows = [[100, { "compress_ratio" => 0.5 }], [200, { "copy_rate" => 0.3 }]]
+
+      expect(described_class.call(run: run, metric: "compress_ratio", samples: rows)).to eq([[100, 0.5]])
+    end
+  end
+
   it "skips a value that is not a number" do
     create(:sample, run: run, epoch: 100, values: { "compress_ratio" => "NaN" })
 
