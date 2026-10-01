@@ -103,8 +103,10 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   at the end of the buffer, on an unmatched bracket, after 4 096 steps or at the fourth
   emit. Three cases are drawn per assay epoch, x and y uniform in 0..15, on their own
   stream at (seed, epoch) and shared by every cell, and redrawn until they **separate the
-  tasks**: within each task the three expected outputs differ, and no two tasks expect the
-  same three. A task is credited when one output slot holds its value in all three cases.
+  tasks**: within each task the three expected outputs differ; no two tasks expect the
+  same three; the three x values differ, as do the three y values, and none is 0; and no
+  task's outputs sit a constant offset from x, or from y, unless the task is that offset of
+  that input everywhere. A task is credited when one output slot holds its value in all three cases.
   The ladder, mod 256, is ECHO x, INC x+1, DEC x−1, ADD x+y, SUB x−y, NOT 255−x, DOUBLE 2x
   and MUL x·y, worth 1, 2, 2, 4, 4, 8, 8 and 16 units; a cell is paid `task_reward` per
   credited unit into its stock, capped at `energy_stock_cap`. A tape holding no `!` byte is
