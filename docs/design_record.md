@@ -2870,13 +2870,15 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   descent, as for every priced descendant, so the first few epochs burst; both arms share
   it and the readings skip it.
 
-  **The assay the children run** is the task-assay entry's, under its final separating
-  rule: the three cases of an assay epoch are redrawn until x is pairwise distinct across
-  them, y is pairwise distinct across them, within each task the three expected outputs
-  are pairwise distinct, and no two tasks expect the same three outputs. The distinct-input
-  clauses came from #274's review, which found that an out-of-ladder function such as x + 3
-  was credited as ADD on any draw whose y was 3 in all three cases, about 1 draw in 4 096.
-  The pilot's chance-credit counts above were taken before that clause existed.
+  **The assay the children run** is the task-assay entry's, under its separating rule as
+  that entry states it when this sweep is seeded: the study's two clauses (each task's
+  three expected outputs pairwise distinct, no two tasks expecting the same three) and the
+  clauses #274's review added before any run used the assay, which keep a cheap function
+  outside the ladder from passing for a task — distinct x and distinct y across the three
+  cases, so `<+++!` (x + 3) is not credited ADD on a draw whose y is 3 throughout, no task
+  a constant offset from an input unless it is that offset, and no input of 0. That entry,
+  not this one, is the rule's record. The pilot's chance-credit counts above were taken
+  under the study's two clauses alone.
 
   **The readings, per child**, over its own samples at epochs above `parent_epoch` +
   **1 000**, #263's settling window (`SETTLING_WINDOW`):
