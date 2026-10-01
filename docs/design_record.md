@@ -2366,6 +2366,169 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   The asymmetric-execution finding's "seed for seed" control is now scoped to sweep 9's
   seeds 1–90, as the 2026-09-25 entry said it would be. Nothing about the engine, the rules
   or any observable moves.
+- 2026-09-28 — **The from-emerged findings state their claims: copying gets faster under an
+  energy economy, rung 3's first confirmed adaptation, and the economy does not keep
+  complexity rising from an emerged start.** Sweep 11 (`from-emerged`) is final: all 216
+  children of its 18 qualifying parents finished by 2026-09-28 00:50Z. Both of its readings
+  are read here as registered, on the lab (`lab:from_emerged_report` and
+  `lab:from_emerged_heldout_report`, 2026-10-01, "final reading" and "held-out reading,
+  final").
+
+  **The original reading** (2026-09-25, "Runs that start from an emerged world", and its six
+  clarifications), every parent:
+
+  | treatment | children | held | relapsed | rises | plateau | mixed | unmeasured |
+  |---|---|---|---|---|---|---|---|
+  | continuation | 54 | 52 | 2 | 3 | 20 | 31 | 0 |
+  | economy 2048 | 54 | 40 | 14 | 7 | 11 | 36 | 0 |
+  | economy 8192 | 54 | 46 | 8 | 13 | 11 | 29 | 1 |
+  | host mode | 54 | 54 | 0 | 2 | 17 | 35 | 0 |
+
+  H-economy at 2048: 7 pairs favour the treatment, 3 the continuation, 44 tie, p = 0.172, not
+  shown — and not read, since the arm relapses more than the continuation. H-economy at 8192:
+  12 against 1 over 53 measured pairs, p = 0.00171, so the sign test holds, but it is **not
+  read**: the arm relapses more than the continuation, and the result is carried by parents
+  1029 and 1103 together. H-host: 1 against 2, p = 0.875, **refuted**. H-persistence:
+  **refuted**, 2 of 54 continuation children relapsed (run 3171, parent 1087, at epoch
+  21 520, and run 3601, parent 2654, on its last decile).
+
+  **The held-out confirmatory reading** (2026-09-25, "The from-emerged economy arms, confirmed
+  on held-out parents", #263), written after the first ten parents had been seen and read
+  only on the eight that qualified afterwards — 2577, 2590, 2654, 2676, 2700 (cap 128) and
+  2771, 2802, 2862 (cap 256), 96 children:
+
+  | treatment | children | settled relapses | extinct | latency measured | survivors |
+  |---|---|---|---|---|---|
+  | continuation | 24 | 0 | 0 | 24 | 24 |
+  | economy 2048 | 24 | 3 | 0 | 24 | 21 |
+  | economy 8192 | 24 | 5 | 0 | 24 | 19 |
+  | host mode | 24 | 0 | 0 | 24 | 24 |
+
+  | hypothesis | arm | pairs | favour treatment | favour continuation | ties | p | outcome |
+  |---|---|---|---|---|---|---|---|
+  | H3-latency | economy 2048 | 24 | 20 | 4 | 0 | 0.000772 | shown |
+  | H3-latency | economy 8192 | 24 | 21 | 3 | 0 | 0.000139 | shown |
+  | H4-survivors | economy 2048 | 21 | 0 | 1 | 20 | 1 | refuted |
+  | H4-survivors | economy 8192 | 19 | 1 | 0 | 18 | 0.5 | not shown |
+
+  No one or two parents carry either H3-latency result. Per parent, the treatment wins the
+  majority of the pairs in 7 of 8 parents at economy 2048 (parent 2771 goes 1 to 2) and in
+  all 8 at economy 8192.
+
+  **The size of the effect**, medians over the 24 held-out children of each treatment (all
+  latency-measured), lower middle as `Findings::Median` takes it, read off the per-child rows
+  and re-derived from the samples by a read-only `bin/rails runner` on the lab:
+
+  | treatment | first-decile `copy_latency` | last-decile | median R | R below 1 |
+  |---|---|---|---|---|
+  | continuation | 1 449 | 3 073 | 1.11 | 6 of 24 |
+  | economy 2048 | 1 409 | 1 023 | 0.821 | 21 of 24 |
+  | economy 8192 | 1 429 | 1 070 | 0.749 | 16 of 24 |
+  | host mode | 1 437 | 2 065 | 1.00 | 9 of 24 |
+
+  Left alone, the median dominant copier slows by about a tenth over 20 000 epochs; under
+  either economy it speeds up by a fifth to a quarter. Descriptively, at cap 256 the economy
+  children's first-decile latency already sits far below the continuation's (medians 1 806
+  at 2048 and 5 126 at 8192 against 6 761), so part of the speed-up happens inside the
+  1 000-epoch settling window the ratio does not read: R understates the change there rather
+  than overstating it. On the held-out children `copy_cost` is non-null in 7 654 samples and
+  equals `max_steps` (8 192) in every one: no halting copier appeared.
+
+  **The rung-3 claim**, finding `copying-gets-faster-under-an-economy`, **registry status
+  `published`**: under an energy economy, the dominant replicator's `copy_latency` falls
+  relative to the paired continuation. That is selection for faster copying, and it is the
+  programme's first confirmed adaptation result: a hypothesis written down before the data
+  it is tested on, shown on held-out parents at both economies, at p below 0.001, not resting
+  on one or two parents. `published` ("every run finished and the claim stands on them") is
+  the registry's status for exactly that. What it does not claim: `copy_latency` is measured
+  on the dominant tape against a noise partner, not in situ, so it says the dominant copier
+  copies faster in isolation, not that the colony replicates faster; H3 conditions on not
+  going extinct, leaving extinct children out (none of the held-out ones was), while the 3
+  and 5 economy children with a settled relapse stay in its 24 pairs — descriptively, not
+  as a registered test, leaving them out too reads 19 to 2 and 17 to 2; it is one substrate,
+  20 000 epochs and three correlated children per parent; the mechanism — why copies get
+  faster — is not identified; and the copiers still loop rather than halt, which is the
+  exploratory `copy_cost` observation above, not part of the reading.
+
+  **The rung-4 claim**, finding `complexity-from-an-emerged-start`, **registry status
+  `negative`**: from an emerged start, an energy economy does not keep complexity rising.
+  Neither economy arm can be read under the original rule, because both kill replicators
+  more often than the continuation, and the rich economy's 12-to-1 rests on two parents. The
+  held-out H4-survivors reading asked the same question of colonies that survived, on parents
+  nobody had seen, and the seen economy-8192 complexity signal did not replicate: refuted at
+  2048, not shown at 8192, with almost every surviving pair tied. The sweep finished and the
+  effect was not there, which is the registry's `negative`. Host mode is refuted, and the
+  colonies are robust — 52 of 54 continuations held their replicators for another 20 000
+  epochs — with only the strict no-relapse rule refuted. So the complexity question stands
+  where the 2026-09-24 entry ("Where the programme stands after sweeps 9 and 10") left it:
+  no substrate tested keeps complexity rising, now including an economy switched on in a
+  world that already holds replicators, and the next substrate is still the open decision
+  that entry named.
+
+  Neither finding rests on the orientation-blind census, so neither carries an instrument
+  note: the readings use `replicator_share`, `copy_latency` and `dominant_instruction_count`
+  over `dominant_self_replicates` samples, the parents qualify on the orientation-aware
+  census, and `copy_latency` reads an image in either orientation. Both pages render every
+  count from `Experiments::FromEmergedReadingService` at render time, the report the sweep
+  page draws; the registry summaries and DESIGN §1.3 item 11 carry the claims. Nothing about
+  the engine, the rules or any observable moves.
+- 2026-10-01 — **The locality-emergence finding states its claim: emergence peaks at an
+  intermediate reach.** Sweep 13 (`locality-emergence`, entry of 2026-09-27) finished on
+  2026-09-28, 630 of 630 runs, 90 per arm, seeds 91–180. Read under the pre-registered rule
+  (`lab:locality_emergence_report` on the lab, 2026-10-01, "final reading"), with crossings
+  and emergence re-counted by an independent SELECT on the lab database (crossed: a confirmed
+  `emergence_epoch`; emerged: crossed and `replicator_share` ≥ 0.5 at a sample at or after
+  it), which agrees arm for arm:
+
+  | arm | radius 1 | radius 2 | radius 3 | radius 4 | radius 6 | radius 8 | well-mixed |
+  |---|---|---|---|---|---|---|---|
+  | crossed / 90 | 5 | 10 | 11 | 20 | 11 | 5 | 8 |
+  | emerged / 90 | 4 | 9 | 7 | 16 | 6 | 3 | 3 |
+
+  **H-peak shown**: radius 4 16/90 against radius 1 4/90, one-sided Fisher p = 0.00385, Holm
+  0.00385; against well-mixed 3/90, p = 0.00135, Holm 0.00269. Both adjusted p are below
+  0.05. **H-shape shown**: over the six finite radii the radius² coefficient is −0.11379,
+  two-sided Wald p = 0.00407, and the fitted peak is at radius 4.10, strictly between 2 and
+  6; well-mixed, not fitted, 3/90.
+
+  **The claim**: on this world (128², fixed 64-byte tapes, 2^-13, 20 000 epochs) a replicator
+  arises most often at an intermediate reach.
+  Radius 4 emerged four times as often as radius 1 and five times as often as the well-mixed
+  world, on worlds no earlier reading had seen, and the curve over the finite radii rises from
+  radius 1, peaks near 4 and falls by radius 8. It is the exploratory pattern of sweep 12,
+  confirmed under rules fixed before any run was read.
+
+  **Registry status `published`**, finding `emergence-peaks-at-intermediate-reach`: every
+  run finished, the reading is final and both pre-registered hypotheses are shown, which is
+  what "every run finished and the claim stands on them" asks. It is the registry's first
+  `published` finding. The page renders the curve, the two hypotheses and sweep 12's arms
+  beside them at render time from `Experiments::LocalityEmergenceReadingService`, the report
+  the sweep page draws, applied to both sweeps. It carries no census note: emergence is read
+  on `replicator_share`, the orientation-aware clause (#245, #252). The radius-locality page
+  gains a line pointing to it.
+
+  **A coincidence of totals, stated so no reader suspects a copy.** At radius 1, 2, 4 and
+  well-mixed this sweep emerged 4, 9, 16 and 3 of 90, exactly sweep 12's exploratory counts.
+  They are different worlds: this sweep's seeds are 91–180 and sweep 12's 1–90; its runs are
+  ids 3673–4302 and sweep 12's 3217–3576, none shared; the confirmed crossings count 5, 10,
+  20 and 8 here against 5, 12, 25 and 7 in sweep 12; and at radius 1, where both count five,
+  the crossing seeds and epochs are different ones (seeds 96, 113, 119, 123 and 143 at epochs
+  17 990, 10 480, 13 000, 10 520 and 5 470, against seeds 1, 5, 20, 51 and 82 at 5 030, 7 000,
+  6 210, 17 250 and 9 330). The share clause then leaves the same totals by chance. The
+  confirmatory weight is on the three new arms as much as the four repeated ones: radius 3, 6
+  and 8 are what make H-shape a peak rather than a rise.
+
+  **What it means for rung 0**: the conditions under which a replicator arises include how
+  far a cell reaches, and not monotonically. The radius sweep (2026-09-11) read locality as
+  not speeding emergence on ten seeds an arm and could rule out only an enormous effect; at
+  nine times the seeds and the emergent rate the effect is there, as a best reach in the
+  middle rather than a benefit of locality as such — the tightest reach is among the worst.
+  With the lineage-diversity finding it divides the work: reach changes how often a
+  replicator arises, while after emergence one lineage held the world at every reach sweep 12
+  read. Not claimed: other world sizes, rates, growing tapes or budgets than 128²,
+  2^-13, 64 bytes and 20 000 epochs; detector crossings that the share clause does not keep;
+  any mechanism for why a reach near 4 is best; well-mixed as a point on the radius scale.
+  Nothing about the engine, the rules or any observable moves.
 - 2026-10-01 — **Does the reach effect carry to growable tapes? The `reach-cap128` sweep,
   pre-registered, and a pool of parents with room to grow.** This is §1.3 item 14,
   experiment `reach-cap128` (sweep key `reach_cap128`), and its numbers live in

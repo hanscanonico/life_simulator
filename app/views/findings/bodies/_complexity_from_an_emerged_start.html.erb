@@ -1,0 +1,136 @@
+<% record_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/design_record.md" %>
+
+<h2>Question</h2>
+<p>
+  Complexity rises at emergence and then stops rising on every substrate the programme has
+  tested from a random start, and the
+  <%= link_to "host–parasite sweep", finding_path("complexity-under-contest") %> found one
+  priced arm that kept rising on a single measured run. A run that starts from random tapes
+  spends most of its budget waiting for replicators, and a treatment can only work on what is
+  left. DESIGN §1.3 sweep 11 starts from replicators instead. <strong>Once a treatment is
+  switched on in a world that has already made them, does the existing replicator keep
+  getting more complicated, and does it hold at all?</strong>
+</p>
+
+<h2>Method</h2>
+<p>
+  Each parent is an economy-off control of sweep 9 whose last stored world is at least half
+  replicators by the orientation-aware census. Its terminal world is continued for another
+  20 000 epochs under four treatments, seeds 1001–1003 each, paired by (parent, seed): the
+  continuation under the parent's own dynamics, an economy with influx 2048, a rich economy
+  with influx 8192 (both with steal 1024, a stock cap of 32 768 and loss 0.5), and host mode.
+</p>
+<p>
+  The reading is <strong>pre-registered</strong>
+  (<%= link_to "docs/design_record.md", record_url %>, 2026-09-25, "Runs that start from an
+  emerged world", and its six clarifications). Each child held its replicators where the
+  last-decile median <span class="mono">replicator_share</span> stayed high and the share
+  never sat at the floor, and its complexity rises, plateaus or is mixed on
+  <span class="mono">dominant_instruction_count</span> over the samples whose dominant tape
+  self-replicates. Each treated arm is a one-sided sign test against the continuation over
+  paired children, printed but not read where the arm relapses more often than the
+  continuation; H-persistence says no continuation child relapses. A second, held-out
+  reading (2026-09-25, "The from-emerged economy arms, confirmed on held-out parents") was
+  written after the first ten parents had been seen, and reads the same complexity rule on
+  the survivors of the parents that qualified afterwards: H4-survivors.
+</p>
+
+<% reading = @show.from_emerged %>
+<h2>Result</h2>
+<% if reading&.report&.any? %>
+  <p>
+    <% if reading.complexity_rise_shown? %>
+      <strong>An economy arm reads as keeping complexity rising: see the readings below.</strong>
+    <% else %>
+      <strong>From an emerged start, neither energy economy can be read as keeping complexity
+      rising, and on the held-out survivors the complexity signal does not replicate.</strong>
+    <% end %>
+    <% if reading.interim? %>
+      Not every child of the sweep has finished, so this reading is interim.
+    <% end %>
+  </p>
+  <ul>
+    <% reading.comparisons.each do |treatment, comparison| %>
+      <li>
+        <strong><%= treatment.hypothesis %></strong>, <%= treatment.name %>:
+        <%= comparison.favouring %> pairs favour the treatment and <%= comparison.against %> the
+        continuation<% if comparison.p_value %>, p = <%= metric_value comparison.p_value.to_f %><% end %>,
+        <span class="badge <%= comparison.badge_class %>"><%= comparison.reading_label %></span>
+      </li>
+    <% end %>
+    <li>
+      <strong>H-persistence</strong>:
+      <span class="badge <%= reading.persistence.badge_class %>"><%= reading.persistence.outcome_label %></span>
+      <%= reading.report.persistence_line %>.
+    </li>
+    <% reading.survivor_tests.each do |test| %>
+      <li>
+        <strong><%= test.hypothesis %></strong>, held out, <%= test.treatment.name %>:
+        <%= test.comparison.favouring %> pairs favour the treatment and
+        <%= test.comparison.against %> the continuation, <%= test.comparison.ties %> tie<% if test.comparison.p_value %>,
+        p = <%= metric_value test.comparison.p_value.to_f %><% end %>,
+        <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>
+      </li>
+    <% end %>
+  </ul>
+  <% unless reading.complexity_rise_shown? %>
+    <p>
+      <% if reading.economy_arms_unread? %>
+        The economy arms relapse more often than the continuation, so the pre-registered rule
+        reads neither of them; the parents a held sign test rests on are listed below.
+      <% end %>
+      The held-out
+      reading was written to ask the question again on colonies that survived the treatment, on
+      parents nobody had seen: there almost every surviving pair ties, and the seen rich-economy
+      signal is not there. So the economy does not keep complexity rising from an emerged start,
+      and the question of whether complexity keeps rising stands where the
+      <%= link_to "host–parasite finding", finding_path("complexity-under-contest") %> left it.
+      What the economy does do, on the same held-out children, is make the dominant replicator
+      <%= link_to "copy itself faster", finding_path("copying-gets-faster-under-an-economy") %>.
+    </p>
+  <% end %>
+  <% continuations = reading.persistence.children.size %>
+  <% if continuations.positive? %>
+    <p>
+      The colonies themselves are robust: <%= continuations - reading.persistence.relapsed.size %> of
+      <%= continuations %> continuations kept their replicators over 20 000 more epochs.
+      <% if reading.persistence.refuted? %>
+        Only the strict rule that none relapses is refuted.
+      <% end %>
+    </p>
+  <% end %>
+  <p class="text-sm text-muted">
+    Every count on this page is read from the sweep's stored samples at render time, through
+    the same readings <%= link_to "the sweep page", experiment_path("from-emerged", anchor: "descendant-reading") %>
+    draws.
+  </p>
+
+  <%= render "experiments/descendant_reading", reading: reading.report %>
+  <%= render "experiments/heldout_reading", reading: reading.report %>
+<% else %>
+  <p class="text-muted">
+    No child of <%= link_to "the sweep", experiment_path("from-emerged") %> is in this database,
+    so there is nothing to read here. This page reads the children at render time and states
+    the claim from them.
+  </p>
+<% end %>
+
+<h2>What is not claimed</h2>
+<ul>
+  <li>
+    <strong>Not that an economy cannot raise complexity.</strong> It did not here, on this
+    substrate, over 20 000 epochs past an emerged world. A longer budget, a different
+    economy or a different world is untested.
+  </li>
+  <li>
+    <strong>Complexity is the instruction count.</strong> The rule reads
+    <span class="mono">dominant_instruction_count</span> over the samples whose dominant tape
+    self-replicates; a replicator that grows more intricate without executing more of its
+    bytes reads as flat.
+  </li>
+  <li>
+    <strong>Children are correlated.</strong> Three children share each parent's world, so
+    the pairs are not independent colonies, which is why every held test lists the parents
+    it rests on.
+  </li>
+</ul>
