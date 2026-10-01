@@ -11,8 +11,8 @@ use crate::task::{self, TASK_CASES};
 use std::collections::HashMap;
 
 /// The most case draws one assay epoch makes before it falls back to `FALLBACK_CASES`.
-/// About a third of draws fail to separate, so the bound is never reached in practice; it
-/// is there so the draw is total and deterministic.
+/// About 27% of draws fail to separate, so the bound is never reached in practice; it is
+/// there so the draw is total and deterministic.
 pub const LOGIC_CASE_DRAWS: u32 = 1024;
 /// The first entry of `LOGIC_TASKS` no measured evolved solver reaches within two
 /// substitutions: XOR and EQU need a stored intermediate and four or five NANDs, where the

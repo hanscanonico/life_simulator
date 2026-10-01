@@ -116,25 +116,25 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   with `tasks = off`. A reward needs `tasks` on and an `energy_influx`, and `tasks` is
   refused on life. The parameters are dynamics, not structure: a descendant may set them.
 - **The logic assay and the NAND op** (`tasks = logic`; `task_floor`, default `echo`;
-  docs/design_record.md 2026-10-01, the logic assay): the same assay, buffer, emit, budget,
-  three cases and four slots, with x and y **whole bytes** (0..255), and the byte `~` (0x7E)
-  a **NAND** inside it: `B[head0] = ¬(B[head0] ∧ B[head1])`, bitwise. `~` is an instruction
-  only in this assay: in the soup and in the arithmetic assay it is a no-op, so no soup run
-  moves, and a lap holding it is never replayed. The ladder is ECHO (x or y, 1 unit) below
-  Avida's nine logic tasks (Lenski et al. 2003): NOT (¬x or ¬y) 1, NAND 1, AND 2, ORN
-  (x∨¬y or y∨¬x) 2, OR 4, ANDN (x∧¬y or y∧¬x) 4, NOR 8, XOR 8 and EQU 16, 47 units; a
-  composition of 0, 1, 1, 2, 2, 3, 3, 4, 4 and 5 NANDs, so a lower rung is a part of a
-  higher one. A task is credited when one slot holds one of its forms in all three cases.
-  The cases are redrawn until the x values differ, as do the y values; every form of every
-  task expects three distinct outputs; no two forms of different tasks expect the same
-  three (ECHO's forms are the inputs, so no other form is an input); and no form sits a
-  constant offset from an input, except ECHO's own form of it. XOR and EQU are the **deep**
-  rungs. `task_floor` names the lowest rung paid, under either ladder: rungs below it are
-  still assayed and pay nothing. It must name a rung of the chosen ladder, and with tasks
-  off only the default; `echo` is the first rung of both, so the default pays every rung.
-  A reward of `0` runs no assay, so `tasks = logic` at a reward of 0 is byte-identical to
-  `tasks = off`. The task observables above read the arithmetic ladder only and are null
-  under `logic`.
+  docs/design_record.md 2026-10-01, the logic assay): the same assay, buffer, emit,
+  budget, three cases and four slots, with x and y **whole bytes** (0..255), and the byte
+  `~` (0x7E) a **NAND** inside it: `B[head0] = ¬(B[head0] ∧ B[head1])`, bitwise. `~` is an
+  instruction only in this assay: in the soup and in the arithmetic assay it is a no-op,
+  so no soup run moves; inside this assay a lap holding it is never replayed. The ladder
+  is ECHO (x or y, 1 unit) below Avida's nine logic tasks (Lenski et al. 2003): NOT (¬x or
+  ¬y) 1, NAND 1, AND 2, ORN (x∨¬y or y∨¬x) 2, OR 4, ANDN (x∧¬y or y∧¬x) 4, NOR 8, XOR 8
+  and EQU 16, 47 units; a composition of 0, 1, 1, 2, 2, 3, 3, 4, 4 and 5 NANDs, so a lower
+  rung is a part of a higher one. A task is credited when one slot holds one of its forms
+  in all three cases. The cases are redrawn until the x values differ, as do the y values;
+  every form of every task expects three distinct outputs; no two forms of different tasks
+  expect the same three (ECHO's forms are the inputs, so no other form is an input); and
+  no form sits a constant offset from an input, except ECHO's own form of it. XOR and EQU
+  are the **deep** rungs. `task_floor` names the lowest rung paid, under either ladder:
+  rungs below it are still assayed and pay nothing. It must name a rung of the chosen
+  ladder, and with tasks off only the default; `echo` is the first rung of both, so the
+  default pays every rung. A reward of `0` runs no assay, so `tasks = logic` at a reward
+  of 0 is byte-identical to `tasks = off`. The task observables above read the arithmetic
+  ladder only and are null under `logic`.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The
