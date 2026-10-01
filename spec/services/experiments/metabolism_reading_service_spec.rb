@@ -72,6 +72,18 @@ RSpec.describe Experiments::MetabolismReadingService do
                                               ["no reward", 6, 6, 0, 0, 6, 0, 0, 6, 0]])
     end
 
+    it "pairs each reward child with its twin of the same parent and seed" do
+      expect(report.pairs.map { |child, twin| [child.run_id, twin.run_id] })
+        .to eq(reward.map(&:id).zip(no_reward.map(&:id)))
+    end
+
+    it "tables the ladder per arm: the tasks its worlds held and their median first epoch" do
+      echo, *rest = report.arms.first.ladder
+      expect(echo).to have_attributes(task: "echo", reached: 6, median_first_epoch: 1_010)
+      expect(rest.map(&:reached)).to all(eq(0))
+      expect(report.arms.last.ladder.map(&:median_first_epoch)).to all(be_nil)
+    end
+
     it "gives each parent's agreement" do
       expect(test("H-ladder").agreement_cells)
         .to eq([["H-ladder", "reward", parents.first.id, 3, 0, 0, 0], ["H-ladder", "reward", parents.last.id, 0, 0, 3, 0]])

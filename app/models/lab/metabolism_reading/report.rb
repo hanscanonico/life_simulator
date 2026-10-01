@@ -13,6 +13,14 @@ module Lab
 
       def interim? = !final
 
+      # Each reward child beside its no-reward twin of the same (parent, seed), nil where the
+      # twin does not exist yet: the pairs the tests read.
+      def pairs
+        reward, no_reward = arms
+        twins = no_reward.children.index_by { |child| [child.parent_id, child.seed] }
+        reward.children.map { |child| [child, twins[[child.parent_id, child.seed]]] }
+      end
+
       def heading
         state = if !any? then "no child yet"
                 elsif final then "final"

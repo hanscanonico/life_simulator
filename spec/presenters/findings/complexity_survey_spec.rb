@@ -99,6 +99,16 @@ RSpec.describe Findings::ComplexitySurvey do
     end
   end
 
+  context "with a run paid for its tasks" do
+    it "leaves it out of every count" do
+      emerged_run([36, 44])
+      paid = create(:run, :emerged, :metabolism)
+      create(:sample, run: paid, epoch: 100, values: { "dominant_compressed_len" => 36 })
+
+      expect(described_class.build).to have_attributes(flagged_count: 1, emerged_count: 1, measured_count: 1)
+    end
+  end
+
   it "caps the table and says how many runs it left out" do
     stub_const("Findings::ShowPage::MAX_TRANSITIONS", 1)
     2.times { emerged_run([36, 44]) }

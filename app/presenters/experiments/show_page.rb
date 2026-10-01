@@ -185,6 +185,24 @@ module Experiments
       @reach_cap128_reading ||= ReachCap128ReadingService.call(experiment: experiment)
     end
 
+    # The metabolism sweep's pre-registered reading, on that sweep only: one pass over each
+    # child's samples, held under this page's key, and final once the parent pool has settled,
+    # which the settled service keys on that pool, as for `descendant_reading`.
+    def metabolism_reading
+      return nil unless MetabolismReadingService.applies_to?(experiment)
+
+      @metabolism_reading ||= cached("metabolism_reading") { MetabolismReadingService.call(experiment: experiment) }
+                              .with(final: DescendantSweepSettledService.call(experiment))
+    end
+
+    # A sweep holding a run paid for its tasks imports an objective (DESIGN.md §1.4), and its
+    # page says so beside its substrate.
+    def imports_objective?
+      return @imports_objective if defined?(@imports_objective)
+
+      @imports_objective = experiment.runs.metabolism.exists?
+    end
+
     private
 
     def own_emergence_rule?

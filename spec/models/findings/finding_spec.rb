@@ -36,6 +36,19 @@ RSpec.describe Findings::Finding do
     end
   end
 
+  it "imports no objective unless its entry says so" do
+    expect(finding).not_to be_imports_objective
+  end
+
+  context "with the Metabolism label" do
+    it "imports an objective, and keeps the flag through a copy" do
+      labelled = finding.with(imports_objective: true)
+
+      expect(labelled).to be_imports_objective
+      expect(labelled.with(status: :published)).to be_imports_objective
+    end
+  end
+
   it "colours the badge by status" do
     expect(finding.badge_class).to eq("badge-info")
   end

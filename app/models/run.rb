@@ -37,6 +37,16 @@ class Run < ApplicationRecord
   # flags a candidate, and only these emerged.
   scope :emerged, -> { founding.terminal.where.not(emergence_epoch: nil) }
   scope :stale, -> { where(status: %w[claimed running]).where(heartbeat_at: ...STALE_AFTER.ago) }
+  # A run paid for its tasks imports an objective (DESIGN.md §1.4) and is never pooled with
+  # a fitness-free one: every site-wide or cross-sweep aggregate reads `fitness_free`. A run
+  # stored before the parameter existed carries no key, and a missing reward is no reward.
+  # The engine reads the reward only as a JSON number, so anything else is no reward too,
+  # and is never cast: one malformed value would otherwise fail every page's status strip.
+  # Keep in step with Lab::MetabolismReading.metabolism_run?, the same rule on a params hash.
+  REWARD_SQL = "CASE jsonb_typeof(runs.params -> '#{Lab::MetabolismReading::REWARD_KEY}') WHEN 'number' " \
+               "THEN (runs.params ->> '#{Lab::MetabolismReading::REWARD_KEY}')::numeric ELSE 0 END".freeze
+  scope :metabolism, -> { where("#{REWARD_SQL} > 0") }
+  scope :fitness_free, -> { where("#{REWARD_SQL} <= 0") }
 
   # A run started from `parent`'s stored world at `epoch` — by default the latest one the
   # parent kept — for `budget` more epochs, under `params` that may change the parent's
