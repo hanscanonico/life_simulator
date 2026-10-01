@@ -714,10 +714,23 @@ RSpec.describe "Experiments", type: :request do
                                    "H-reach128", "not shown", "radius 4 1/1 against control, radius 1 0/1")
       end
 
-      it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
-        get experiment_path(experiment)
+      context "with emerged runs that carry a complexity reading" do
+        before do
+          2.times do
+            run = reach_run(experiment, crossing: 1_000, shares: [0.0, 0.9, 0.9])
+            (([12] * 10) + ([40] * 10)).each_with_index do |count, index|
+              create(:sample, run: run, epoch: 1_000 + (index * 10),
+                              values: { "compress_ratio" => 0.4, "dominant_instruction_count" => count,
+                                        "conserved_core_bytes" => 30, "dominant_compressed_len" => 139 })
+            end
+          end
+        end
 
-        expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+        it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+        end
       end
     end
 

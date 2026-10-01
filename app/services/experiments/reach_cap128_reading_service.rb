@@ -34,14 +34,17 @@ module Experiments
 
     def self.applies_to?(experiment) = experiment.slug == Lab.slug_for("reach_cap128")
 
-    # A run emerged where it crossed and some stored world read from the crossing on holds
-    # the share: true or false, and nil for a run not every kept world of which has been read.
-    def self.emergence(emergence_epoch:, summary:)
+    # A run emerged where it crossed and some world it still keeps, read from the crossing
+    # on, holds the share: true or false, and nil for a run not every kept world of which has
+    # been read. A reading of a world pruned since is left out: a pass that read a run before
+    # the prune job thinned it would give it ten worlds for every one the control was read on.
+    def self.emergence(emergence_epoch:, summary:, kept:)
       return nil unless summary.measured?
       return false if emergence_epoch.nil?
 
       summary.readings.any? do |reading|
-        reading.epoch >= emergence_epoch && reading.share >= Lab::ReachCap128Reading::MIN_SHARE
+        kept.include?(reading.epoch) && reading.epoch >= emergence_epoch &&
+          reading.share >= Lab::ReachCap128Reading::MIN_SHARE
       end
     end
 
@@ -72,7 +75,7 @@ module Experiments
     def row(label, run)
       summary = summaries.fetch(run.id)
       finished = run.status == "finished"
-      emerged = finished ? self.class.emergence(emergence_epoch: run.emergence_epoch, summary: summary) : nil
+      emerged = finished ? emergence(run) : nil
       sample = emerged ? last_samples.fetch(run.id, {}) : {}
 
       RunRow.new(run_id: run.id, arm: label, seed: run.seed, status: run.status,
@@ -104,11 +107,19 @@ module Experiments
 
     def summaries = @summaries ||= Runs::OrientedSummariesService.call(runs: treatment_runs + control_runs)
 
+    def emergence(run)
+      self.class.emergence(emergence_epoch: run.emergence_epoch, summary: summaries.fetch(run.id),
+                           kept: kept_epochs.fetch(run.id, Set.new))
+    end
+
+    def kept_epochs
+      @kept_epochs ||= Snapshot.where(run_id: (treatment_runs + control_runs).map(&:id)).pluck(:run_id, :epoch)
+                               .group_by(&:first).transform_values { |pairs| pairs.to_set(&:last) }
+    end
+
     def emerged_ids
-      @emerged_ids ||= (treatment_runs + control_runs).select do |run|
-        run.status == "finished" &&
-          self.class.emergence(emergence_epoch: run.emergence_epoch, summary: summaries.fetch(run.id))
-      end.map(&:id)
+      @emerged_ids ||= (treatment_runs + control_runs).select { |run| run.status == "finished" && emergence(run) }
+                                                      .map(&:id)
     end
 
     # The values of each emerged run's last live sample.

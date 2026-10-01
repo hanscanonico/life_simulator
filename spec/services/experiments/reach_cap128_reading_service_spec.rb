@@ -53,6 +53,15 @@ RSpec.describe Experiments::ReachCap128ReadingService do
       end
     end
 
+    context "with a reading of a world pruned since it was read" do
+      it "does not count it" do
+        run = reach_run(experiment, crossing: 1_000, shares: [0.0, 0.1, 0.1])
+        create(:snapshot_reading, run: run, epoch: 1_500, source_epoch: 1_500, values: { "replicator_share" => 0.9 })
+
+        expect([emerged(run), row(run).measured]).to eq([false, true])
+      end
+    end
+
     context "with a reading stepped past the stored world" do
       it "does not count it" do
         run = reach_run(experiment, crossing: 1_000, shares: [0.0, 0.1, 0.1])

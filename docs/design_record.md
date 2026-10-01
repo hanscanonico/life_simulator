@@ -2398,14 +2398,20 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   **Emergence, locked.** One definition, applied identically to both arms: a finished run
   is **emerged** when it has the confirmed `emergence_epoch` **and** some
   `oriented_census/1` reading of a world it kept — a static reading, `epoch =
-  source_epoch`, at or before the run's last epoch, at or after the crossing — reads
-  `replicator_share ≥ 0.5`. A reading without the share as a number is no reading. Live
-  samples do not enter it. A run counts only once the readings pass has read **every**
+  source_epoch`, at or before the run's last epoch, at or after the crossing, of a world
+  the run still stores — reads `replicator_share ≥ 0.5`. A reading without the share as a
+  number is no reading. Live samples do not enter it, and nor does a reading of a world
+  pruned since it was read. A run counts only once the readings pass has read **every**
   world it kept (`Runs::OrientedSummary#measured?`); until then it is listed and not
   counted. Both arms keep their worlds under the same pruning, so the resolution is the
-  same in both. **A readings pass, `readings-corpus --experiment reach-cap128 --epochs all`,
-  precedes the reading**; the reading is final only when every run of both arms has
-  finished and been read in full. The constants are `INSTRUMENT`, `SHARE_KEY` and
+  same in both. The one difference is a world a descendant run starts from, which pruning
+  also keeps: each of the control's 11 confirmed runs keeps one, and none of the 11 needs
+  it — each reads the share on a world every run keeps, a multiple of 1 000 or its last
+  (a SELECT, 2026-10-01). A run read before the prune job thinned it would carry about 200
+  readings where the control carries 21, hence the stored-world clause. **The snapshots
+  are thinned, `lab:prune_snapshots`, and then a readings pass, `readings-corpus
+  --experiment reach-cap128 --epochs all`, precedes the reading**; the reading is final
+  only when every run of both arms has finished and been read in full. The constants are `INSTRUMENT`, `SHARE_KEY` and
   `MIN_SHARE` (0.5) in `Lab::ReachCap128Reading`.
 
   **The sweep.** Every parameter of sweep 9's economy-off cap-128 control, read off
@@ -2428,7 +2434,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   270, all 270 runs counted, it is shown at **21** emerged runs or more. The power against
   that fixed control is about 0.59 if radius 4's true rate is 0.08, 0.91 at 0.10 and 0.99 at
   0.12 (exact binomial sums, 2026-10-01); sweep 13's ratio, four times radius 1's rate, would
-  put it near 0.16. The control was run 2026-09-18 to 2026-09-26 and its count was seen
+  put radius 4's rate near 0.16, where the power is all but 1. The control was run 2026-09-18 to 2026-09-26 and its count was seen
   before this entry; it is a historical arm, not a concurrent one, and the engine's
   determinism is what makes it comparable: its worlds would be the same runs today.
 
@@ -2453,8 +2459,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   against one. A difference inside 20 000 epochs can be a speed difference. The control is
   the economy-off arm of a sweep run under the `aligned` lineage rule, which moves no byte,
   and before #256, which moved run time and nothing else. Sweep 13's curve is not re-read on
-  stored worlds here (its readings pass has read 71 of its 630 runs); its counts above are its
-  own rule's.
+  stored worlds here; its counts above are its own rule's.
 
   **Cost.** Measured from the runs' `compute_seconds` (2026-10-01): sweep 9's cap-128
   control averaged **1 261 s** a run on seeds 1–90, before #256, and **823 s** on seeds
