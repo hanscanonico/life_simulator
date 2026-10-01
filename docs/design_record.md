@@ -3545,8 +3545,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   shown tests: no set carries either. So no row was missing and the service is unchanged.
   Re-derived from the per-parent table for the record: H-capability left without any two
   parents reads 48 to 0; H-complexity's hardest single leave-out is parent 2577, 15 to 1
-  (p = 0.00026), and its hardest pair is 2577 with 2590, 14 to 1 (p = 0.00049), or 2577 with
-  any 2-to-0 parent, 13 to 1 (p = 0.00092).
+  (p = 0.00026), and its hardest pair is 2577 with any 2-to-0 parent (950, 1007, 1029, 1089
+  or 2771), 13 to 1 (p = 0.00092); 2577 with 2590 reads 14 to 1 (p = 0.00049).
 
   **Descriptive**, from the report's per-child rows. A task's line is a share of 0.1 at any
   own sample, the settling window included; epochs are the children's own (a child runs

@@ -88,7 +88,7 @@
       <li class="mb-3">
         <strong><%= test.hypothesis %></strong>: <%= comparison.favouring %> pairs favour the
         reward, <%= comparison.against %> the twin and <%= comparison.ties %> tie, of
-        <%= comparison.measured_count %> measured<% if comparison.p_value %>, p = <%= Charts.format_value(comparison.p_value.to_f) %><% end %>,
+        <%= comparison.measured_count %> measured<% if comparison.p_value %>, p = <%= p_value_text(comparison.p_value) %><% end %>,
         <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>.
         <% if reading.unanimous?(test) %>
           Every pair of all <%= reading.parent_count %> parents favours the reward.
@@ -98,7 +98,7 @@
         <% end %>
         Without the piloted parents: <%= unpiloted.comparison.favouring %> to
         <%= unpiloted.comparison.against %> with <%= unpiloted.comparison.ties %> ties<% if unpiloted.comparison.p_value %>,
-        p = <%= Charts.format_value(unpiloted.comparison.p_value.to_f) %><% end %>,
+        p = <%= p_value_text(unpiloted.comparison.p_value) %><% end %>,
         <span class="badge <%= unpiloted.badge_class %>"><%= unpiloted.outcome_label %></span>.
       </li>
     <% end %>
@@ -177,11 +177,13 @@
   substitution-only mutation. The design study's landscape measurement, recorded in the
   <%= link_to "design record", record_url %> on 2026-10-01 ("The logic assay, the NAND op
   <span class="mono">~</span> and <span class="mono">task_floor</span>") and restated in the
-  Logic pre-registration, points at the instruction set. BFF has no two-input data op, so every two-input task needs a counted loop,
-  and the only loop a copier owns is its copy loop. The nearest loop solver that still copies
-  is 5–7 coordinated substitutions from any evolved solver measured, and no partial kernel on
-  the way computes anything the assay pays for. Indels do not shorten the path. Pay cannot
-  pull a population across a gap with nothing to select along it.
+  Logic pre-registration, points at the instruction set. Its numbers are pilot numbers from a
+  scratch copy of the engine, not findings. BFF has no two-input data op, so every two-input
+  task needs a counted loop, and the only loop a copier owns is its copy loop. No loop solver
+  that still copies lay within 3 substitutions of any evolved solver it measured; the nearest
+  it built is 5–7 coordinated substitutions away, and no partial kernel on the way computes
+  anything the assay pays for. Indels did not shorten the path. If that holds, pay cannot pull
+  a population across the gap, because there is nothing to select along it.
 </p>
 <p>
   H-complexity being shown is consistent with that. Mirroring a solver and stacking the

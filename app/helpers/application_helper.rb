@@ -68,6 +68,10 @@ module ApplicationHelper
     number_with_precision(value, precision: 3, significant: true, strip_insignificant_zeros: true)
   end
 
+  # A test's p at three significant figures, in exponent form once it is small: fixed-point,
+  # 5.55e-17 prints as a row of zeros.
+  def p_value_text(p_value) = Charts.format_value(p_value.to_f)
+
   # A hazard, already scaled to its reporting unit, reads at the same precision.
   def hazard_value(rate) = metric_value(rate)
 
