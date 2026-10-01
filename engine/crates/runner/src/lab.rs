@@ -623,6 +623,7 @@ mod tests {
     use crate::mock_lab::{self, MockLab};
     use life_engine::Params;
     use serde_json::{json, Value};
+    use std::sync::atomic::AtomicU32;
 
     /// The outage window the tests give a call: long enough to ride a mock lab that
     /// vanishes for a moment out, short enough to run out inside a test.
@@ -653,11 +654,26 @@ mod tests {
         MemoryGuard::reading(limit, "a test reader", Box::new(move || Some(usage)))
     }
 
-    /// Runs `worker` until `stop`, long enough for a claim or two.
-    fn claim_briefly(lab: &Lab, worker: usize) {
+    /// A guard over `limit` reading a fixed usage, counting how often it is read.
+    fn counted_guard(limit: u64, usage: u64) -> (MemoryGuard, Arc<AtomicU32>) {
+        let reads = Arc::new(AtomicU32::new(0));
+        let counter = Arc::clone(&reads);
+        let guard = MemoryGuard::reading(
+            limit,
+            "a test reader",
+            Box::new(move || {
+                counter.fetch_add(1, Ordering::Relaxed);
+                Some(usage)
+            }),
+        );
+        (guard, reads)
+    }
+
+    /// Runs `worker` until `condition` holds, then stops it.
+    fn claim_until(lab: &Lab, worker: usize, what: &str, condition: impl Fn() -> bool) {
         thread::scope(|scope| {
             scope.spawn(|| lab.claim_loop(worker).expect("the worker loop"));
-            thread::sleep(Duration::from_millis(100));
+            mock_lab::wait_until(what, condition);
             lab.stop.store(true, Ordering::Relaxed);
         });
     }
@@ -708,10 +724,8 @@ mod tests {
         mock.set_queue_empty();
         let lab = lab(&mock);
 
-        thread::scope(|scope| {
-            scope.spawn(|| lab.claim_loop(0).expect("the worker loop"));
-            thread::sleep(Duration::from_millis(60));
-            lab.stop.store(true, Ordering::Relaxed);
+        claim_until(&lab, 0, "a claim", || {
+            mock.count("POST /api/runs/claim") >= 1
         });
 
         assert!(mock.count("POST /api/runs/claim") >= 1);
@@ -1010,7 +1024,7 @@ mod tests {
 
         thread::scope(|scope| {
             scope.spawn(|| {
-                thread::sleep(Duration::from_millis(150));
+                mock.wait_until_turned_away(1);
                 mock.revive();
             });
             lab.execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 0));
@@ -1073,7 +1087,7 @@ mod tests {
 
         let waited = thread::scope(|scope| {
             scope.spawn(|| {
-                thread::sleep(Duration::from_millis(100));
+                mock.wait_until_turned_away(1);
                 lab.stop.store(true, Ordering::Relaxed);
             });
             let started = Instant::now();
@@ -1094,8 +1108,13 @@ mod tests {
 
         lab.execute(&Slot::new("runner-1", 0), &claimed(MockLab::params(), 6, 0));
 
-        let beat = mock.request("POST /api/runs/1/heartbeat");
-        assert_eq!(beat["epochs_done"], json!(1));
+        let last_beats: Vec<Value> = mock
+            .requests("POST /api/runs/1/heartbeat")
+            .into_iter()
+            .filter(|beat| beat["interval_seconds"].is_null())
+            .collect();
+        assert_eq!(last_beats.len(), 1, "{last_beats:?}");
+        assert_eq!(last_beats[0]["epochs_done"], json!(1));
         assert_eq!(mock.count("POST /api/runs/1/finish"), 0);
     }
 
@@ -1108,12 +1127,14 @@ mod tests {
         let mock = MockLab::start();
         mock.set_queue_empty();
         let mut lab = lab(&mock);
-        lab.stagger = Duration::from_secs(1);
+        lab.stagger = mock_lab::PATIENCE;
 
         thread::scope(|scope| {
             scope.spawn(|| lab.claim_loop(0).expect("the worker loop"));
             scope.spawn(|| lab.claim_loop(2).expect("the worker loop"));
-            thread::sleep(Duration::from_millis(60));
+            mock_lab::wait_until("the first slot's claim", || {
+                mock.count("POST /api/runs/claim") >= 1
+            });
             lab.stop.store(true, Ordering::Relaxed);
         });
 
@@ -1136,9 +1157,12 @@ mod tests {
     fn a_worker_over_the_memory_guard_claims_nothing() {
         let mock = MockLab::start();
         let mut lab = lab(&mock);
-        lab.memory = Some(guard(4 * MIB, 8 * MIB));
+        let (guard, reads) = counted_guard(4 * MIB, 8 * MIB);
+        lab.memory = Some(guard);
 
-        claim_briefly(&lab, 0);
+        claim_until(&lab, 0, "a second look at the guard", || {
+            reads.load(Ordering::Relaxed) >= 2
+        });
 
         assert_eq!(mock.count("POST /api/runs/claim"), 0);
     }
@@ -1149,7 +1173,9 @@ mod tests {
         let mut lab = lab(&mock);
         lab.memory = Some(guard(8 * MIB, 4 * MIB));
 
-        claim_briefly(&lab, 0);
+        claim_until(&lab, 0, "a finished run", || {
+            mock.count("POST /api/runs/1/finish") >= 1
+        });
 
         assert!(mock.count("POST /api/runs/claim") >= 1);
         assert!(mock.count("POST /api/runs/1/finish") >= 1);
@@ -1225,7 +1251,9 @@ mod tests {
         let beating = Instant::now();
         thread::scope(|scope| {
             scope.spawn(|| lab.beat(1, &Slot::new("runner-1", 0), &progress, &done));
-            thread::sleep(Duration::from_millis(120));
+            mock_lab::wait_until("three beats", || {
+                mock.count("POST /api/runs/1/heartbeat") >= 3
+            });
             done.store(true, Ordering::Relaxed);
         });
         let elapsed = beating.elapsed().as_secs_f64();
