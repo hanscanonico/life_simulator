@@ -102,6 +102,15 @@ module Findings
       @locality_emergence = report && LocalityEmergence.build(report, exploratory: exploratory_emergence)
     end
 
+    # Sweep 15 read under its own pre-registered rule, from the report its sweep page draws.
+    # Nil where the sweep is not in the lab.
+    def metabolism
+      return @metabolism if defined?(@metabolism)
+
+      report = evidence&.metabolism_reading
+      @metabolism = report && Metabolism.build(report)
+    end
+
     def diagrams = evidence ? evidence.diagrams : []
 
     def runs_done = evidence ? evidence.finished_count : 0

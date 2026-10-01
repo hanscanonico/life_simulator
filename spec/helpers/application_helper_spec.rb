@@ -143,6 +143,16 @@ RSpec.describe ApplicationHelper, type: :helper do
     end
   end
 
+  describe "#p_value_text" do
+    it "reads a small p in exponent form, at three significant figures" do
+      expect(helper.p_value_text(Rational(1, 2**54))).to eq("5.55e-17")
+    end
+
+    it "reads a p near the test level in plain decimals" do
+      expect([0.0031738281, 0.125].map { |p_value| helper.p_value_text(p_value) }).to eq(%w[0.00317 0.125])
+    end
+  end
+
   describe "#percent_value" do
     it "reads a fraction as a whole percent" do
       expect(helper.percent_value(0.5)).to eq("50%")

@@ -78,7 +78,7 @@
             <%= pluralize(comparison.measured_count, "pair") %> measured on both sides:
             <%= comparison.favouring %> favour <%= test.treatment.name %>, <%= comparison.against %>
             <%= test.control.name %>,
-            <%= comparison.ties %> tie<% if comparison.p_value %>; p = <%= metric_value comparison.p_value.to_f %><% end %>.
+            <%= comparison.ties %> tie<% if comparison.p_value %>; p = <%= p_value_text comparison.p_value %><% end %>.
             <% if comparison.carried_by.any? %>
               Carried by parents
               <%= comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>:
@@ -88,7 +88,7 @@
               <%= label %>:
               <span class="badge <%= sensitivity.badge_class %>"><%= sensitivity.outcome_label %></span>,
               <%= sensitivity.comparison.favouring %> to <%= sensitivity.comparison.against %><% if sensitivity.comparison.p_value %>,
-              p = <%= metric_value sensitivity.comparison.p_value.to_f %><% end %>.
+              p = <%= p_value_text sensitivity.comparison.p_value %><% end %>.
             <% end %>
           </p>
           <% if comparison.agreement.any? %>

@@ -74,7 +74,7 @@
           <p class="text-sm text-muted">
             <%= pluralize(comparison.measured_count, "pair") %> measured on both sides:
             <%= comparison.favouring %> favour the reward, <%= comparison.against %> the twin,
-            <%= comparison.ties %> tie<% if comparison.p_value %>; p = <%= metric_value comparison.p_value.to_f %><% end %>.
+            <%= comparison.ties %> tie<% if comparison.p_value %>; p = <%= p_value_text comparison.p_value %><% end %>.
             <% if comparison.carried_by.any? %>
               Carried by parents
               <%= comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>:
@@ -83,7 +83,7 @@
             Without the piloted parents:
             <span class="badge <%= unpiloted.badge_class %>"><%= unpiloted.outcome_label %></span>,
             <%= unpiloted.comparison.favouring %> to <%= unpiloted.comparison.against %><% if unpiloted.comparison.p_value %>,
-            p = <%= metric_value unpiloted.comparison.p_value.to_f %><% end %>.
+            p = <%= p_value_text unpiloted.comparison.p_value %><% end %>.
           </p>
           <% if comparison.agreement.any? %>
             <details class="text-sm">

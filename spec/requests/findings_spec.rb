@@ -1497,6 +1497,56 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the Metabolism write-up" do
+      let(:metabolism) { Findings::Registry.find("paid-computation-stops-at-one-step-tasks") }
+
+      it "badges it as importing an objective beside its status" do
+        get finding_path(metabolism)
+
+        meta = response.parsed_body.at_css(".finding-meta")
+        expect(meta.at_css(".badge").text).to eq("negative")
+        expect(meta.at_css(".objective-badge").text.squish).to eq("imports an objective")
+        expect(response.parsed_body.at_css("#objective-note").text).to include("Rung 4 on Soup is unaffected by it.")
+      end
+
+      it "cites the pre-registration and states what the refuted ladder means" do
+        get finding_path(metabolism)
+
+        expect(response.body.squish)
+          .to include("DESIGN §1.3 item 15", "a tie throughout as refuted",
+                      "5–7 coordinated substitutions", "no partial kernel",
+                      "pre-registered as DESIGN §1.3 item 16", "rung 4 on Soup stays \"not shown\"")
+      end
+
+      context "with none of its children in this database" do
+        it "says so instead of reading" do
+          get finding_path(metabolism)
+
+          expect(response.parsed_body.text.squish).to include("No child of the sweep is in this database")
+        end
+      end
+
+      context "with its children read" do
+        before do
+          experiment = metabolism_experiment
+          metabolism_parent
+          Experiments::DescendantSweepBuilderService.call(experiment)
+          metabolism_children(experiment, reward: true).each { |run| metabolism_sample(run, capability: 3) }
+          metabolism_children(experiment, reward: false).each { |run| metabolism_sample(run) }
+        end
+
+        it "states each test from the sweep's reading and draws the sweep's section" do
+          get finding_path(metabolism)
+
+          tests = response.parsed_body.at_css("#metabolism-finding-tests").text.squish
+          expect(tests).to include("H-capability: 3 pairs favour the reward, 0 the twin and 0 tie, of 3 measured, " \
+                                   "p = 0.125, not shown.")
+          expect(tests).to include("H-ladder: 0 pairs favour the reward, 0 the twin and 3 tie, of 3 measured, refuted.")
+          expect(response.parsed_body.at_css("#metabolism-reading")).to be_present
+        end
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

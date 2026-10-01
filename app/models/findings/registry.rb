@@ -7,6 +7,27 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "paid-computation-stops-at-one-step-tasks",
+        title: "Paid to compute, replicators take the one-step tasks and stop there",
+        date: Date.new(2026, 10, 2),
+        experiment_slug: "metabolism",
+        related_finding_slugs: %w[complexity-from-an-emerged-start copying-gets-faster-under-an-economy],
+        status: :negative,
+        imports_objective: true,
+        summary: "DESIGN §1.3 sweep 15 paid replicators for computing. The 18 emerged worlds of " \
+                 "the from-emerged sweep ran another 40 000 epochs each, three seeds a parent, " \
+                 "with arithmetic tasks rewarded and, in a paired twin, assayed but unpaid. All " \
+                 "108 children finished and none died out. Pay bought capability: all 54 pairs " \
+                 "favour the reward (p = 5.55e-17), and the paid worlds took ECHO, INC and DEC, " \
+                 "the tasks one substitution of a copier computes. They went no further. The " \
+                 "rung-4 question, whether paid computation climbs to the tasks that need a " \
+                 "counted loop, is refuted: no child of either arm held a loop task at a tenth " \
+                 "of its world, 0 to 0 with 54 ties. Paid complexity did rise, in 18 pairs " \
+                 "against 1 (p = 3.81e-05), and both shown tests hold without the piloted " \
+                 "parents. The substrate imports an objective, so none of this moves rung 4 on " \
+                 "Soup, which stays not shown."
+      ),
+      Finding.new(
         slug: "emergence-peaks-at-intermediate-reach",
         title: "Emergence peaks at an intermediate reach",
         date: Date.new(2026, 10, 1),
