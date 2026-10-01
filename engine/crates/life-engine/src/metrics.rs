@@ -160,6 +160,35 @@ pub struct Metrics {
     /// How many lineage ids each hold at least `LINEAGE_FLOOR_PERCENT` percent of the cells.
     /// 0 on the life substrate.
     pub lineages_over_one_percent: u64,
+    /// The share of `task::TASK_SAMPLE_CELLS` cells, drawn uniformly with replacement,
+    /// whose tape the task assay credits with ECHO, on cases of the sample's own
+    /// (`docs/design_record.md`, 2026-10-01, the task observables). This and every task
+    /// reading below is `None` wherever tasks are off, on the life substrate, and on every
+    /// sample recorded before they existed.
+    pub task_share_echo: Option<f64>,
+    /// The same share for INC.
+    pub task_share_inc: Option<f64>,
+    /// The same share for DEC.
+    pub task_share_dec: Option<f64>,
+    /// The same share for ADD.
+    pub task_share_add: Option<f64>,
+    /// The same share for SUB.
+    pub task_share_sub: Option<f64>,
+    /// The same share for NOT.
+    pub task_share_not: Option<f64>,
+    /// The same share for DOUBLE.
+    pub task_share_double: Option<f64>,
+    /// The same share for MUL.
+    pub task_share_mul: Option<f64>,
+    /// How many tasks at least a tenth of those sampled cells are credited with.
+    pub task_capability: Option<u32>,
+    /// The same count over the tasks that need a loop: ADD, SUB, NOT, DOUBLE and MUL.
+    pub task_capability_loop: Option<u32>,
+    /// The tasks the dominant tape — the one `dominant_replicates` describes — is credited
+    /// with, a bit per task in `task::TASKS` order, on cases of its own.
+    pub dominant_tasks: Option<u32>,
+    /// How many tasks that is.
+    pub dominant_task_count: Option<u32>,
 }
 
 impl Metrics {
@@ -1663,6 +1692,18 @@ mod tests {
             copy_latency_orientation: None,
             lineage_effective_count: 128.0,
             lineages_over_one_percent: 0,
+            task_share_echo: None,
+            task_share_inc: None,
+            task_share_dec: None,
+            task_share_add: None,
+            task_share_sub: None,
+            task_share_not: None,
+            task_share_double: None,
+            task_share_mul: None,
+            task_capability: None,
+            task_capability_loop: None,
+            dominant_tasks: None,
+            dominant_task_count: None,
         }
     }
 
