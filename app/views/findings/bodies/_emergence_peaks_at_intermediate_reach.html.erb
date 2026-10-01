@@ -1,0 +1,167 @@
+<% sweep = Lab::SWEEPS.fetch("locality_emergence") %>
+<% radii = sweep.fetch(:param_grid).fetch("radius") %>
+<% seeds = sweep.fetch(:seeds) %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% rate_exponent = -Math.log2(Lab::EMERGENT_MUTATION_RATE).round %>
+<% record_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/design_record.md" %>
+<% constants = Lab::LocalityEmergenceReading %>
+
+<h2>Question</h2>
+<p>
+  Rung 0 of the programme asks under what conditions a replicator arises at all. The
+  <%= link_to "radius sweep", finding_path("radius-locality") %> asked whether a cell's reach
+  decides it and could not tell: ten seeds an arm, one or two transitions in each. The
+  <%= link_to "lineage-diversity sweep", finding_path("lineages-after-emergence") %>, built to
+  ask something else, then saw radius 4 emerge four times as often as radius 1 and five times
+  as often as the well-mixed world. DESIGN §1.3 sweep 13 puts that pattern to fresh worlds:
+  <strong>does emergence peak at an intermediate reach?</strong>
+</p>
+
+<h2>Method</h2>
+<p>
+  Sweep 12's world to the byte — a 128×128 torus of tapes held at 64 bytes, at the emergent
+  mutation rate <span class="mono">2<sup>-<%= rate_exponent %></sup></span>, with
+  <span class="mono">lineage_rule = oriented</span> — at radius
+  <span class="mono"><%= radii.reject(&:zero?).to_sentence(last_word_connector: " and ") %></span>
+  and 0, the well-mixed world. <%= seeds.size %> seeds per arm, <%= epochs %> epochs per run,
+  <%= number_with_delimiter radii.size * seeds.size %> runs. The seeds are
+  <%= seeds.first %>–<%= seeds.last %>, not sweep 12's 1–90: the lineage rule changes no byte
+  of a world, so those seeds at radius 1, 2, 4 and 0 would have replayed sweep 12's worlds and
+  its exploratory counts with them.
+</p>
+<p>
+  The reading is <strong>pre-registered</strong>, with every number fixed before a run was
+  read: <%= link_to "docs/design_record.md", record_url %>, 2026-09-27, "Does emergence peak at
+  an intermediate reach?". A run is emerged where it has a confirmed emergence epoch and reads
+  <span class="mono">replicator_share</span> of at least
+  <%= percent_value constants::MIN_SHARE %> at some sample from it on — sweep 12's rule,
+  unchanged, on the orientation-aware share. <strong>H-peak</strong>, the confirmatory test:
+  radius <%= constants::PEAK_RADIUS %> emerges more often than radius 1 and than the
+  well-mixed world, two one-sided Fisher exact tests Holm-corrected at family level
+  <%= constants::FAMILY_ALPHA %>. <strong>H-shape</strong>: over the finite radii, a logistic
+  regression of emergence on radius and radius² bends down, its radius² coefficient negative
+  at a two-sided Wald p below <%= constants::SHAPE_LEVEL %>, with its fitted peak strictly
+  between radius <%= constants::SHAPE_PEAK_FLOOR %> and <%= constants::SHAPE_PEAK_CEILING %>
+  so that two of the radii read lie on each side of it. A curve that only rises or only falls
+  across the radii is not a peak.
+</p>
+
+<% reading = @show.locality_emergence %>
+<h2>Result</h2>
+<% if reading&.any? %>
+  <p>
+    <span class="badge <%= reading.peak.badge_class %>">H-peak <%= reading.peak.outcome_label %></span>
+    <span class="badge <%= reading.shape.badge_class %>">H-shape <%= reading.shape.outcome_label %></span>
+    <strong><%= reading.claim_sentence %></strong>
+  </p>
+  <% if reading.interim? %>
+    <p>Not every run of the sweep has finished, so this reading is interim.</p>
+  <% end %>
+  <p class="text-sm text-muted">
+    Every count on this page is read from the sweep's stored runs at render time, through the
+    same reading <%= link_to "the sweep page", experiment_path("locality-emergence", anchor: "locality-emergence-reading") %>
+    draws.
+  </p>
+
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Emergence by reach">
+    <table class="data-table" id="locality-emergence-curve">
+      <thead>
+        <tr>
+          <th>Arm</th>
+          <th class="numeric">Finished</th>
+          <th class="numeric">Confirmed crossing</th>
+          <th class="numeric">Emerged</th>
+          <th class="numeric">Rate</th>
+          <% if reading.exploratory? %>
+            <th class="numeric">Sweep 12 crossing</th>
+            <th class="numeric">Sweep 12 emerged</th>
+          <% end %>
+        </tr>
+      </thead>
+      <tbody>
+        <% reading.arms.each do |arm| %>
+          <tr>
+            <td><%= arm.label %></td>
+            <td class="numeric"><%= arm.finished %></td>
+            <td class="numeric"><%= arm.crossed %></td>
+            <td class="numeric"><%= arm.emerged %> of <%= arm.finished %></td>
+            <td class="numeric"><%= percent_value arm.rate&.to_f %></td>
+            <% if reading.exploratory? %>
+              <td class="numeric"><%= arm.exploratory? ? arm.exploratory.crossed : "—" %></td>
+              <td class="numeric"><%= arm.exploratory? ? "#{arm.exploratory.emerged} of #{arm.exploratory.finished}" : "—" %></td>
+            <% end %>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-sm text-muted">
+    A confirmed crossing that never read a share of one half after it is not emerged: the
+    census that confirms a crossing is blind to reverse copiers, and the share clause asks
+    that the world was, at some point, mostly replicators. Well-mixed is not a distance, so it
+    stands at the end of the table and outside the fit.
+  </p>
+
+  <%= render "experiments/locality_emergence_reading", reading: reading.report %>
+
+  <% if reading.same_total_arms.any? %>
+    <h2 class="mt-6">The same totals, not the same worlds</h2>
+    <p id="locality-emergence-coincidence">
+      At <%= reading.same_total_arms.map(&:label).to_sentence %> this sweep emerged exactly as
+      often as sweep 12 did:
+      <%= reading.same_total_arms.map { |arm| "#{arm.emerged} of #{arm.finished}" }.to_sentence %>.
+      That is a coincidence of totals, not reused data. This sweep's worlds are seeds
+      <%= reading.seed_range.first %>–<%= reading.seed_range.last %> and sweep 12's are
+      <%= reading.exploratory_seed_range.first %>–<%= reading.exploratory_seed_range.last %>,
+      so no world is shared, and every run is its own row under its own experiment. The
+      crossings say the same: <%= reading.same_total_arms.map { |arm| "#{arm.crossed} against #{arm.exploratory.crossed} at #{arm.label}" }.to_sentence %>,
+      and where a count of crossings agrees the seeds and epochs that crossed do not. H-peak and
+      H-shape read this sweep's runs alone; sweep 12's only suggested the question.
+    </p>
+  <% end %>
+<% else %>
+  <p class="text-muted">
+    No run of <%= link_to "the sweep", experiment_path("locality-emergence") %> is in this
+    database, so there is no arm to read here. This page reads the arms at render time and
+    states the claim from them.
+  </p>
+<% end %>
+
+<h2>How it reads against the earlier findings</h2>
+<p>
+  <%= link_to "Does spatial locality buy emergence?", finding_path("radius-locality") %> read
+  locality as not speeding emergence, on ten seeds an arm at the engine's default rate and on
+  the detector's crossing alone. It could rule out an enormous effect and nothing smaller, and
+  it saw no peak because one or two events an arm cannot draw one. This sweep reads nine times
+  the seeds at the emergent rate and finds the effect that one could not see — not a monotone
+  benefit of locality, which the tightest reach does not have, but a best reach in the middle.
+  <%= link_to "After emergence, one lineage takes the world at every reach", finding_path("lineages-after-emergence") %>
+  is the other half: reach changes how often a replicator arises, not what follows it, for once
+  one has arisen a single lineage holds the world whatever the reach.
+</p>
+
+<h2>What is not claimed</h2>
+<ul>
+  <li>
+    <strong>One world.</strong> Every run is 128×128, at one mutation rate, with tapes held at
+    64 bytes and a budget of <%= epochs %> epochs. Where the peak sits in another world size, at
+    another rate or with tapes that can grow is untested, and a reach of 4 means something
+    different on a larger torus.
+  </li>
+  <li>
+    <strong>Emergence is the replicator-world definition.</strong> A world counts where the
+    detector confirmed a crossing and replicators then held half of it. A crossing alone is not
+    what is claimed: every arm crossed more often than it emerged.
+  </li>
+  <li>
+    <strong>No mechanism.</strong> Nothing here says why a reach near 4 is best: whether a
+    tight neighbourhood starves a copier of partners, a wide one dilutes it before it takes
+    hold, or something else. The sweep measured the curve, not its cause.
+  </li>
+  <li>
+    <strong>Well-mixed is not on the radius scale.</strong> It is radius 0 in the parameters
+    and a partner drawn from the whole torus in the world. It is compared with radius
+    <%= constants::PEAK_RADIUS %> in H-peak and left out of the fit, and it is not the point
+    past radius 8.
+  </li>
+</ul>
