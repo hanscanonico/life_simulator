@@ -2,6 +2,7 @@
 //! reads, all in one place (`docs/DESIGN.md` §3, "parameters are data").
 
 use crate::bff::OpSet;
+use crate::logic::{FIRST_DEEP_TASK, LOGIC_CASE_DRAWS, LOGIC_TASKS};
 use crate::metrics::{
     TRANSITION_BASELINE_EPOCHS, TRANSITION_HOLD_SAMPLES, TRANSITION_MAX_OP_DENSITY,
     TRANSITION_MIN_ALPHABET_SIZE, TRANSITION_RELATIVE_FRACTION, TRANSITION_THRESHOLD,
@@ -67,13 +68,43 @@ pub enum EnergyPayer {
 /// op"; the 2026-10-01 design-record entry on the task assay). `Off` is the default and the
 /// soup every earlier run lived in. `Arith` assays every cell on the arithmetic ladder of
 /// `task::TASKS` every `task_every` epochs and pays `task_reward` per unit it earns into
-/// the cell's stock.
+/// the cell's stock. `Logic` does the same on the logic ladder of `logic::LOGIC_TASKS`,
+/// with `bff::NAND` an instruction inside its assay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Tasks {
     Off,
     Arith,
+    Logic,
 }
+
+impl Tasks {
+    /// The name the params give this ladder.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Arith => "arith",
+            Self::Logic => "logic",
+        }
+    }
+
+    /// The names of this ladder's rungs, lowest first: none with tasks off.
+    pub fn rungs(self) -> Vec<&'static str> {
+        match self {
+            Self::Off => Vec::new(),
+            Self::Arith => TASKS.iter().map(|task| task.name).collect(),
+            Self::Logic => LOGIC_TASKS.iter().map(|task| task.name).collect(),
+        }
+    }
+}
+
+/// Every name `task_floor` may take, the arithmetic ladder's rungs then the logic ladder's
+/// not already named; which of them a run may choose is set by its `tasks`. Both ladders
+/// begin at ECHO, the default.
+const TASK_FLOORS: &[&str] = &[
+    "echo", "inc", "dec", "add", "sub", "not", "double", "mul", "nand", "and", "orn", "or", "andn",
+    "nor", "xor", "equ",
+];
 
 /// How a lineage tag follows descent (`docs/DESIGN.md` §1.2; why it is a parameter is the
 /// 2026-09-25 design-record entry). `Aligned` is the default and the rule every earlier
@@ -137,6 +168,10 @@ pub struct Params {
     /// Energy paid into a cell's stock per unit of the tasks it is credited with at one
     /// assay; `0` (the default) pays nothing and runs no assay at all.
     pub task_reward: u32,
+    /// The lowest rung of the ladder that is paid: rungs below it are still assayed but
+    /// earn nothing. `echo` (the default) is the first rung of both ladders, so every rung
+    /// is paid.
+    pub task_floor: String,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -181,6 +216,7 @@ impl Default for Params {
             tasks: Tasks::Off,
             task_every: 8,
             task_reward: 0,
+            task_floor: TASK_FLOORS[0].to_string(),
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
@@ -344,13 +380,17 @@ const FIELDS: &[Field] = &[
     },
     Field {
         name: "tasks",
-        kind: Kind::Choice(&["off", "arith"]),
+        kind: Kind::Choice(&["off", "arith", "logic"]),
         doc: "Which tasks a soup cell is assayed on. off assays nothing, which is the \
               substrate of DESIGN 1.1. arith runs each cell's tape alone, on two small \
               inputs at the end of a buffer twice its length, with ! emitting the byte \
               under head0, and credits the tasks of an arithmetic ladder (echo, inc, dec, \
               add, sub, not, double, mul) that one of its outputs computes in all three \
-              cases. Outside that assay ! is never an instruction. Refused on life.",
+              cases. logic runs the same assay on two whole-byte inputs, with ~ also \
+              writing the NAND of the bytes under the two heads under head0, and credits \
+              the tasks of a logic ladder (echo, not, nand, and, orn, or, andn, nor, xor, \
+              equ). Outside the assay ! and ~ are never instructions, and ~ is never one \
+              under arith. Refused on life.",
     },
     Field {
         name: "task_every",
@@ -369,9 +409,20 @@ const FIELDS: &[Field] = &[
         },
         doc: "Instruction energy paid into a cell's stock, before that epoch's influx and \
               never past energy_stock_cap, per unit of the tasks its tape is credited \
-              with at an assay; the ladder's units are 1, 2, 2, 4, 4, 8, 8 and 16. 0 pays \
+              with at an assay, at or above task_floor; the arith ladder's units are 1, 2, \
+              2, 4, 4, 8, 8 and 16, the logic ladder's 1, 1, 1, 2, 2, 4, 4, 8, 8 and 16. 0 pays \
               nothing and runs no assay, so the run is the same run as with tasks off. \
               Any reward needs tasks on and an energy_influx to have a stock to pay into.",
+    },
+    Field {
+        name: "task_floor",
+        kind: Kind::Choice(TASK_FLOORS),
+        doc: "The lowest rung of the task ladder that is paid. Every rung is still \
+              assayed, but those below this one earn nothing. It must name a rung of the \
+              ladder tasks chooses: echo, inc, dec, add, sub, not, double or mul under \
+              arith; echo, not, nand, and, orn, or, andn, nor, xor or equ under logic. \
+              echo is the first rung of both, so it pays every rung; with tasks off \
+              nothing else is accepted.",
     },
     Field {
         name: "ops",
@@ -509,6 +560,11 @@ pub enum ParamError {
     },
     /// Life has no tapes to assay.
     TasksOnLife,
+    /// A floor that is no rung of the chosen ladder pays nothing or everything by accident.
+    TaskFloorNotARung {
+        task_floor: String,
+        tasks: Tasks,
+    },
     /// A reward with no tasks to earn it by is silently inert.
     TaskRewardWithoutTasks {
         task_reward: u32,
@@ -584,6 +640,24 @@ impl fmt::Display for ParamError {
                 f,
                 "tasks is set on the life substrate: only soup tapes can be assayed"
             ),
+            Self::TaskFloorNotARung { task_floor, tasks } => {
+                let rungs = tasks.rungs();
+                if rungs.is_empty() {
+                    write!(
+                        f,
+                        "task_floor is {task_floor} with tasks off: there is no ladder to \
+                         pay from it"
+                    )
+                } else {
+                    write!(
+                        f,
+                        "task_floor is {task_floor}, which is no rung of the {} ladder: one of \
+                         {}",
+                        tasks.name(),
+                        rungs.join(", ")
+                    )
+                }
+            }
             Self::TaskRewardWithoutTasks { task_reward } => write!(
                 f,
                 "task_reward is {task_reward} with tasks off: there is nothing to earn it by"
@@ -689,6 +763,13 @@ impl Params {
                 task_reward: self.task_reward,
             });
         }
+        let defaulted = self.task_floor == TASK_FLOORS[0];
+        if !defaulted && !self.tasks.rungs().contains(&self.task_floor.as_str()) {
+            return Err(ParamError::TaskFloorNotARung {
+                task_floor: self.task_floor.clone(),
+                tasks: self.tasks,
+            });
+        }
         Ok(())
     }
 
@@ -756,6 +837,19 @@ impl Params {
                     .iter()
                     .map(|task| serde_json::json!({"name": task.name, "units": task.units}))
                     .collect::<Vec<_>>(),
+                "logic": {
+                    "nand": (crate::bff::NAND as char).to_string(),
+                    "case_draws": LOGIC_CASE_DRAWS,
+                    "first_deep": LOGIC_TASKS[FIRST_DEEP_TASK].name,
+                    "ladder": LOGIC_TASKS
+                        .iter()
+                        .map(|task| serde_json::json!({
+                            "name": task.name,
+                            "units": task.units,
+                            "nands": task.nands,
+                        }))
+                        .collect::<Vec<_>>(),
+                },
             },
         }))
         .expect("schema always serialises")
@@ -818,6 +912,16 @@ impl Params {
     /// runs, so a run with tasks on and no reward is byte for byte the run with tasks off.
     pub fn rewards_tasks(&self) -> bool {
         self.stocked() && self.tasks != Tasks::Off && self.task_reward > 0
+    }
+
+    /// The index, on this run's ladder, of the lowest rung it pays: `task_floor`'s rung,
+    /// and the first where it names none, which validation refuses.
+    pub fn task_floor_rung(&self) -> usize {
+        self.tasks
+            .rungs()
+            .iter()
+            .position(|rung| *rung == self.task_floor)
+            .unwrap_or(0)
     }
 
     /// Bytes of state one cell's slot holds: the tape cap in the soup, one byte in life.
@@ -1238,7 +1342,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 26);
+        assert_eq!(fields.len(), 27);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -1294,7 +1398,14 @@ mod tests {
         let tasks = fields.iter().find(|f| f["name"] == "tasks").unwrap();
         assert_eq!(tasks["type"], "enum");
         assert_eq!(tasks["default"], "off");
-        assert_eq!(tasks["values"], serde_json::json!(["off", "arith"]));
+        assert_eq!(
+            tasks["values"],
+            serde_json::json!(["off", "arith", "logic"])
+        );
+        let floor = fields.iter().find(|f| f["name"] == "task_floor").unwrap();
+        assert_eq!(floor["type"], "enum");
+        assert_eq!(floor["default"], "echo");
+        assert_eq!(floor["values"], serde_json::json!(TASK_FLOORS));
         let every = fields.iter().find(|f| f["name"] == "task_every").unwrap();
         assert_eq!(
             (every["default"].as_i64(), every["min"].as_i64()),
@@ -1532,6 +1643,23 @@ mod tests {
                     {"name": "double", "units": 8},
                     {"name": "mul", "units": 16},
                 ],
+                "logic": {
+                    "nand": "~",
+                    "case_draws": 1024,
+                    "first_deep": "xor",
+                    "ladder": [
+                        {"name": "echo", "units": 1, "nands": 0},
+                        {"name": "not", "units": 1, "nands": 1},
+                        {"name": "nand", "units": 1, "nands": 1},
+                        {"name": "and", "units": 2, "nands": 2},
+                        {"name": "orn", "units": 2, "nands": 2},
+                        {"name": "or", "units": 4, "nands": 3},
+                        {"name": "andn", "units": 4, "nands": 3},
+                        {"name": "nor", "units": 8, "nands": 4},
+                        {"name": "xor", "units": 8, "nands": 4},
+                        {"name": "equ", "units": 16, "nands": 5},
+                    ],
+                },
             })
         );
     }
@@ -1562,7 +1690,16 @@ mod tests {
                 ..Params::default()
             }
         );
-        assert!(serde_json::from_str::<Params>(r#"{"tasks": "logic"}"#).is_err());
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"tasks": "logic"}"#).unwrap(),
+            Params {
+                tasks: Tasks::Logic,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"tasks": "bool"}"#).is_err());
+        assert_eq!(params.task_floor, "echo");
+        assert_eq!(params.task_floor_rung(), 0);
         assert_eq!(rewarded_params().validate(), Ok(()));
         assert!(rewarded_params().rewards_tasks());
     }
@@ -1645,5 +1782,84 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    /// Every rung of both ladders is a floor some run may name, each named once, and both
+    /// ladders begin at the default.
+    #[test]
+    fn the_task_floors_are_the_rungs_of_both_ladders() {
+        let mut both = Tasks::Arith.rungs();
+        for rung in Tasks::Logic.rungs() {
+            if !both.contains(&rung) {
+                both.push(rung);
+            }
+        }
+        assert_eq!(TASK_FLOORS, both.as_slice());
+        assert_eq!(Tasks::Arith.rungs()[0], TASK_FLOORS[0]);
+        assert_eq!(Tasks::Logic.rungs()[0], TASK_FLOORS[0]);
+        assert!(Tasks::Off.rungs().is_empty());
+    }
+
+    /// A floor names a rung of the run's own ladder, and reads as that rung's index; the
+    /// deep-only arm's `xor` is the logic ladder's first deep rung.
+    #[test]
+    fn a_task_floor_is_a_rung_of_the_chosen_ladder() {
+        let floored = |tasks, task_floor: &str| Params {
+            tasks,
+            task_floor: task_floor.to_string(),
+            ..rewarded_params()
+        };
+        let deep_only = floored(Tasks::Logic, "xor");
+        assert_eq!(deep_only.validate(), Ok(()));
+        assert_eq!(deep_only.task_floor_rung(), crate::logic::FIRST_DEEP_TASK);
+        let arith = floored(Tasks::Arith, "add");
+        assert_eq!(arith.validate(), Ok(()));
+        assert_eq!(arith.task_floor_rung(), 3);
+        assert_eq!(floored(Tasks::Logic, "not").task_floor_rung(), 1);
+        assert_eq!(floored(Tasks::Arith, "not").task_floor_rung(), 5);
+
+        for (tasks, task_floor) in [
+            (Tasks::Logic, "mul"),
+            (Tasks::Arith, "xor"),
+            (Tasks::Logic, "anything"),
+        ] {
+            let params = floored(tasks, task_floor);
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::TaskFloorNotARung {
+                    task_floor: task_floor.to_string(),
+                    tasks,
+                })
+            );
+        }
+        assert_eq!(
+            floored(Tasks::Arith, "xor")
+                .validate()
+                .unwrap_err()
+                .to_string(),
+            "task_floor is xor, which is no rung of the arith ladder: one of echo, inc, dec, \
+             add, sub, not, double, mul"
+        );
+    }
+
+    /// With tasks off there is no ladder, so only the default floor is accepted.
+    #[test]
+    fn rejects_a_task_floor_with_tasks_off() {
+        let params = Params {
+            task_floor: "xor".to_string(),
+            ..Params::default()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::TaskFloorNotARung {
+                task_floor: "xor".to_string(),
+                tasks: Tasks::Off,
+            })
+        );
+        assert_eq!(
+            params.validate().unwrap_err().to_string(),
+            "task_floor is xor with tasks off: there is no ladder to pay from it"
+        );
+        assert_eq!(Params::default().validate(), Ok(()));
     }
 }

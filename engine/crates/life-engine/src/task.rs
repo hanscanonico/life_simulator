@@ -5,7 +5,7 @@
 //! run's instruction set, so the world computes it once per distinct tape and cell order
 //! cannot matter.
 
-use crate::bff::{self, Bounds, Emitted, OpSet};
+use crate::bff::{self, AssayOps, Bounds, Emitted, OpSet};
 use crate::rng::{self, Rng};
 use std::collections::HashMap;
 
@@ -215,10 +215,16 @@ impl Credit {
 
     /// The energy units the credited tasks are worth together.
     pub fn units(self) -> u32 {
+        self.units_from(0)
+    }
+
+    /// The units of the credited tasks at index `floor` and above: what a run whose
+    /// `task_floor` is that rung pays.
+    pub fn units_from(self, floor: usize) -> u32 {
         TASKS
             .iter()
             .enumerate()
-            .filter(|(index, _)| self.has(*index))
+            .filter(|(index, _)| *index >= floor && self.has(*index))
             .map(|(_, task)| task.units)
             .sum()
     }
@@ -276,6 +282,12 @@ pub struct CaseRun {
 /// byte a no-op, and stops at the end of the buffer, on an unmatched bracket, after
 /// `TASK_STEPS` steps or at the `TASK_MAX_OUTPUTS`-th emit.
 pub fn run_case(tape: &[u8], x: u8, y: u8, ops: OpSet) -> CaseRun {
+    run_case_on(tape, x, y, ops, AssayOps::Emit)
+}
+
+/// `run_case` on the machine `assay_ops` names: the arithmetic assay's, or the logic
+/// assay's, where `bff::NAND` is an instruction too. The buffer is the same for both.
+pub(crate) fn run_case_on(tape: &[u8], x: u8, y: u8, ops: OpSet, assay_ops: AssayOps) -> CaseRun {
     let len = 2 * tape.len();
     let mut buffer = Vec::with_capacity(len);
     buffer.extend_from_slice(tape);
@@ -294,7 +306,7 @@ pub fn run_case(tape: &[u8], x: u8, y: u8, ops: OpSet) -> CaseRun {
         cap: len,
         code_len: len,
     };
-    let outcome = bff::run_emitting(&mut buffer, bounds, &mut emitted);
+    let outcome = bff::run_emitting(&mut buffer, bounds, &mut emitted, assay_ops);
     CaseRun {
         outputs: emitted.bytes,
         steps: outcome.steps,
@@ -309,28 +321,46 @@ pub fn run_case(tape: &[u8], x: u8, y: u8, ops: OpSet) -> CaseRun {
 /// it, but the emit a tape is paid for must be one it carries. A case that emits nothing
 /// ends the assay, which is exact: no slot can then agree across every case.
 pub fn assay(tape: &[u8], cases: &Cases, ops: OpSet) -> Credit {
-    if !tape.contains(&bff::EMIT) {
+    let Some(runs) = case_outputs(tape, cases.inputs(), ops, AssayOps::Emit) else {
         return Credit::default();
+    };
+    let mut bits = 0u8;
+    for (index, task) in TASKS.iter().enumerate() {
+        bits |= u8::from(slot_holds(&runs, cases.expected(task))) << index;
+    }
+    Credit(bits)
+}
+
+/// What each case of `inputs` emitted, in order, on the machine `assay_ops` names. `None`
+/// for a tape holding no emit byte, which is never run, and as soon as a case emits nothing,
+/// since no slot can then hold a task in every case.
+pub(crate) fn case_outputs(
+    tape: &[u8],
+    inputs: &[(u8, u8); TASK_CASES],
+    ops: OpSet,
+    assay_ops: AssayOps,
+) -> Option<Vec<Vec<u8>>> {
+    if !tape.contains(&bff::EMIT) {
+        return None;
     }
     let mut runs = Vec::with_capacity(TASK_CASES);
-    for (x, y) in cases.inputs() {
-        let run = run_case(tape, *x, *y, ops);
+    for (x, y) in inputs {
+        let run = run_case_on(tape, *x, *y, ops, assay_ops);
         if run.outputs.is_empty() {
-            return Credit::default();
+            return None;
         }
         runs.push(run.outputs);
     }
-    let mut bits = 0u8;
-    for (index, task) in TASKS.iter().enumerate() {
-        let expected = cases.expected(task);
-        let held = (0..TASK_MAX_OUTPUTS).any(|slot| {
-            runs.iter()
-                .zip(expected)
-                .all(|(outputs, byte)| outputs.get(slot) == Some(&byte))
-        });
-        bits |= u8::from(held) << index;
-    }
-    Credit(bits)
+    Some(runs)
+}
+
+/// Whether one output slot holds `expected`'s byte in every case.
+pub(crate) fn slot_holds(runs: &[Vec<u8>], expected: [u8; TASK_CASES]) -> bool {
+    (0..TASK_MAX_OUTPUTS).any(|slot| {
+        runs.iter()
+            .zip(expected)
+            .all(|(outputs, byte)| outputs.get(slot) == Some(&byte))
+    })
 }
 
 /// The assay of many tapes on one epoch's cases, each distinct tape run once.

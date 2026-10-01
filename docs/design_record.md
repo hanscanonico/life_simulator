@@ -3077,3 +3077,154 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     three tests with their per-parent agreement and their re-reading without the piloted
     parents, the pairs, and the descriptive ladder. It is one pass over the children's
     samples, held under the page's cache key as the from-emerged reading is.
+
+- 2026-10-01 — **The logic assay, the NAND op `~` and `task_floor` (Logic, slice 1).**
+  "Logic" is a variant of the Metabolism substrate. It keeps Metabolism's economy, assay
+  and reward, and swaps the arithmetic ladder for a logic one. It imports an objective
+  **and a primitive**, and it carries Metabolism's label and pooling rule. This is its first
+  slice: the op, the ladder, the parameters and the reward. The observables come next, in
+  their own slice, and deploy with this one as a single runner restart, after the
+  Metabolism sweep is final. The sweep and its pre-registration come after the Metabolism
+  sweep reads, in their own entry, before any of its runs is seeded. Nothing is relocked.
+
+  **Why a primitive.** A design study of the Metabolism ladder (2026-10-01, a scratch study
+  outside the repository; its numbers are *pilot* numbers, from a throwaway copy of the
+  engine and the stored worlds of six rewarded `metabolism` children, not findings) asked
+  what holds that ladder at its one-substitution rungs. Its answer is the instruction set,
+  not the variation operator:
+  - BFF has no two-input data op, so every two-input task needs a counted loop, and the
+    only loop a copier owns is its copy loop;
+  - no loop solver that still copies lies within 3 substitutions of any evolved solver
+    measured: one loop solver, which no longer copies, among 143 million mutants within two
+    edits of every kind on 12 focal tapes, and among 20–37 million triple substitutions in
+    the code window of each of four of them, 94 loop solvers, all of which spend the copy
+    loop on the count and none of which copies;
+  - the nearest loop solver that still copies is **5–7 coordinated substitutions** away
+    by construction, and no partial kernel on the way computes anything new;
+  - **indels do not shorten it**: 6–9 insertions under a length-keeping indel operator, no
+    loop solver among 127 million one- and two-edit mutants involving an insertion,
+    deletion or duplication, and 0 loop rungs in 4 of 4 pilot worlds with half of all
+    mutations indels.
+
+  NAND is the one primitive whose ladder has a known compositional depth and a stepping-
+  stone result to test against (Lenski et al. 2003): every logic task is a composition of
+  NANDs. *Pilot*: 2 of 4 cap-128 worlds climbed NOT/NAND → ORN → OR/ANDN → NOR within 20 000
+  epochs, and with the rungs below OR unpaid the same two worlds climbed nothing, like the
+  no-reward twin. XOR and EQU were reached by no single or double substitution of any
+  evolved solver measured, nor by any triple substitution in the code window: they are the
+  deep rungs.
+
+  **The NAND op** (DESIGN §1.1, "The logic assay and the NAND op"). The byte `~` (0x7E)
+  writes `¬(B[head0] ∧ B[head1])`, bitwise, under head0. It is an instruction **only in the
+  logic assay**. `bff::run_emitting` takes an `AssayOps`, `Emit` for the arithmetic assay
+  and `EmitNand` for the logic one, and `bff::execute` gains a third compile-time switch,
+  `NAND_ON`, beside `EMIT_ON`, so the soup's table never holds `~` and the arithmetic
+  assay's never does either: Metabolism's runs, live on the lab, run the code they ran. A
+  NAND marks the buffer changed when it changes a byte, so the cycle skip stays exact, and
+  a lap that reaches one is not replayed, as one that reaches an emit is not, since a lap's
+  beats record no NAND. The equivalence tests hold an emit-and-NAND run, skipping or not,
+  to a stepper written by the book over random assay buffers dense in `~`, `!` and loops,
+  with whole-byte inputs; hold either assay's interpreter to the soup's own on pairs that
+  carry neither byte, except where an increment manufactured one and the pointer reached it;
+  and hold the arithmetic assay's stepper test to `~` as a no-op.
+
+  **The ladder.** ECHO 1, NOT 1, NAND 1, AND 2, ORN 2, OR 4, ANDN 4, NOR 8, XOR 8, EQU 16:
+  47 units, the study's 46 and an ECHO rung. NOT, ORN and ANDN credit either operand order,
+  as Avida's do, and ECHO either input. Minimal NANDs are 0, 1, 1, 2, 2, 3, 3, 4, 4 and 5;
+  `logic::FIRST_DEEP_TASK` is XOR's index.
+  - **ECHO** is new to the study's ladder. Its §5.6 risk was that NOT needs `~` and `!`
+    placed together, where Metabolism's entry rung needed only `!`, and 2 of 4 pilot worlds
+    climbed nothing. ECHO restores the one-byte entry rung. It is a capability rung, like
+    NOT through NOR. It adds no instruction and no form to any other task, so XOR and EQU
+    keep their depth, and since its forms are the inputs, the study's "no form and an input
+    expect the same three" is the same clause as "no two forms of different tasks".
+  - **The solvers.** The study's hand-written NOT `<{~!`, NAND `<<{~!`, AND `<<{~{~!`, OR
+    `<{~<{~}~!`, XOR `<<<{,{~>>{~<~}}~!` and EQU `<<<{,{~>>{~<~}}~{~!`, with ECHO `<!`, ORN
+    `<{~<~!`, ANDN `<<{{~>~}~!` and NOR `<{~<{~}~{~!` written the same way, each compute
+    their task over 4 096 random byte inputs and are credited with it alone over 10^5
+    separating draws. Copiers, constant emitters, `[!+]` sprayers, `~!~!~!` and an input
+    plus a constant are credited nothing over 10^5 draws, and tapes that echo an input
+    ECHO alone.
+
+  **The separating rule**, the study's, read with ECHO on the ladder. x and y are uniform
+  bytes, drawn x then y for each case on `STREAM_TASK` at (seed, epoch): a run has one
+  ladder, so the logic draw needs no stream of its own and moves nothing the arithmetic one
+  draws. A set is redrawn until:
+  - the x values are pairwise distinct, and so are the y values;
+  - every form of every task expects three distinct outputs;
+  - no two forms of different tasks expect the same three, which with ECHO on the ladder
+    includes the study's "no form and an input";
+  - no form is an input plus a constant, except ECHO's own form of that input; ECHO's x is
+    refused where it is y plus a constant, so `<<-!` cannot pass for ECHO where y = x+1.
+
+  About 73% of draws separate. The draw is bounded at `LOGIC_CASE_DRAWS` = 1 024 and then
+  falls back to a fixed set, (0x5a, 0x33), (0xc6, 0x9f), (0x21, 0xe8), which a test holds to
+  the rule. A test reads every clause off the inputs and the ladder directly over 10^5
+  draws. Two clauses the arithmetic rule carries were measured and **not** adopted. A search
+  of every program of up to 5 bytes over the ten ops, `!` and `~` (5 307 distinct output
+  behaviours), against 20 000 separating draws, found credits to slots that compute their
+  task on fewer than half of 512 random inputs, at most 1.4% of draws for one tape. They are
+  NANDs with a byte of the tape itself: `<}~!` emits ¬(x ∧ 0x7D), which is NOT on six of x's
+  eight bits, and is credited NOT wherever bits 1 and 7 of x are clear in all three cases,
+  1 draw in 64. Refusing an input of 0 removed 4% of those credits, and refusing any two
+  forms a constant apart 0.01%. Neither closes a cheap class. The rest is partial bitwise
+  computation, which three cases of whole bytes cannot tell from the whole and which is a
+  part of the task rather than something outside it, at a fraction of the task's pay.
+
+  **No cheap tape is credited a deep rung** (measured at review, on this engine):
+  - no program of up to 6 bytes over the ten ops, `!` and `~`, in front of a zero tail or
+    either of two random tails (20 003, 25 375 and 20 207 distinct behaviours), is
+    credited XOR or EQU on any of 4 000 separating draws;
+  - among every single and double substitution, over those 12 bytes and 0x00, 0x01, 0x55
+    and 0xFF, in the code of the hand-written AND, ORN, OR, ANDN and NOR solvers, none is
+    ever credited XOR, and two are credited EQU on 1 draw in 4 000 (they compute it on
+    6.6% of inputs);
+  - in the pilot's seven logic end worlds, about 95 000 distinct tapes over 1 000 draws
+    each, three tapes, each one cell of 944's rewarded world, are credited XOR, on at most
+    7.2% of draws. The commonest two are masked XOR circuits: exact on five bits and OR on
+    three, so 42.5% of inputs. No draw put XOR or EQU at a share of 1/10 in any world.
+
+  A tape that computes a task on a share p of inputs is credited on about p³ of the
+  draws, so it needs p above 0.79 to be credited on more than half of a decile's samples.
+  For a masked circuit, that means at most one masked bit. So the last-decile median that
+  H-deep reads cannot be lifted by partial solvers. A single sample can be, so readings
+  taken off one sample need a persistence rule. That applies to the first epoch at which
+  a rung reaches 1/10, and to the stepping-stone order read from it. The observables must
+  draw fresh cases at each sample.
+
+  **`task_floor`** (default `echo`) names the lowest rung paid, under either ladder. Rungs
+  below it are still assayed, since the observables read them, and pay nothing. It must
+  name a rung of the chosen ladder, `echo` … `mul` under `arith` and `echo` … `equ` under
+  `logic`; with `tasks = off` only the default is accepted. ECHO is the first rung of both
+  ladders, so the default pays every rung and moves nothing. `runner schema` lists the union
+  of both ladders' names as its values, and validation holds a run to its own. The study's
+  deep-only arm is `task_floor: xor`, Lenski's control, separating "deep features are built
+  on paid parts" from "deep features are directly reachable".
+
+  **The reward.** `pay_tasks` dispatches on `tasks`. Under `logic` each cell is paid
+  `task_reward × Σ units` over its credited rungs at or above the floor, into its stock,
+  capped at `energy_stock_cap`, exactly as under `arith`, and each distinct tape is assayed
+  once per assay epoch. It draws only from `STREAM_TASK` and writes only stocks.
+
+  **What it costs.** Memoised per distinct tape, one full logic assay epoch against the
+  arithmetic one on the same restored 128×128 worlds (24 draws each, a loaded Mac): 1.4 to
+  21.2 ms against 1.4 to 21.0 ms on the eight stored Metabolism-study worlds (at most 12%
+  slower), and 8.5 to 19.6 ms against 8.4 to 18.7 ms on the pilot's eight end worlds, where
+  nearly every tape emits, at most 30% slower (944's logic world, 19.6 against 15.1). At an
+  assay every 8 epochs that is 0.6–5% of a soup epoch on the first and 9–50% on the second,
+  whose epochs under the initiator economy run 5–14 ms.
+
+  **The invariant.** Nothing moves at the defaults, and every pinned hash and observable
+  digest stays as it was, the arithmetic reward's pin and observables included. `~` is never
+  an instruction in the soup or the arithmetic assay. A reward of 0 runs no assay, so
+  `tasks = logic` at `task_reward = 0` is byte for byte, stock for stock, the run with
+  `tasks = off`, which a test holds under both payers. The logic reward has its own pin:
+  the arithmetic reward pin's params at `tasks = logic`, an eighth of the cells given the
+  NOT solver at the front of their tape and an eighth the XOR solver, seed 42, 50 epochs,
+  `0xc0af_53f9_71a4_d7b4`. The task observables of the entry above read the arithmetic
+  ladder alone and are null under `logic` until its own observables land. `tasks` and
+  `task_floor` are dynamics, not structure: a descendant may set them. A run stored before
+  `task_floor` existed carries no key, and `Lab::CanonicalParams` fills in `echo`, the
+  floor it ran at, so stored runs keep their identity. `runner schema` exports the logic
+  ladder (names, units, minimal NANDs), the NAND byte and the first deep rung under
+  `tasks.logic`, beside the arithmetic ladder Rails already reads.

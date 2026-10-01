@@ -27,6 +27,13 @@ pub const STEAL: u8 = b'$';
 /// `run_emitting`; every soup interaction reads it as the no-op it has always been.
 pub const EMIT: u8 = b'!';
 
+/// The NAND op of the logic assay (`docs/DESIGN.md` §1.1, "Tasks and the emit op"): writes
+/// `!(B[head0] & B[head1])` under head0, the one two-input data op BFF lacks. Like the emit
+/// byte it is not one of `OPS`, and it is an instruction only inside the logic assay, through
+/// `run_emitting` at `AssayOps::EmitNand`; the arithmetic assay and every soup interaction
+/// read it as the no-op it has always been.
+pub const NAND: u8 = b'~';
+
 /// The ten instruction bytes; every other byte is a no-op.
 pub const OPS: [u8; 10] = [
     HEAD0_LEFT,
@@ -225,9 +232,9 @@ pub fn run_stealing(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> O
     let mut silent = Emitted::default();
     #[cfg(test)]
     if !SKIPPING.get() {
-        return execute::<false, false>(tape, bounds, stealing, &mut silent);
+        return execute::<false, false, false>(tape, bounds, stealing, &mut silent);
     }
-    execute::<true, false>(tape, bounds, stealing, &mut silent)
+    execute::<true, false, false>(tape, bounds, stealing, &mut silent)
 }
 
 /// The outputs an emitting run wrote, in order, and the most it may write before it stops.
@@ -237,17 +244,39 @@ pub struct Emitted {
     pub most: usize,
 }
 
+/// The assay-only instructions an emitting run executes: the emit byte alone, which is the
+/// arithmetic assay's machine, or the emit byte and the NAND byte, the logic assay's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssayOps {
+    Emit,
+    EmitNand,
+}
+
 /// Executes `tape` as `run_stealing` does with the steal byte off, and with `EMIT` as an
 /// instruction: each one appends the byte under head0 to `emitted.bytes`, and the run stops
-/// with `Halt::OutputsFull` at the `emitted.most`-th. The task assay's interpreter. An emit
-/// is an acting step to both skips: no cycle is skipped across one, and no lap holding one
-/// is replayed, so every emit the plain loop makes is made here, at the same step.
-pub fn run_emitting(tape: &mut Vec<u8>, bounds: Bounds, emitted: &mut Emitted) -> Outcome {
+/// with `Halt::OutputsFull` at the `emitted.most`-th. At `AssayOps::EmitNand`, `NAND` is an
+/// instruction too. The task assay's interpreter. An emit and a NAND are acting steps to
+/// both skips: no cycle is skipped across an emit, and no lap holding either is replayed,
+/// so every emit the plain loop makes is made here, at the same step.
+pub fn run_emitting(
+    tape: &mut Vec<u8>,
+    bounds: Bounds,
+    emitted: &mut Emitted,
+    assay_ops: AssayOps,
+) -> Outcome {
     #[cfg(test)]
     if !SKIPPING.get() {
-        return execute::<false, true>(tape, bounds, Stealing::Off, emitted);
+        return match assay_ops {
+            AssayOps::Emit => execute::<false, true, false>(tape, bounds, Stealing::Off, emitted),
+            AssayOps::EmitNand => {
+                execute::<false, true, true>(tape, bounds, Stealing::Off, emitted)
+            }
+        };
     }
-    execute::<true, true>(tape, bounds, Stealing::Off, emitted)
+    match assay_ops {
+        AssayOps::Emit => execute::<true, true, false>(tape, bounds, Stealing::Off, emitted),
+        AssayOps::EmitNand => execute::<true, true, true>(tape, bounds, Stealing::Off, emitted),
+    }
 }
 
 #[cfg(test)]
@@ -259,13 +288,16 @@ thread_local! {
     /// equivalence that held because the skip was exact from one where it never fired.
     pub(crate) static RECURRED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     pub(crate) static LAPPED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// How many NANDs the interpreter has executed, so a test can tell a run that never
+    /// reached one from a run that made one.
+    pub(crate) static NANDS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// The interpreter loop. `SKIP` compiles both skips in or out; out, it is the plain loop
 /// that executes every step, which the tests keep as the reference. `EMIT_ON` makes the emit
-/// byte an instruction; off, which is every soup interaction, it is not in the table the
-/// loop reads.
-fn execute<const SKIP: bool, const EMIT_ON: bool>(
+/// byte an instruction, and `NAND_ON` the NAND byte; off, which is every soup interaction,
+/// neither is in the table the loop reads.
+fn execute<const SKIP: bool, const EMIT_ON: bool, const NAND_ON: bool>(
     tape: &mut Vec<u8>,
     bounds: Bounds,
     stealing: Stealing,
@@ -281,6 +313,7 @@ fn execute<const SKIP: bool, const EMIT_ON: bool>(
     let mut enabled = enabled.table();
     enabled[STEAL as usize] = split.is_some();
     enabled[EMIT as usize] = EMIT_ON;
+    enabled[NAND as usize] = NAND_ON;
     let split = split.unwrap_or(0);
     let mut steals = [0u32; 2];
     let mut len = tape.len();
@@ -352,6 +385,13 @@ fn execute<const SKIP: bool, const EMIT_ON: bool>(
                 tape[head0] = byte;
             }
             STEAL => steals[usize::from(ip >= split)] += 1,
+            NAND => {
+                #[cfg(test)]
+                NANDS.set(NANDS.get() + 1);
+                let byte = !(tape[head0] & tape[head1]);
+                changed |= tape[head0] != byte;
+                tape[head0] = byte;
+            }
             EMIT => {
                 emitted.bytes.push(tape[head0]);
                 // The buffer is unchanged, but a cycle skipped across an emit would drop
@@ -581,9 +621,9 @@ struct Beat {
 /// the code the lap runs through — the bytes from the lowest its pointer reached to the
 /// furthest, which also hold every bracket the lap matched. A lap that changed its own code as it was
 /// noted is not repeated at all, nor is one that reaches an emit, which the interpreter
-/// must make itself. A lap is only begun whole within the budget, and only on a
-/// buffer at its cap, where a head stepping off the end wraps as every other step does
-/// rather than claiming a byte.
+/// must make itself, or a NAND, a write no beat records. A lap is only begun whole within
+/// the budget, and only on a buffer at its cap, where a head stepping off the end wraps as
+/// every other step does rather than claiming a byte.
 #[derive(Default)]
 struct Laps {
     beats: Vec<Beat>,
@@ -722,7 +762,7 @@ impl Laps {
                     write = Some((at.head0, tape[at.head1]));
                 }
                 STEAL => at.steals[usize::from(ip >= split)] += 1,
-                EMIT => return None,
+                EMIT | NAND => return None,
                 LOOP_START if tape[at.head0] == 0 => {
                     self.beats.push(beat(Act::Zero));
                     next = match_forward(tape, ip)?;
@@ -1418,10 +1458,10 @@ mod tests {
     fn both_ways(pair: &[u8], bounds: Bounds, stealing: Stealing) -> [(Vec<u8>, Outcome); 2] {
         let mut skipped = pair.to_vec();
         let with_skip =
-            execute::<true, false>(&mut skipped, bounds, stealing, &mut Emitted::default());
+            execute::<true, false, false>(&mut skipped, bounds, stealing, &mut Emitted::default());
         let mut stepped = pair.to_vec();
         let every_step =
-            execute::<false, false>(&mut stepped, bounds, stealing, &mut Emitted::default());
+            execute::<false, false, false>(&mut stepped, bounds, stealing, &mut Emitted::default());
         [(skipped, with_skip), (stepped, every_step)]
     }
 
@@ -1610,13 +1650,14 @@ mod tests {
         }
     }
 
-    /// The emit op by the book, one step at a time and sharing no code with `execute`: the
-    /// reference an emitting run is held to.
+    /// The emit op, and the NAND op where `nand` says so, by the book, one step at a time and
+    /// sharing no code with `execute`: the reference an emitting run is held to.
     fn emitting_by_hand(
         pair: &[u8],
         max_steps: u32,
         enabled: OpSet,
         most: usize,
+        nand: bool,
     ) -> (Vec<u8>, Vec<u8>, Halt, u32) {
         let mut buf = pair.to_vec();
         let len = buf.len();
@@ -1652,6 +1693,8 @@ mod tests {
                 if outputs.len() == most {
                     break Halt::OutputsFull;
                 }
+            } else if nand && op == NAND {
+                buf[head0] = !(buf[head0] & buf[head1]);
             } else if enabled.enables(op) {
                 match op {
                     HEAD0_LEFT => head0 = (head0 + len - 1) % len,
@@ -1678,7 +1721,7 @@ mod tests {
         (buf, outputs, halt, steps)
     }
 
-    fn emitting<const SKIP: bool>(
+    fn emitting<const SKIP: bool, const NAND_ON: bool>(
         pair: &[u8],
         bounds: Bounds,
         most: usize,
@@ -1688,21 +1731,56 @@ mod tests {
             bytes: Vec::new(),
             most,
         };
-        let outcome = execute::<SKIP, true>(&mut buf, bounds, Stealing::Off, &mut emitted);
+        let outcome = execute::<SKIP, true, NAND_ON>(&mut buf, bounds, Stealing::Off, &mut emitted);
         assert_eq!(outcome.steals, [0, 0], "the assay never steals");
         (buf, emitted.bytes, outcome.halt, outcome.steps)
     }
 
-    /// On a pair holding no emit byte, the emitting interpreter is the soup's own, skips
-    /// and all: the same buffer, halt, steps and steals. An increment can still write an
-    /// emit byte where the pointer will reach it; that emit moves nothing but the outputs,
-    /// so the runs part only where the emitting one stops at its last output slot.
+    /// One run of `pair` by the interpreter the soup runs (`None`) or by an assay's, skipping
+    /// or not: the buffer it ends with, its outcome and its outputs.
+    fn executed(
+        pair: &[u8],
+        bounds: Bounds,
+        skip: bool,
+        assay_ops: Option<AssayOps>,
+    ) -> (Vec<u8>, Outcome, Vec<u8>) {
+        let mut buf = pair.to_vec();
+        let mut emitted = Emitted {
+            bytes: Vec::new(),
+            most: 4,
+        };
+        let (off, run) = (Stealing::Off, &mut emitted);
+        let outcome = match (skip, assay_ops) {
+            (true, None) => execute::<true, false, false>(&mut buf, bounds, off, run),
+            (false, None) => execute::<false, false, false>(&mut buf, bounds, off, run),
+            (true, Some(AssayOps::Emit)) => {
+                execute::<true, true, false>(&mut buf, bounds, off, run)
+            }
+            (false, Some(AssayOps::Emit)) => {
+                execute::<false, true, false>(&mut buf, bounds, off, run)
+            }
+            (true, Some(AssayOps::EmitNand)) => {
+                execute::<true, true, true>(&mut buf, bounds, off, run)
+            }
+            (false, Some(AssayOps::EmitNand)) => {
+                execute::<false, true, true>(&mut buf, bounds, off, run)
+            }
+        };
+        (buf, outcome, emitted.bytes)
+    }
+
+    /// On a pair holding no emit byte and no NAND byte, either assay's interpreter is the
+    /// soup's own, skips and all: the same buffer, halt, steps and steals. An increment can
+    /// still write an emit or a NAND byte where the pointer will reach it (`"` and `}` sit
+    /// one below them); an emit moves nothing but the outputs, so the runs part only where
+    /// the emitting one stops at its last output slot, and a NAND writes, so they part only
+    /// where one ran.
     #[test]
-    fn an_emitting_run_without_the_emit_byte_is_the_plain_run() {
-        const ALPHABET: &[u8] = b"<>{}+-.,[][]]]$\0\x01a  \"";
+    fn an_emitting_run_without_the_emit_or_nand_byte_is_the_plain_run() {
+        const ALPHABET: &[u8] = b"<>{}+-.,[][]]]$\0\x01a  \"}}";
         let mut rng = crate::rng::seeded(37, 0, 0);
         let mut draw = |bound: u64| crate::rng::below(&mut rng, bound) as usize;
-        let (mut filled, mut manufactured) = (0, 0);
+        let (mut filled, mut manufactured, mut nanded, mut compared) = (0, 0, 0, 0);
         let (_, lapped) = skipped_during(|| {
             for _ in 0..100_000 {
                 let len = 2 + draw(63);
@@ -1715,56 +1793,36 @@ mod tests {
                     ..joined(0, len)
                 };
                 for skip in [true, false] {
-                    let mut plain = pair.clone();
-                    let mut emitting = pair.clone();
-                    let mut emitted = Emitted {
-                        bytes: Vec::new(),
-                        most: 4,
-                    };
-                    let (by_plain, by_emitting) = if skip {
-                        (
-                            execute::<true, false>(
-                                &mut plain,
-                                bounds,
-                                Stealing::Off,
-                                &mut Emitted::default(),
-                            ),
-                            execute::<true, true>(
-                                &mut emitting,
-                                bounds,
-                                Stealing::Off,
-                                &mut emitted,
-                            ),
-                        )
-                    } else {
-                        (
-                            execute::<false, false>(
-                                &mut plain,
-                                bounds,
-                                Stealing::Off,
-                                &mut Emitted::default(),
-                            ),
-                            execute::<false, true>(
-                                &mut emitting,
-                                bounds,
-                                Stealing::Off,
-                                &mut emitted,
-                            ),
-                        )
-                    };
-                    if by_emitting.halt == Halt::OutputsFull {
-                        filled += 1;
-                        continue;
+                    let (plain, by_plain, _) = executed(&pair, bounds, skip, None);
+                    for assay_ops in [AssayOps::Emit, AssayOps::EmitNand] {
+                        let before = NANDS.get();
+                        let (assayed, by_assay, outputs) =
+                            executed(&pair, bounds, skip, Some(assay_ops));
+                        if NANDS.get() > before {
+                            nanded += 1;
+                            continue;
+                        }
+                        if by_assay.halt == Halt::OutputsFull {
+                            filled += 1;
+                            continue;
+                        }
+                        assert_eq!(by_assay, by_plain, "{pair:?} under {bounds:?}");
+                        assert_eq!(assayed, plain, "{pair:?} under {bounds:?}");
+                        manufactured += usize::from(!outputs.is_empty());
+                        compared += 1;
                     }
-                    assert_eq!(by_emitting, by_plain, "{pair:?} under {bounds:?}");
-                    assert_eq!(emitting, plain, "{pair:?} under {bounds:?}");
-                    manufactured += usize::from(!emitted.bytes.is_empty());
                 }
             }
         });
         assert!(lapped > 100_000, "laps skipped only {lapped} steps");
-        assert!(filled < 1_000, "{filled} runs filled their outputs");
+        assert!(filled < 2_000, "{filled} runs filled their outputs");
         assert!(manufactured > 0, "no run wrote an emit byte and reached it");
+        assert!(nanded > 0, "no run wrote a NAND byte and reached it");
+        assert!(
+            nanded < 4_000,
+            "{nanded} runs wrote a NAND byte and reached it"
+        );
+        assert!(compared > 390_000, "only {compared} runs compared");
     }
 
     /// With emits in the code the emitting run, skipping or not, ends where the stepper
@@ -1773,7 +1831,7 @@ mod tests {
     /// in loops so that laps form around and beside emits.
     #[test]
     fn an_emitting_run_is_the_stepper_by_the_book() {
-        const ALPHABET: &[u8] = b"<>{}+-.,[][]]]!!$\0\x01a";
+        const ALPHABET: &[u8] = b"<>{}+-.,[][]]]!!~$\0\x01a";
         let mut rng = crate::rng::seeded(41, 0, 0);
         let mut draw = |bound: u64| crate::rng::below(&mut rng, bound) as usize;
         let mut emits = 0;
@@ -1796,9 +1854,17 @@ mod tests {
                     enabled,
                     ..joined(0, 2 * len)
                 };
-                let by_hand = emitting_by_hand(&pair, max_steps, enabled, most);
-                assert_eq!(emitting::<true>(&pair, bounds, most), by_hand, "{pair:?}");
-                assert_eq!(emitting::<false>(&pair, bounds, most), by_hand, "{pair:?}");
+                let by_hand = emitting_by_hand(&pair, max_steps, enabled, most, false);
+                assert_eq!(
+                    emitting::<true, false>(&pair, bounds, most),
+                    by_hand,
+                    "{pair:?}"
+                );
+                assert_eq!(
+                    emitting::<false, false>(&pair, bounds, most),
+                    by_hand,
+                    "{pair:?}"
+                );
                 emits += by_hand.1.len();
             }
         });
@@ -1816,8 +1882,11 @@ mod tests {
         copier.resize(128, 0);
         copier[127] = 7;
         let (_, lapped) = skipped_during(|| {
-            let by_hand = emitting_by_hand(&copier, 4_096, OpSet::ALL, 4);
-            assert_eq!(emitting::<true>(&copier, joined(4_096, 128), 4), by_hand);
+            let by_hand = emitting_by_hand(&copier, 4_096, OpSet::ALL, 4, false);
+            assert_eq!(
+                emitting::<true, false>(&copier, joined(4_096, 128), 4),
+                by_hand
+            );
             assert_eq!(by_hand.1, vec![7]);
         });
         assert!(lapped > 1_000, "the copy loop's laps ran: {lapped}");
@@ -1826,8 +1895,11 @@ mod tests {
         spraying.resize(64, b'a');
         spraying.resize(128, 1);
         let (_, lapped) = skipped_during(|| {
-            let by_hand = emitting_by_hand(&spraying, 4_096, OpSet::ALL, 4);
-            assert_eq!(emitting::<true>(&spraying, joined(4_096, 128), 4), by_hand);
+            let by_hand = emitting_by_hand(&spraying, 4_096, OpSet::ALL, 4, false);
+            assert_eq!(
+                emitting::<true, false>(&spraying, joined(4_096, 128), 4),
+                by_hand
+            );
             assert_eq!(by_hand.1.len(), 4);
             assert_eq!(by_hand.2, Halt::OutputsFull);
         });
@@ -1846,6 +1918,131 @@ mod tests {
             outcome
         );
         assert!(!is_op(EMIT));
+    }
+
+    /// With emits and NANDs in the code the logic assay's run, skipping or not, ends where
+    /// the stepper by the book ends, with the same buffer and outputs: over random tapes
+    /// laid out as the assay lays them out, with inputs of any byte, dense in loops so that
+    /// laps form around and beside both.
+    #[test]
+    fn an_emitting_nand_run_is_the_stepper_by_the_book() {
+        const ALPHABET: &[u8] = b"<>{}+-.,[][]]]!!~~$\0\x01a";
+        let mut rng = crate::rng::seeded(43, 0, 0);
+        let mut draw = |bound: u64| crate::rng::below(&mut rng, bound) as usize;
+        let (mut emits, before) = (0, NANDS.get());
+        let (recurred, lapped) = skipped_during(|| {
+            for _ in 0..100_000 {
+                let len = 1 + draw(40);
+                let mut pair: Vec<u8> = (0..len)
+                    .map(|_| ALPHABET[draw(ALPHABET.len() as u64)])
+                    .collect();
+                pair.resize(2 * len, 0);
+                pair[2 * len - 1] = draw(256) as u8;
+                if len > 1 {
+                    pair[2 * len - 2] = draw(256) as u8;
+                }
+                let max_steps = [draw(64), 4_096][draw(2)] as u32;
+                let enabled = [OpSet::ALL, OpSet::parse("<>{}.[]").expect("a legal set")][draw(2)];
+                let most = 1 + draw(4);
+                let bounds = Bounds {
+                    max_steps,
+                    enabled,
+                    ..joined(0, 2 * len)
+                };
+                let by_hand = emitting_by_hand(&pair, max_steps, enabled, most, true);
+                assert_eq!(
+                    emitting::<true, true>(&pair, bounds, most),
+                    by_hand,
+                    "{pair:?}"
+                );
+                assert_eq!(
+                    emitting::<false, true>(&pair, bounds, most),
+                    by_hand,
+                    "{pair:?}"
+                );
+                emits += by_hand.1.len();
+            }
+        });
+        let nands = NANDS.get() - before;
+        assert!(emits > 30_000, "only {emits} emits");
+        assert!(nands > 100_000, "only {nands} NANDs");
+        assert!(recurred > 100_000, "cycles skipped only {recurred} steps");
+        assert!(lapped > 100_000, "laps skipped only {lapped} steps");
+    }
+
+    /// A copy loop that holds no NAND is still a lap the logic assay skips; one whose body
+    /// holds a NAND is run step by step, every NAND made.
+    #[test]
+    fn a_lap_holding_a_nand_is_run_and_one_without_is_skipped() {
+        let mut copier = b"<{~!>}{[.<>>{]".to_vec();
+        copier.resize(64, b'a');
+        copier.resize(128, 0);
+        copier[127] = 7;
+        let (_, lapped) = skipped_during(|| {
+            let by_hand = emitting_by_hand(&copier, 4_096, OpSet::ALL, 4, true);
+            assert_eq!(
+                emitting::<true, true>(&copier, joined(4_096, 128), 4),
+                by_hand
+            );
+            assert_eq!(by_hand.1, vec![!7]);
+        });
+        assert!(lapped > 1_000, "the copy loop's laps ran: {lapped}");
+
+        let mut nanding = b"<<<<[~<]".to_vec();
+        nanding.resize(64, b'a');
+        nanding.resize(128, 1);
+        let before = NANDS.get();
+        let (_, lapped) = skipped_during(|| {
+            let by_hand = emitting_by_hand(&nanding, 4_096, OpSet::ALL, 4, true);
+            assert_eq!(
+                emitting::<true, true>(&nanding, joined(4_096, 128), 4),
+                by_hand
+            );
+        });
+        assert_eq!(lapped, 0);
+        assert!(
+            NANDS.get() - before > 100,
+            "only {} NANDs",
+            NANDS.get() - before
+        );
+    }
+
+    /// The NAND byte writes `!(B[head0] & B[head1])` under head0 in the logic assay alone:
+    /// the soup and the arithmetic assay read it as the no-op any other non-instruction byte
+    /// is.
+    #[test]
+    fn the_nand_byte_is_an_instruction_only_in_the_logic_assay() {
+        let program = vec![NAND, b'{', NAND, EMIT, 0b1100, 0b1010];
+        let inert = vec![b'a', b'{', b'a', EMIT, 0b1100, 0b1010];
+        let soup = |mut tape: Vec<u8>| {
+            let outcome = run_stealing(&mut tape, joined_bounds(6), Stealing::Off);
+            (tape, outcome)
+        };
+        let (souped, by_soup) = soup(program.clone());
+        assert_eq!(souped, program);
+        assert_eq!(by_soup, soup(inert.clone()).1);
+        let assay = |mut tape: Vec<u8>, assay_ops| {
+            let mut emitted = Emitted {
+                bytes: Vec::new(),
+                most: 4,
+            };
+            let outcome = run_emitting(&mut tape, joined_bounds(6), &mut emitted, assay_ops);
+            (tape, outcome, emitted.bytes)
+        };
+        let (arith, by_arith, _) = assay(program.clone(), AssayOps::Emit);
+        let (plain, by_plain, _) = assay(inert, AssayOps::Emit);
+        assert_eq!(
+            (arith[..4].to_vec(), by_arith),
+            (vec![NAND, b'{', NAND, EMIT], by_plain)
+        );
+        assert_eq!(&plain[..4], b"a{a!");
+
+        let (logic, _, outputs) = assay(program, AssayOps::EmitNand);
+        let first = !(NAND & NAND);
+        let second = !(first & 0b1010);
+        assert_eq!(logic[0], second);
+        assert_eq!(outputs, vec![second]);
+        assert!(!is_op(NAND));
     }
 
     /// The emerged copier's loop is tens of bytes (#245), so its heads come round in more
