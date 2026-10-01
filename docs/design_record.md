@@ -2783,8 +2783,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
 - 2026-10-01 — **Metabolism: a second, labelled substrate that imports an objective. The
   `metabolism` sweep, pre-registered.** This is §1.3 item 15 and it opens DESIGN §1.4. The
   experiment is `metabolism` (sweep key `metabolism`), and its numbers live in
-  `Lab::MetabolismReading`. It is the third slice of the substrate whose economy and assay
-  the two entries above added; the observables it reads (`task_share_echo` …
+  `Lab::MetabolismReading`. It is the fourth slice of the substrate whose economy and assay
+  the energy-payer and task-assay entries added; the observables it reads (`task_share_echo` …
   `task_share_mul`, `task_capability`, `task_capability_loop`, `dominant_tasks`,
   `dominant_task_count`) come in their own slice, and **the sweep is seeded only once the
   runner that records them is deployed**: a child sampled by a runner without them is
@@ -2806,9 +2806,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - every run with `task_reward > 0` is a **Metabolism** run (`Lab::MetabolismReading.
     metabolism_run?`);
   - its runs are **never pooled** with fitness-free arms. The no-reward arm below is
-    fitness-free — the assay never runs at a reward of 0, and nothing pays a task — and is
-    not a Metabolism run; it enters this reading only as the paired twin, which is a
-    comparison, not a pool;
+    fitness-free — at a reward of 0 nothing pays a task and its world runs byte for byte as
+    with `tasks` off; only its samples assay the soup, on streams of their own, to measure
+    it — and is not a Metabolism run; it enters this reading only as the paired twin, which
+    is a comparison, not a pool;
   - **rung 4 on Soup stays "not shown"** whatever this sweep reads. A shown result here is
     a result about a substrate that imports an objective;
   - its findings carry an **"imports an objective"** badge. The badge is built in the
@@ -2825,8 +2826,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     17 runs) and its sham outlasted it in all 5 matched runs; under `initiator` every
     planted solver held 69–97% of the world 1 500 epochs after planting (11 of 11).
   - *De novo.* Descendants under `initiator` at influx 1 024, the assay every 8 epochs, with
-    the reward on or off: ECHO, INC and DEC climbed in **9 of 9** rewarded pilot worlds,
-    ECHO first, and every unrewarded twin ended at zero tasks above 10%. The reward world
+    the reward on or off: the one-substitution rungs climbed in **9 of 9** rewarded pilot
+    worlds, ECHO first, then INC, DEC or both; the four read to 20 000 epochs ended solving
+    all three, and every unrewarded twin ended at zero tasks above 10%. The reward world
     ended above its twin in 8 of 8 pilot pairs. **No loop rung** (ADD, SUB, NOT, DOUBLE,
     MUL) appeared in any pilot world: at most 3 cells, ever. In the four worlds with
     crude early and late medians, the reward children's dominant tape rose by 28–47% in 3
@@ -2835,8 +2837,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     1029 and 2862 at seed 1, and the first runs 1007 and 2577 again, with 3151, a
     from-emerged child. Its seeds were not 2001–2003 and its reward scales were ⅛ and
     ½ of an influx per unit, not this sweep's ¼, so no child of this sweep has been run;
-    but the reading is **not held out** from those four parents, and its per-parent
-    agreement shows how much of any result they carry.
+    but the reading is **not held out** from those four parents. Its per-parent agreement
+    shows how much of any result they carry, and every test is re-read without them (the
+    sensitivity reading below).
 
   **The sweep.** A descendant sweep under the from-emerged sweep's own parent rule, shared
   as data (`Lab::FROM_EMERGED_PARENTS`, read by `Experiments::DescendantParentsService`),
@@ -2922,7 +2925,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     - *If refuted*: when computation pays, BFF copiers take the one-substitution rungs and
       stop. The drift–selection plateau then holds for every feature that needs several
       coordinated mutations, and the suspects become option 5 of the 2026-09-24 entry, the
-      instruction set, and the substitution-only mutation operator.
+      instruction set, and the substitution-only mutation operator. Pairs that all tie,
+      no loop rung at a tenth in either arm, read the same way, as strongly as the power
+      below allows.
     - *If shown*: paid computation climbs past one-substitution rungs.
     - *If not shown*: neither; the rate of loop climbing is below what 54 pairs resolve.
     - *Power*, from the study: the pilot saw 0 loop rungs in 9 rewarded worlds over 10 000–
@@ -2934,6 +2939,12 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     favours the reward when its child rises and its twin does not, the twin in the reverse
     case. Mirroring and stacked one-substitution rungs add 6–14 ops, so this can be shown
     without H-ladder; it then reads **"paid complexity rises"**, not "open-ended".
+
+  **The piloted parents, a sensitivity reading.** Each of the three tests is also read, by
+  the same rules, over the pairs of the 14 parents no pilot ran — all but 1007, 2577, 1029
+  and 2862 (`PILOT_PARENTS`) — and printed beside the tests. It decides no outcome. A
+  finding reports it beside each test, and a test shown over the 18 parents but not over
+  the 14 is reported as resting in part on the piloted parents.
 
   **Descriptive only**, printed per child and per arm, tested nowhere:
   - the **first own epoch** at which each task's share reaches **0.1** (`task_share_<task>

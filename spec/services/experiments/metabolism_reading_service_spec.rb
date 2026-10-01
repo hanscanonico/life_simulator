@@ -77,6 +77,19 @@ RSpec.describe Experiments::MetabolismReadingService do
         .to eq([["H-ladder", "reward", parents.first.id, 3, 0, 0, 0], ["H-ladder", "reward", parents.last.id, 0, 0, 3, 0]])
     end
 
+    context "with the first parent among the piloted ones" do
+      before { stub_const("Lab::MetabolismReading::PILOT_PARENTS", [parents.first.id]) }
+
+      it "re-reads every test without its pairs, beside the tests it leaves unchanged" do
+        expect(report.unpiloted_tests.map { |candidate| [candidate.hypothesis, candidate.outcome] })
+          .to eq([["H-capability, unpiloted parents", :not_shown], ["H-ladder, unpiloted parents", :refuted],
+                  ["H-complexity, unpiloted parents", :not_shown]])
+        expect(report.unpiloted_tests.map { |candidate| candidate.comparison.measured_count }).to eq([3, 3, 3])
+        expect(test("H-capability").outcome).to eq(:held)
+        expect(report.to_text).to match(/H-capability, unpiloted parents\s+reward\s+3\s+3\s+0\s+0\s+0\.125\s+not shown/)
+      end
+    end
+
     it "estimates the share of income the tasks pay" do
       rows = report.children.group_by { |child| child.treatment.name }
 
@@ -133,6 +146,21 @@ RSpec.describe Experiments::MetabolismReadingService do
       expect(report.tests.map { |candidate| candidate.comparison.measured_count }).to eq([6, 6, 5])
       expect(report.children.find { |child| child.run_id == no_reward.first.id }.heldout.settled_relapse_epoch)
         .to eq(2_510)
+    end
+  end
+
+  context "with a rewarded child that dipped just before its last settled decile" do
+    before do
+      dip = ->(at) { (180..189).cover?(at) ? 0.05 : 0.9 }
+      reward.each_with_index { |run, index| metabolism_sample(run, capability: 3, share: index.zero? ? dip : 0.9) }
+      no_reward.each { |run| metabolism_sample(run) }
+    end
+
+    it "cuts extinction's last decile from the settled samples, so the child is not extinct" do
+      child = report.children.find { |row| row.run_id == reward.first.id }
+
+      expect(child).to have_attributes(extinct?: false, settled_relapse?: true)
+      expect(test("H-capability").comparison.measured_count).to eq(6)
     end
   end
 

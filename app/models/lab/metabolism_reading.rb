@@ -10,8 +10,8 @@ module Lab
   # and the leave-out rule the from-emerged reading's (Lab::DescendantReading).
   module MetabolismReading
     # The two arms, each merged over its parent's params. They share the initiator economy
-    # and the assay, so the pair isolates the reward: at a reward of 0 the engine runs no
-    # assay and the run is the one with `tasks` off, byte for byte.
+    # and the assay, so the pair isolates the reward: at a reward of 0 nothing pays a task
+    # and the world runs as it would with `tasks` off, byte for byte.
     REWARD_BUNDLE = {
       "energy_payer" => "initiator", "energy_influx" => 1024, "energy_stock_cap" => 65_536, "steal_amount" => 0,
       "tasks" => "arith", "task_every" => 8, "task_reward" => 2048
@@ -34,6 +34,11 @@ module Lab
     MIN_DECILE_SAMPLES = DescendantReading::MIN_DECILE_SAMPLES
 
     SIGN_TEST_LEVEL = DescendantReading::SIGN_TEST_LEVEL
+
+    # The parents the design study's pilot ran (lab run ids): every test is also read
+    # without their pairs, a sensitivity reading that decides no outcome.
+    PILOT_PARENTS = [1007, 2577, 1029, 2862].freeze
+    UNPILOTED_SUFFIX = ", unpiloted parents"
 
     # The ladder, in the engine's order (`runner schema`, `tasks.ladder`); a task's share is
     # `task_share_<name>`. The loop rungs are the ones `task_capability_loop` counts, and

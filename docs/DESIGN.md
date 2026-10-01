@@ -643,7 +643,8 @@ sample.
     (parent, seed) and read past #263's 1 000-epoch settling window, pairs with an extinct
     child left out; three one-sided sign tests at p < 0.05: H-capability (last-decile median
     `task_capability`), H-ladder (the same on `task_capability_loop`, the rung-4 question)
-    and H-complexity (the from-emerged rise rule on pairs that neither relapsed). Pre-
+    and H-complexity (the from-emerged rise rule on pairs that neither relapsed), each also
+    re-read without the four parents the design study piloted. Pre-
     registered in `docs/design_record.md`, 2026-10-01, "Metabolism: a second, labelled
     substrate that imports an objective", whose numbers live in `Lab::MetabolismReading`;
     `lab:metabolism_report` reads it.

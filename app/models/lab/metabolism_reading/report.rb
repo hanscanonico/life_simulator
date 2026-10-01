@@ -5,9 +5,10 @@ require "csv"
 module Lab
   module MetabolismReading
     # The metabolism sweep's reading, as Experiments::MetabolismReadingService assembles it:
-    # the per-child table, the per-arm counts, the three tests with each parent's agreement,
-    # interim until `final` (Experiments::DescendantSweepSettledService).
-    Report = Data.define(:children, :arms, :tests, :final) do
+    # the per-child table, the per-arm counts, the three tests with each parent's agreement
+    # and their re-reading without the piloted parents (`unpiloted_tests`), interim until
+    # `final` (Experiments::DescendantSweepSettledService).
+    Report = Data.define(:children, :arms, :tests, :unpiloted_tests, :final) do
       delegate :any?, to: :children
 
       def interim? = !final
@@ -41,7 +42,8 @@ module Lab
 
       def tables
         [[CHILD_COLUMNS, children.map(&:cells)], [ARM_COLUMNS, arms.map(&:cells)],
-         [TEST_COLUMNS, tests.map(&:cells)], [AGREEMENT_COLUMNS, tests.flat_map(&:agreement_cells)]]
+         [TEST_COLUMNS, tests.map(&:cells)], [TEST_COLUMNS, unpiloted_tests.map(&:cells)],
+         [AGREEMENT_COLUMNS, tests.flat_map(&:agreement_cells)]]
       end
 
       def table(columns, rows)

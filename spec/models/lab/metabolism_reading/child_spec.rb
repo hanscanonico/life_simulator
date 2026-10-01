@@ -44,6 +44,16 @@ RSpec.describe Lab::MetabolismReading::Child do
     end
   end
 
+  context "with a stepping stone reached on the loop rung's own sample" do
+    it "counts it as held before the climb" do
+      series = samples(200) do |index|
+        { "task_share_add" => index >= 10 ? 0.2 : 0.0, "task_share_inc" => index >= 10 ? 0.2 : 0.0 }
+      end
+
+      expect(read(series)).to have_attributes(loop_epoch: 110, stepping_stone?: true)
+    end
+  end
+
   it "takes the commonest dominant task mask of the last decile, the smaller on a tie" do
     series = samples(200) { |index| { "dominant_tasks" => index.even? ? 7 : 3 } }
 

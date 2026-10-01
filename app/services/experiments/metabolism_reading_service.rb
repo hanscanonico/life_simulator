@@ -8,7 +8,8 @@ module Experiments
   # from-emerged complexity rule (Lab::DescendantReading::Child), plus the task readings of
   # Lab::MetabolismReading::Child. Each reward child is paired with the no-reward child of
   # the same (parent, seed) and three sign tests are read over the pairs
-  # (Lab::DescendantReading::Comparison). It is interim until the parent pool is settled
+  # (Lab::DescendantReading::Comparison), each re-read without the pairs of the parents the
+  # design study piloted, as a sensitivity reading. It is interim until the parent pool is settled
   # and every child of every qualifying parent has finished.
   #
   # It reads stored samples, one child at a time, and changes nothing.
@@ -74,6 +75,7 @@ module Experiments
 
     def call
       Lab::MetabolismReading::Report.new(children: children, arms: arms, tests: tests,
+                                         unpiloted_tests: tests(unpiloted: true),
                                          final: DescendantSweepSettledService.call(@experiment))
     end
 
@@ -86,17 +88,22 @@ module Experiments
       end
     end
 
-    def tests
+    # `unpiloted` re-reads each test without the pairs of Lab::MetabolismReading::PILOT_PARENTS.
+    def tests(unpiloted: false)
       reward, no_reward = arms
       twins = no_reward.children.index_by { |child| [child.parent_id, child.seed] }
+      treated = unpiloted ? reward.children.reject { |child| piloted?(child) } : reward.children
 
       HYPOTHESES.map do |hypothesis, key|
-        pairs = reward.children.map { |child| pair(key, child, twins[[child.parent_id, child.seed]]) }
-        Lab::FromEmergedHeldout::Test.new(hypothesis: hypothesis, treatment: reward.treatment,
-                                          comparison: Lab::DescendantReading::Comparison.new(pairs: pairs,
-                                                                                             kills: false))
+        pairs = treated.map { |child| pair(key, child, twins[[child.parent_id, child.seed]]) }
+        Lab::FromEmergedHeldout::Test.new(
+          hypothesis: unpiloted ? "#{hypothesis}#{Lab::MetabolismReading::UNPILOTED_SUFFIX}" : hypothesis,
+          treatment: reward.treatment, comparison: Lab::DescendantReading::Comparison.new(pairs: pairs, kills: false)
+        )
       end
     end
+
+    def piloted?(child) = Lab::MetabolismReading::PILOT_PARENTS.include?(child.parent_id)
 
     def pair(key, treated, control)
       if key
