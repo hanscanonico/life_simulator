@@ -90,6 +90,10 @@
   <%= render "experiments/locality_emergence_reading", reading: @show.locality_emergence_reading %>
 <% end %>
 
+<% if @show.reach_cap128_reading %>
+  <%= render "experiments/reach_cap128_reading", reading: @show.reach_cap128_reading %>
+<% end %>
+
 <% if @show.rescores? %>
   <%= render "experiments/rescores_table", summary: @show.rescore_summary %>
 <% end %>

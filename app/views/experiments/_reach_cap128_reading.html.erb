@@ -1,0 +1,86 @@
+<%# The reach-cap128 sweep's pre-registered reading (docs/design_record.md, 2026-10-01):
+    `reading` is a Lab::ReachCap128Reading::Report. The per-run rows stay in
+    `lab:reach_cap128_report`. %>
+<% comparison = reading.comparison %>
+<section class="mt-6" id="reach-cap128-reading">
+  <h2>
+    The pre-registered reading
+    <span class="badge <%= reading.interim? ? 'badge-warning' : 'badge-success' %>">
+      <%= reading.interim? ? "interim" : "final" %>
+    </span>
+  </h2>
+  <p class="text-sm text-muted">
+    <% if reading.interim? %>
+      Interim: not every run of the two arms has finished and had every world it kept read by
+      the readings pass, and only those that have are counted. Nothing here is the sweep's
+      result yet.
+    <% else %>
+      Every run of the two arms has finished and had every world it kept read.
+    <% end %>
+    A run emerged where it has a confirmed emergence epoch and the orientation-aware census of
+    some world it kept, from that epoch on, reads <span class="mono">replicator_share</span> of at
+    least <%= percent_value Lab::ReachCap128Reading::MIN_SHARE %>. The control is the host–parasite
+    sweep's economy-off arm at cap 128, at radius 1.
+  </p>
+
+  <figure class="table-figure mt-4">
+    <figcaption class="table-caption text-sm text-muted" id="reach-cap128-arms">
+      Runs per arm, counted so far. The rate is emerged over counted; the medians are over the
+      emerged runs.
+    </figcaption>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="reach-cap128-arms">
+      <table class="data-table" aria-labelledby="reach-cap128-arms">
+        <thead>
+          <tr>
+            <th>Arm</th>
+            <th class="numeric">Runs</th>
+            <th class="numeric">Finished</th>
+            <th class="numeric">Counted</th>
+            <th class="numeric">Emerged</th>
+            <th class="numeric">Rate</th>
+            <th class="numeric">Median emergence epoch</th>
+            <th class="numeric">Median terminal share</th>
+            <th class="numeric">Median dominant length</th>
+            <th class="numeric">Median dominant instructions</th>
+            <th class="numeric">Eligible parents</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% reading.arms.each do |arm| %>
+            <tr>
+              <td><%= arm.label %></td>
+              <td class="numeric"><%= arm.rows.size %></td>
+              <td class="numeric"><%= arm.finished %></td>
+              <td class="numeric"><%= arm.counted %></td>
+              <td class="numeric"><%= arm.emerged %></td>
+              <td class="numeric"><%= percent_value arm.rate&.to_f %></td>
+              <td class="numeric"><%= arm.median_emergence_epoch || "—" %></td>
+              <td class="numeric"><%= percent_value arm.median_terminal_share %></td>
+              <td class="numeric"><%= metric_value arm.median_raw_len %></td>
+              <td class="numeric"><%= metric_value arm.median_instruction_count %></td>
+              <td class="numeric"><%= arm.eligible_parents %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3 class="mt-4">H-reach128</h3>
+  <p>
+    Radius <%= Lab::ReachCap128Reading::TREATMENT_RADIUS %> with room to grow emerges more often than
+    the cap-128 control at radius 1:
+    <span class="badge <%= comparison.badge_class %>"><%= comparison.outcome_label %></span>
+  </p>
+  <p class="text-sm text-muted">
+    <% if comparison.testable? %>
+      One one-sided Fisher exact test at p &lt; <%= Lab::ReachCap128Reading::LEVEL %>:
+      <%= comparison.counts %>, p = <%= metric_value comparison.p_value.to_f %>.
+    <% else %>
+      Untested until both arms have a counted run.
+    <% end %>
+    An eligible parent is an emerged world whose terminal stored world reads a share of at least
+    <%= percent_value Lab::ReachCap128Reading::PARENT_SHARE %>; no later sweep's parent rule is
+    set by it.
+  </p>
+</section>

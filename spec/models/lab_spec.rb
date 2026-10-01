@@ -309,6 +309,38 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the reach-cap128 sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("reach_cap128") }
+      let(:params) { Lab::CanonicalParams.for(definition[:param_grid].transform_values(&:first)) }
+      let(:control) do
+        grid = Lab::SWEEPS.fetch("host_parasite")[:param_grid]
+        Lab::CanonicalParams.for(grid.except("economy").transform_values(&:first)
+                                     .merge(grid.fetch("economy").first, Lab::ReachCap128Reading::CONTROL_ARM))
+      end
+
+      it "runs sweep 9's economy-off cap-128 control at radius 4, every other parameter that arm's" do
+        expect(definition[:param_grid].values.map(&:size).uniq).to eq([1])
+        expect(params.except("radius", "lineage_rule")).to eq(control.except("radius", "lineage_rule"))
+        expect([params["radius"], control["radius"]]).to eq([Lab::ReachCap128Reading::TREATMENT_RADIUS, 1])
+      end
+
+      it "names an economy-off control arm sweep 9 runs at 270 seeds" do
+        expect(control.values_at("energy_influx", "steal_amount", "max_tape_len")).to eq([0, 0, 128])
+        expect(Lab::SWEEPS.fetch("host_parasite")[:seeds_by_arm])
+          .to include({ "params" => Lab::ReachCap128Reading::CONTROL_ARM, "seeds" => (1..270).to_a })
+      end
+
+      it "inherits lineage tags through reverse copies" do
+        expect(definition[:param_grid].fetch("lineage_rule")).to eq(["oriented"])
+      end
+
+      it "gives 270 runs of twenty thousand epochs, the control's seeds" do
+        expect(definition[:seeds]).to eq((1..270).to_a)
+        expect(definition[:epochs]).to eq(20_000)
+        expect(definition[:priority]).to eq(30)
+      end
+    end
+
     describe "the lineage-diversity sweep" do
       let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
       let(:reading) { Lab::LineageDiversityReading }

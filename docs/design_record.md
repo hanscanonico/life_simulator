@@ -2366,3 +2366,100 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   The asymmetric-execution finding's "seed for seed" control is now scoped to sweep 9's
   seeds 1–90, as the 2026-09-25 entry said it would be. Nothing about the engine, the rules
   or any observable moves.
+- 2026-10-01 — **Does the reach effect carry to growable tapes? The `reach-cap128` sweep,
+  pre-registered, and a pool of parents with room to grow.** This is §1.3 item 14,
+  experiment `reach-cap128` (sweep key `reach_cap128`), and its numbers live in
+  `Lab::ReachCap128Reading`.
+
+  **What was seen.** Sweep 13 (`locality-emergence`, entry of 2026-09-27) finished on
+  2026-09-28, 630 of 630 runs. Read by its own rule over the live samples (a SELECT on the lab
+  database, 2026-10-01), emergence is 4 / 90 at radius 1, 9 at 2, 7 at 3, **16 at 4**, 6 at
+  6, 3 at 8 and 3 / 90 well-mixed. Its pre-registered tests read off those counts: H-peak
+  shown (radius 4 against radius 1, one-sided Fisher p = 0.0039; against well-mixed p =
+  0.0013, Holm 0.0027) and H-shape shown (radius² coefficient −0.114, Wald p = 0.0041,
+  fitted peak at radius 4.1). That curve is on **fixed 64-byte tapes**. Every rung-4
+  experiment runs on growable ones — `tape_len` 64 under `max_tape_len` 128 — and starts from
+  emerged worlds of that kind (#243/#244, the `from-emerged` sweep). Today the only pool of
+  such parents is sweep 9's economy-off control at cap 128, radius 1: **11 of 270** runs
+  carry the record's confirmed `emergence_epoch` (definition a). Under the replicator-world
+  definition (b) — confirmed, and `replicator_share ≥ 0.5` at some reading at or after the
+  crossing — it is **11 of 270** too, every confirmed run qualifying, but that count stands
+  on a different instrument per run: 6 of the 11 finished before #247 and carry no live
+  `replicator_share` sample at all, so for them (b) can only be read off the
+  `oriented_census/1` readings of their stored worlds. Those are one world about every 1 000
+  epochs — the first, the last, every tenth snapshot at `snapshot_every` 100, and the one
+  nearest the transition, 21 a run on average — against a live sample every 10 epochs. A
+  live count would give a post-#247 run a hundred chances at a passing sample for every one
+  a pre-#247 run gets. All 270 control runs carry the stored-world readings, every kept
+  world read (a SELECT, 2026-10-01). The readings of the 11: terminal share 0.71–0.98, the
+  peak after the crossing 0.74–0.99; their dominant tape at the last live sample is 128 bytes
+  long in all 11, with 10–95 instructions (median 20).
+
+  **Emergence, locked.** One definition, applied identically to both arms: a finished run
+  is **emerged** when it has the confirmed `emergence_epoch` **and** some
+  `oriented_census/1` reading of a world it kept — a static reading, `epoch =
+  source_epoch`, at or before the run's last epoch, at or after the crossing — reads
+  `replicator_share ≥ 0.5`. A reading without the share as a number is no reading. Live
+  samples do not enter it. A run counts only once the readings pass has read **every**
+  world it kept (`Runs::OrientedSummary#measured?`); until then it is listed and not
+  counted. Both arms keep their worlds under the same pruning, so the resolution is the
+  same in both. **A readings pass, `readings-corpus --experiment reach-cap128 --epochs all`,
+  precedes the reading**; the reading is final only when every run of both arms has
+  finished and been read in full. The constants are `INSTRUMENT`, `SHARE_KEY` and
+  `MIN_SHARE` (0.5) in `Lab::ReachCap128Reading`.
+
+  **The sweep.** Every parameter of sweep 9's economy-off cap-128 control, read off
+  `Lab::SWEEPS["host_parasite"]` and copied, the inert economy keys included
+  (`energy_influx` 0, `steal_amount` 0, `energy_stock_cap` 32 768, `steal_loss` 0.5): 128²,
+  `tape_len` 64, `max_tape_len` 128, `mutation_rate` 2^-13, the engine's defaults
+  otherwise — at **radius 4**, with `lineage_rule = oriented`, which changes no byte of a
+  world (entry of 2026-09-25). A run's canonical params differ from the control's in
+  `radius` and `lineage_rule` alone. **Seeds 1–270**, the control's, 20 000 epochs, **270
+  runs**, priority **30**. Radius changes the world, so these are new worlds: no run on the
+  lab at any seed has radius 4 with `max_tape_len` 128 (a SELECT, 2026-10-01; the radius-4
+  runs stored are `radius`, `lineage-diversity` and `locality-emergence`'s, all at a fixed
+  64 bytes).
+
+  **H-reach128 (confirmatory).** Radius 4 at cap 128 emerges more often than sweep 9's
+  cap-128 control at radius 1. One **one-sided Fisher exact test** of emerged over counted,
+  radius 4 above the control (`Stats::FisherExact.greater`). **Shown** where p < **0.05**;
+  **refuted** where radius 4's rate is at most the control's; **not shown** otherwise;
+  **not yet tested** until each arm has a counted run. With the control fixed at its 11 of
+  270, all 270 runs counted, it is shown at **21** emerged runs or more. The power against
+  that fixed control is about 0.59 if radius 4's true rate is 0.08, 0.91 at 0.10 and 0.99 at
+  0.12 (exact binomial sums, 2026-10-01); sweep 13's ratio, four times radius 1's rate, would
+  put it near 0.16. The control was run 2026-09-18 to 2026-09-26 and its count was seen
+  before this entry; it is a historical arm, not a concurrent one, and the engine's
+  determinism is what makes it comparable: its worlds would be the same runs today.
+
+  **Secondary, descriptive.** Per arm, over the emerged runs: the median `emergence_epoch`;
+  the median terminal `replicator_share` of the stored world at the last epoch; and the
+  dominant tape's `dominant_raw_len` and `dominant_instruction_count` at the run's last live
+  sample, with whether the terminal stored world's dominant tape self-replicates
+  (`dominant_self_replicates`) — do the tapes use the room? Lower-middle medians
+  (`Findings::Median`). None of it decides anything.
+
+  **The parent pool.** An emerged world whose terminal stored-world `replicator_share` is at
+  least **0.5** (`PARENT_SHARE`) is an **eligible parent** for later descendant sweeps; the
+  reading counts them per arm. No later sweep's parent rule is locked here: a sweep that
+  starts from these worlds states its own.
+
+  **When it is read.** `lab:reach_cap128_report` and the sweep's page read it, labelled
+  **interim** until every run of both arms has finished and the readings pass has measured
+  every one of them. A failed run keeps it interim until it is re-run and finishes. The
+  reading is `Experiments::ReachCap128ReadingService`.
+
+  **What is not claimed.** One world size, one rate, one cap (128), one budget, one reach
+  against one. A difference inside 20 000 epochs can be a speed difference. The control is
+  the economy-off arm of a sweep run under the `aligned` lineage rule, which moves no byte,
+  and before #256, which moved run time and nothing else. Sweep 13's curve is not re-read on
+  stored worlds here (its readings pass has read 71 of its 630 runs); its counts above are its
+  own rule's.
+
+  **Cost.** Measured from the runs' `compute_seconds` (2026-10-01): sweep 9's cap-128
+  control averaged **1 261 s** a run on seeds 1–90, before #256, and **823 s** on seeds
+  91–270, mostly after it. Sweep 13, all after #256, put radius 4 at 877 s against radius 1's
+  485 s, **1.8×**, with more emerged and so dearer worlds in it. At 823 s × 1.8 ≈ 1 490 s a
+  run, 270 runs are about **112 compute-hours**; at the pre-#256 1 261 s, about 170. Sweep 13
+  ran 124 compute-hours in 11 hours of wall time (about 11 runs at once), so this is about
+  **10 hours** of wall time with the lab to itself, 15 at the high end.

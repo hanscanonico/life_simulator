@@ -697,6 +697,30 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the reach-cap128 sweep" do
+      let(:experiment) { reach_cap128_experiment }
+
+      before do
+        reach_run(experiment, crossing: 1_000, shares: [0.0, 0.9, 0.9])
+        reach_run(experiment, status: "running")
+        control_run(host_parasite_control_experiment)
+      end
+
+      it "reads the sweep against its control as pre-registered, labelled interim while a run is under way" do
+        get experiment_path(experiment)
+
+        section = response.parsed_body.at_css("#reach-cap128-reading").text.squish
+        expect(section).to include("The pre-registered reading interim", "radius 4", "control, radius 1",
+                                   "H-reach128", "not shown", "radius 4 1/1 against control, radius 1 0/1")
+      end
+
+      it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+        get experiment_path(experiment)
+
+        expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+      end
+    end
+
     context "with a sweep other than the lineage-diversity one" do
       it "shows no lineage-diversity reading" do
         get experiment_path(experiment)
