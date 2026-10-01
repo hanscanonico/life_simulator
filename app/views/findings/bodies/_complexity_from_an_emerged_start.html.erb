@@ -75,8 +75,11 @@
   </ul>
   <% unless reading.complexity_rise_shown? %>
     <p>
-      The economy arms relapse more often than the continuation, so the pre-registered rule
-      reads neither of them, and the rich economy's lead rests on two parents. The held-out
+      <% if reading.economy_arms_unread? %>
+        The economy arms relapse more often than the continuation, so the pre-registered rule
+        reads neither of them; the parents a held sign test rests on are listed below.
+      <% end %>
+      The held-out
       reading was written to ask the question again on colonies that survived the treatment, on
       parents nobody had seen: there almost every surviving pair ties, and the seen rich-economy
       signal is not there. So the economy does not keep complexity rising from an emerged start,

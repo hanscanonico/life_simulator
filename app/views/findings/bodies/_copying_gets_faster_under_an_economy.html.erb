@@ -55,8 +55,8 @@
         favour the treatment and <%= comparison.against %> the continuation, one-sided sign test
         p = <%= metric_value comparison.p_value.to_f %>,
         <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>.
-        The treatment wins the majority of its pairs in <%= reading.parents_favouring(test) %> of
-        <%= comparison.agreement.size %> held-out parents.
+        More pairs favour the treatment than the continuation in
+        <%= reading.parents_favouring(test) %> of <%= comparison.agreement.size %> held-out parents.
         <% if test.outcome == :held && comparison.carried_by.empty? %>
           No one or two parents carry the result: leaving any of them out keeps p below
           <%= Lab::FromEmergedHeldout::SIGN_TEST_LEVEL %>.
@@ -65,10 +65,15 @@
     <% end %>
   </ul>
   <p>
-    The economy lowers <span class="mono">copy_latency</span> against the paired continuation,
-    on <%= reading.heldout_parent_count %> parents whose children nobody had seen when the rule
-    was written. That is selection for faster copying, and it is the programme's first
-    confirmed adaptation result.
+    <% if reading.latency_shown? %>
+      The economy lowers <span class="mono">copy_latency</span> against the paired continuation,
+      on <%= reading.heldout_parent_count %> parents whose children nobody had seen when the rule
+      was written. That is selection for faster copying, and it is the programme's first
+      confirmed adaptation result.
+    <% else %>
+      H3-latency is not shown on every economy arm, so this reading does not confirm that the
+      economy makes the dominant replicator copy itself faster.
+    <% end %>
     <% if reading.interim? %>
       Not every child of the sweep has finished, so this reading is interim.
     <% end %>
@@ -165,9 +170,10 @@
     the dominant copier copies faster in isolation, not that the colony replicates faster.
   </li>
   <li>
-    <strong>Survivors only.</strong> An extinct child has no ratio and leaves H3-latency, and a
-    treatment that kills the colonies that would not have sped up leaves survivors that did.
-    No held-out child went extinct; the settled relapses per treatment are tabled above.
+    <strong>Conditioned on not going extinct.</strong> An extinct child has no ratio and leaves
+    H3-latency, and a treatment that kills the colonies that would not have sped up leaves
+    survivors that did. A settled relapse alone does not leave the test, only extinction does;
+    the extinct and settled-relapse counts per treatment are tabled above.
   </li>
   <li>
     <strong>One substrate, one budget.</strong> Every child is sweep 9's world at caps 128 and

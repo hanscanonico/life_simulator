@@ -2442,8 +2442,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   on one or two parents. `published` ("every run finished and the claim stands on them") is
   the registry's status for exactly that. What it does not claim: `copy_latency` is measured
   on the dominant tape against a noise partner, not in situ, so it says the dominant copier
-  copies faster in isolation, not that the colony replicates faster; H3 reads survivors
-  only, leaving extinct children out (none of the held-out ones was); it is one substrate,
+  copies faster in isolation, not that the colony replicates faster; H3 conditions on not
+  going extinct, leaving extinct children out (none of the held-out ones was), while the 3
+  and 5 economy children with a settled relapse stay in its 24 pairs — descriptively, not
+  as a registered test, leaving them out too reads 19 to 2 and 17 to 2; it is one substrate,
   20 000 epochs and three correlated children per parent; the mechanism — why copies get
   faster — is not identified; and the copiers still loop rather than halt, which is the
   exploratory `copy_cost` observation above, not part of the reading.

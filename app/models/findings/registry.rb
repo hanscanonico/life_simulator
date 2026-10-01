@@ -24,8 +24,8 @@ module Findings
                  "The median child's last-decile latency was 0.82 and 0.75 of its " \
                  "first-decile latency under the two economies, against 1.11 in the " \
                  "continuation, and the result holds in 7 and 8 of the 8 parents. It is the " \
-                 "programme's first confirmed adaptation: one substrate, survivors only, " \
-                 "and the mechanism is not identified."
+                 "programme's first confirmed adaptation: one substrate, latency read on " \
+                 "the dominant tape in isolation, and the mechanism is not identified."
       ),
       Finding.new(
         slug: "complexity-from-an-emerged-start",

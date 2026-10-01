@@ -39,6 +39,13 @@ module Findings
         survivor_tests.any? { |test| test.outcome == :held }
     end
 
+    # Whether the original rule reads no economy arm at all, because every one relapses
+    # more often than the continuation.
+    def economy_arms_unread?
+      economy = comparisons.select { |treatment, _| treatment.priced? }.values
+      economy.any? && economy.all?(&:kills?)
+    end
+
     def heldout_parent_count = heldout.children.map(&:parent_id).uniq.size
 
     def latency_effects = @latency_effects ||= heldout.arms.map { |arm| latency_effect(arm) }

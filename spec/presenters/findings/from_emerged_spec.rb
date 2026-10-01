@@ -42,4 +42,23 @@ RSpec.describe Findings::FromEmerged do
   it "reads no economy arm as keeping complexity rising" do
     expect(reading).not_to be_complexity_rise_shown
   end
+
+  it "reads the economy arms under the original rule while they relapse no more than the continuation" do
+    expect(reading).not_to be_economy_arms_unread
+  end
+
+  context "with every economy child relapsed" do
+    before do
+      [1, 2].each do |index|
+        from_emerged_children(experiment, index).each do |run|
+          run.samples.delete_all
+          insert_own_samples(run, Array.new(200) { { "replicator_share" => 0.0 } })
+        end
+      end
+    end
+
+    it "reads neither economy arm" do
+      expect(reading).to be_economy_arms_unread
+    end
+  end
 end

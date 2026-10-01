@@ -30,7 +30,7 @@ RSpec.describe "The from-emerged findings", type: :system do
 
     it "tables the effect per treatment and the agreement per parent" do
       expect(page).to have_css("tr", text: /economy 8192\s+6\s+4,000\s+2,000\s+0\.5\s+6/)
-      expect(page).to have_text("The treatment wins the majority of its pairs in 2 of 2 held-out parents.")
+      expect(page).to have_text("More pairs favour the treatment than the continuation in 2 of 2 held-out parents.")
     end
 
     it "states what is not claimed" do
@@ -44,6 +44,18 @@ RSpec.describe "The from-emerged findings", type: :system do
     end
   end
 
+  context "with the rung-3 finding and no economy child faster than its continuation" do
+    before do
+      experiment.runs.where.not(parent_run_id: nil).find_each { |run| run.samples.delete_all && from_emerged_sample(run) }
+      visit finding_path("copying-gets-faster-under-an-economy")
+    end
+
+    it "does not state the adaptation" do
+      expect(page).to have_text("H3-latency is not shown on every economy arm")
+      expect(page).to have_no_text("first confirmed adaptation result")
+    end
+  end
+
   context "with the rung-4 finding" do
     before { visit finding_path("complexity-from-an-emerged-start") }
 
@@ -52,6 +64,10 @@ RSpec.describe "The from-emerged findings", type: :system do
       expect(page).to have_text("From an emerged start, neither energy economy can be read as keeping complexity " \
                                 "rising, and on the held-out survivors the complexity signal does not replicate.")
       expect(page).to have_text("6 of 6 continuations kept their replicators over 20 000 more epochs.")
+    end
+
+    it "does not say the economy arms relapse more where they do not" do
+      expect(page).to have_no_text("relapse more often than the continuation, so the pre-registered rule")
     end
 
     it "lists the original and the held-out complexity verdicts" do
