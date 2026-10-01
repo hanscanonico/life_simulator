@@ -39,6 +39,16 @@ impl Task {
     }
 }
 
+/// Cells drawn, uniformly with replacement, for the task shares of a sample: as many as
+/// `replicator_share` draws, so a share moves in the same 1/256 steps.
+pub const TASK_SAMPLE_CELLS: u32 = 256;
+/// A task is a capability of the world when at least one sampled cell in this many is
+/// credited with it: a share of 1/10, which is 26 of 256 compared as integers.
+pub const TASK_CAPABILITY_DENOMINATOR: u32 = 10;
+/// The first entry of `TASKS` whose minimal program needs a loop: ADD, SUB, NOT, DOUBLE and
+/// MUL each move one input across in a `[...]`, where ECHO, INC and DEC are straight lines.
+pub const FIRST_LOOP_TASK: usize = 3;
+
 /// The arithmetic ladder, units doubling with difficulty as Avida's 2^n merits do. The
 /// order is the bit order of a `Credit`.
 pub const TASKS: [Task; 8] = [
@@ -161,6 +171,44 @@ impl Credit {
             .filter(|(index, _)| self.has(*index))
             .map(|(_, task)| task.units)
             .sum()
+    }
+}
+
+/// How many of `TASK_SAMPLE_CELLS` sampled cells each task was credited to: the read-side
+/// tally of the task observables (`docs/DESIGN.md` §1.2).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TaskTally([u32; TASKS.len()]);
+
+impl TaskTally {
+    pub fn add(&mut self, credit: Credit) {
+        for (task, credited) in self.0.iter_mut().enumerate() {
+            *credited += u32::from(credit.has(task));
+        }
+    }
+
+    pub fn credited(&self, task: usize) -> u32 {
+        self.0[task]
+    }
+
+    pub fn share(&self, task: usize) -> f64 {
+        f64::from(self.0[task]) / f64::from(TASK_SAMPLE_CELLS)
+    }
+
+    /// How many tasks at least a tenth of the sampled cells are credited with.
+    pub fn capability(&self) -> u32 {
+        self.capable(0)
+    }
+
+    /// The same count over the tasks that need a loop.
+    pub fn capability_loop(&self) -> u32 {
+        self.capable(FIRST_LOOP_TASK)
+    }
+
+    fn capable(&self, from: usize) -> u32 {
+        self.0[from..]
+            .iter()
+            .filter(|credited| **credited * TASK_CAPABILITY_DENOMINATOR >= TASK_SAMPLE_CELLS)
+            .count() as u32
     }
 }
 
@@ -460,6 +508,34 @@ mod tests {
             assert_eq!(run_case(&tape, x, y, OpSet::ALL).outputs, vec![x]);
         }
         assert_eq!(credit_on(&tape, FALLBACK_CASES), Credit::default());
+    }
+
+    /// A tenth of 256 is 25.6, so 25 cells are not a capability and 26 are; the loop count
+    /// reads only ADD onwards.
+    #[test]
+    fn a_capability_is_a_tenth_of_the_sampled_cells_counted_in_integers() {
+        let mut tally = TaskTally::default();
+        let echo_and_add = Credit(0b1001);
+        for _ in 0..25 {
+            tally.add(echo_and_add);
+        }
+        tally.add(Credit(0b1));
+        assert_eq!((tally.credited(0), tally.credited(3)), (26, 25));
+        assert_eq!(tally.share(0), 26.0 / 256.0);
+        assert_eq!(tally.capability(), 1);
+        assert_eq!(tally.capability_loop(), 0);
+
+        tally.add(Credit(0b1000));
+        assert_eq!(tally.capability(), 2);
+        assert_eq!(tally.capability_loop(), 1);
+
+        for _ in 0..26 {
+            tally.add(Credit(0b1000_0110));
+        }
+        assert_eq!(tally.capability(), 5);
+        assert_eq!(tally.capability_loop(), 2);
+        assert_eq!(FIRST_LOOP_TASK, 3);
+        assert_eq!(TASKS[FIRST_LOOP_TASK].name, "add");
     }
 
     #[test]

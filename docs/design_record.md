@@ -2779,3 +2779,42 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   any descent error. `World::from_snapshot` still does not validate: it resumes a run
   already under way, which must keep resuming however validation has tightened since.
   Nothing is relocked.
+- 2026-10-01 — **The task observables: twelve live-only readings of what the soup
+  computes (Metabolism, slice 3).** The task assay of the entry above pays; these read. They
+  are appended to `Metrics` with these exact keys, which the `metabolism` pre-registration
+  codes against: `task_share_echo`, `task_share_inc`, `task_share_dec`, `task_share_add`,
+  `task_share_sub`, `task_share_not`, `task_share_double`, `task_share_mul`,
+  `task_capability`, `task_capability_loop`, `dominant_tasks` and `dominant_task_count`.
+
+  **What they read.** A share is the fraction of 256 cells, drawn uniformly with
+  replacement, credited with its task, on cases drawn first and then cells drawn on
+  `STREAM_TASK | 1` at `(seed, epoch)`, as `replicator_share` draws on its own stream; each
+  distinct tape in the sample is assayed once. A task is a capability when its share is at
+  least 1/10, compared in integers (`10 × count ≥ 256`, so 26 of 256); the loop count is
+  over ADD, SUB, NOT, DOUBLE and MUL. `dominant_tasks` is the census's dominant tape's
+  credit as a `u32` bitmask in `task::TASKS` order, assayed on cases drawn on
+  `STREAM_TASK | 2`, and `dominant_task_count` is its popcount; it reads 0, not null, where
+  that tape solves nothing.
+
+  **When.** Whenever `tasks != off`, rewarded or not, so the reward-0 control arm carries
+  the readings its treatment does. Null wherever `tasks = off`, on life (including a life
+  run resumed with `tasks` set, which `from_snapshot` does not refuse), and on every sample
+  recorded before them. Rails stores them in `Sample::OBSERVABLES`; `dominant_tasks` is a
+  flag, not a series, and the run page names its tasks from the ladder `runner schema`
+  exports. A missing key draws no point and is never read as 0.
+
+  **The invariant, pinned.** The readings draw on streams nothing else draws on and write
+  nothing. A test steps `tasks = arith, task_reward = 0` beside `tasks = off` under both
+  payers, sampling every 5 epochs, and holds them to the same world hash, stocks, snapshot
+  and every pre-existing observable, sample for sample. Every earlier hash and digest is
+  unmoved; the task readings have their own digest, split from the others as #247 and #255
+  split theirs: the reward-0 control of the rewarded pin (seed 42, 50 epochs) reads an ECHO
+  share of 0.078125 and nothing else, and a planted still world reads three capabilities,
+  one loop capability and a dominant bitmask of 9.
+
+  **Cost.** On the eight restored emerged worlds (128×128, 2 800 to 11 300 cells holding a
+  `!` byte), a sample with the readings cost within about 1% of a sample interval of 10
+  epochs more than one without, inside the noise of a shared machine.
+
+  **Live-only.** They are not added to `oriented_census/1` or `/2`, since an instrument
+  version never changes once readings exist under it. Nothing is relocked.

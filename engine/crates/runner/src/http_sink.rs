@@ -178,6 +178,18 @@ mod tests {
             copy_latency_orientation: None,
             lineage_effective_count: 2.0,
             lineages_over_one_percent: 2,
+            task_share_echo: None,
+            task_share_inc: None,
+            task_share_dec: None,
+            task_share_add: None,
+            task_share_sub: None,
+            task_share_not: None,
+            task_share_double: None,
+            task_share_mul: None,
+            task_capability: None,
+            task_capability_loop: None,
+            dominant_tasks: None,
+            dominant_task_count: None,
         }
     }
 

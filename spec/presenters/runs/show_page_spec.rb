@@ -26,7 +26,10 @@ RSpec.describe Runs::ShowPage do
                   dominant_compressed_len dominant_instruction_count dominant_raw_len
                   conserved_core_bytes conserved_core_ops conserved_core_bytes_oriented
                   conserved_core_ops_oriented steal_rate replicator_pass_rate
-                  replicator_count_mean lineage_compressed_len lineage_instruction_count])
+                  replicator_count_mean lineage_compressed_len lineage_instruction_count
+                  task_capability task_capability_loop dominant_task_count task_share_echo
+                  task_share_inc task_share_dec task_share_add task_share_sub task_share_not
+                  task_share_double task_share_mul])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
       expect(page.charts.map(&:title))
         .to eq(described_class::METRICS.values +
@@ -156,6 +159,45 @@ RSpec.describe Runs::ShowPage do
           create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794 })
 
           expect(page.copy_latency_orientation).to be_nil
+        end
+      end
+    end
+
+    # The task readings are null wherever tasks are off: such a sample draws no point,
+    # never a zero, and a share of 0 is a point.
+    it "draws the task readings of the samples that carry them" do
+      create(:sample, run: run, epoch: 100, values: { "task_share_add" => nil, "task_capability" => nil })
+      create(:sample, run: run, epoch: 200, values: { "copy_cost" => 1_794 })
+      create(:sample, run: run, epoch: 300, values: { "task_share_add" => 0.0, "task_capability" => 2 })
+
+      expect(%w[task_share_add task_capability].map { |metric| Runs::MetricSeriesService.call(run: run, metric: metric) })
+        .to eq([[[300, 0.0]], [[300, 2]]])
+      expect(chart_for("task_share_mul")).to be_empty
+    end
+
+    describe "#dominant_tasks_label" do
+      it "names the tasks of the latest sample that assayed the dominant tape, in ladder order" do
+        create(:sample, run: run, epoch: 100, values: { "dominant_tasks" => 0b1 })
+        create(:sample, run: run, epoch: 200, values: { "dominant_tasks" => 0b1000_1001 })
+        create(:sample, run: run, epoch: 300, values: { "dominant_tasks" => nil })
+
+        expect(page.dominant_tasks).to eq(%w[echo add mul])
+        expect(page.dominant_tasks_label).to eq("ECHO, ADD, and MUL")
+      end
+
+      context "with a dominant tape that solves nothing" do
+        it "says so" do
+          create(:sample, run: run, epoch: 100, values: { "dominant_tasks" => 0 })
+
+          expect(page.dominant_tasks_label).to eq("no task")
+        end
+      end
+
+      context "with tasks off, or samples recorded before the task readings existed" do
+        it "reads none rather than no task" do
+          create(:sample, run: run, epoch: 100, values: { "dominant_tasks" => nil, "copy_cost" => 1_794 })
+
+          expect(page.dominant_tasks_label).to be_nil
         end
       end
     end

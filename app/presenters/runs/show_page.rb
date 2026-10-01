@@ -35,7 +35,18 @@ module Runs
       "replicator_pass_rate" => "Census pass rate",
       "replicator_count_mean" => "Mean census count",
       "lineage_compressed_len" => "Compressed length of the largest lineage's tape (bytes)",
-      "lineage_instruction_count" => "Instructions in the largest lineage's tape"
+      "lineage_instruction_count" => "Instructions in the largest lineage's tape",
+      "task_capability" => "Tasks a tenth of the cells solve",
+      "task_capability_loop" => "Loop tasks a tenth of the cells solve",
+      "dominant_task_count" => "Tasks the dominant tape solves",
+      "task_share_echo" => "Share of cells solving ECHO",
+      "task_share_inc" => "Share of cells solving INC",
+      "task_share_dec" => "Share of cells solving DEC",
+      "task_share_add" => "Share of cells solving ADD",
+      "task_share_sub" => "Share of cells solving SUB",
+      "task_share_not" => "Share of cells solving NOT",
+      "task_share_double" => "Share of cells solving DOUBLE",
+      "task_share_mul" => "Share of cells solving MUL"
     }.freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
@@ -92,6 +103,23 @@ module Runs
       @copy_latency_orientation ||= dominant_readings.reverse_each.lazy
                                                      .map { |_, values| values["copy_latency_orientation"] }
                                                      .find { |orientation| orientation.is_a?(String) }
+    end
+
+    # The tasks the dominant tape was credited with at the last sample that assayed it, by
+    # name: the engine records them as a bitmask in the order of its task ladder. `nil`
+    # where no sample read one, so a run with tasks off says nothing rather than "none".
+    def dominant_tasks
+      return @dominant_tasks if defined?(@dominant_tasks)
+
+      bits = dominant_readings.reverse_each.lazy.map { |_, values| values["dominant_tasks"] }
+                              .find { |mask| mask.is_a?(Integer) }
+      @dominant_tasks = bits && Lab::Schema.task_names.select.with_index { |_, index| bits[index] == 1 }
+    end
+
+    def dominant_tasks_label
+      return if dominant_tasks.nil?
+
+      dominant_tasks.empty? ? "no task" : dominant_tasks.map(&:upcase).to_sentence
     end
 
     def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)

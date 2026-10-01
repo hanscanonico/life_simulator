@@ -378,6 +378,31 @@ claim rests on it.
   tells an arm where theft never evolved from one where it was suppressed — or never
   possible. 0 wherever the steal op is off, which is every run at the defaults, and on the
   life substrate.
+- `task_share_echo` / `task_share_inc` / `task_share_dec` / `task_share_add` /
+  `task_share_sub` / `task_share_not` / `task_share_double` / `task_share_mul` /
+  `task_capability` / `task_capability_loop` / `dominant_tasks` / `dominant_task_count`:
+  the **task observables** (docs/design_record.md 2026-10-01, the task observables). Each
+  `task_share_*` is the share of 256 cells (`task::TASK_SAMPLE_CELLS`), drawn uniformly
+  with replacement, whose tape the task assay of §1.1 credits with that task; the cases
+  and then the cells are drawn on `STREAM_TASK | 1` at `(seed, epoch)`, and each distinct
+  tape is assayed once. `task_capability` counts the tasks whose share is at least 1/10,
+  compared in integers (26 of 256 or more); `task_capability_loop` counts the same over
+  ADD, SUB, NOT, DOUBLE and MUL, the tasks whose minimal program needs a loop.
+  `dominant_tasks` is the credit of the census's dominant tape — the one
+  `dominant_replicates` describes — as a bitmask in ladder order (ECHO 1, INC 2, … MUL
+  128), on cases of its own drawn on `STREAM_TASK | 2`; `dominant_task_count` is its
+  popcount. They are read whenever `tasks` is not `off`, paid for or not, and only read:
+  they draw on no stream the run, the payment or any other observable draws on and write
+  nothing, so a run with `tasks = arith` and `task_reward = 0` is still the run with
+  `tasks = off` byte for byte and stock for stock, with every other observable the same,
+  and the control arm carries the readings its treatment does. On restored emerged worlds
+  (128×128, 2 800 to 11 300 cells holding a `!`) they cost under about 1% of a sample
+  interval at `sample_every` 10, within the machine's noise. Null wherever `tasks = off`,
+  on the life substrate, and on every sample recorded before they existed. They are
+  **live-only**: neither `oriented_census/1` nor `/2` reads them, since an instrument
+  version never changes once readings exist under it, and the sweep that needs them
+  samples them as it runs. The run page names `dominant_tasks` rather than printing the
+  number, and draws the other eleven.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard

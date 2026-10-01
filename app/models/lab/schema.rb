@@ -23,6 +23,12 @@ module Lab
         @transition ||= document.fetch("transition").freeze
       end
 
+      # The task ladder's names in the engine's order, which is the bit order of the
+      # `dominant_tasks` bitmask.
+      def task_names
+        @task_names ||= document.fetch("tasks").fetch("ladder").map { |task| task.fetch("name") }.freeze
+      end
+
       def defaults
         @defaults ||= fields.to_h { |field| [field["name"], field["default"]] }.freeze
       end
