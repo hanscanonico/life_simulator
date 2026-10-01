@@ -2,9 +2,10 @@
 
 module Runs
   # Removes the duplicate runs an earlier, non-idempotent seeding left in an experiment:
-  # for every (canonical params, seed) held by more than one run, the survivor is the
-  # lowest-id run that is not pending — the one that may already carry a measurement — or
-  # the lowest id when all of them are pending. Only pending duplicates are deleted.
+  # for every (canonical params, seed, parent world) held by more than one run, the survivor
+  # is the lowest-id run that is not pending — the one that may already carry a
+  # measurement — or the lowest id when all of them are pending. Only pending duplicates
+  # are deleted.
   class DiscardDuplicatesService
     include Callable
     include DiscardsPendingRuns
@@ -21,7 +22,7 @@ module Runs
 
     def duplicates
       @experiment.runs.order(:id)
-                 .group_by { |run| [Lab::CanonicalParams.for(run.params), run.seed] }
+                 .group_by { |run| [Lab::CanonicalParams.for(run.params), run.seed, run.parent_run_id, run.parent_epoch] }
                  .each_value.flat_map { |runs| runs.size > 1 ? redundant(runs) : [] }
     end
 

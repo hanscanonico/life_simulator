@@ -13,7 +13,7 @@ module Runs
   # first and stays the detector's own, and the earliest crossing a witness backs is the
   # answer.
   #
-  # The crossings read here are the constant rule's, which the 2026-09-21 relock left
+  # The crossings read here are the constant rule's, which the 2026-10-01 relock left
   # where they were: what makes an emergence is the witness, and the rule that gates the
   # candidates cannot be the relative one — it reads no crossing inside its own baseline
   # window and no second crossing against an uncontaminated baseline.

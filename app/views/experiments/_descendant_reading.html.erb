@@ -1,0 +1,148 @@
+<%# The from-emerged sweep's pre-registered reading (docs/design_record.md, 2026-09-25):
+    `reading` is a Lab::DescendantReading::Report. The per-child rows stay in
+    `lab:from_emerged_report`. %>
+<section class="mt-6" id="descendant-reading">
+  <h2>
+    The pre-registered reading
+    <span class="badge <%= reading.interim? ? 'badge-warning' : 'badge-success' %>">
+      <%= reading.interim? ? "interim" : "final" %>
+    </span>
+  </h2>
+  <p class="text-sm text-muted">
+    <% if reading.interim? %>
+      Interim: not every child of every qualifying parent has finished, or a parent may still
+      qualify. Nothing here is the sweep's result yet.
+    <% else %>
+      Every child of every qualifying parent has finished.
+    <% end %>
+    Each child is read over its own samples. It held its replicators where the median
+    <span class="mono">replicator_share</span> of its last decile is at least
+    <%= percent_value Lab::DescendantReading::HELD_SHARE %> and the share never sat below
+    <%= percent_value Lab::DescendantReading::FLOOR_SHARE %> for
+    <%= Lab::DescendantReading::FLOOR_RUN %> samples running. It rises where the last-decile median
+    <span class="mono">dominant_instruction_count</span> of its self-replicating samples is at least
+    <%= Lab::DescendantReading::RISE_FACTOR %> × the first decile's, and plateaus within
+    ±<%= percent_value Lab::DescendantReading::PLATEAU_BAND %>. It is unmeasured with fewer than
+    <%= Lab::DescendantReading::MIN_DECILE_SAMPLES %> such samples in either decile.
+  </p>
+
+  <figure class="table-figure mt-4">
+    <figcaption class="table-caption text-sm text-muted" id="descendant-treatments">
+      Children per treatment, read so far. Steal rate and distinct tapes are last-decile
+      medians over the children, and are descriptive only.
+    </figcaption>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="descendant-treatments">
+      <table class="data-table" aria-labelledby="descendant-treatments">
+        <thead>
+          <tr>
+            <th>Treatment</th>
+            <th class="numeric">Children</th>
+            <th class="numeric">Finished</th>
+            <th class="numeric">Held</th>
+            <th class="numeric">Relapsed</th>
+            <th class="numeric">Rises</th>
+            <th class="numeric">Plateau</th>
+            <th class="numeric">Mixed</th>
+            <th class="numeric">Unmeasured</th>
+            <th class="numeric"><span class="mono">steal_rate</span></th>
+            <th class="numeric"><span class="mono">distinct_tapes</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% reading.arms.each do |arm| %>
+            <tr>
+              <td><%= arm.name %></td>
+              <td class="numeric"><%= arm.children.size %></td>
+              <td class="numeric"><%= arm.finished_count %></td>
+              <% Lab::DescendantReading::VERDICTS.each do |verdict| %>
+                <td class="numeric"><%= arm.verdict_count(verdict) %></td>
+              <% end %>
+              <td class="numeric"><%= metric_value arm.steal_rate %></td>
+              <td class="numeric"><%= metric_value arm.median_of(Lab::DescendantReading::DISTINCT_TAPES) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3 class="mt-4">Hypotheses</h3>
+  <ul>
+    <% reading.comparisons.each do |treatment, comparison| %>
+      <li class="mb-3">
+        <strong><%= treatment.hypothesis %></strong>, <%= treatment.name %> against the continuation:
+        <span class="badge <%= comparison.badge_class %>"><%= comparison.reading_label %></span>
+        <p class="text-sm text-muted">
+          <%= pluralize(comparison.measured_count, "pair") %> measured on both sides:
+          <%= comparison.favouring %> favour the treatment, <%= comparison.against %> the continuation,
+          <%= comparison.ties %> tie<% if comparison.p_value %>; one-sided sign test
+          p = <%= metric_value comparison.p_value.to_f %><% end %>.
+          <% if comparison.kills? %>
+            Its children relapse more often than the continuation's, so the test
+            (<%= comparison.outcome_label %>) is printed but not read as <%= treatment.hypothesis %>.
+          <% end %>
+          <% if comparison.carried_by.any? %>
+            Carried by parents
+            <%= comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>:
+            without their pairs the test falls to p ≥ <%= Lab::DescendantReading::SIGN_TEST_LEVEL %>.
+          <% end %>
+        </p>
+        <% if comparison.agreement.any? %>
+          <details class="text-sm">
+            <summary>Per-parent agreement</summary>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Parent</th>
+                  <th class="numeric">Favour the treatment</th>
+                  <th class="numeric">Favour the continuation</th>
+                  <th class="numeric">Tie</th>
+                  <th class="numeric">Not both measured</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% comparison.agreement.each do |row| %>
+                  <tr>
+                    <td><%= link_to "run #{row.parent_id}", run_path(row.parent_id) %></td>
+                    <td class="numeric"><%= row.treatment %></td>
+                    <td class="numeric"><%= row.continuation %></td>
+                    <td class="numeric"><%= row.ties %></td>
+                    <td class="numeric"><%= row.unmeasured %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </details>
+        <% end %>
+      </li>
+    <% end %>
+    <li>
+      <strong>H-persistence</strong>, the continuation children hold:
+      <span class="badge <%= reading.persistence.badge_class %>"><%= reading.persistence.outcome_label %></span>
+      <p class="text-sm text-muted">
+        <%= reading.persistence_line %>.
+        <% if reading.persistence.watched_colony_ages %>
+          They were watched over colony ages <%= epoch_value(*reading.persistence.watched_colony_ages) %>.
+        <% end %>
+      </p>
+      <% if reading.persistence.relapsed.any? %>
+        <ul class="text-sm">
+          <% reading.persistence.relapsed.each do |child| %>
+            <li>
+              <%= link_to "run #{child.run_id}", run_path(child.run_id) %> (parent run <%= child.parent_id %>,
+              seed <%= child.seed %>) relapsed
+              <% if child.reading.relapse_epoch %>
+                at epoch <%= number_with_delimiter child.reading.relapse_epoch %>,
+                colony age <%= count_value child.relapse_colony_age %>
+              <% else %>
+                on its last decile alone
+              <% end %>
+            </li>
+          <% end %>
+        </ul>
+      <% end %>
+    </li>
+  </ul>
+
+  <%= render reading.trajectory_chart %>
+</section>

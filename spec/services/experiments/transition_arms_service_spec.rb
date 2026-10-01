@@ -112,4 +112,14 @@ RSpec.describe Experiments::TransitionArmsService do
 
     queries
   end
+
+  context "with a descendant in the arm" do
+    it "counts it neither as a transition nor as a run that had none" do
+      child = create(:run, :descendant, experiment: experiment, status: "finished",
+                                        params: Lab::Schema.run_defaults.merge("mutation_rate" => 0.000244))
+      create(:sample, run: child, epoch: 1_100, values: { "compress_ratio" => 0.5, "replicator_count" => 3 })
+
+      expect(arms.sole).to have_attributes(runs: 3, flagged: 2, replicated: 2)
+    end
+  end
 end

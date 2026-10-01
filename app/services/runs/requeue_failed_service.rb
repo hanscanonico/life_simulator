@@ -3,9 +3,10 @@
 module Runs
   # Puts the failed runs of an experiment back in the pending queue, as if they had never
   # been claimed: the fix for a run lost to a runner bug rather than to its parameters.
-  # `epochs_done` goes back to 0, so the runner starts the run from epoch 0 instead of
-  # restoring its latest snapshot; determinism from (params, seed) means the rerun rewrites
-  # the same samples and snapshots, which is why the old ones are left in place.
+  # `epochs_done` goes back to 0 — a descendant's to its parent epoch — so the runner starts
+  # the run from its first epoch instead of restoring its latest snapshot; determinism from
+  # (params, seed) means the rerun rewrites the same samples and snapshots, which is why the
+  # old ones are left in place.
   class RequeueFailedService
     include Callable
 
@@ -21,7 +22,7 @@ module Runs
     def call
       Run.transaction do
         requeued = @experiment.runs.failed.to_a
-        requeued.each { |run| run.update!(REQUEUED_ATTRIBUTES) }
+        requeued.each { |run| run.update!(REQUEUED_ATTRIBUTES.merge(epochs_done: run.start_epoch)) }
         @experiment.queued! if requeued.any? && @experiment.finished?
         requeued.size
       end

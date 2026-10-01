@@ -4,7 +4,9 @@ module Runs
   # Snapshots dominate the lab database: a 128×128 soup world is ~1 MB and every run posts
   # one every `snapshot_every` epochs. Once a run is terminal nobody resumes from them any
   # more, so a terminal run keeps a thinned-out gallery: its first and last worlds, one every
-  # `keep_every` epochs, and the one nearest the transition epoch.
+  # `keep_every` epochs, the one nearest the transition epoch, and every world a descendant
+  # run starts from — which need not be the last: a colony that relapsed is descended from
+  # the world where it stood highest.
   class PruneSnapshotsService
     include Callable
 
@@ -43,6 +45,7 @@ module Runs
       kept = Set[epochs.first, epochs.last]
       kept.merge(epochs.select { |epoch| (epoch % @keep_every).zero? })
       kept << nearest_to_transition if @run.transition_epoch
+      kept.merge(@run.descendants.distinct.pluck(:parent_epoch))
       kept.sort
     end
 

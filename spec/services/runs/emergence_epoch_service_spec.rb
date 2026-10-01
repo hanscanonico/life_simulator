@@ -56,7 +56,7 @@ RSpec.describe Runs::EmergenceEpochService do
 
   # The relocked `transition_epoch` reads the run's own baseline, which judges no crossing
   # inside that window and no later one against an uncontaminated baseline, so the
-  # candidates stay the constant rule's (docs/design_record.md, 2026-09-21).
+  # candidates stay the constant rule's (docs/design_record.md, 2026-10-01).
   it "reads the crossing series the companion rule holds, not the relocked epoch" do
     run.update!(transition_epoch: nil)
     record(100 => { "replicator_count" => 12 })

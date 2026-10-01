@@ -78,8 +78,45 @@ RSpec.describe Programme::Status do
       expect(status.seeds_transitioned).to eq(1)
     end
 
+    context "with a descendant" do
+      it "sums only the epochs it simulated past its parent's" do
+        child = create(:run, :descendant, epochs_done: 1_250)
+
+        expect(status.epochs_simulated).to eq(1_007 + child.parent_run.epochs_done + 250)
+      end
+    end
+
     it "takes the largest census any sample recorded" do
       expect(status.peak_replicator_count).to eq(867)
+    end
+
+    context "with a Metabolism run" do
+      let!(:paid) do
+        create(:run, :metabolism, status: "finished", epochs_done: 50, transition_epoch: 40).tap do |run|
+          create(:sample, run: run, epoch: 100, values: { "replicator_count" => 5_000 })
+        end
+      end
+
+      it "leaves its census out of the largest one" do
+        expect(status.peak_replicator_count).to eq(867)
+      end
+
+      it "leaves its transition out of the count" do
+        expect(status.seeds_transitioned).to eq(1)
+      end
+
+      it "still counts it among the runs finished and the epochs simulated" do
+        expect([status.runs_finished, status.epochs_simulated]).to eq([3, 1_007 + paid.epochs_done])
+      end
+    end
+
+    context "with a run stored before the reward existed" do
+      it "keeps its census" do
+        predating = create(:run, params: Lab::Schema.run_defaults.except("task_reward"))
+        create(:sample, run: predating, epoch: 100, values: { "replicator_count" => 1_000 })
+
+        expect(status.peak_replicator_count).to eq(1_000)
+      end
     end
 
     it "reads the census off the partial index, not off every sample" do

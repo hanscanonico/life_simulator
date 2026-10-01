@@ -37,6 +37,15 @@ RSpec.describe "lab:cost_report" do
     end
   end
 
+  context "with a descendant" do
+    it "rates only the epochs it simulated past its parent's" do
+      create(:run, :descendant, experiment: experiment, status: "finished", epochs_done: 2_000, compute_seconds: 20.0,
+                                params: Lab::Schema.run_defaults.merge("width" => 128))
+
+      expect(invoke("lab:cost_report", "world-size")).to match(/^\s*128\s+2\s+26\.\d+\s+2\.\d+\s+50\s+/)
+    end
+  end
+
   it "refuses an experiment it does not know" do
     expect { invoke("lab:cost_report", "colour") }.to raise_error(/Unknown experiment "colour"/)
   end

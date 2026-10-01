@@ -17,7 +17,7 @@ module Runs
       Run.transaction do
         @run.assign_attributes(run_attributes)
         @run.persistence = persistence_summary
-        @run.assign_attributes(emergence.attributes)
+        @run.assign_attributes(emergence.attributes) unless @run.descendant?
         @run.save!
         finish_experiment
       end
@@ -58,7 +58,8 @@ module Runs
     def persistence_summary = PersistenceSummaryService.call(run: @run).to_h
 
     # Against the same settled transition epoch: the crossing this finish recorded is the
-    # candidate, and the run carries whether a witness backed it.
+    # candidate, and the run carries whether a witness backed it. A descendant keeps the
+    # emergence it inherited from its parent.
     def emergence = EmergenceEpochService.call(run: @run)
 
     def finish_experiment

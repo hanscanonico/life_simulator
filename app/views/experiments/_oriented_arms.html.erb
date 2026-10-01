@@ -1,0 +1,76 @@
+<%# The detector, the emergence rule and the orientation-aware census side by side, arm by
+    arm: `report` is an Experiments::OrientedArmsService::Report. The per-run rows behind
+    these counts stay in the oriented CSV. %>
+<section class="mt-6" aria-labelledby="oriented-arms-heading">
+  <h2 id="oriented-arms-heading">Replicators by the orientation-aware detector</h2>
+  <p class="text-sm text-muted">
+    The detector reads a random sample of 256 cells of a stored world and runs each cell's
+    tape down a chain of 5 runs against fresh noise, each copy carried into the next run.
+    After the last run the first half holds the fourth copy, back in the tape's own
+    orientation even for a tape that writes its reverse; the cell passes where 3/4 of its
+    positions match the original, each position read by the majority of 5 trials. The
+    locked census counts only same-orientation copies among the 16 commonest tapes, so it
+    reads zero in worlds of reverse copiers. Only the worlds a run kept are read — the first
+    and the last, one about every 1000 epochs and the one nearest the transition — so every
+    run is read at the same cadence, and a first replicator epoch here is no finer than
+    that. Live samples are not used. A run is measured once the corpus pass has read every
+    world it kept; until then it counts in none of the census columns, and the pass is
+    re-run as runs finish. A world holds
+    replicators where at least <%= percent_value Lab::DescendantReading::QUALIFYING_SHARE %>
+    of its sampled cells pass. This is a companion reading: it relocks neither the census
+    nor the emergence rule
+    (<a href="https://github.com/hanscanonico/life_simulator/issues/245">#245</a>).
+  </p>
+  <% if report.measured? %>
+    <figure class="table-figure mt-4">
+      <%# The caption sits outside .table-scroll: inside it, it is laid out at the table's
+          width and clipped mid-word on a phone. %>
+      <figcaption class="table-caption text-sm text-muted" id="oriented-arms">
+        Detector, emergence rule and orientation-aware census, per arm, over finished runs —
+        the census columns count measured runs only
+      </figcaption>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="oriented-arms">
+        <table class="data-table" aria-labelledby="oriented-arms">
+          <thead>
+            <tr>
+              <th>Arm</th>
+              <th class="numeric">Finished runs</th>
+              <th class="numeric">Measured</th>
+              <th class="numeric">Flagged</th>
+              <th class="numeric">Emerged</th>
+              <th class="numeric">Replicator worlds</th>
+              <th class="numeric">Held to the end</th>
+              <th class="numeric">Replicators, not emerged</th>
+              <th class="numeric">Emerged, no replicators</th>
+              <th class="numeric">Median first replicator epoch (coarse)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% report.arms.each do |arm| %>
+              <tr>
+                <td class="mono"><%= arm.label %></td>
+                <td class="numeric"><%= arm.runs %></td>
+                <td class="numeric"><%= arm.measured %></td>
+                <td class="numeric"><%= arm.flagged %></td>
+                <td class="numeric"><%= arm.emerged %></td>
+                <td class="numeric"><%= arm.replicator_worlds %></td>
+                <td class="numeric"><%= arm.held_to_end %></td>
+                <td class="numeric"><%= arm.replicators_not_emerged %></td>
+                <td class="numeric"><%= arm.emerged_without_replicators %></td>
+                <td class="numeric">
+                  <% if (epoch = arm.median_first_replicator_epoch) %>~<%= number_with_delimiter epoch %><% else %>—<% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </figure>
+    <p>
+      <%= link_to "Download oriented census (CSV)", oriented_experiment_path(experiment),
+                  class: "btn btn-sm btn-outline" %>
+    </p>
+  <% else %>
+    <p class="text-muted">The corpus pass has not read every stored world of any run in this sweep yet.</p>
+  <% end %>
+</section>

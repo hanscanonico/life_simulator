@@ -11,7 +11,7 @@ module Runs
   #
   # `samples` is [epoch, values] in epoch order; it reads them and changes nothing. Given
   # a `baseline` it runs the transition rule, and without one the constant companion of
-  # `docs/design_record.md`, 2026-09-21 — which is what the crossing *series* is read by:
+  # `docs/design_record.md`, 2026-10-01 — which is what the crossing *series* is read by:
   # the relative rule cannot judge a crossing inside its own baseline window, and a second
   # crossing would be judged against a baseline the first one contaminated.
   class CrossingsService

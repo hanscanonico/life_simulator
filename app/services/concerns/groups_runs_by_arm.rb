@@ -21,8 +21,9 @@ module GroupsRunsByArm
   def axes = @axes ||= Experiments::Axis.sweep(experiment.param_grid)
 
   # A run nothing has been sampled from yet is no row: an arm-by-arm reading is a reading
-  # of stored samples, not of the queue.
+  # of stored samples, not of the queue. One index probe per run: a DISTINCT over the
+  # sweep's samples read every one of them, 4 s at the host-parasite sweep's 2.5 M.
   def sampled_run_ids
-    @sampled_run_ids ||= Sample.where(run_id: experiment.runs.select(:id)).distinct.pluck(:run_id)
+    @sampled_run_ids ||= experiment.runs.where(Sample.where("samples.run_id = runs.id").arel.exists).pluck(:id)
   end
 end

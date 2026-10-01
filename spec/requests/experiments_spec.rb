@@ -391,6 +391,60 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    # The series charts are held as rendered HTML; the test environment caches nothing, so
+    # this turns fragment caching on over a store of its own.
+    context "with the series charts held in the fragment cache" do
+      let!(:run) do
+        create(:run, experiment: experiment, status: "finished", params: Lab::Schema.run_defaults.merge("radius" => 2))
+      end
+
+      around do |example|
+        caching = ActionController::Base.perform_caching
+        store = ActionController::Base.cache_store
+        ActionController::Base.perform_caching = true
+        ActionController::Base.cache_store = ActiveSupport::Cache::MemoryStore.new
+        example.run
+      ensure
+        ActionController::Base.perform_caching = caching
+        ActionController::Base.cache_store = store
+      end
+
+      before { create(:sample, run: run, epoch: 100, values: { "distinct_lineages" => 3 }) }
+
+      def page_body
+        get experiment_path(experiment)
+        response.body
+      end
+
+      it "serves the page it rendered" do
+        expect(page_body).to eq(page_body).and include("Distinct lineages vs epoch")
+      end
+
+      it "serves the charts it drew while no run moves" do
+        first = page_body
+        Sample.where(run: run).update_all(values: { "distinct_lineages" => 30 })
+
+        expect(page_body).to eq(first)
+      end
+
+      it "draws them again once a run posts samples" do
+        first = page_body
+        Runs::RecordSamplesService.call(run: run, samples: [{ "epoch" => 200, "distinct_lineages" => 30 }])
+
+        expect(page_body).not_to eq(first)
+      end
+
+      # The cache outlives a deploy, so a changed chart partial has to move the fragment's
+      # digest.
+      it "draws them again once the chart partial changes" do
+        finder = ApplicationController.new.lookup_context
+        dependencies = ActionView::Digestor.tree("experiments/show", finder).children
+
+        expect(dependencies.find { |node| node.name == "charts/arm_lines" }&.children&.map(&:name))
+          .to eq(["charts/axes"])
+      end
+    end
+
     context "with an arm whose emerged runs carry a complexity reading" do
       let(:experiment) do
         create(:experiment, name: "Host-parasite economy", slug: "host-parasite",
@@ -478,6 +532,281 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the metabolism sweep seeded" do
+      let(:experiment) { metabolism_experiment }
+
+      before do
+        metabolism_parent
+        Experiments::SweepBuilderService.call(experiment)
+      end
+
+      it "lists its children without the from-emerged sweep's reading, which has no continuation to pair" do
+        get experiment_path(experiment)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.at_css("#descendant-reading, #heldout-reading")).to be_nil
+      end
+
+      it "labels the sweep as importing an objective" do
+        get experiment_path(experiment)
+
+        substrate = response.parsed_body.css("dl.facts dt").find { |term| term.text == "Substrate" }.next_element
+        expect(substrate.at_css("a.objective-badge")["href"]).to eq(how_it_works_path(anchor: "imports-an-objective"))
+      end
+
+      context "with no child sampled yet" do
+        it "reads the sweep as pre-registered, interim, under the badge" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#metabolism-reading")
+          expect(section.at_css("h2").text.squish).to eq("The pre-registered reading interim imports an objective")
+          expect(section.text.squish).to include("H-capability", "H-ladder", "H-complexity", "no measured pairs",
+                                                 "rung 4 on Soup stays not shown")
+        end
+      end
+
+      context "with every child finished, the rewarded arm the more capable" do
+        before do
+          metabolism_children(experiment, reward: true).each do |run|
+            metabolism_sample(run, capability: 3, task_shares: { "echo" => 0.5 })
+          end
+          metabolism_children(experiment, reward: false).each { |run| metabolism_sample(run) }
+        end
+
+        it "prints the arms, the tests, the pairs and the ladder" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#metabolism-reading")
+          arms = section.css("#metabolism-arms ~ .table-scroll tbody tr").map { |row| row.css("td").map(&:text) }
+          expect(arms).to eq([%w[reward 3 3 0 0 3 0 0 3 0], ["no reward", "3", "3", "0", "0", "3", "0", "0", "3", "0"]])
+          expect(section.text.squish).to include("The pre-registered reading final", "H-capability",
+                                                 "3 pairs measured on both sides: 3 favour the reward",
+                                                 "Without the piloted parents", "Per-parent agreement")
+          expect(section.css("#metabolism-pairs tbody tr").size).to eq(3)
+          echo = section.css("#metabolism-ladder ~ .table-scroll tbody tr").first.css("td").map(&:text)
+          expect(echo.first(2)).to eq(%w[echo 3])
+        end
+      end
+    end
+
+    context "with a descendant sweep seeded from an emerged world" do
+      let(:experiment) do
+        create(:experiment, name: "From an emerged world", slug: "from-emerged",
+                            **Lab::SWEEPS.fetch("from_emerged").slice(:parents, :param_grid, :seeds, :epochs, :priority))
+      end
+
+      before do
+        source = create(:experiment, slug: "host-parasite")
+        params = Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128)
+        parent = create(:run, experiment: source, params: params, seed: 12, status: "finished", epochs: 1_000)
+        create(:snapshot, run: parent, epoch: 1_000)
+        create(:snapshot_reading, run: parent, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.9 })
+        Experiments::SweepBuilderService.call(experiment)
+      end
+
+      it "lists every child under its own treatment" do
+        get experiment_path(experiment)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.squish).to include("continuation", "host")
+      end
+
+      it "titles the held-out confirmatory reading and says no held-out child exists yet" do
+        get experiment_path(experiment)
+
+        expect(response.parsed_body.at_css("#heldout-reading").text.squish)
+          .to include("A held-out confirmatory reading, pre-registered 2026-09-25", "No held-out child yet.")
+      end
+
+      context "with the children sampled" do
+        before do
+          # 100 own samples a child, so each decile holds the 10 a child is measured on.
+          experiment.runs.each do |run|
+            rising = run.params["energy_influx"] == 2**11
+            insert_own_samples(run, Array.new(100) do |index|
+              { "replicator_share" => 0.9, "dominant_self_replicates" => true,
+                "dominant_instruction_count" => rising && index >= 90 ? 60 : 40 }
+            end, every: 50)
+          end
+        end
+
+        it "reads the sweep as pre-registered, labelled interim while its children run" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#descendant-reading").text.squish
+          expect(section).to include("The pre-registered reading interim",
+                                     "continuation", "economy 2048", "economy 8192", "host mode",
+                                     "H-economy, economy 2048 against the continuation: not shown",
+                                     "3 pairs measured on both sides: 3 favour the treatment, 0 the continuation, " \
+                                     "0 tie; one-sided sign test p = 0.125",
+                                     "H-host, host mode against the continuation: refuted",
+                                     "H-persistence, the continuation children hold: held")
+        end
+
+        it "draws the median share per treatment" do
+          get experiment_path(experiment)
+
+          expect(response.body).to include("Median replicator share per 1000 epochs past the parent")
+        end
+
+        it "never prints the raw bundle label as a treatment's name" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#descendant-reading").text).not_to include("2048×1024")
+        end
+
+        it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+        end
+      end
+
+      context "with the children of an extension parent sampled past the settling window" do
+        before do
+          params = Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128)
+          parent = create(:run, experiment: Experiment.find_by(slug: "host-parasite"), params: params, seed: 150,
+                                status: "finished", epochs: 1_000)
+          create(:snapshot, run: parent, epoch: 1_000)
+          create(:snapshot_reading, run: parent, epoch: 1_000, source_epoch: 1_000,
+                                    values: { "replicator_share" => 0.9 })
+          Experiments::SweepBuilderService.call(experiment)
+          parent.descendants.each do |run|
+            faster = run.params["energy_influx"] == 2**13
+            insert_own_samples(run, Array.new(200) do |index|
+              { "replicator_share" => 0.9, "copy_latency" => faster && index >= 190 ? 2_000 : 4_000 }
+            end)
+          end
+        end
+
+        it "reads the held-out children's tests, labelled interim while they run" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#heldout-reading").text.squish)
+            .to include("interim", "H3-latency, economy 8192 against the continuation: not shown",
+                        "3 pairs measured on both sides: 3 favour the treatment, 0 the continuation, 0 tie; " \
+                        "one-sided sign test p = 0.125",
+                        "H4-survivors, economy 2048 against the continuation: no measured pairs")
+        end
+      end
+    end
+
+    context "with the lineage-diversity sweep" do
+      let(:experiment) { lineage_diversity_experiment }
+
+      before do
+        # Samples a complexity reading would read too, had the page not left it out.
+        extra = { "dominant_instruction_count" => 40, "conserved_core_bytes" => 30 }
+        [5.0, 4.0].each { |effective| lineage_run(experiment, radius: 1, effective: effective, extra: extra) }
+        [1.0, 1.2].each { |effective| lineage_run(experiment, radius: 0, effective: effective, extra: extra) }
+        lineage_run(experiment, radius: 2, status: "running")
+      end
+
+      it "reads the sweep as pre-registered, labelled interim while a run is under way" do
+        get experiment_path(experiment)
+
+        section = response.parsed_body.at_css("#lineage-diversity-reading").text.squish
+        expect(section).to include("The pre-registered reading interim", "well-mixed", "radius 1", "unread",
+                                   "neither shown nor refuted",
+                                   "One-sided Jonckheere–Terpstra trend over well-mixed < radius 1: statistic 4",
+                                   "The read arm of shortest reach, radius 1, has a median effective count of 4",
+                                   "Unread: radius 2")
+      end
+
+      it "prints the trend's permutation p" do
+        get experiment_path(experiment)
+
+        p_value = Experiments::LineageDiversityReadingService.call(experiment: experiment).hypothesis.p_value
+        expect(response.parsed_body.at_css("#lineage-diversity-reading").text.squish)
+          .to include("p = #{ActiveSupport::NumberHelper.number_to_rounded(p_value.to_f, precision: 3,
+                                                                                         significant: true,
+                                                                                         strip_insignificant_zeros: true)}")
+      end
+
+      it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+        get experiment_path(experiment)
+
+        expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+      end
+    end
+
+    context "with the locality-emergence sweep" do
+      let(:experiment) { locality_emergence_experiment }
+
+      before do
+        locality_run(experiment, radius: 4, share: 0.9)
+        locality_run(experiment, radius: 1)
+        locality_run(experiment, radius: 0, status: "running")
+      end
+
+      it "reads the sweep as pre-registered, labelled interim while a run is under way" do
+        get experiment_path(experiment)
+
+        section = response.parsed_body.at_css("#locality-emergence-reading").text.squish
+        expect(section).to include("The pre-registered reading interim", "radius 4", "radius 1", "well-mixed",
+                                   "H-peak", "H-shape", "not yet tested")
+      end
+
+      it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+        get experiment_path(experiment)
+
+        expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+      end
+    end
+
+    context "with the reach-cap128 sweep" do
+      let(:experiment) { reach_cap128_experiment }
+
+      before do
+        reach_run(experiment, crossing: 1_000, shares: [0.0, 0.9, 0.9])
+        reach_run(experiment, status: "running")
+        control_run(host_parasite_control_experiment)
+      end
+
+      it "reads the sweep against its control as pre-registered, labelled interim while a run is under way" do
+        get experiment_path(experiment)
+
+        section = response.parsed_body.at_css("#reach-cap128-reading").text.squish
+        expect(section).to include("The pre-registered reading interim", "radius 4", "control, radius 1",
+                                   "H-reach128", "not shown", "radius 4 1/1 against control, radius 1 0/1")
+      end
+
+      context "with emerged runs that carry a complexity reading" do
+        before do
+          2.times do
+            run = reach_run(experiment, crossing: 1_000, shares: [0.0, 0.9, 0.9])
+            (([12] * 10) + ([40] * 10)).each_with_index do |count, index|
+              create(:sample, run: run, epoch: 1_000 + (index * 10),
+                              values: { "compress_ratio" => 0.4, "dominant_instruction_count" => count,
+                                        "conserved_core_bytes" => 30, "dominant_compressed_len" => 139 })
+            end
+          end
+        end
+
+        it "leaves out the sweeps 9 and 10 complexity reading, whose rule this sweep does not read under" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#complexity-reading")).to be_nil
+        end
+      end
+    end
+
+    context "with a sweep other than the lineage-diversity one" do
+      it "shows no lineage-diversity reading" do
+        get experiment_path(experiment)
+
+        expect(response.body).not_to include("lineage-diversity-reading")
+      end
+    end
+
+    context "with a sweep that starts from no parent" do
+      it "shows no descendant reading" do
+        get experiment_path(experiment)
+
+        expect(response.body).not_to include("descendant-reading")
+      end
+    end
+
     context "with a corpus pass over the sweep" do
       let(:run) do
         create(:run, experiment: experiment, seed: 7, status: "finished",
@@ -517,6 +846,46 @@ RSpec.describe "Experiments", type: :request do
         get experiment_path(experiment)
 
         expect(response.body).not_to include("Replicator census vs", "Download rescores (CSV)")
+      end
+    end
+
+    context "with finished runs the orientation-aware pass has read" do
+      before do
+        run = create(:run, experiment: experiment, status: "finished", epochs: 2_000, transition_epoch: 500,
+                           params: Lab::Schema.run_defaults.merge("radius" => 2))
+        create(:snapshot_reading, run: run, epoch: 2_000, source_epoch: 2_000,
+                                  values: { "replicator_share" => 0.8 })
+      end
+
+      it "tables the arms by the orientation-aware detector" do
+        get experiment_path(experiment)
+
+        section = response.parsed_body.at_css("section[aria-labelledby='oriented-arms-heading']")
+        expect(section.at_css("h2").text).to eq("Replicators by the orientation-aware detector")
+        expect(section.css("tbody tr").map { |row| row.css("td").map { |cell| cell.text.squish } })
+          .to eq([["2", "1", "1", "1", "0", "1", "1", "1", "0", "~2,000"]])
+      end
+
+      it "says what the detector reads and that it relocks nothing" do
+        get experiment_path(experiment)
+
+        expect(response.body.squish).to include("random sample of 256 cells", "chain of 5 runs", "majority of 5 trials",
+                                                "16 commonest tapes", "about every 1000 epochs",
+                                                "it relocks neither the census nor the emergence rule")
+        expect(response.body).to include("https://github.com/hanscanonico/life_simulator/issues/245",
+                                         oriented_experiment_path(experiment))
+      end
+    end
+
+    context "with finished runs the orientation-aware pass has not read" do
+      it "says the pass has not read the sweep" do
+        create(:run, experiment: experiment, status: "finished", params: Lab::Schema.run_defaults.merge("radius" => 2))
+
+        get experiment_path(experiment)
+
+        expect(response.body).to include("Replicators by the orientation-aware detector",
+                                         "The corpus pass has not read every stored world of any run in this sweep")
+        expect(response.body).not_to include(oriented_experiment_path(experiment))
       end
     end
 
@@ -911,6 +1280,54 @@ RSpec.describe "Experiments", type: :request do
 
         expect(response).to have_http_status(:not_found)
       end
+    end
+  end
+
+  describe "GET /experiments/:slug/readings" do
+    let(:run) do
+      create(:run, experiment: experiment, seed: 7, status: "finished",
+                   params: Lab::Schema.run_defaults.merge("radius" => 2))
+    end
+
+    it "streams one instrument's readings as CSV" do
+      create(:snapshot_reading, run: run, instrument: "oriented_census/1", epoch: 105, source_epoch: 100,
+                                values: { "replicator_share" => 0.5, "reverse_copy_rate" => 0.25 })
+
+      get readings_experiment_path(experiment, instrument: "oriented_census/1")
+
+      lines = response.body.lines.map(&:chomp)
+      expect(response.media_type).to eq("text/csv")
+      expect(response.headers["Content-Disposition"]).to include("attachment", "radius-oriented_census-1-readings.csv")
+      expect(lines).to eq(["run_id,seed,arm,epoch,source_epoch,replicator_share,reverse_copy_rate",
+                           "#{run.id},7,radius 2,105,100,0.5,0.25"])
+    end
+
+    context "with no instrument named" do
+      it "answers bad request" do
+        get readings_experiment_path(experiment)
+
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
+  end
+
+  describe "GET /experiments/:slug/oriented" do
+    it "streams the per-run orientation-aware summary as CSV" do
+      run = create(:run, experiment: experiment, seed: 7, status: "finished", epochs: 2_000, transition_epoch: 500,
+                         params: Lab::Schema.run_defaults.merge("radius" => 2))
+      create(:snapshot_reading, run: run, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.5 })
+      create(:snapshot_reading, run: run, epoch: 2_000, source_epoch: 2_000, values: { "replicator_share" => 0.25 })
+      create(:snapshot_reading, run: run, epoch: 2_010, source_epoch: 2_000, values: { "replicator_share" => 0.9 })
+      unread = create(:run, experiment: experiment, seed: 8, status: "finished", params: run.params)
+
+      get oriented_experiment_path(experiment)
+
+      lines = response.body.lines.map(&:chomp)
+      expect(response.media_type).to eq("text/csv")
+      expect(response.headers["Content-Disposition"]).to include("attachment", "radius-oriented.csv")
+      expect(lines).to eq([Experiments::OrientedCsvService::COLUMNS.join(","),
+                           "#{run.id},7,radius 2,500,,true,2,0,0.25,0.5,1000,1000,false",
+                           "#{unread.id},8,radius 2,,,false,0,0,,,,,"])
     end
   end
 end

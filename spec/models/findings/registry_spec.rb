@@ -22,9 +22,22 @@ RSpec.describe Findings::Registry do
   it "leads a shared date with the strongest current result" do
     slugs = described_class.all.map(&:slug)
 
-    expect(slugs.first(5))
-      .to eq(%w[complexity-under-contest complexity-under-asymmetry complexity-keeps-rising
-                copy-cost-adaptation replicator-complexity-plateau])
+    expect(slugs.first(9))
+      .to eq(%w[emergence-peaks-at-intermediate-reach copying-gets-faster-under-an-economy
+                complexity-from-an-emerged-start lineages-after-emergence complexity-under-contest
+                complexity-under-asymmetry complexity-keeps-rising copy-cost-adaptation
+                replicator-complexity-plateau])
+  end
+
+  it "labels every finding resting on the Metabolism sweep as importing an objective" do
+    metabolism = described_class.all.select { |finding| finding.rests_on?(Lab.slug_for("metabolism")) }
+
+    expect(metabolism).to all(be_imports_objective)
+  end
+
+  it "labels no finding on a fitness-free sweep as importing an objective" do
+    expect(described_class.all.select(&:imports_objective?))
+      .to all(satisfy { |finding| finding.rests_on?(Lab.slug_for("metabolism")) })
   end
 
   it "keeps the order of findings sharing a date fixed across calls" do
@@ -189,11 +202,12 @@ RSpec.describe Findings::Registry do
     expect(described_class.for_experiment("unwritten")).to be_empty
   end
 
-  it "holds the host-parasite finding at partial while its one rising arm stands on the fewest runs" do
+  it "holds the host-parasite finding at partial while two unextended arms stay unread" do
     finding = described_class.find("complexity-under-contest")
 
     expect(finding).to have_attributes(experiment_slug: "host-parasite", status: :partial)
-    expect(finding.summary).to include("a single priced arm keeps rising, on the fewest measured runs the rule reads",
+    expect(finding.summary).to include("no priced arm the rule reads keeps rising", "reads neither at 270",
+                                       "the verdict is unresolved rather than negative",
                                        "amended after the data were seen")
     expect(finding.summary).not_to include("No arm has read yet")
   end

@@ -176,7 +176,7 @@ RSpec.describe Runs::PersistenceSummaryService do
 
   # The two readings can part on one series, and the summary hangs off the relocked one:
   # the epochs are counted from the epoch `transition_epoch` names, not from the earlier
-  # epoch the constant companion named (docs/design_record.md, 2026-09-21).
+  # epoch the constant companion named (docs/design_record.md, 2026-10-01).
   context "with a constant crossing earlier than the relocked one" do
     let(:series) do
       (0..window).step(10).map { |epoch| [epoch, 0.94] } +
@@ -232,5 +232,57 @@ RSpec.describe Runs::PersistenceSummaryService do
 
     expect(summary.epochs_persisted).to eq(10)
     expect(summary).to be_relapsed
+  end
+
+  context "with a descendant, which crossed nothing of its own" do
+    let(:child) { create(:run, :descendant, status: "finished") }
+
+    def record_child(ratios, founding_baseline: 0.94)
+      [0, 250, 500].each do |epoch|
+        create(:sample, run: child.parent_run, epoch: epoch, values: { "compress_ratio" => founding_baseline })
+      end
+      ratios.each_with_index do |ratio, index|
+        create(:sample, run: child, epoch: 1_000 + (index * 10), values: { "compress_ratio" => ratio })
+      end
+    end
+
+    it "reads the world from the parent epoch on" do
+      record_child([0.3, 0.3, 0.3, 0.3])
+
+      expect(described_class.call(run: child)).to have_attributes(epochs_persisted: 30, relapsed: false)
+    end
+
+    it "reads a colony that climbs back out as relapsed" do
+      record_child([0.3, 0.3, 0.9, 0.9, 0.9, 0.9, 0.9])
+
+      expect(described_class.call(run: child)).to have_attributes(epochs_persisted: 10, relapsed: true)
+    end
+
+    # The child starts past the window, so the baseline is its founding ancestor's: a world
+    # holding at 0.605 against a start of 1.0 sits above the constant line and below 0.61 of
+    # where it began.
+    it "judges each sample against the baseline of the founding run" do
+      record_child([0.605, 0.605, 0.605, 0.605], founding_baseline: 1.0)
+
+      expect(described_class.call(run: child)).to have_attributes(epochs_persisted: 30, relapsed: false)
+    end
+
+    it "reads a grandchild against the same founding baseline" do
+      record_child([0.3], founding_baseline: 1.0)
+      child.snapshots.create!(epoch: 1_500, blob: "world")
+      grandchild = create(:run, parent_run: child, parent_epoch: 1_500, epochs: 2_500, epochs_done: 1_500,
+                                status: "finished", params: child.params)
+      [0.605, 0.605, 0.7, 0.7, 0.7, 0.7].each_with_index do |ratio, index|
+        create(:sample, run: grandchild, epoch: 1_500 + (index * 10), values: { "compress_ratio" => ratio })
+      end
+
+      expect(described_class.call(run: grandchild)).to have_attributes(epochs_persisted: 10, relapsed: true)
+    end
+
+    it "has no reading without a founding baseline" do
+      create(:sample, run: child, epoch: 1_000, values: { "compress_ratio" => 0.3 })
+
+      expect(described_class.call(run: child)).to be_nil
+    end
   end
 end

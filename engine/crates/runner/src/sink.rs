@@ -12,8 +12,8 @@ pub struct RunResult {
     pub epochs: u64,
     pub transition_epoch: Option<u64>,
     /// The same measurement read against the constant threshold the observable was
-    /// defined by before the 2026-09-21 relock — the companion beside the run's dependent
-    /// variable above (`docs/design_record.md`, 2026-09-21).
+    /// defined by before the 2026-10-01 relock — the companion beside the run's dependent
+    /// variable above (`docs/design_record.md`, 2026-10-01).
     pub transition_epoch_constant: Option<u64>,
     pub wall_seconds: f64,
     pub epochs_per_second: f64,

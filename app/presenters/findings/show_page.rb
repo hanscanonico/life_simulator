@@ -74,6 +74,34 @@ module Findings
                                 control: ->(params) { interaction_of(params) == "concat" })
     end
 
+    # Sweep 12 read under its own pre-registered rule, from the report its sweep page draws.
+    # Nil where the sweep is not in the lab.
+    def lineages_after_emergence
+      return @lineages_after_emergence if defined?(@lineages_after_emergence)
+
+      report = evidence&.lineage_diversity_reading
+      @lineages_after_emergence = report && LineagesAfterEmergence.build(report)
+    end
+
+    # The from-emerged sweep read under both its pre-registered entries, from the report its
+    # sweep page draws. Nil where the sweep is not in the lab.
+    def from_emerged
+      return @from_emerged if defined?(@from_emerged)
+
+      report = evidence&.descendant_reading
+      @from_emerged = report && FromEmerged.build(report)
+    end
+
+    # Sweep 13 read under its own pre-registered rule, from the report its sweep page draws,
+    # beside sweep 12's worlds read by the same emergence rule. Nil where the sweep is not in
+    # the lab.
+    def locality_emergence
+      return @locality_emergence if defined?(@locality_emergence)
+
+      report = evidence&.locality_emergence_reading
+      @locality_emergence = report && LocalityEmergence.build(report, exploratory: exploratory_emergence)
+    end
+
     def diagrams = evidence ? evidence.diagrams : []
 
     def runs_done = evidence ? evidence.finished_count : 0
@@ -92,6 +120,11 @@ module Findings
     def arm_column = evidence&.arm_columns&.first || "Arm"
 
     private
+
+    def exploratory_emergence
+      sweep = Experiment.find_by(slug: Lab.slug_for("lineage_diversity"))
+      sweep && Experiments::LocalityEmergenceReadingService.call(experiment: sweep)
+    end
 
     def interaction_of(params) = params.fetch("interaction") { Lab::Schema.defaults.fetch("interaction") }
 
@@ -162,6 +195,6 @@ module Findings
       Sample.where("values -> 'replicator_count' > '0'::jsonb").select(:run_id)
     end
 
-    def finished_runs = experiment.runs.where(status: "finished")
+    def finished_runs = experiment.runs.founding.where(status: "finished")
   end
 end

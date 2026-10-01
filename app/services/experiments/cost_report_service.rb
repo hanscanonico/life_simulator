@@ -62,13 +62,13 @@ module Experiments
       end
     end
 
-    def rate_of(run) = run.epochs_done / run.compute_seconds
+    def rate_of(run) = run.own_epochs_done / run.compute_seconds
 
     # A run nothing has been charged to yet is no row: a pending run, and a run a runner
     # that predates `interval_seconds` worked on, have no cost to report.
     def measured_runs
       @measured_runs ||= @experiment.runs.where("compute_seconds > 0").order(:id)
-                                    .select(:id, :params, :epochs_done, :compute_seconds).to_a
+                                    .select(:id, :params, :epochs_done, :parent_epoch, :compute_seconds).to_a
     end
 
     def arm_label(run)

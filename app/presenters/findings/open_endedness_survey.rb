@@ -301,7 +301,7 @@ module Findings
     # a runner that died on its first epoch does not count as a seed spent on that arm.
     def terminal_params_by_experiment
       @terminal_params_by_experiment ||=
-        Run.terminal.where(experiment_id: experiments_by_slug.values.map(&:id), id: Sample.select(:run_id))
+        Run.founding.terminal.where(experiment_id: experiments_by_slug.values.map(&:id), id: Sample.select(:run_id))
            .pluck(:experiment_id, :params)
            .group_by(&:first).transform_values { |rows| rows.map(&:last) }
     end

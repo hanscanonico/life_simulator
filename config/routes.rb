@@ -12,6 +12,8 @@ Rails.application.routes.draw do
   resources :experiments, only: %i[index show] do
     get :transitions, on: :member, defaults: { format: :csv }
     get :rescores, on: :member, defaults: { format: :csv }
+    get :readings, on: :member, defaults: { format: :csv }
+    get :oriented, on: :member, defaults: { format: :csv }
   end
   resources :findings, only: %i[index show]
   resources :runs, only: :show do
@@ -35,6 +37,7 @@ Rails.application.routes.draw do
         post :snapshots
         post :finish
         post :rescores
+        post :readings
         get "snapshots/latest", action: :latest_snapshot, as: :latest_snapshot
         get :world
       end

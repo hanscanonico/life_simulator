@@ -5,7 +5,7 @@ module Runs
   # them live (`engine/crates/life-engine/src/metrics.rs`): the transition epoch is the
   # first crossing of `RELATIVE_FRACTION` of the run's own baseline that holds, where the
   # baseline is the mean `compress_ratio` of the samples inside the first `BASELINE_EPOCHS`
-  # epochs (docs/design_record.md, 2026-09-21).
+  # epochs (docs/design_record.md, 2026-10-01).
   #
   # Nothing is read until the baseline window has closed, exactly as the engine's tracker
   # reads it: a run with no sample inside the window has no baseline, and one that never

@@ -440,6 +440,134 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  # The transition block and the orientation-aware census read rows a corpus pass writes
+  # without touching the run: rescores, readings of stored worlds, and the worlds themselves.
+  describe "the readings of rows written beside the runs" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let!(:run) do
+      finished_run(radius: 1, transition_epoch: 100).tap do |run|
+        create(:sample, run: run, epoch: 100, values: { "replicator_count" => 0 })
+        create(:snapshot, run: run, epoch: 1_000)
+      end
+    end
+
+    before { allow(Rails).to receive(:cache).and_return(cache) }
+
+    def readings
+      fresh = described_class.build(experiment: experiment, paginate: paginate)
+      [fresh.transition_arms.map(&:cells), fresh.oriented_arms.to_text]
+    end
+
+    def uncached
+      RSpec::Mocks.with_temporary_scope do
+        allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::NullStore.new)
+        readings
+      end
+    end
+
+    it "reads the same from the cache as from the rows" do
+      readings
+
+      expect(readings).to eq(uncached)
+    end
+
+    it "reads nothing but the cache and the versions again" do
+      readings
+      queries = []
+      collect = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
+
+      ActiveSupport::Notifications.subscribed(collect, "sql.active_record") { readings }
+
+      expect(queries.size).to eq(2)
+    end
+
+    it "reads them afresh once a corpus pass reads a stored world" do
+      first = readings
+      create(:snapshot_reading, run: run, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.9 })
+
+      expect(readings).to eq(uncached)
+      expect(readings).not_to eq(first)
+    end
+
+    it "reads them afresh once a corpus pass rescores a world" do
+      first = readings
+      create(:rescore, run: run, top_k: Experiments::TransitionArmsService::WIDE_TOP_K, replicator_count: 3)
+
+      expect(readings).to eq(uncached)
+      expect(readings).not_to eq(first)
+    end
+
+    it "reads them afresh once a stored world is dropped" do
+      create(:snapshot_reading, run: run, epoch: 1_000, source_epoch: 1_000, values: { "replicator_share" => 0.9 })
+      create(:snapshot, run: run, epoch: 2_000)
+      first = readings
+      run.snapshots.find_by(epoch: 2_000).destroy!
+
+      expect(readings).to eq(uncached)
+      expect(readings).not_to eq(first)
+    end
+  end
+
+  # The metabolism reading passes over every child's samples once and is held under the
+  # page's key; whether it is final is laid on top, read from the parent pool each time.
+  describe "#metabolism_reading" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let(:experiment) { metabolism_experiment }
+
+    before do
+      allow(Rails).to receive(:cache).and_return(cache)
+      metabolism_parent
+      Experiments::SweepBuilderService.call(experiment)
+      metabolism_children(experiment, reward: true).each { |run| metabolism_sample(run, capability: 3) }
+      metabolism_children(experiment, reward: false).first(2).each { |run| metabolism_sample(run) }
+    end
+
+    def read_reading
+      reads = []
+      collect = ->(*, payload) { reads << payload[:sql] if payload[:sql].include?("samples") }
+      fresh = described_class.build(experiment: experiment, paginate: paginate)
+
+      [ActiveSupport::Notifications.subscribed(collect, "sql.active_record") { fresh.metabolism_reading }, reads]
+    end
+
+    it "reads the children's samples once, and serves the same reading after" do
+      first, first_reads = read_reading
+      again, again_reads = read_reading
+
+      expect(first_reads).not_to be_empty
+      expect(again_reads).to be_empty
+      expect(again.arms.map(&:cells)).to eq(first.arms.map(&:cells))
+    end
+
+    it "reads it afresh, and final, once the last child finishes" do
+      first, = read_reading
+      metabolism_sample(metabolism_children(experiment, reward: false).last)
+      last, last_reads = read_reading
+
+      expect(first).to be_interim
+      expect(last_reads).not_to be_empty
+      expect(last).not_to be_interim
+      expect(last.arms.last.cells.third).to eq(3)
+    end
+  end
+
+  describe "#series_cache_key" do
+    let!(:run) { finished_run(radius: 1) }
+
+    def key = described_class.build(experiment: experiment, paginate: paginate).series_cache_key(page.axes.sole)
+
+    it "holds while nothing is written" do
+      expect(key).to eq(key)
+    end
+
+    it "moves once a run posts samples" do
+      before = key
+      Runs::RecordSamplesService.call(run: run, samples: [{ "epoch" => 10, "distinct_lineages" => 2 }])
+
+      expect(key).not_to eq(before)
+    end
+  end
+
   describe "#agreement_chart" do
     it "draws the arm rows the transition report prints" do
       create(:sample, run: finished_run(radius: 1, transition_epoch: 700), epoch: 700,
@@ -452,6 +580,35 @@ RSpec.describe Experiments::ShowPage do
 
       expect(page.agreement_chart.arms).to eq(page.transition_arms)
       expect([arm.flagged_only, arm.replicated_only, arm.both]).to eq([1, 1, 1])
+    end
+  end
+
+  # A descendant carries its parent's emergence and no crossing of its own: it is a
+  # finished run, but neither a transition nor a run without one.
+  context "with a finished descendant" do
+    before do
+      finished_run(radius: 1, transition_epoch: 100)
+      finished_run(radius: 2)
+      create(:run, :descendant, experiment: experiment, status: "finished",
+                                params: Lab::Schema.run_defaults.merge("radius" => 2))
+    end
+
+    it "counts it among the runs finished" do
+      expect(page.finished_count).to eq(3)
+    end
+
+    it "reads the transition rate over the founding runs alone" do
+      expect([page.transition_rate.fraction, page.founding_finished_count, page.emerged_finished]).to eq([0.5, 2, 1])
+    end
+
+    it "leaves it out of the arm it would have emerged in" do
+      arm = page.arms.values.sole.find { |candidate| candidate.label == "2" }
+
+      expect([arm.emerged, arm.runs_finished]).to eq([0, 1])
+    end
+
+    it "leaves it out of the time to emergence" do
+      expect(page.survivals.values.sole.pooled.runs).to eq(1)
     end
   end
 end

@@ -84,6 +84,22 @@ RSpec.describe Experiments::DetectorBaselineService do
     it "names every experiment's arms" do
       expect(report.arms.map(&:label)).to contain_exactly("max-tape-len 64", "max-tape-len 512", "radius 4")
     end
+
+    context "with a run paid for its tasks" do
+      before { sampled(max_tape_len: 512, ratios: { 0 => 0.1 }, params: { "task_reward" => 2048 }) }
+
+      it "leaves it out of the lab-wide arms" do
+        expect(arm("max-tape-len 512").runs).to eq(1)
+      end
+    end
+  end
+
+  context "with a run paid for its tasks in the sweep read alone" do
+    before { sampled(max_tape_len: 512, ratios: { 0 => 0.1 }, params: { "task_reward" => 2048 }) }
+
+    it "keeps it in its arm" do
+      expect(arm("512").runs).to eq(2)
+    end
   end
 
   it "prints the columns aligned" do
@@ -96,6 +112,15 @@ RSpec.describe Experiments::DetectorBaselineService do
 
   it "writes the same arms as CSV" do
     expect(CSV.parse(report.to_csv).first).to eq(described_class::COLUMNS)
+  end
+
+  context "with a descendant, which starts from its parent's world" do
+    it "leaves it out of the arm" do
+      child = create(:run, :descendant, experiment: experiment, status: "finished", params: params_for(512))
+      create(:sample, run: child, epoch: 1_100, values: { "compress_ratio" => 0.3 })
+
+      expect(arm("512").runs).to eq(1)
+    end
   end
 
   def arm(label) = report.arms.find { |candidate| candidate.label == label }

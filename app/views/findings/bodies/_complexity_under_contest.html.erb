@@ -26,8 +26,14 @@
   2 048 and 512 instructions per epoch, each with the steal op off and on at
   <span class="mono">steal_amount</span> 1 024, plus the economy off as a control — with the
   two room-to-grow caps whose plateau sweep 8 measured, <span class="mono">max_tape_len</span>
-  128 and 256. Every arm runs 90 seeds, the control included, at 128×128 for
-  20 000 epochs. The hoard ceiling is 32 768 in every arm and
+  128 and 256. Every arm ran 90 seeds, the control included, at 128×128 for
+  20 000 epochs. Three arms were then extended to 270 seeds
+  (<span class="mono">docs/design_record.md</span>, 2026-09-25):
+  <span class="mono">1024×2048 128</span>, the one arm that read keeps rising at 90, and its
+  control, to decide it, and the control at cap 256. The extension was chosen after the
+  90-seed reading was seen, so the re-read of those arms at 270 is not a fresh test: it
+  decides a reading that 90 seeds left on the fewest runs the rule reads. Every count below
+  is of the runs that have finished. The hoard ceiling is 32 768 in every arm and
   <span class="mono">steal_loss</span> 0.5 throughout, so one steal delivers 512: a whole
   epoch's influx in the poorest arm, an eighth of one in the richest.
 </p>
@@ -71,6 +77,26 @@
     <%= link_to "the sweep page", experiment_path("host-parasite") %> and its transition
     report draw: an arm keeps rising only where at least half its measured runs do, on at
     least two of them.
+  </p>
+  <p>
+    At 90 seeds <span class="mono">1024×2048 128</span> was the one priced arm that read
+    keeps rising, on one of its two measured runs; read at 270 beside its control at 270, it
+    is in the table below with the rest. That decides the arm the extension was run for, but
+    not the sweep: <span class="mono">1024×8192 256</span> and
+    <span class="mono">0×2048 256</span>, never extended, hold one measured run each, and it
+    rises. One run is below the two an arm reads on, so the verdict above is unresolved and
+    the finding stays partial rather than negative. Both rules read
+    <span class="mono">conserved_core_bytes</span>, which compares aligned bytes, and a
+    population of replicators that copy in reverse and their reverses reads zero there
+    (<span class="mono">docs/design_record.md</span>, 2026-09-25), so a core at zero, which
+    the amended rule counts as not falling, may be that confound rather than no core. The
+    emerged runs of seeds 91–270 that finished after the orientation-aware
+    <span class="mono">conserved_core_bytes_oriented</span> was sampled carry it too. Read
+    with it in place of the aligned core, descriptively and on those runs only
+    (<span class="mono">docs/design_record.md</span>, 2026-09-27), nothing moves: 14 emerged
+    runs carry it, the oriented core reads zero at both ends of the span in 13 of them, and
+    none raises <span class="mono">dominant_instruction_count</span> by 20%, so none rises
+    under either core.
   </p>
   <%= render "findings/complexity_arms_emergence", reading: reading %>
   <%= render "findings/complexity_arms_theft", reading: reading %>

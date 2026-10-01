@@ -152,10 +152,12 @@
 /* A finding's prose is set to a measure, but a table inside it is evidence, not prose, and
    its columns cannot be read through a 600 px window. Once the page is wide enough to hold
    62rem plus its own gutter, a table breaks out of the measure, centred on it. The 37.5rem
-   is .container-narrow's max-width in 03-layout.css. */
+   is .container-narrow's max-width in 03-layout.css. A reading partial shared with a sweep
+   page wraps its table in a section, which spans the measure too. */
 @media (min-width: 64rem) {
   .container-narrow > .table-scroll,
-  .container-narrow > .table-figure {
+  .container-narrow > .table-figure,
+  .container-narrow > section > .table-figure {
     margin-inline: calc((37.5rem - 62rem) / 2);
   }
 }
@@ -481,4 +483,35 @@ ul.chart-legend li {
   align-items: center;
   gap: var(--space-3);
   margin: 0;
+}
+
+.instrument-note {
+  margin: var(--space-5) 0;
+}
+
+.instrument-note p {
+  margin: 0 0 var(--space-2);
+}
+
+.instrument-note p:last-child {
+  margin-bottom: 0;
+}
+
+.instrument-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.instrument-note-badge,
+.instrument-note-badge:hover,
+.objective-badge,
+.objective-badge:hover {
+  color: var(--paper);
+  text-decoration: none;
+}
+
+.instrument-note-badge:hover,
+.objective-badge:hover {
+  background: var(--ink-secondary);
 }

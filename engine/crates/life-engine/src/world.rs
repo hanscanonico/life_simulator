@@ -6,11 +6,14 @@
 use crate::bff;
 use crate::hash::{fnv1a64, fnv1a64_of};
 use crate::metrics::{self, Metrics, TransitionTracker};
-use crate::params::{Init, Interaction, ParamError, Params, Substrate};
+use crate::params::{
+    EnergyPayer, Init, Interaction, LineageRule, ParamError, Params, Substrate, Tasks,
+};
 use crate::render;
 use crate::replicator;
 use crate::rng::{self, Rng};
 use crate::snapshot::{self, SnapshotError};
+use crate::task;
 
 const STREAM_INIT: u64 = 0;
 const STREAM_STEP: u64 = 1;
@@ -25,6 +28,25 @@ const STREAM_REPLICATOR_DRAW: u64 = 0x5245_5043_0000_0000;
 /// flickers between adjacent samples (`docs/design_record.md`, 2026-09-18). Module-private
 /// and not a parameter: it is how an observable is read, not something a sweep varies.
 const CENSUS_DRAWS: u32 = 8;
+/// The streams the orientation-aware companions of the census draw on: the cells sampled
+/// for `replicator_share` and their chains' noise, and the dominant tape's chains. Far from
+/// every other stream id, so the companions never move a draw the run or the census makes
+/// (`docs/design_record.md`, 2026-09-25).
+const STREAM_SELF_REP: u64 = 0x5345_4c46_0000_0000;
+const STREAM_SELF_REP_DOMINANT: u64 = STREAM_SELF_REP | 1;
+/// The stream `copy_latency`'s trials draw their noise partners on — its own, far from
+/// every id above, so the latency moves no draw the run, the census or the detector makes
+/// (`docs/design_record.md`, 2026-09-25).
+const STREAM_COPY_LATENCY: u64 = 0x4c41_5445_0000_0000;
+/// The stream the task assay draws its cases on, once per assay epoch — its own, far from
+/// every id above, so paying for tasks moves no draw the run or any observable makes
+/// (`docs/design_record.md`, 2026-10-01, the task assay).
+const STREAM_TASK: u64 = 0x5441_534b_0000_0000;
+/// The task observables read on streams beside it: the sampled cells and their cases, and
+/// the dominant tape's cases. They draw nothing the payment draws, so reading a run moves
+/// nothing it pays.
+const STREAM_TASK_SHARE: u64 = STREAM_TASK | 1;
+const STREAM_TASK_DOMINANT: u64 = STREAM_TASK | 2;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -41,6 +63,8 @@ pub struct World {
     copy_rate: f64,
     /// The `steal_rate` of that same epoch, counted in the same pass.
     steal_rate: f64,
+    /// The `reverse_copy_rate` of that same epoch, counted in the same pass.
+    reverse_copy_rate: f64,
     /// One lineage id per cell, unique at init and inherited by descent in `step_soup`.
     /// Empty on the life substrate. A tag is read and written beside the tapes and never
     /// from the RNG stream, so a run's bytes are what they were before lineages existed.
@@ -68,6 +92,7 @@ impl World {
             transition: TransitionTracker::default(),
             copy_rate: 0.0,
             steal_rate: 0.0,
+            reverse_copy_rate: 0.0,
             lineages: fresh_lineages(params),
             lens: fresh_lens(params),
             stock: fresh_stock(params),
@@ -109,10 +134,7 @@ impl World {
     /// The state of one cell: a whole tape in the soup, one `0`/`1` byte in life. On a
     /// world whose tapes can grow this is the cell's live bytes, not its whole slot.
     pub fn cell(&self, x: u32, y: u32) -> &[u8] {
-        let cell = self.index(x, y);
-        let stride = self.params.stride();
-        let at = cell * stride;
-        &self.cells[at..at + self.live_len(cell)]
+        self.tape(self.index(x, y))
     }
 
     /// The lineage id of one cell: the ancestor its tape descends from by copying
@@ -188,9 +210,9 @@ impl World {
     }
 
     /// The transition read against the constant threshold the observable was defined by
-    /// before the 2026-09-21 relock: the companion to `transition_epoch` above, kept so
+    /// before the 2026-10-01 relock: the companion to `transition_epoch` above, kept so
     /// every finding stated on the constant rule can still be read
-    /// (`docs/design_record.md`, 2026-09-21).
+    /// (`docs/design_record.md`, 2026-10-01).
     pub fn transition_epoch_constant(&self) -> Option<u64> {
         self.transition.constant_epoch()
     }
@@ -229,6 +251,11 @@ impl World {
         metrics::Tapes::ragged(&self.cells, self.params.stride(), &self.lens)
     }
 
+    fn tape(&self, cell: usize) -> &[u8] {
+        let at = cell * self.params.stride();
+        &self.cells[at..at + self.live_len(cell)]
+    }
+
     fn live_len(&self, cell: usize) -> usize {
         self.lens
             .get(cell)
@@ -262,9 +289,50 @@ impl World {
             transition: TransitionTracker::from_state(restored.header.transition),
             copy_rate: 0.0,
             steal_rate: 0.0,
+            reverse_copy_rate: 0.0,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: restored_stock(params, restored.stock)?,
+        })
+    }
+
+    /// A descendant run's world: the stored world of a finished parent, carried on under
+    /// `params` and `seed` that may differ from the parent's in dynamics only. The cells,
+    /// lineage tags and live lengths carry over — a lineage of the parent is a lineage of
+    /// the child — and the stocks are re-read against the child's economy
+    /// (`descended_stock`). The transition tracker starts fresh: a descendant is not
+    /// measured for the transition its parent already made, and its start lies past the
+    /// baseline window, so its relative reading has no baseline and reads nothing — that is
+    /// why a world still inside the window is refused rather than descended. Neither
+    /// reading of the parent's transition carries over; the child's own constant reading
+    /// is measured like any run's.
+    ///
+    /// Under the parent's own params and seed the descendant is the parent continued,
+    /// byte for byte: the RNG is keyed by seed, stream and epoch and holds no state.
+    ///
+    /// A descendant is a new run, so its params are validated as `World::new` validates
+    /// them. `from_snapshot` does not validate: it resumes a run already under way, which
+    /// must keep resuming however validation has tightened since it started.
+    pub fn descend(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
+        params.validate().map_err(SnapshotError::InvalidParams)?;
+        let restored = snapshot::decode_for_descent(params, bytes)?;
+        let epoch = restored.header.epoch;
+        if epoch <= metrics::TRANSITION_BASELINE_EPOCHS {
+            return Err(SnapshotError::InsideBaselineWindow { epoch });
+        }
+        Ok(Self {
+            params: params.clone(),
+            seed,
+            epoch,
+            cells: restored.cells,
+            scratch: life_scratch(params),
+            transition: TransitionTracker::default(),
+            copy_rate: 0.0,
+            steal_rate: 0.0,
+            reverse_copy_rate: 0.0,
+            lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
+            lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
+            stock: descended_stock(params, restored.stock)?,
         })
     }
 
@@ -295,9 +363,9 @@ impl World {
     }
 
     /// One epoch of the soup, and — on the epochs a sample will read — the `copy_rate`
-    /// of those interactions. The pre-execution pair is kept every epoch — the lineage
-    /// rule reads it — and counting copies adds at most three comparisons per interaction,
-    /// so it stays off on every other epoch.
+    /// and `reverse_copy_rate` of those interactions. The pre-execution pair is kept every
+    /// epoch — the lineage rule reads it — and counting copies adds a few comparisons
+    /// per interaction for each rate, so it stays off on every other epoch.
     fn step_soup(&mut self, rng: &mut Rng) {
         let stride = self.params.stride();
         let cap = self.params.tape_cap() as usize;
@@ -306,6 +374,9 @@ impl World {
         let hosted = self.params.interaction == Interaction::Host;
         let theft = Theft::of(&self.params);
         let counting = self.counts_copies();
+        if self.assays_tasks() {
+            self.pay_tasks();
+        }
         let mut energy = Energy::recharged(&self.params, std::mem::take(&mut self.stock));
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
@@ -314,11 +385,14 @@ impl World {
         let mut before = Vec::with_capacity(stride * 2);
         let mut interactions: u64 = 0;
         let mut copies: u64 = 0;
+        let mut reversed_copies: u64 = 0;
         let mut thefts: u64 = 0;
         for cell in &order {
             let a = *cell as usize;
             let b = self.pick_partner(a, rng);
-            if a == b || energy.starved(a, b) {
+            #[cfg(test)]
+            DRAWN.with_borrow_mut(|drawn| drawn.push((a, b)));
+            if a == b || energy.passed_over(a, b) {
                 continue;
             }
             let (live_a, live_b) = (self.live_len(a), self.live_len(b));
@@ -359,6 +433,12 @@ impl World {
                     && (copied_onto(&pair[live_a..], arrived_a)
                         || copied_onto(&pair[..live_a], arrived_b));
                 copies += u64::from(copied);
+                let arrived_reversed =
+                    reversed_onto(arrived_b, arrived_a) || reversed_onto(arrived_a, arrived_b);
+                let reversed = !arrived_reversed
+                    && (reversed_onto(&pair[live_a..], arrived_a)
+                        || reversed_onto(&pair[..live_a], arrived_b));
+                reversed_copies += u64::from(reversed);
             }
             // The split stays where the pair was joined: the first cell keeps the length it
             // arrived with, the second keeps the rest — the tail a copier writes into and
@@ -379,20 +459,46 @@ impl World {
             };
             self.copy_rate = share(copies);
             self.steal_rate = share(thefts);
+            self.reverse_copy_rate = share(reversed_copies);
+        }
+    }
+
+    /// Whether this epoch opens with a task assay: a run that pays for tasks, at a multiple
+    /// of its `task_every`. A run with no reward never assays, which is what keeps it the
+    /// same run, byte for byte, as one with tasks off.
+    fn assays_tasks(&self) -> bool {
+        self.params.rewards_tasks() && self.epoch.is_multiple_of(u64::from(self.params.task_every))
+    }
+
+    /// Pays every cell `task_reward` per unit of the tasks its tape is credited with, into
+    /// its stock and never past the cap, before the epoch's influx. The cases are drawn
+    /// once, on `STREAM_TASK` at this epoch, and shared by every cell, so a verdict is a
+    /// function of the tape alone and each distinct tape is assayed once. It reads the
+    /// tapes and writes the stocks, and nothing else.
+    fn pay_tasks(&mut self) {
+        let mut rng = rng::seeded(self.seed, STREAM_TASK, self.epoch);
+        let mut memo = task::Memo::new(task::Cases::draw(&mut rng), self.params.op_set());
+        let units: Vec<u32> = (0..self.params.cell_count())
+            .map(|cell| memo.credit(self.tape(cell)).units())
+            .collect();
+        let (reward, cap) = (self.params.task_reward, self.params.energy_stock_cap);
+        for (held, units) in self.stock.iter_mut().zip(units) {
+            *held = held.saturating_add(reward.saturating_mul(units)).min(cap);
         }
     }
 
     /// Descent, read off the one interaction that just ran: a cell takes its partner's
     /// lineage id when the tape it ends with is closer to the tape its partner arrived
-    /// with than to the tape it arrived with itself, and keeps its own on a tie. Both
-    /// cells are judged against the pair as it arrived, so an exchange swaps the two tags
-    /// rather than collapsing them onto one.
+    /// with than to the tape it arrived with itself, and keeps its own on a tie — closer
+    /// as the run's `lineage_rule` measures it. Both cells are judged against the pair as
+    /// it arrived, so an exchange swaps the two tags rather than collapsing them onto one.
     fn inherit_lineages(&mut self, a: usize, b: usize, pair: &[u8], before: &[u8], split: usize) {
+        let rule = self.params.lineage_rule;
         let (was_a, was_b) = (self.lineages[a], self.lineages[b]);
-        if inherits_partner(&pair[..split], &before[..split], &before[split..]) {
+        if inherits_partner(rule, &pair[..split], &before[..split], &before[split..]) {
             self.lineages[a] = was_b;
         }
-        if inherits_partner(&pair[split..], &before[split..], &before[..split]) {
+        if inherits_partner(rule, &pair[split..], &before[split..], &before[..split]) {
             self.lineages[b] = was_a;
         }
     }
@@ -510,9 +616,15 @@ impl World {
         let top_share = ranked.first().map_or(0.0, |(_, n)| *n as f64 / cells);
         let histogram = metrics::ByteHistogram::of(&self.tapes().bytes());
         let (distinct_lineages, top_lineage_share) = metrics::lineage_census(&self.lineages);
+        let (lineage_effective_count, lineages_over_one_percent) =
+            metrics::lineage_diversity(&self.lineages);
         let census = self.replicator_census(&ranked);
         let core = self.conserved_core();
+        let core_oriented = self.conserved_core_oriented();
         let lineage = self.lineage_complexity();
+        let share = self.replicator_share();
+        let tally = self.task_tally();
+        let task_share = |task: usize| tally.map(|tally| tally.share(task));
 
         Metrics {
             compress_ratio,
@@ -539,7 +651,90 @@ impl World {
             replicator_count_mean: census.count_mean(),
             lineage_compressed_len: lineage.map(|read| read.compressed_len),
             lineage_instruction_count: lineage.map(|read| read.instruction_count),
+            reverse_copy_rate: self.reverse_copy_rate,
+            replicator_share: share.map(|read| read.aligned),
+            replicator_share_rotated: share.map(|read| read.rotated),
+            dominant_self_replicates: census.dominant_self_replicates,
+            lineage_variation_oriented: metrics::lineage_variation_oriented(
+                self.tapes(),
+                &self.lineages,
+            ),
+            conserved_core_bytes_oriented: core_oriented.map(|read| read.bytes),
+            conserved_core_ops_oriented: core_oriented.map(|read| read.ops),
+            copy_latency: census.copy_latency.map(|image| image.steps),
+            copy_latency_orientation: census.copy_latency.map(|image| image.orientation),
+            lineage_effective_count,
+            lineages_over_one_percent,
+            task_share_echo: task_share(0),
+            task_share_inc: task_share(1),
+            task_share_dec: task_share(2),
+            task_share_add: task_share(3),
+            task_share_sub: task_share(4),
+            task_share_not: task_share(5),
+            task_share_double: task_share(6),
+            task_share_mul: task_share(7),
+            task_capability: tally.map(|tally| tally.capability()),
+            task_capability_loop: tally.map(|tally| tally.capability_loop()),
+            dominant_tasks: census.dominant_tasks.map(|credit| u32::from(credit.bits())),
+            dominant_task_count: census.dominant_tasks.map(|credit| credit.count()),
         }
+    }
+
+    /// Whether the samples read the task observables: whenever tasks are on, paid for or
+    /// not, so a control arm with no reward carries the readings its treatment does.
+    fn reads_tasks(&self) -> bool {
+        self.params.substrate == Substrate::Soup && self.params.tasks != Tasks::Off
+    }
+
+    /// The task observables' companion of `replicator_share`: `task::TASK_SAMPLE_CELLS`
+    /// cells drawn uniformly with replacement, each tape assayed on cases drawn first off
+    /// the same stream, `STREAM_TASK_SHARE` at this epoch. Each distinct tape is assayed
+    /// once. It writes nothing, and pays nothing, so it moves no byte, no stock and no
+    /// other observable.
+    fn task_tally(&self) -> Option<task::TaskTally> {
+        if !self.reads_tasks() {
+            return None;
+        }
+        let mut rng = rng::seeded(self.seed, STREAM_TASK_SHARE, self.epoch);
+        let mut memo = task::Memo::new(task::Cases::draw(&mut rng), self.params.op_set());
+        let cells = self.params.cell_count() as u64;
+        let mut tally = task::TaskTally::default();
+        for _ in 0..task::TASK_SAMPLE_CELLS {
+            let cell = rng::below(&mut rng, cells) as usize;
+            tally.add(memo.credit(self.tape(cell)));
+        }
+        Some(tally)
+    }
+
+    /// The orientation-aware companion of the census: `SELF_REP_SAMPLE_CELLS` cells drawn
+    /// uniformly with replacement, each tape put to `replicator::self_replicates`, and the
+    /// share that passed. Drawn from the whole world rather than the `top_k` ranked tapes,
+    /// which in an emerged world cover a few percent of its cells. Everything — which cells,
+    /// and every chain's noise — comes off `STREAM_SELF_REP` at this epoch, and nothing is
+    /// written back, so the reading is a pure function of `(seed, epoch)` and moves no other
+    /// observable. Life cells have no tape to judge.
+    fn replicator_share(&self) -> Option<SelfRepShare> {
+        if self.params.substrate != Substrate::Soup {
+            return None;
+        }
+        let mut rng = rng::seeded(self.seed, STREAM_SELF_REP, self.epoch);
+        let cells = self.params.cell_count() as u64;
+        let (mut aligned, mut rotated) = (0u32, 0u32);
+        for _ in 0..replicator::SELF_REP_SAMPLE_CELLS {
+            let cell = rng::below(&mut rng, cells) as usize;
+            let verdict = self.self_replicates(self.tape(cell), &mut rng);
+            aligned += u32::from(verdict.aligned);
+            rotated += u32::from(verdict.rotated);
+        }
+        let share = |passed: u32| f64::from(passed) / f64::from(replicator::SELF_REP_SAMPLE_CELLS);
+        Some(SelfRepShare {
+            aligned: share(aligned),
+            rotated: share(rotated),
+        })
+    }
+
+    fn self_replicates(&self, tape: &[u8], rng: &mut Rng) -> replicator::Verdict {
+        replicator::self_replicates(tape, self.params.max_steps, self.params.op_set(), rng)
     }
 
     /// How much tape the largest lineage is, read off its modal tape. Life cells carry no
@@ -560,6 +755,14 @@ impl World {
             return None;
         }
         metrics::conserved_core(self.tapes(), &self.lineages, self.params.op_set())
+    }
+
+    /// The same core read over members put the way round their lineage's modal tape is.
+    fn conserved_core_oriented(&self) -> Option<metrics::ConservedCore> {
+        if self.params.substrate != Substrate::Soup {
+            return None;
+        }
+        metrics::conserved_core_oriented(self.tapes(), &self.lineages, self.params.op_set())
     }
 
     /// Cells holding one of the `top_k` most common tapes that passes the replicator test,
@@ -585,6 +788,23 @@ impl World {
                 .dominant
                 .map(|tape| metrics::Complexity::of(tape, self.params.op_set())),
             dominant_replicates: first.dominant_replicates,
+            dominant_self_replicates: first.dominant.map(|tape| {
+                let mut rng = rng::seeded(self.seed, STREAM_SELF_REP_DOMINANT, self.epoch);
+                self.self_replicates(tape, &mut rng).aligned
+            }),
+            copy_latency: first.dominant.and_then(|tape| {
+                let mut rng = rng::seeded(self.seed, STREAM_COPY_LATENCY, self.epoch);
+                replicator::copy_latency(
+                    tape,
+                    self.params.max_steps,
+                    self.params.op_set(),
+                    &mut rng,
+                )
+            }),
+            dominant_tasks: first.dominant.filter(|_| self.reads_tasks()).map(|tape| {
+                let mut rng = rng::seeded(self.seed, STREAM_TASK_DOMINANT, self.epoch);
+                task::assay(tape, &task::Cases::draw(&mut rng), self.params.op_set())
+            }),
             counts: draws.iter().map(|draw| draw.count).collect(),
         }
     }
@@ -634,6 +854,14 @@ struct ReplicatorCensus {
     copy_cost: Option<u32>,
     complexity: Option<metrics::Complexity>,
     dominant_replicates: bool,
+    /// Whether that same tape passes the orientation-aware detector, on a stream of its
+    /// own. `None` on the life substrate.
+    dominant_self_replicates: Option<bool>,
+    /// When that same tape first completes an image of itself, on a stream of its own.
+    copy_latency: Option<bff::Image>,
+    /// The tasks that same tape is credited with, on cases of its own. `None` wherever
+    /// tasks are off.
+    dominant_tasks: Option<task::Credit>,
     /// What each of the `CENSUS_DRAWS` draws counted, draw 0 first — the count above being
     /// that first draw's. Empty on the life substrate, where no assay runs at all.
     counts: Vec<u64>,
@@ -660,6 +888,14 @@ impl ReplicatorCensus {
     }
 }
 
+/// The share of sampled cells whose tape passed the orientation-aware detector, read
+/// aligned and under the best rotation.
+#[derive(Clone, Copy)]
+struct SelfRepShare {
+    aligned: f64,
+    rotated: f64,
+}
+
 /// What one assay draw of the census read: the cells it counted, and the dominant tape it
 /// picked out with whether that tape passed.
 #[derive(Default)]
@@ -670,15 +906,29 @@ struct CensusDraw<'a> {
     dominant_replicates: bool,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Every (initiator, partner) pair the soup has drawn on this thread, passed over or
+    /// not, so a test can hold two economies to one partner sequence.
+    static DRAWN: std::cell::RefCell<Vec<(usize, usize)>> = const {
+        std::cell::RefCell::new(Vec::new())
+    };
+}
+
 /// What the epoch's cells may spend on instructions, out of the two economies the
 /// substrate offers: the allowance `energy_per_epoch` refills in full every epoch (DESIGN
 /// §1.3 sweep 6) and the stock `energy_influx` tops up and execution draws down (DESIGN
 /// §1.1). Both are opt-in and independent — a run may have either, both or neither — and
 /// an empty purse is what off means: nothing is allocated and nothing bounds an
-/// interaction but `max_steps`.
+/// interaction but `max_steps`. Who pays out of the stock is the run's `energy_payer`:
+/// both cells what ran, or — at `initiator`, which validation keeps apart from the
+/// allowance — the initiator alone the fixed `price`.
 struct Energy {
     allowance: Vec<u32>,
     stock: Vec<u32>,
+    /// The price one interaction costs its initiator; `None` under the pair rule, and with
+    /// no stock to pay it from, where the initiator rule is inert as the steal op is.
+    price: Option<u32>,
 }
 
 impl Energy {
@@ -696,14 +946,20 @@ impl Energy {
                 budget => vec![budget; params.cell_count()],
             },
             stock,
+            price: (params.stocked() && params.energy_payer == EnergyPayer::Initiator)
+                .then_some(params.max_steps),
         }
     }
 
     /// How many instructions one interaction may execute: what the poorer of the two cells
     /// has left in each economy it lives under, never more than `max_steps`. Both cells
     /// execute the one concatenated program, so neither can pay past its own energy and the
-    /// interaction halts where the poorer one runs dry.
+    /// interaction halts where the poorer one runs dry. Under the initiator rule it is the
+    /// price, which the initiator has already been checked to hold.
     fn budget(&self, a: usize, b: usize, max_steps: u32) -> u32 {
+        if let Some(price) = self.price {
+            return price;
+        }
         [&self.allowance, &self.stock]
             .into_iter()
             .filter(|purse| !purse.is_empty())
@@ -719,8 +975,25 @@ impl Energy {
         self.stock.get(a) == Some(&0) || self.stock.get(b) == Some(&0)
     }
 
-    /// Debits both cells of an interaction with the instructions it executed.
+    /// Whether the pair `a` opens is skipped this turn: under the pair rule when either
+    /// stock is empty, under the initiator rule when `a` cannot pay the price. The
+    /// initiator's partner is never gated, so a poor cell is still drawn and executed as
+    /// one.
+    fn passed_over(&self, a: usize, b: usize) -> bool {
+        match self.price {
+            Some(price) => self.stock[a] < price,
+            None => self.starved(a, b),
+        }
+    }
+
+    /// Debits an interaction: under the pair rule both cells with the instructions it
+    /// executed; under the initiator rule the initiator alone with the full price, however
+    /// few ran, so a copier that halts early saves nothing by it.
     fn spend(&mut self, a: usize, b: usize, steps: u32) {
+        if let Some(price) = self.price {
+            self.stock[a] -= price;
+            return;
+        }
         for purse in [&mut self.allowance, &mut self.stock] {
             if !purse.is_empty() {
                 purse[a] -= steps;
@@ -832,12 +1105,45 @@ fn copied_onto(result: &[u8], source: &[u8]) -> bool {
     result.len() >= source.len() && result[..source.len()] == *source
 }
 
+/// `copied_onto` with the image reversed (`reverse_copy_rate`, DESIGN §1.2): the half holds
+/// the source's bytes last to first, read from its own first byte over the source's length.
+/// A palindrome is its own reverse, so its copy satisfies both rules and counts in both
+/// rates.
+fn reversed_onto(result: &[u8], source: &[u8]) -> bool {
+    result.len() >= source.len() && result[..source.len()].iter().eq(source.iter().rev())
+}
+
 /// Whether a tape resembles its partner's arriving tape more closely than its own, by
 /// Hamming distance over the tape's bytes — the plainest distance on a fixed-length tape,
 /// and the same byte-by-byte reading `copy_rate` makes of an exact copy. A tie keeps the
 /// cell's own lineage, so a tape that did not move keeps its tag.
-fn inherits_partner(result: &[u8], own: &[u8], partner: &[u8]) -> bool {
-    metrics::hamming_distance(result, partner) < metrics::hamming_distance(result, own)
+///
+/// Under the oriented rule both distances are taken either way round, not only the
+/// partner's: measuring one arrival with a reversal allowed and the other without would
+/// tilt every close call toward the partner, and a cell whose own bytes came back to it
+/// reversed would change lineage although nothing of anyone else's reached it.
+fn inherits_partner(rule: LineageRule, result: &[u8], own: &[u8], partner: &[u8]) -> bool {
+    match rule {
+        LineageRule::Aligned => {
+            metrics::hamming_distance(result, partner) < metrics::hamming_distance(result, own)
+        }
+        LineageRule::Oriented => {
+            oriented_distance(result, partner) < oriented_distance(result, own)
+        }
+    }
+}
+
+/// How far a tape is from an arriving tape put whichever way round is nearer to it: the
+/// arrival as it came, or its live bytes last to first read from the tape's first byte —
+/// the image `reversed_onto` reads a reverse copy as.
+fn oriented_distance(result: &[u8], arrived: &[u8]) -> u64 {
+    let reversed = result
+        .iter()
+        .zip(arrived.iter().rev())
+        .filter(|(left, right)| left != right)
+        .count() as u64
+        + result.len().abs_diff(arrived.len()) as u64;
+    metrics::hamming_distance(result, arrived).min(reversed)
 }
 
 /// A run of `u32`s as the little-endian bytes the world hashes them by.
@@ -881,6 +1187,24 @@ fn restored_stock(params: &Params, stock: Option<Vec<u32>>) -> Result<Vec<u32>, 
     }
 }
 
+/// The stock a descendant starts with. A descendant's economy is a treatment, so unlike a
+/// resume it may differ from the parent's: a parent that held no energy hands every cell a
+/// full stock at the child's cap, as a fresh run starts; a stocked parent under a child
+/// with no influx drops its stocks; and a stocked parent under a stocked child keeps each
+/// cell's stock, clamped to the child's cap.
+fn descended_stock(params: &Params, stock: Option<Vec<u32>>) -> Result<Vec<u32>, SnapshotError> {
+    match (stock, params.stocked()) {
+        (Some(stock), true) if stock.len() == params.cell_count() => Ok(stock
+            .into_iter()
+            .map(|held| held.min(params.energy_stock_cap))
+            .collect()),
+        (Some(_), true) => Err(SnapshotError::Mismatch {
+            field: "cell count",
+        }),
+        _ => Ok(fresh_stock(params)),
+    }
+}
+
 /// One energy stock per cell, every cell starting the run full — the world begins at the
 /// ceiling its cap sets rather than spending its first epochs filling up. Empty, and never
 /// read, on a world with no influx.
@@ -909,7 +1233,7 @@ fn draw_cell_byte(rng: &mut Rng, substrate: Substrate) -> u8 {
 mod tests {
     use super::*;
     use crate::metrics::TransitionState;
-    use crate::params::{Interaction, Structure};
+    use crate::params::{Interaction, Structure, Tasks};
     use std::collections::BTreeSet;
 
     /// Pinned so a change in the rules, the RNG or the visiting order cannot pass unseen:
@@ -931,6 +1255,18 @@ mod tests {
     /// them — a within-lineage reading must not move a lineage.
     const PINNED_LINEAGES: &str = "distinct_lineages=1022 top_lineage_share=0.001953125";
     const PINNED_SEEDED_LINEAGES: &str = "distinct_lineages=51 top_lineage_share=0.09375";
+    /// The tags of that first world, pinned when the lineage rule became a parameter: the
+    /// same under both rules there.
+    const PINNED_SOUP_LINEAGE_HASH: u64 = 0x4d38_1366_823a_e560;
+    /// A mutating reverse-copier colony, where the two lineage rules part
+    /// (`mutating_reverse_colony`): its bytes, and its tags under each rule.
+    const PINNED_REVERSE_COLONY_HASH: u64 = 0x752c_1e85_b477_d74e;
+    const PINNED_REVERSE_COLONY_ALIGNED_LINEAGE_HASH: u64 = 0xe746_36f6_8030_b75c;
+    const PINNED_REVERSE_COLONY_ORIENTED_LINEAGE_HASH: u64 = 0xe173_3ed0_0d40_85cc;
+    const PINNED_REVERSE_COLONY_ALIGNED_LINEAGES: &str =
+        "distinct_lineages=39 top_lineage_share=0.109375";
+    const PINNED_REVERSE_COLONY_ORIENTED_LINEAGES: &str =
+        "distinct_lineages=15 top_lineage_share=0.1484375";
     /// The replicator readings of those same two worlds, as they read before #192 added a
     /// raw length and a tape hash beside them: the new fields are additive, so every field
     /// a sample already carried has to print the same digits it printed before.
@@ -960,6 +1296,64 @@ mod tests {
         "lineage_compressed_len=Some(75) lineage_instruction_count=Some(4)";
     const PINNED_SEEDED_LINEAGE_COMPLEXITY: &str =
         "lineage_compressed_len=Some(39) lineage_instruction_count=Some(15)";
+
+    /// And the four orientation-aware companions (`docs/design_record.md`, 2026-09-25),
+    /// pinned apart from every reading above, which they must not move.
+    const PINNED_SELF_REP: &str = "reverse_copy_rate=0.0 replicator_share=Some(0.0) \
+         replicator_share_rotated=Some(0.0) dominant_self_replicates=Some(false)";
+    const PINNED_SEEDED_SELF_REP: &str = "reverse_copy_rate=0.0 \
+         replicator_share=Some(0.99609375) replicator_share_rotated=Some(0.99609375) \
+         dominant_self_replicates=Some(true)";
+
+    /// And the five oriented companions of the lineage readings and of `copy_cost`
+    /// (`docs/design_record.md`, 2026-09-25), pinned apart again.
+    const PINNED_ORIENTED: &str = "lineage_variation_oriented=31.5 \
+         conserved_core_bytes_oriented=Some(1) conserved_core_ops_oriented=Some(0) \
+         copy_latency=None copy_latency_orientation=None";
+    const PINNED_SEEDED_ORIENTED: &str = "lineage_variation_oriented=0.8623853211009175 \
+         conserved_core_bytes_oriented=Some(253) conserved_core_ops_oriented=Some(15) \
+         copy_latency=Some(1790) copy_latency_orientation=Some(Forward)";
+
+    /// And the two diversity readings of the lineage tags (`docs/design_record.md`,
+    /// 2026-09-25), pinned apart once more.
+    const PINNED_DIVERSITY: &str =
+        "lineage_effective_count=1020.0155642023346 lineages_over_one_percent=0";
+    const PINNED_SEEDED_DIVERSITY: &str =
+        "lineage_effective_count=27.55929352396972 lineages_over_one_percent=37";
+    const PINNED_REVERSE_COLONY_ALIGNED_DIVERSITY: &str =
+        "lineage_effective_count=17.69330453563715 lineages_over_one_percent=23";
+    const PINNED_REVERSE_COLONY_ORIENTED_DIVERSITY: &str =
+        "lineage_effective_count=9.525581395348837 lineages_over_one_percent=12";
+
+    fn diversity_digest(measured: &Metrics) -> String {
+        format!(
+            "lineage_effective_count={:?} lineages_over_one_percent={}",
+            measured.lineage_effective_count, measured.lineages_over_one_percent,
+        )
+    }
+
+    fn oriented_digest(measured: &Metrics) -> String {
+        format!(
+            "lineage_variation_oriented={:?} conserved_core_bytes_oriented={:?} \
+             conserved_core_ops_oriented={:?} copy_latency={:?} copy_latency_orientation={:?}",
+            measured.lineage_variation_oriented,
+            measured.conserved_core_bytes_oriented,
+            measured.conserved_core_ops_oriented,
+            measured.copy_latency,
+            measured.copy_latency_orientation,
+        )
+    }
+
+    fn self_rep_digest(measured: &Metrics) -> String {
+        format!(
+            "reverse_copy_rate={:?} replicator_share={:?} replicator_share_rotated={:?} \
+             dominant_self_replicates={:?}",
+            measured.reverse_copy_rate,
+            measured.replicator_share,
+            measured.replicator_share_rotated,
+            measured.dominant_self_replicates,
+        )
+    }
 
     fn observable_digest(measured: &Metrics) -> String {
         format!(
@@ -1391,6 +1785,9 @@ mod tests {
             lineage_complexity_digest(&measured),
             PINNED_LINEAGE_COMPLEXITY
         );
+        assert_eq!(self_rep_digest(&measured), PINNED_SELF_REP);
+        assert_eq!(oriented_digest(&measured), PINNED_ORIENTED);
+        assert_eq!(diversity_digest(&measured), PINNED_DIVERSITY);
     }
 
     #[test]
@@ -1410,6 +1807,9 @@ mod tests {
             lineage_complexity_digest(&measured),
             PINNED_SEEDED_LINEAGE_COMPLEXITY
         );
+        assert_eq!(self_rep_digest(&measured), PINNED_SEEDED_SELF_REP);
+        assert_eq!(oriented_digest(&measured), PINNED_SEEDED_ORIENTED);
+        assert_eq!(diversity_digest(&measured), PINNED_SEEDED_DIVERSITY);
     }
 
     /// The census only reads the world: it draws on streams of its own, moves no cell and
@@ -1591,21 +1991,139 @@ mod tests {
     #[test]
     fn a_tape_inherits_only_when_it_ends_strictly_closer_to_its_partner() {
         assert!(
-            inherits_partner(b"wxyz", b"abcd", b"wxyz"),
+            inherits_partner(LineageRule::Aligned, b"wxyz", b"abcd", b"wxyz"),
             "an exact copy of the partner's arriving tape inherits"
         );
         assert!(
-            !inherits_partner(b"abcd", b"abcd", b"wxyz"),
+            !inherits_partner(LineageRule::Aligned, b"abcd", b"abcd", b"wxyz"),
             "a tape that did not move keeps its own tag"
         );
         assert!(
-            !inherits_partner(b"abcz", b"abcd", b"wxyz"),
+            !inherits_partner(LineageRule::Aligned, b"abcz", b"abcd", b"wxyz"),
             "one byte from its own arrival, three from the partner's: keeps its own"
         );
         assert!(
-            !inherits_partner(b"abyz", b"abcd", b"wxyz"),
+            !inherits_partner(LineageRule::Aligned, b"abyz", b"abcd", b"wxyz"),
             "two bytes from each arrival is a tie, and a tie keeps its own"
         );
+    }
+
+    /// A reverse copy of `A` over a cell of lineage `B` is aligned-far from `A` — here as
+    /// far as it is from `B` — so the aligned rule leaves the cell `B`, and the oriented
+    /// rule reads it as `A`'s descendant.
+    #[test]
+    fn a_reverse_copy_takes_the_copiers_tag_only_under_the_oriented_rule() {
+        let (copier, own) = (b"abcdefgh", b"stuvwxyz");
+        let reversed = b"hgfedcba";
+        assert!(!inherits_partner(
+            LineageRule::Aligned,
+            reversed,
+            own,
+            copier
+        ));
+        assert!(inherits_partner(
+            LineageRule::Oriented,
+            reversed,
+            own,
+            copier
+        ));
+    }
+
+    /// A forward copy, a cell that did not move and a partial overwrite read the same
+    /// under both rules when no arriving tape is nearer reversed.
+    #[test]
+    fn a_forward_copy_reads_the_same_under_both_rules() {
+        for (result, expected) in [
+            (b"abcdefgh", true),
+            (b"stuvwxyz", false),
+            (b"abcdefyz", true),
+            (b"abcdwxyz", false),
+        ] {
+            for rule in [LineageRule::Aligned, LineageRule::Oriented] {
+                assert_eq!(
+                    inherits_partner(rule, result, b"stuvwxyz", b"abcdefgh"),
+                    expected,
+                    "{rule:?} {:?}",
+                    std::str::from_utf8(result)
+                );
+            }
+        }
+    }
+
+    /// A palindrome is its own reverse, so its copy inherits under both rules; and the
+    /// oriented rule keeps the aligned rule's tie: strictly closer, or the cell keeps its
+    /// own tag.
+    #[test]
+    fn a_palindrome_inherits_under_both_rules_and_a_tie_keeps_the_cells_own_tag() {
+        for rule in [LineageRule::Aligned, LineageRule::Oriented] {
+            assert!(inherits_partner(
+                rule,
+                b"abcddcba",
+                b"stuvwxyz",
+                b"abcddcba"
+            ));
+        }
+        assert!(
+            !inherits_partner(LineageRule::Oriented, b"abyz", b"abcd", b"wxyz"),
+            "two bytes from each arrival either way round is a tie"
+        );
+        assert!(
+            !inherits_partner(LineageRule::Oriented, b"dcyz", b"abcd", b"zyxw"),
+            "two bytes from each arrival once both are reversed is a tie too"
+        );
+    }
+
+    /// The own tape is read either way round as well: a cell whose own bytes came back to
+    /// it reversed descends from itself, and keeps its tag.
+    #[test]
+    fn a_cell_holding_its_own_tape_reversed_keeps_its_tag_under_the_oriented_rule() {
+        assert!(!inherits_partner(
+            LineageRule::Oriented,
+            b"hgfedcbx",
+            b"abcdefgh",
+            b"hgfedcyz"
+        ));
+        assert!(inherits_partner(
+            LineageRule::Aligned,
+            b"hgfedcbx",
+            b"abcdefgh",
+            b"hgfedcyz"
+        ));
+    }
+
+    /// The oriented rule reads a tape and its reverse as one tape: a cell holding `X`
+    /// that ends an exact forward copy of a partner holding `reverse(X)` is at distance 0
+    /// from both arrivals, a tie, and keeps its own tag; the aligned rule hands it over.
+    #[test]
+    fn a_tape_and_its_reverse_are_one_tape_under_the_oriented_rule() {
+        let (own, partner) = (b"abcdefgh", b"hgfedcba");
+        assert!(inherits_partner(
+            LineageRule::Aligned,
+            partner,
+            own,
+            partner
+        ));
+        assert!(!inherits_partner(
+            LineageRule::Oriented,
+            partner,
+            own,
+            partner
+        ));
+    }
+
+    /// A tape that grew is set against the reverse of the live bytes its partner arrived
+    /// with, read from its own first byte; the bytes it gained count against both.
+    #[test]
+    fn the_oriented_distance_reads_live_bytes_of_a_ragged_pair() {
+        assert_eq!(oriented_distance(b"cbaxy", b"abc"), 2);
+        assert_eq!(oriented_distance(b"abcxy", b"abc"), 2);
+        assert_eq!(oriented_distance(b"cb", b"abc"), 1);
+        assert!(inherits_partner(
+            LineageRule::Oriented,
+            b"cbaxy",
+            b"zzzzz",
+            b"abc"
+        ));
     }
 
     /// Both halves are judged against the pair as it arrived, so a pair that swapped tapes
@@ -1767,6 +2285,8 @@ mod tests {
         assert_eq!(measured.lineage_variation, 0.0);
         assert_eq!(measured.conserved_core_bytes, None);
         assert_eq!(measured.conserved_core_ops, None);
+        assert_eq!(measured.lineage_effective_count, 0.0);
+        assert_eq!(measured.lineages_over_one_percent, 0);
     }
 
     #[test]
@@ -1784,6 +2304,14 @@ mod tests {
         assert_eq!(measured.lineage_compressed_len, None);
         assert_eq!(measured.lineage_instruction_count, None);
         assert!(!measured.dominant_replicates);
+        assert_eq!(measured.replicator_share, None);
+        assert_eq!(measured.replicator_share_rotated, None);
+        assert_eq!(measured.dominant_self_replicates, None);
+        assert_eq!(measured.lineage_variation_oriented, 0.0);
+        assert_eq!(measured.conserved_core_bytes_oriented, None);
+        assert_eq!(measured.conserved_core_ops_oriented, None);
+        assert_eq!(measured.copy_latency, None);
+        assert_eq!(measured.copy_latency_orientation, None);
     }
 
     #[test]
@@ -2178,6 +2706,7 @@ mod tests {
         Energy {
             allowance: Vec::new(),
             stock,
+            price: None,
         }
     }
 
@@ -2760,6 +3289,90 @@ mod tests {
         assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
     }
 
+    fn lineage_hash(world: &World) -> u64 {
+        let ids: Vec<u8> = world
+            .lineages
+            .iter()
+            .flat_map(|id| id.to_le_bytes())
+            .collect();
+        fnv1a64(&ids)
+    }
+
+    /// A 16×16 soup half seeded with the handwritten reverse replicator, under the default
+    /// mutation rate, stepped 50 epochs under `rule`.
+    fn mutating_reverse_colony(rule: LineageRule) -> World {
+        let params = Params {
+            tape_len: 64,
+            lineage_rule: rule,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        let tape = replicator::handwritten_reverse_replicator(64);
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        for _ in 0..50 {
+            world.step();
+        }
+        world
+    }
+
+    /// The oriented lineage rule on the pinned soup: it moves no byte, so the world is the
+    /// pinned one exactly. On this world no interaction in 50 epochs leaves a tape nearer
+    /// an arrival reversed, so the tags are the aligned rule's too; a larger random soup
+    /// can already part on a handful of cells.
+    #[test]
+    fn pinned_lineage_determinism_of_a_random_soup_under_the_oriented_rule() {
+        let params = Params {
+            lineage_rule: LineageRule::Oriented,
+            ..soup(32, 32)
+        };
+        let mut world = World::new(&params, 42).unwrap();
+        for _ in 0..50 {
+            world.step();
+        }
+        assert_eq!(world.world_hash(), PINNED_SOUP_HASH);
+        assert_eq!(lineage_hash(&world), PINNED_SOUP_LINEAGE_HASH);
+        assert_eq!(lineage_digest(&world.metrics()), PINNED_LINEAGES);
+    }
+
+    /// And on a mutating colony of reverse copiers, where the two rules part: the same
+    /// bytes under both, and two different sets of tags — the oriented rule reading the
+    /// colony as fewer, larger lineages.
+    #[test]
+    fn pinned_lineage_determinism_of_a_reverse_colony_under_the_oriented_rule() {
+        let mut aligned = mutating_reverse_colony(LineageRule::Aligned);
+        let mut oriented = mutating_reverse_colony(LineageRule::Oriented);
+        assert_eq!(oriented.world_hash(), aligned.world_hash());
+        assert_eq!(oriented.world_hash(), PINNED_REVERSE_COLONY_HASH);
+        assert_eq!(
+            lineage_hash(&aligned),
+            PINNED_REVERSE_COLONY_ALIGNED_LINEAGE_HASH
+        );
+        assert_eq!(
+            lineage_hash(&oriented),
+            PINNED_REVERSE_COLONY_ORIENTED_LINEAGE_HASH
+        );
+        assert_eq!(
+            lineage_digest(&aligned.metrics()),
+            PINNED_REVERSE_COLONY_ALIGNED_LINEAGES
+        );
+        assert_eq!(
+            lineage_digest(&oriented.metrics()),
+            PINNED_REVERSE_COLONY_ORIENTED_LINEAGES
+        );
+        assert_eq!(
+            diversity_digest(&aligned.metrics()),
+            PINNED_REVERSE_COLONY_ALIGNED_DIVERSITY
+        );
+        assert_eq!(
+            diversity_digest(&oriented.metrics()),
+            PINNED_REVERSE_COLONY_ORIENTED_DIVERSITY
+        );
+    }
+
     #[test]
     fn pinned_determinism_of_a_soup_without_the_copy_to_head0_op() {
         let params = Params {
@@ -2930,6 +3543,238 @@ mod tests {
             Err(SnapshotError::Mismatch {
                 field: "energy_influx"
             })
+        ));
+    }
+
+    /// Past the baseline window, where a descendant can start, on a world small and cheap
+    /// enough to step there.
+    const DESCENT_EPOCH: u64 = metrics::TRANSITION_BASELINE_EPOCHS + 10;
+
+    fn descent_params() -> Params {
+        Params {
+            width: 8,
+            height: 8,
+            ..stocked_params()
+        }
+    }
+
+    fn unstocked(params: &Params) -> Params {
+        Params {
+            energy_influx: 0,
+            energy_stock_cap: 0,
+            ..params.clone()
+        }
+    }
+
+    /// The continuation arm: a child under its parent's params and seed is the parent
+    /// carried on — cells, lineages and stocks — since no stream holds state of its own.
+    /// The parent is a stocked colony, so by the descent its lineage census has moved off
+    /// the one-id-per-cell a fresh world mints and a child that dropped it would show.
+    #[test]
+    fn a_descendant_with_its_parents_params_and_seed_continues_the_parent() {
+        let params = Params {
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            ..colony_params()
+        };
+        let mut parent = colony(&params, 11);
+        for _ in 0..DESCENT_EPOCH {
+            parent.step();
+        }
+        assert_ne!(parent.lineages, fresh_lineages(&params));
+        let mut child = World::descend(&params, 11, &parent.snapshot()).unwrap();
+        assert_eq!(child.epoch(), DESCENT_EPOCH);
+
+        for _ in 0..20 {
+            parent.step();
+            child.step();
+        }
+
+        assert_eq!(child.epoch(), parent.epoch());
+        assert_eq!(child.lineages, parent.lineages);
+        assert_eq!(child.stock, parent.stock);
+        assert_eq!(child.world_hash(), parent.world_hash());
+    }
+
+    #[test]
+    fn two_descendants_with_different_seeds_diverge() {
+        let params = descent_params();
+        let blob = stepped(&params, 11, DESCENT_EPOCH).snapshot();
+        let mut one = World::descend(&params, 11, &blob).unwrap();
+        let mut other = World::descend(&params, 12, &blob).unwrap();
+
+        for _ in 0..5 {
+            one.step();
+            other.step();
+        }
+
+        assert_ne!(one.world_hash(), other.world_hash());
+    }
+
+    #[test]
+    fn an_unstocked_parent_descends_into_a_full_stock() {
+        let stocked = descent_params();
+        let blob = stepped(&unstocked(&stocked), 11, DESCENT_EPOCH).snapshot();
+
+        let child = World::descend(&stocked, 11, &blob).unwrap();
+
+        assert_eq!(
+            child.stock,
+            vec![stocked.energy_stock_cap; stocked.cell_count()]
+        );
+    }
+
+    #[test]
+    fn a_stocked_parent_descends_into_no_stock() {
+        let stocked = descent_params();
+        let blob = stepped(&stocked, 11, DESCENT_EPOCH).snapshot();
+
+        let child = World::descend(&unstocked(&stocked), 11, &blob).unwrap();
+
+        assert!(child.stock.is_empty());
+    }
+
+    #[test]
+    fn a_stocked_parent_descends_into_its_stocks_clamped_to_the_childs_cap() {
+        let stocked = descent_params();
+        let parent = stepped(&stocked, 11, DESCENT_EPOCH);
+        let tighter = Params {
+            energy_stock_cap: stocked.energy_influx * 2,
+            ..stocked.clone()
+        };
+        assert!(
+            parent
+                .stock
+                .iter()
+                .any(|held| *held > tighter.energy_stock_cap),
+            "some cell must hold more than the tighter cap: {:?}",
+            parent.stock
+        );
+
+        let child = World::descend(&tighter, 11, &parent.snapshot()).unwrap();
+
+        let clamped: Vec<u32> = parent
+            .stock
+            .iter()
+            .map(|held| (*held).min(tighter.energy_stock_cap))
+            .collect();
+        assert_eq!(child.stock, clamped);
+    }
+
+    /// A parent that transitioned long ago, on both readings: resumed, it reports both
+    /// epochs; descended, it reports neither, and the child has no baseline to read its
+    /// already-compressible start against.
+    #[test]
+    fn a_descendant_reports_no_transition_of_its_parent() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            ..soup(16, 16)
+        };
+        let restored = snapshot::decode(&params, &quiet_diverse_soup(&params).snapshot()).unwrap();
+        let header = snapshot::Header {
+            epoch: 600,
+            transition: metrics::TransitionState {
+                settled: Some(100),
+                last_epoch: Some(598),
+                relative: metrics::RelativeState {
+                    baseline_sum: 0.98,
+                    baseline_count: 1,
+                    settled: Some(550),
+                    ..metrics::RelativeState::default()
+                },
+                ..metrics::TransitionState::default()
+            },
+            ..restored.header
+        };
+        let blob = snapshot::encode(
+            &header,
+            &restored.cells,
+            &restored.lineages.unwrap_or_default(),
+            &restored.lens.unwrap_or_default(),
+            &restored.stock.unwrap_or_default(),
+        );
+        let resumed = World::from_snapshot(&params, 3, &blob).unwrap();
+        assert_eq!(resumed.transition_epoch(), Some(550));
+        assert_eq!(resumed.transition_epoch_constant(), Some(100));
+
+        let mut child = World::descend(&params, 3, &blob).unwrap();
+        assert_eq!(child.transition_epoch_constant(), None);
+        for _ in 0..8 {
+            child.step();
+            child.metrics();
+            assert_eq!(child.transition_epoch(), None);
+            assert!(
+                child
+                    .transition_epoch_constant()
+                    .is_none_or(|epoch| epoch > 600),
+                "{:?}",
+                child.transition_epoch_constant()
+            );
+        }
+    }
+
+    #[test]
+    fn a_descendant_with_a_different_tape_cap_is_refused() {
+        let blob = stepped(&roomy_soup(96), 11, 2).snapshot();
+
+        assert!(matches!(
+            World::descend(&roomy_soup(128), 11, &blob),
+            Err(SnapshotError::Mismatch {
+                field: "max_tape_len"
+            })
+        ));
+    }
+
+    /// The lineage rule is dynamics: a descendant may switch it, and the switch moves no
+    /// byte of the parent's world — only which tags the next copies carry.
+    #[test]
+    fn a_descendant_may_switch_its_lineage_rule() {
+        let params = colony_params();
+        let mut parent = colony(&params, 11);
+        for _ in 0..DESCENT_EPOCH {
+            parent.step();
+        }
+        let oriented = Params {
+            lineage_rule: LineageRule::Oriented,
+            ..params
+        };
+        let mut child = World::descend(&oriented, 11, &parent.snapshot()).unwrap();
+        assert_eq!(child.lineages, parent.lineages);
+
+        for _ in 0..20 {
+            parent.step();
+            child.step();
+        }
+
+        assert_eq!(child.world_hash(), parent.world_hash());
+    }
+
+    #[test]
+    fn a_descendant_of_a_different_width_is_refused() {
+        let params = descent_params();
+        let blob = stepped(&params, 11, DESCENT_EPOCH).snapshot();
+        let wider = Params {
+            width: params.width * 2,
+            ..params
+        };
+
+        assert!(matches!(
+            World::descend(&wider, 11, &blob),
+            Err(SnapshotError::Mismatch { field: "width" })
+        ));
+    }
+
+    /// Inside the baseline window the child's relative baseline would be read on the
+    /// parent's world, so there is no descending from it.
+    #[test]
+    fn a_world_inside_its_baseline_window_cannot_be_descended_from() {
+        let params = descent_params();
+        let blob = stepped(&params, 11, metrics::TRANSITION_BASELINE_EPOCHS).snapshot();
+
+        assert!(matches!(
+            World::descend(&params, 11, &blob),
+            Err(SnapshotError::InsideBaselineWindow { epoch: 500 })
         ));
     }
 
@@ -3408,6 +4253,205 @@ mod tests {
             0.0,
             "identical halves are not a copy"
         );
+        assert_eq!(
+            world.metrics().reverse_copy_rate,
+            0.0,
+            "a tape of zeros is its own reverse, and arrived that way"
+        );
+    }
+
+    /// A 16×16 soup of 64-byte tapes, half of them the hand-written reverse copier,
+    /// stepped once and sampled.
+    fn reverse_colony() -> World {
+        let params = Params {
+            tape_len: 64,
+            mutation_rate: 0.0,
+            sample_every: 1,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        let tape = replicator::handwritten_reverse_replicator(64);
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world.step();
+        world
+    }
+
+    /// The head of `handwritten_reverse_replicator` on its filler without the mirrored
+    /// tail: a tape whose reverse agrees with it at no position, so a copy of it is as far
+    /// from it, byte for byte, as a tape it never touched.
+    fn one_way_reverse_copier() -> Vec<u8> {
+        const LETTERS: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+        let mut tape: Vec<u8> = (0..64)
+            .map(|at| LETTERS[(at * 7) % LETTERS.len()])
+            .collect();
+        tape[..6].copy_from_slice(b"{[.>{]");
+        let reversed: Vec<u8> = tape.iter().rev().copied().collect();
+        assert_eq!(metrics::hamming_distance(&tape, &reversed), 64);
+        tape
+    }
+
+    /// After `epochs` under `rule` of a world whose top half is seeded with
+    /// `one_way_reverse_copier` and whose bottom half is random: how many cells carry one
+    /// of the colony's tags, and how many hold the colony's reverse copy under a tag that
+    /// is not one of them.
+    fn reverse_colony_reach(rule: LineageRule, epochs: usize) -> (usize, usize) {
+        let params = Params {
+            tape_len: 64,
+            mutation_rate: 0.0,
+            lineage_rule: rule,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        let tape = one_way_reverse_copier();
+        let reversed: Vec<u8> = tape.iter().rev().copied().collect();
+        let mut seeded = BTreeSet::new();
+        for y in 0..params.height / 2 {
+            for x in 0..params.width {
+                world.set_cell(x, y, &tape);
+                seeded.insert(world.lineage(x, y));
+            }
+        }
+        for _ in 0..epochs {
+            world.step();
+        }
+        let cells = (0..params.height).flat_map(|y| (0..params.width).map(move |x| (x, y)));
+        let tagged = cells
+            .clone()
+            .filter(|(x, y)| seeded.contains(&world.lineage(*x, *y)))
+            .count();
+        let untagged_copies = cells
+            .filter(|(x, y)| {
+                world.cell(*x, *y) == reversed && !seeded.contains(&world.lineage(*x, *y))
+            })
+            .count();
+        (tagged, untagged_copies)
+    }
+
+    /// A reverse copier invading a random world: its copies are its reverse, which under
+    /// the aligned rule is as far from it as from the random tape overwritten, so the
+    /// colony's 128 tags never leave home and its copies wear their victims' tags; under
+    /// the oriented rule every copy carries the colony's tag out with it.
+    #[test]
+    fn a_reverse_copier_spreads_its_tags_under_the_oriented_rule_alone() {
+        assert_eq!(reverse_colony_reach(LineageRule::Aligned, 10), (128, 12));
+        assert_eq!(reverse_colony_reach(LineageRule::Oriented, 10), (140, 0));
+    }
+
+    /// The blind spot the companions exist for: a world of tapes that copy in reverse
+    /// reads no replicator on the census and next to no `copy_rate`, while the detector
+    /// and the reversed rate see them.
+    #[test]
+    fn a_reverse_copying_colony_reads_on_the_companions_and_not_on_the_census() {
+        let measured = reverse_colony().metrics();
+
+        assert_eq!(measured.replicator_count, 0);
+        assert_eq!(measured.replicator_pass_rate, Some(0.0));
+        assert!(!measured.dominant_replicates);
+        assert_eq!(measured.dominant_self_replicates, Some(true));
+        let share = measured.replicator_share.expect("a soup");
+        assert!(share > 0.4, "{measured:?}");
+        assert!(measured.replicator_share_rotated >= Some(share));
+        assert!(
+            measured.reverse_copy_rate > 0.3 && measured.copy_rate < 0.05,
+            "{measured:?}"
+        );
+    }
+
+    /// The oriented companions over the same colony: its dominant tape is the reverse
+    /// copier, whose image is whole at step 4L − 1 and lies reversed, where `copy_cost`
+    /// reads nothing because the loop never exits.
+    #[test]
+    fn a_reverse_copying_colony_reads_a_latency_where_it_reads_no_copy_cost() {
+        let measured = reverse_colony().metrics();
+
+        assert_eq!(measured.copy_cost, None);
+        assert_eq!(measured.copy_latency, Some(4 * 64 - 1));
+        assert_eq!(
+            measured.copy_latency_orientation,
+            Some(bff::Orientation::Reverse)
+        );
+        assert!(measured.lineage_variation_oriented <= measured.lineage_variation);
+    }
+
+    /// `copy_latency` draws its noise on a stream of its own, apart from every stream the
+    /// run, the census and the detector draw on.
+    #[test]
+    fn the_latency_draws_on_a_stream_no_other_reading_uses() {
+        let mut taken: Vec<u64> = vec![
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+        ];
+        taken.extend((0..CENSUS_DRAWS).map(census_stream));
+        assert!(!taken.contains(&STREAM_COPY_LATENCY));
+    }
+
+    #[test]
+    fn a_random_soup_reads_no_self_replicators() {
+        let mut world = World::new(&soup(16, 16), 5).unwrap();
+        world.step();
+        let measured = world.metrics();
+
+        assert_eq!(measured.replicator_share, Some(0.0));
+        assert_eq!(measured.replicator_share_rotated, Some(0.0));
+        assert_eq!(measured.dominant_self_replicates, Some(false));
+    }
+
+    /// The companions only read the world, on streams of their own: sampling every epoch
+    /// moves no byte of the run, and a world rebuilt from a snapshot reads what the live
+    /// world read at that epoch.
+    #[test]
+    fn the_companions_move_no_run_and_reread_the_same_from_a_snapshot() {
+        let mut sampled = reverse_colony();
+        let mut unsampled = reverse_colony();
+        let live = sampled.metrics();
+        for _ in 0..3 {
+            sampled.step();
+            sampled.metrics();
+            unsampled.step();
+        }
+        assert_eq!(sampled.world_hash(), unsampled.world_hash());
+
+        let mut world = reverse_colony();
+        let mut restored =
+            World::from_snapshot(world.params(), world.seed(), &world.snapshot()).unwrap();
+        let reread = restored.metrics();
+        assert_eq!(reread.replicator_share, live.replicator_share);
+        assert_eq!(
+            reread.replicator_share_rotated,
+            live.replicator_share_rotated
+        );
+        assert_eq!(
+            reread.dominant_self_replicates,
+            live.dominant_self_replicates
+        );
+        assert_eq!(world.metrics(), live);
+    }
+
+    #[test]
+    fn a_reversed_image_is_read_from_the_first_byte_over_the_sources_length() {
+        assert!(reversed_onto(b"cba", b"abc"));
+        assert!(
+            reversed_onto(b"cbaxx", b"abc"),
+            "room past the image does not unmake it"
+        );
+        assert!(
+            !reversed_onto(b"cb", b"abc"),
+            "too short to hold the source"
+        );
+        assert!(!reversed_onto(b"abc", b"abc"));
+        assert!(!reversed_onto(b"xcba", b"abc"), "read from the first byte");
+    }
+
+    /// A palindrome is its own reverse, so its copy is both images at once.
+    #[test]
+    fn a_palindromes_copy_counts_in_both_rates() {
+        assert!(copied_onto(b"abba", b"abba") && reversed_onto(b"abba", b"abba"));
     }
 
     #[test]
@@ -3423,6 +4467,7 @@ mod tests {
         .unwrap();
         world.step();
         assert_eq!(world.metrics().copy_rate, 0.0);
+        assert_eq!(world.metrics().reverse_copy_rate, 0.0);
     }
 
     #[test]
@@ -3736,5 +4781,816 @@ mod tests {
                 "{dx},{dy}"
             );
         }
+    }
+
+    /// A world the way an emerged one looks (#245): most cells the reverse copier, its
+    /// loop spread over up to six non-op bytes after each op, at lengths from 40 up to the
+    /// cap, over nonzero filler that sometimes holds a steal byte; the rest random.
+    fn emerged_world(params: &Params, seed: u64) -> World {
+        let mut world = World::new(params, seed).unwrap();
+        let mut rng = rng::seeded(seed, 0x454d_4552, 0);
+        let cap = params.tape_cap() as u64;
+        let filler = |rng: &mut Rng| loop {
+            let byte = match rng::below(rng, 32) {
+                0 => bff::STEAL,
+                _ => 1 + rng::below(rng, 255) as u8,
+            };
+            if !bff::is_op(byte) {
+                return byte;
+            }
+        };
+        for y in 0..params.height {
+            for x in 0..params.width {
+                let len = 40 + rng::below(&mut rng, cap - 39) as usize;
+                let mut tape = Vec::new();
+                if rng::below(&mut rng, 5) > 0 {
+                    let pad = rng::below(&mut rng, 7);
+                    for op in b"{[.<>>{]" {
+                        tape.push(*op);
+                        tape.extend((0..pad).map(|_| filler(&mut rng)));
+                    }
+                }
+                while tape.len() < len {
+                    tape.push(filler(&mut rng));
+                }
+                tape.truncate(len);
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world
+    }
+
+    /// Everything a stepped world is and reads: its hash and every piece of its state, and
+    /// the whole sample at every tenth epoch.
+    fn stepped_both_ways(params: &Params, seed: u64) -> [(Vec<Metrics>, u64, World); 2] {
+        [true, false].map(|skipping| {
+            bff::SKIPPING.set(skipping);
+            let mut world = emerged_world(params, seed);
+            let mut samples = Vec::new();
+            for _ in 0..5 {
+                for _ in 0..10 {
+                    world.step();
+                }
+                samples.push(world.metrics());
+            }
+            bff::SKIPPING.set(true);
+            let hash = world.world_hash();
+            (samples, hash, world)
+        })
+    }
+
+    /// The interpreter's skips are a pure speed-up (`docs/design_record.md`, 2026-09-25):
+    /// an emerged world stepped 50 epochs with them and without them ends with the same
+    /// hash, tapes, lengths, lineages and stock, and reads the same full sample every tenth
+    /// epoch — at the joined default, and under a hosted interaction with the stock and the
+    /// steal op on, whose steals the skipped laps count too.
+    #[test]
+    fn an_emerged_world_steps_exactly_the_same_with_the_skips() {
+        let joined = Params {
+            tape_len: 64,
+            max_tape_len: 128,
+            sample_every: 10,
+            ..soup(16, 16)
+        };
+        let economic = Params {
+            energy_influx: 6_000,
+            energy_stock_cap: 32_768,
+            steal_amount: 64,
+            interaction: Interaction::Host,
+            ..joined.clone()
+        };
+        for params in [joined, economic] {
+            let skipped_before = bff::RECURRED.get() + bff::LAPPED.get();
+            let [(skipped_samples, skipped_hash, skipped), (stepped_samples, stepped_hash, stepped)] =
+                stepped_both_ways(&params, 11);
+            assert!(
+                bff::RECURRED.get() + bff::LAPPED.get() - skipped_before > 10_000_000,
+                "the copiers never skipped"
+            );
+            assert_eq!(skipped_hash, stepped_hash);
+            assert_eq!(skipped.cells, stepped.cells);
+            assert_eq!(skipped.lens, stepped.lens);
+            assert_eq!(skipped.lineages, stepped.lineages);
+            assert_eq!(skipped.stock, stepped.stock);
+            assert_eq!(skipped_samples, stepped_samples);
+        }
+    }
+
+    fn initiator(params: Params) -> Params {
+        Params {
+            energy_payer: EnergyPayer::Initiator,
+            ..params
+        }
+    }
+
+    /// Pinned on the code before `energy_payer` existed: a stocked soup with theft at
+    /// 32×32, seed 42, after 50 epochs. Naming the default must not move it.
+    const PINNED_PAIR_STOCK_HASH: u64 = 0xff36_fede_bb44_6d42;
+    /// The initiator rule's own pin: the economy of the metabolism design (influx
+    /// `max_steps`/8, a cap of eight prices) at 32×32, seed 42, after 50 epochs.
+    const PINNED_INITIATOR_HASH: u64 = 0x6009_9358_301f_03ac;
+
+    fn pair_stock_params() -> Params {
+        Params {
+            energy_influx: 2048,
+            energy_stock_cap: 8192,
+            steal_amount: 1024,
+            ..soup(32, 32)
+        }
+    }
+
+    #[test]
+    fn naming_the_pair_rule_moves_no_stocked_run() {
+        let params = Params {
+            energy_payer: EnergyPayer::Pair,
+            ..pair_stock_params()
+        };
+        assert_eq!(params, pair_stock_params());
+        assert_eq!(
+            stepped(&params, 42, 50).world_hash(),
+            PINNED_PAIR_STOCK_HASH
+        );
+        assert_eq!(
+            stepped(&soup(32, 32), 42, 50).world_hash(),
+            PINNED_SOUP_HASH
+        );
+    }
+
+    #[test]
+    fn the_initiator_rule_is_pinned() {
+        let params = initiator(Params {
+            energy_influx: 1024,
+            energy_stock_cap: 65_536,
+            ..soup(32, 32)
+        });
+        let world = stepped(&params, 42, 50);
+        assert_eq!(world.world_hash(), PINNED_INITIATOR_HASH);
+        assert_ne!(
+            world.world_hash(),
+            stepped(
+                &Params {
+                    energy_payer: EnergyPayer::Pair,
+                    ..params
+                },
+                42,
+                50
+            )
+            .world_hash()
+        );
+    }
+
+    #[test]
+    fn determinism_holds_under_the_initiator_rule() {
+        for (energy_influx, energy_stock_cap, steal_amount) in [(8, 64, 0), (32, 256, 16)] {
+            for seed in [1, 2, 3] {
+                assert_deterministic(
+                    &initiator(Params {
+                        max_steps: 64,
+                        energy_influx,
+                        energy_stock_cap,
+                        steal_amount,
+                        ..soup(16, 16)
+                    }),
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// The rule read off the purse: the initiator must hold the price, the partner is
+    /// never asked, and the price is what the initiator pays however few steps ran.
+    #[test]
+    fn the_initiator_alone_pays_the_full_price() {
+        let params = initiator(Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            ..soup(4, 4)
+        });
+        let mut energy = Energy::recharged(&params, vec![0, 64, 60, 64]);
+        assert_eq!(energy.stock, vec![8, 64, 64, 64]);
+        assert!(energy.passed_over(0, 1), "a cell below the price initiated");
+        assert!(
+            !energy.passed_over(1, 0),
+            "a poor partner gated a rich initiator"
+        );
+        assert_eq!(
+            energy.budget(1, 0, 64),
+            64,
+            "the poorer stock set the budget"
+        );
+
+        energy.spend(1, 0, 3);
+        assert_eq!(
+            energy.stock,
+            vec![8, 0, 64, 64],
+            "the initiator paid less than the price, or the partner paid at all"
+        );
+    }
+
+    /// Steals settle after the price as they settle after a pair's debit.
+    #[test]
+    fn steals_settle_after_the_initiators_price() {
+        let params = initiator(Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 128,
+            steal_amount: 10,
+            ..soup(4, 4)
+        });
+        let mut energy = Energy::recharged(&params, vec![100, 20, 0, 0]);
+        energy.spend(0, 1, 5);
+        energy.settle(0, 1, [1, 1], &theft(10, 0.5, 128));
+        assert_eq!(energy.stock[..2], [44 - 10 + 5, 28 - 10 + 5]);
+    }
+
+    /// And in the world: a checkerboard of rich and poor cells, every tape all `+`, so
+    /// each increment lands on the initiator's first byte. A poor cell never initiates —
+    /// its byte is unmoved and its stock is only the influx — yet it is drawn as a
+    /// partner, and a rich cell partnered with it runs its whole program, which the pair
+    /// rule's poorer stock would have cut to the influx.
+    #[test]
+    fn a_poor_cell_is_passed_over_as_initiator_yet_drawn_and_run_as_a_partner() {
+        const INFLUX: u32 = 8;
+        let params = initiator(Params {
+            max_steps: 64,
+            energy_influx: INFLUX,
+            energy_stock_cap: 64,
+            ..adding_params()
+        });
+        let mut world = adding_soup(&params);
+        let width = params.width as usize;
+        let poor = |cell: usize| (cell % width + cell / width) % 2 == 1;
+        for (cell, held) in world.stock.iter_mut().enumerate() {
+            if poor(cell) {
+                *held = 0;
+            }
+        }
+        DRAWN.take();
+        world.step();
+        let drawn = DRAWN.take();
+        let paid = increments(&world);
+
+        for (cell, (ran, held)) in paid.iter().zip(&world.stock).enumerate() {
+            if poor(cell) {
+                assert_eq!(*ran, 0, "poor cell {cell} initiated");
+                assert_eq!(*held, INFLUX, "poor cell {cell} was debited");
+            } else {
+                assert_eq!(
+                    *held, 0,
+                    "rich cell {cell} paid other than the price: it ran {ran} steps"
+                );
+            }
+        }
+        let partnered: Vec<usize> = drawn
+            .iter()
+            .filter(|(a, b)| !poor(*a) && poor(*b))
+            .map(|(a, _)| *a)
+            .collect();
+        assert!(!partnered.is_empty(), "no poor cell was drawn as a partner");
+        assert!(
+            partnered
+                .iter()
+                .all(|a| paid[*a] >= ADDING_INTERACTION_STEPS - 1),
+            "a poor partner cut its initiator's interaction short: {paid:?}"
+        );
+    }
+
+    /// The rule moves who runs and who pays, never who is drawn: the shuffle and every
+    /// partner draw are made whatever either cell holds, so both rules draw one sequence.
+    #[test]
+    fn the_initiator_rule_draws_the_partners_the_pair_rule_draws() {
+        let pair = Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            ..soup(16, 16)
+        };
+        DRAWN.take();
+        let paired = stepped(&pair, 7, 5);
+        let pair_draws = DRAWN.take();
+        let initiated = stepped(&initiator(pair), 7, 5);
+        let initiator_draws = DRAWN.take();
+
+        assert_eq!(pair_draws.len(), 5 * 256);
+        assert_eq!(initiator_draws, pair_draws);
+        assert_ne!(initiated.world_hash(), paired.world_hash());
+    }
+
+    /// A stock the initiator can always pay runs every interaction to `max_steps`, as the
+    /// soup with no stock does: the accounting itself moves no byte.
+    #[test]
+    fn an_initiator_that_can_always_pay_runs_the_soup_unchanged() {
+        let free = Params {
+            max_steps: 64,
+            ..soup(16, 16)
+        };
+        let stocked = initiator(Params {
+            energy_influx: 1_048_576,
+            energy_stock_cap: 1_048_576,
+            ..free.clone()
+        });
+        assert_eq!(
+            stepped(&stocked, 42, 20).tapes().bytes(),
+            stepped(&free, 42, 20).tapes().bytes()
+        );
+    }
+
+    /// The payer is dynamics, not structure: a child of a pair-rule parent may run the
+    /// initiator rule, carrying the parent's stocks and tags into a different economy.
+    #[test]
+    fn a_descendant_may_switch_to_the_initiator_rule() {
+        let params = descent_params();
+        let mut parent = stepped(&params, 11, DESCENT_EPOCH);
+        let mut child = World::descend(&initiator(params), 11, &parent.snapshot()).unwrap();
+        assert_eq!(child.stock, parent.stock);
+        assert_eq!(child.lineages, parent.lineages);
+
+        for _ in 0..5 {
+            parent.step();
+            child.step();
+        }
+        assert_ne!(child.world_hash(), parent.world_hash());
+    }
+
+    #[test]
+    fn an_unstocked_parent_descends_into_full_initiator_stocks() {
+        let child_params = initiator(descent_params());
+        let blob = stepped(&unstocked(&descent_params()), 11, DESCENT_EPOCH).snapshot();
+
+        let child = World::descend(&child_params, 11, &blob).unwrap();
+
+        assert_eq!(
+            child.stock,
+            vec![child_params.energy_stock_cap; child_params.cell_count()]
+        );
+    }
+
+    /// `World::from_snapshot` does not validate, so a resumed run may name the initiator
+    /// with no influx behind it. Like the steal op, the rule is then inert rather than a
+    /// read past an empty stock: the run is the plain soup.
+    #[test]
+    fn an_initiator_run_with_no_stock_resumes_as_the_plain_soup() {
+        let plain = unstocked(&descent_params());
+        let blob = stepped(&plain, 11, DESCENT_EPOCH).snapshot();
+        let mut child = World::from_snapshot(&initiator(plain.clone()), 11, &blob).unwrap();
+        let mut twin = World::from_snapshot(&plain, 11, &blob).unwrap();
+
+        for _ in 0..5 {
+            child.step();
+            twin.step();
+        }
+        assert_eq!(child.world_hash(), twin.world_hash());
+    }
+
+    /// The economy of the metabolism design at 32×32: the initiator pays `max_steps`, the
+    /// influx is an eighth of it, the cap eight prices, and the arithmetic ladder is
+    /// assayed every 8 epochs at a quarter of an influx per epoch per unit.
+    fn rewarded_params() -> Params {
+        Params {
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 1024,
+            energy_stock_cap: 65_536,
+            tasks: Tasks::Arith,
+            task_every: 8,
+            task_reward: 2048,
+            ..soup(32, 32)
+        }
+    }
+
+    fn unrewarded(params: &Params) -> Params {
+        Params {
+            task_reward: 0,
+            ..params.clone()
+        }
+    }
+
+    fn without_tasks(params: &Params) -> Params {
+        Params {
+            tasks: Tasks::Off,
+            task_reward: 0,
+            ..params.clone()
+        }
+    }
+
+    /// A random soup with its top quarter given an ECHO solver, `<!>` in front of the
+    /// cell's own bytes, so an assay has tapes to pay.
+    fn with_solvers(params: &Params, seed: u64) -> World {
+        let mut world = World::new(params, seed).unwrap();
+        for y in 0..params.height / 4 {
+            for x in 0..params.width {
+                let mut tape = world.cell(x, y).to_vec();
+                tape[..3].copy_from_slice(b"<!>");
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world
+    }
+
+    fn stepped_world(mut world: World, epochs: u64) -> World {
+        for _ in 0..epochs {
+            world.step();
+        }
+        world
+    }
+
+    /// The rewarded run's own pin: `rewarded_params` with a quarter of the cells solving
+    /// ECHO, seed 42, after 50 epochs.
+    const PINNED_TASK_REWARD_HASH: u64 = 0xace9_3173_c4dd_563f;
+
+    #[test]
+    fn the_task_reward_is_pinned() {
+        let params = rewarded_params();
+        let rewarded = stepped_world(with_solvers(&params, 42), 50);
+        assert_eq!(rewarded.world_hash(), PINNED_TASK_REWARD_HASH);
+        let twin = stepped_world(with_solvers(&unrewarded(&params), 42), 50);
+        assert_ne!(rewarded.world_hash(), twin.world_hash());
+    }
+
+    /// A reward of 0 runs no assay, so the control arm is the run with tasks off, byte for
+    /// byte and stock for stock, under either payer, assayed every epoch or every eighth.
+    #[test]
+    fn a_task_reward_of_zero_is_the_run_with_tasks_off() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            for task_every in [1, 8] {
+                let params = Params {
+                    energy_payer: payer,
+                    task_every,
+                    ..unrewarded(&rewarded_params())
+                };
+                let control = stepped_world(with_solvers(&params, 42), 30);
+                let off = stepped_world(with_solvers(&without_tasks(&params), 42), 30);
+                assert_eq!(control.world_hash(), off.world_hash(), "{payer:?}");
+                assert_eq!(control.stock, off.stock);
+            }
+        }
+    }
+
+    #[test]
+    fn determinism_holds_under_a_task_reward() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            for seed in [1, 2] {
+                assert_deterministic(
+                    &Params {
+                        max_steps: 64,
+                        energy_payer: payer,
+                        energy_influx: 8,
+                        energy_stock_cap: 256,
+                        tasks: Tasks::Arith,
+                        task_every: 3,
+                        task_reward: 4,
+                        ..soup(16, 16)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// Four tapes far enough apart that no two are ever paired, in a still soup of zero
+    /// tapes under `host`, where a zero initiator runs no code and a planted one writes
+    /// only into its zero partner: an ECHO solver, a solver of ECHO and INC on two slots,
+    /// a copier that never emits and a sprayer. The influx is the price, so every cell
+    /// initiates every epoch and pays it back, and a stock holds exactly what the assays
+    /// paid it.
+    fn paid_world(task_reward: u32) -> World {
+        let params = Params {
+            tape_len: 8,
+            mutation_rate: 0.0,
+            init: Init::Zero,
+            interaction: Interaction::Host,
+            max_steps: 64,
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 64,
+            energy_stock_cap: 400,
+            tasks: Tasks::Arith,
+            task_every: 8,
+            task_reward,
+            ..soup(8, 8)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        for (x, y, program) in [
+            (1, 1, &b"<!>"[..]),
+            (5, 1, b"<!+!>"),
+            (1, 5, b"{[.<>>{]"),
+            (5, 5, b"[!+]"),
+        ] {
+            let mut tape = program.to_vec();
+            tape.resize(8, 0);
+            world.set_cell(x, y, &tape);
+        }
+        world.stock.fill(0);
+        world
+    }
+
+    fn stock_at(world: &World, x: u32, y: u32) -> u32 {
+        world.stock[world.index(x, y)]
+    }
+
+    /// Epoch 0 pays each solver its units, ECHO 1 and ECHO with INC 3, at 100 a unit, and
+    /// nothing else; epochs 1 to 7 pay nothing; epoch 8 pays again, and the solver of two
+    /// tasks reaches the cap of 400, which the influx cannot then lift it past.
+    #[test]
+    fn a_solver_is_paid_its_units_at_each_assay_and_never_past_the_cap() {
+        let mut world = paid_world(100);
+        let read = |world: &mut World, epochs: u64| {
+            for _ in 0..epochs {
+                world.step();
+            }
+            [(1, 1), (5, 1), (1, 5), (5, 5)].map(|(x, y)| stock_at(world, x, y))
+        };
+        assert_eq!(read(&mut world, 1), [100, 300, 0, 0]);
+        assert_eq!(read(&mut world, 7), [100, 300, 0, 0]);
+        assert_eq!(read(&mut world, 1), [200, 400 - 64, 0, 0]);
+        assert!(world.stock.iter().all(|held| *held <= 400));
+        let others: u32 = world.stock.iter().sum::<u32>() - 200 - 336;
+        assert_eq!(others, 0, "a cell that solves nothing was paid");
+
+        let mut twin = paid_world(0);
+        assert_eq!(read(&mut twin, 9), [0, 0, 0, 0]);
+    }
+
+    /// The assay draws on its own stream and touches only the stocks: a rewarded world
+    /// whose stocks never gate an interaction holds the bytes its unrewarded twin holds.
+    #[test]
+    fn paying_for_tasks_moves_no_byte_by_itself() {
+        let paid = stepped_world(paid_world(100), 20);
+        let unpaid = stepped_world(paid_world(0), 20);
+        assert_eq!(paid.cells, unpaid.cells);
+        assert_ne!(paid.stock, unpaid.stock);
+    }
+
+    /// A descendant is a new run and is refused what a new run is refused: a reward with
+    /// no stock to pay into, the initiator with no stock to pay from.
+    #[test]
+    fn a_descendant_is_refused_params_validation_refuses() {
+        let plain = unstocked(&descent_params());
+        let blob = stepped(&plain, 11, DESCENT_EPOCH).snapshot();
+        let unpaid = Params {
+            tasks: Tasks::Arith,
+            task_reward: 64,
+            ..plain.clone()
+        };
+        for refused in [unpaid, initiator(plain.clone())] {
+            let error = World::descend(&refused, 11, &blob).unwrap_err();
+            assert!(
+                matches!(error, SnapshotError::InvalidParams(_)),
+                "{refused:?} descended: {error}"
+            );
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "a descendant's params are refused: {}",
+                    refused.validate().unwrap_err()
+                )
+            );
+        }
+        assert!(World::descend(&plain, 11, &blob).is_ok());
+    }
+
+    /// Resuming is not descending: a run already under way resumes whatever validation
+    /// would now say of its params.
+    #[test]
+    fn a_resumed_run_is_not_held_to_validation() {
+        let plain = unstocked(&descent_params());
+        let blob = stepped(&plain, 11, DESCENT_EPOCH).snapshot();
+        let refused = Params {
+            tasks: Tasks::Arith,
+            task_reward: 64,
+            ..plain
+        };
+        assert!(refused.validate().is_err());
+        assert!(World::from_snapshot(&refused, 11, &blob).is_ok());
+    }
+
+    fn task_digest(measured: &Metrics) -> String {
+        format!(
+            "task_share_echo={:?} task_share_inc={:?} task_share_dec={:?} task_share_add={:?} \
+             task_share_sub={:?} task_share_not={:?} task_share_double={:?} \
+             task_share_mul={:?} task_capability={:?} task_capability_loop={:?} \
+             dominant_tasks={:?} dominant_task_count={:?}",
+            measured.task_share_echo,
+            measured.task_share_inc,
+            measured.task_share_dec,
+            measured.task_share_add,
+            measured.task_share_sub,
+            measured.task_share_not,
+            measured.task_share_double,
+            measured.task_share_mul,
+            measured.task_capability,
+            measured.task_capability_loop,
+            measured.dominant_tasks,
+            measured.dominant_task_count,
+        )
+    }
+
+    /// The same sample with every task reading taken out, so the readings that existed
+    /// before them can be compared whole.
+    fn without_task_readings(measured: &Metrics) -> Metrics {
+        Metrics {
+            task_share_echo: None,
+            task_share_inc: None,
+            task_share_dec: None,
+            task_share_add: None,
+            task_share_sub: None,
+            task_share_not: None,
+            task_share_double: None,
+            task_share_mul: None,
+            task_capability: None,
+            task_capability_loop: None,
+            dominant_tasks: None,
+            dominant_task_count: None,
+            ..measured.clone()
+        }
+    }
+
+    const UNREAD_TASKS: &str = "task_share_echo=None task_share_inc=None task_share_dec=None \
+         task_share_add=None task_share_sub=None task_share_not=None task_share_double=None \
+         task_share_mul=None task_capability=None task_capability_loop=None \
+         dominant_tasks=None dominant_task_count=None";
+
+    /// The task observables of the reward-0 control of `rewarded_params`, a quarter of the
+    /// cells solving ECHO, seed 42, after 50 epochs, pinned apart from every digest above
+    /// (`docs/design_record.md`, 2026-10-01, the task observables).
+    const PINNED_TASKS: &str = "task_share_echo=Some(0.06640625) task_share_inc=Some(0.0) \
+         task_share_dec=Some(0.0) task_share_add=Some(0.0) task_share_sub=Some(0.0) \
+         task_share_not=Some(0.0) task_share_double=Some(0.0) task_share_mul=Some(0.0) \
+         task_capability=Some(0) task_capability_loop=Some(0) dominant_tasks=Some(0) \
+         dominant_task_count=Some(0)";
+    /// And of `task_world`'s planted solvers, where every reading has something to read.
+    const PINNED_PLANTED_TASKS: &str = "task_share_echo=Some(0.640625) \
+         task_share_inc=Some(0.0) task_share_dec=Some(0.20703125) task_share_add=Some(0.640625) \
+         task_share_sub=Some(0.0) task_share_not=Some(0.0) task_share_double=Some(0.0) \
+         task_share_mul=Some(0.0546875) task_capability=Some(3) task_capability_loop=Some(1) \
+         dominant_tasks=Some(9) dominant_task_count=Some(2)";
+
+    #[test]
+    fn the_task_observables_are_null_wherever_tasks_are_off() {
+        let mut off = World::new(&soup(16, 16), 42).unwrap();
+        assert_eq!(task_digest(&off.metrics()), UNREAD_TASKS);
+        assert_eq!(task_digest(&seeded_world().metrics()), UNREAD_TASKS);
+
+        let mut grid = World::new(&life(16, 16), 42).unwrap();
+        assert_eq!(task_digest(&grid.metrics()), UNREAD_TASKS);
+
+        let life_with_tasks = Params {
+            tasks: Tasks::Arith,
+            ..life(16, 16)
+        };
+        assert!(life_with_tasks.validate().is_err());
+        let blob = grid.snapshot();
+        let mut resumed = World::from_snapshot(&life_with_tasks, 42, &blob).unwrap();
+        assert_eq!(task_digest(&resumed.metrics()), UNREAD_TASKS);
+    }
+
+    #[test]
+    fn the_task_observables_of_a_fixed_seed_are_pinned() {
+        let params = unrewarded(&rewarded_params());
+        let mut control = stepped_world(with_solvers(&params, 42), 50);
+        assert_eq!(task_digest(&control.metrics()), PINNED_TASKS);
+        let mut planted = task_world(&[(0..10, ECHO_THEN_ADD), (10..13, b"<-!>"), (13..14, MUL)]);
+        assert_eq!(task_digest(&planted.metrics()), PINNED_PLANTED_TASKS);
+    }
+
+    /// The observables only read: a run with tasks on and no reward samples the task
+    /// readings beside every other one and is still the run with tasks off — the same
+    /// bytes, the same stocks, and the same value of every reading the two share, sample
+    /// for sample — under either payer.
+    #[test]
+    fn reading_the_tasks_moves_no_byte_and_no_other_observable() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            let params = Params {
+                energy_payer: payer,
+                ..unrewarded(&rewarded_params())
+            };
+            let mut control = with_solvers(&params, 42);
+            let mut off = with_solvers(&without_tasks(&params), 42);
+            for _ in 0..6 {
+                let (read, unread) = (control.metrics(), off.metrics());
+                assert!(read.task_share_echo.is_some());
+                assert_eq!(task_digest(&unread), UNREAD_TASKS);
+                assert_eq!(without_task_readings(&read), unread, "{payer:?}");
+                for _ in 0..5 {
+                    control.step();
+                    off.step();
+                }
+            }
+            assert_eq!(control.world_hash(), off.world_hash(), "{payer:?}");
+            assert_eq!(control.stock, off.stock);
+            assert_eq!(control.snapshot(), off.snapshot());
+        }
+    }
+
+    /// Reading a sample twice reads it the same: the draws are keyed by `(seed, epoch)`
+    /// alone, and the shares draw on a stream the dominant tape's assay does not.
+    #[test]
+    fn the_task_observables_draw_on_streams_of_their_own() {
+        let params = unrewarded(&rewarded_params());
+        let mut world = stepped_world(with_solvers(&params, 42), 20);
+        let first = world.metrics();
+        assert_eq!(task_digest(&world.metrics()), task_digest(&first));
+        let mut restored =
+            World::from_snapshot(world.params(), world.seed(), &world.snapshot()).unwrap();
+        assert_eq!(task_digest(&restored.metrics()), task_digest(&first));
+
+        let taken = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        for stream in [STREAM_TASK_SHARE, STREAM_TASK_DOMINANT] {
+            assert!(!taken.contains(&stream) && !draws.contains(&stream));
+        }
+        assert_ne!(STREAM_TASK_SHARE, STREAM_TASK_DOMINANT);
+    }
+
+    /// A still 16×16 soup of zero tapes, with each program planted at the front of every
+    /// cell of its rows.
+    fn task_world(plantings: &[(std::ops::Range<u32>, &[u8])]) -> World {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            tasks: Tasks::Arith,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 9).unwrap();
+        for (rows, program) in plantings {
+            let mut tape = program.to_vec();
+            tape.resize(params.tape_len as usize, 0);
+            for y in rows.clone() {
+                for x in 0..params.width {
+                    world.set_cell(x, y, &tape);
+                }
+            }
+        }
+        world
+    }
+
+    const ECHO_THEN_ADD: &[u8] = b"<!><<[->+<]>!>";
+    const MUL: &[u8] = b"<[-<[-<+<+>>]<<[->>+<<]>>>]<<!>>>";
+
+    /// A quarter of the cells credited with ECHO and ADD on two slots, a quarter with DEC,
+    /// one row with MUL and the rest zeros: ECHO, ADD and DEC are capabilities, MUL, at a
+    /// sixteenth of the cells, is not, and of the loop tasks only ADD is.
+    #[test]
+    fn the_capability_counts_the_tasks_a_tenth_of_the_cells_solve() {
+        let mut world = task_world(&[(0..4, ECHO_THEN_ADD), (4..8, b"<-!>"), (8..9, MUL)]);
+        let measured = world.metrics();
+
+        assert_eq!(measured.task_share_echo, measured.task_share_add);
+        for share in [measured.task_share_echo, measured.task_share_dec] {
+            let share = share.expect("tasks are on");
+            assert!((0.15..0.35).contains(&share), "{share}");
+        }
+        let mul = measured.task_share_mul.expect("tasks are on");
+        assert!(mul > 0.0 && mul < 0.1, "{mul}");
+        for share in [
+            measured.task_share_inc,
+            measured.task_share_sub,
+            measured.task_share_not,
+            measured.task_share_double,
+        ] {
+            assert_eq!(share, Some(0.0));
+        }
+        assert_eq!(measured.task_capability, Some(3));
+        assert_eq!(measured.task_capability_loop, Some(1));
+    }
+
+    /// The loop count reads ADD onwards only: a world of straight-line solvers is capable
+    /// of three tasks and of no loop.
+    #[test]
+    fn the_loop_capability_ignores_the_straight_line_tasks() {
+        let mut world = task_world(&[(0..16, b"<!+!--!++>")]);
+        let measured = world.metrics();
+        assert_eq!(
+            (
+                measured.task_share_echo,
+                measured.task_share_inc,
+                measured.task_share_dec
+            ),
+            (Some(1.0), Some(1.0), Some(1.0))
+        );
+        assert_eq!(measured.task_capability, Some(3));
+        assert_eq!(measured.task_capability_loop, Some(0));
+    }
+
+    /// The dominant tape's credit, as a bitmask in `task::TASKS` order: ECHO is bit 0 and
+    /// ADD bit 3. Where the most common tape solves nothing, it reads 0, not null.
+    #[test]
+    fn the_dominant_tape_reads_its_tasks_as_a_bitmask() {
+        let mut solved = task_world(&[(0..12, ECHO_THEN_ADD)]);
+        let measured = solved.metrics();
+        assert_eq!(measured.dominant_tasks, Some(0b1001));
+        assert_eq!(measured.dominant_task_count, Some(2));
+
+        let mut unsolved = task_world(&[(0..4, ECHO_THEN_ADD)]);
+        let measured = unsolved.metrics();
+        assert_eq!(measured.dominant_tasks, Some(0));
+        assert_eq!(measured.dominant_task_count, Some(0));
     }
 }

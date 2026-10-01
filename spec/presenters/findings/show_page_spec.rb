@@ -238,4 +238,68 @@ RSpec.describe Findings::ShowPage do
       expect(reading.treated.map { |arm| arm.params["interaction"] }).to eq(["host"])
     end
   end
+
+  context "with the lineage-diversity sweep" do
+    let(:finding) { Findings::Registry.find("lineages-after-emergence") }
+
+    before do
+      create(:experiment, slug: "lineage-diversity",
+                          param_grid: Lab::SWEEPS.fetch("lineage_diversity").fetch(:param_grid))
+    end
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.lineages_after_emergence.report).to be_a(Lab::LineageDiversityReading::Report)
+    end
+  end
+
+  context "with the lineage-diversity sweep missing" do
+    let(:finding) { Findings::Registry.find("lineages-after-emergence") }
+
+    it "has no reading" do
+      expect(page.lineages_after_emergence).to be_nil
+    end
+  end
+
+  context "with the from-emerged sweep" do
+    let(:finding) { Findings::Registry.find("copying-gets-faster-under-an-economy") }
+
+    before { from_emerged_experiment }
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.from_emerged.report).to be_a(Lab::DescendantReading::Report)
+    end
+  end
+
+  context "with the from-emerged sweep missing" do
+    let(:finding) { Findings::Registry.find("complexity-from-an-emerged-start") }
+
+    it "has no reading" do
+      expect(page.from_emerged).to be_nil
+    end
+  end
+
+  context "with the locality-emergence sweep" do
+    let(:finding) { Findings::Registry.find("emergence-peaks-at-intermediate-reach") }
+
+    before do
+      experiment = locality_emergence_experiment
+      locality_run(experiment, radius: 4, share: 0.9)
+    end
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.locality_emergence.report).to be_a(Lab::LocalityEmergenceReading::Report)
+    end
+
+    it "reads no exploratory sweep where sweep 12 is not in the lab" do
+      expect(page.locality_emergence).not_to be_exploratory
+    end
+  end
+
+  context "with the locality-emergence sweep missing" do
+    let(:finding) { Findings::Registry.find("emergence-peaks-at-intermediate-reach") }
+
+    it "has no reading" do
+      expect(page.locality_emergence).to be_nil
+    end
+  end
 end

@@ -5,14 +5,18 @@
 <p class="text-muted"><%= @show.experiment.description %></p>
 
 <dl class="facts">
-  <dt>Substrate</dt><dd><%= @show.experiment.substrate %></dd>
+  <dt>Substrate</dt>
+  <dd>
+    <%= @show.experiment.substrate %>
+    <% if @show.imports_objective? %><%= render "findings/objective_badge" %><% end %>
+  </dd>
   <dt>Status</dt><dd><%= @show.experiment.status %></dd>
   <dt>Epochs per run</dt><dd><%= number_with_delimiter @show.experiment.epochs %></dd>
   <dt>Runs finished</dt><dd><%= @show.finished_count %> / <%= @show.experiment.runs_count %></dd>
   <dt>Transition rate</dt>
   <dd>
     <% if @show.transition_rate.fraction %>
-      <%= @show.transitioned_finished %> of <%= @show.finished_count %> finished runs flagged
+      <%= @show.transitioned_finished %> of <%= @show.founding_finished_count %> finished runs flagged
       by the detector (<%= percent_value @show.transition_rate.fraction %>),
       <%= @show.emerged_finished %> confirmed by a replicator
     <% else %>
@@ -32,6 +36,7 @@
     <% @show.findings.each do |finding| %>
       <%= link_to finding.title, finding_path(finding) %>
       <span class="badge <%= finding.badge_class %>"><%= finding.status_label %></span>
+      <% if finding.imports_objective? %><%= render "findings/objective_badge" %><% end %>
     <% end %>
   </p>
 <% end %>
@@ -39,7 +44,7 @@
 <% if @show.axes.any? %>
   <% @show.arms.each do |axis, arms| %>
     <%= render @show.diagram_for(axis) %>
-    <% if @show.finished_count.positive? %>
+    <% if @show.founding_finished_count.positive? %>
       <%= render "experiments/arms_table", axis: axis, arms: arms %>
     <% end %>
     <% survival = @show.survivals.fetch(axis) %>
@@ -47,12 +52,16 @@
     <% unless survival.empty? %>
       <%= render "experiments/hazard_table", axis: axis, survival: survival %>
     <% end %>
-    <% series = @show.series.fetch(axis) %>
-    <% if series.lineage_charts.any? %>
-      <div class="chart-grid-2"><%= render series.lineage_charts %></div>
-    <% end %>
-    <% if series.complexity_charts.any? %>
-      <div class="chart-grid-2"><%= render series.complexity_charts %></div>
+    <%# The chart collections below name no partial the cache digest can find. %>
+    <%# Template Dependency: charts/arm_lines %>
+    <% cache @show.series_cache_key(axis) do %>
+      <% series = @show.series.fetch(axis) %>
+      <% if series.lineage_charts.any? %>
+        <div class="chart-grid-2"><%= render series.lineage_charts %></div>
+      <% end %>
+      <% if series.complexity_charts.any? %>
+        <div class="chart-grid-2"><%= render series.complexity_charts %></div>
+      <% end %>
     <% end %>
   <% end %>
 <% else %>
@@ -73,8 +82,33 @@
                                               plateau_band: @show.plateau_band %>
 <% end %>
 
+<% if @show.descendant_reading %>
+  <%= render "experiments/descendant_reading", reading: @show.descendant_reading %>
+  <%= render "experiments/heldout_reading", reading: @show.descendant_reading %>
+<% end %>
+
+<% if @show.metabolism_reading %>
+  <%= render "experiments/metabolism_reading", reading: @show.metabolism_reading %>
+<% end %>
+
+<% if @show.lineage_diversity_reading %>
+  <%= render "experiments/lineage_diversity_reading", reading: @show.lineage_diversity_reading %>
+<% end %>
+
+<% if @show.locality_emergence_reading %>
+  <%= render "experiments/locality_emergence_reading", reading: @show.locality_emergence_reading %>
+<% end %>
+
+<% if @show.reach_cap128_reading %>
+  <%= render "experiments/reach_cap128_reading", reading: @show.reach_cap128_reading %>
+<% end %>
+
 <% if @show.rescores? %>
   <%= render "experiments/rescores_table", summary: @show.rescore_summary %>
+<% end %>
+
+<% if @show.founding_finished_count.positive? %>
+  <%= render "experiments/oriented_arms", report: @show.oriented_arms, experiment: @show.experiment %>
 <% end %>
 
 <h2>Runs</h2>

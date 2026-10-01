@@ -99,4 +99,26 @@ RSpec.describe Experiments::Axis do
       expect(axis.log?).to be(true)
     end
   end
+
+  context "with a descendant sweep's treatments merged over a parent" do
+    let(:axis) { described_class.new(name: "treatment", values: Lab::SWEEPS.fetch("from_emerged")[:param_grid]["treatment"]) }
+    let(:parent) { Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0) }
+
+    it "names a child under its parent's params the continuation" do
+      expect(axis.label_of_run(parent)).to eq("continuation")
+    end
+
+    it "names a treated child by its treatment, not by the empty bundle it also matches" do
+      expect(axis.label_of_run(parent.merge("interaction" => "host"))).to eq("host")
+    end
+
+    it "keeps a priced bundle's numbers numeric" do
+      expect(axis.label_of(axis.values.second)).to eq(%w[2048 1024 32768 0.5].map { |n| Charts.format_value(n.to_f) }.join("×"))
+    end
+
+    it "lists every key any treatment sets" do
+      expect(axis.param_keys)
+        .to eq(%w[energy_influx steal_amount energy_stock_cap steal_loss interaction])
+    end
+  end
 end

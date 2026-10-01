@@ -57,6 +57,18 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   allocated, no cell is gated and the soup is exactly the substrate above. Independent of
   `energy_per_epoch`: a run may carry either, both (an interaction is then bounded by
   whichever is poorer) or neither.
+- **Energy payer** (`energy_payer`, default `pair`; docs/design_record.md 2026-10-01): who
+  pays for an interaction out of the stock. `pair` is the rule just described, and every
+  run before the parameter existed paid by it. Under `initiator` a cell initiates only when
+  its stock holds at least `max_steps`, the price of one interaction; a poorer cell is
+  passed over as initiator, but its partner is still drawn, so no RNG stream moves. The
+  interaction's budget is `max_steps`, and the initiator alone is debited the **full
+  price** whatever ran, so a copier that halts early saves nothing. The partner is never
+  gated and never debited, and steals settle as they do under `pair`. A cell's income is
+  then the rate at which it initiates, which `pair` cannot make it: there the poorer cell
+  sets the budget, both pay, and every cell initiates every epoch. `initiator` is refused
+  without an `energy_influx`, with an `energy_stock_cap` below `max_steps`, and beside an
+  `energy_per_epoch`. The rule is dynamics, not structure: a descendant may switch it.
 - **Steal op** (`steal_amount`, default `0` = off; `steal_loss`): with an amount set, the
   byte `$` (0x24) becomes an eleventh instruction on a world whose cells hold an energy
   stock. Each execution moves `steal_amount` of instruction energy out of the **partner**
@@ -81,6 +93,28 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   the byte is a no-op like any other non-instruction byte, nothing is settled and the soup is
   exactly the substrate above; an amount without an `energy_influx` behind it is refused,
   since there would be no stock to take from.
+- **Tasks and the emit op** (`tasks`, default `off`; `task_every`, default `8`;
+  `task_reward`, default `0`; docs/design_record.md 2026-10-01, the task assay): at
+  `tasks = arith` with a reward set, every `task_every` epochs, before the epoch's influx,
+  each cell's tape is **assayed** alone. Its live bytes T (length L) are followed by L zeros,
+  a fixed buffer of 2L that never grows and over which both heads wrap; the inputs sit at
+  `B[2L−1] = x` and `B[2L−2] = y`. The run executes the run's own `ops`, the steal byte is a
+  no-op, and the byte `!` (0x21) **emits** the byte under head0 to an output list. It stops
+  at the end of the buffer, on an unmatched bracket, after 4 096 steps or at the fourth
+  emit. Three cases are drawn per assay epoch, x and y uniform in 0..15, on their own
+  stream at (seed, epoch) and shared by every cell, and redrawn until they **separate the
+  tasks**: within each task the three expected outputs differ; no two tasks expect the
+  same three; the three x values differ, as do the three y values, and none is 0; and no
+  task's outputs sit a constant offset from x, or from y, unless the task is that offset of
+  that input everywhere. A task is credited when one output slot holds its value in all three cases.
+  The ladder, mod 256, is ECHO x, INC x+1, DEC x−1, ADD x+y, SUB x−y, NOT 255−x, DOUBLE 2x
+  and MUL x·y, worth 1, 2, 2, 4, 4, 8, 8 and 16 units; a cell is paid `task_reward` per
+  credited unit into its stock, capped at `energy_stock_cap`. A tape holding no `!` byte is
+  credited nothing and never run. `!` is an instruction **only inside the assay**: in the
+  soup it is a no-op like any other non-instruction byte, and like `$` it is not one of the
+  ten ops. A reward of `0` runs no assay at all, so the run is byte-identical to the same run
+  with `tasks = off`. A reward needs `tasks` on and an `energy_influx`, and `tasks` is
+  refused on life. The parameters are dynamics, not structure: a descendant may set them.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The
@@ -95,6 +129,21 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   tape, at `max_steps`, at the end of the host's code under an asymmetric `interaction`,
   or on an unmatched bracket. Heads wrap modulo the concatenation's
   current length — 2×`tape_len` unless the tapes have room to grow.
+  The interpreter skips work only where the skipped steps are fully determined, so every
+  run is byte-identical to one that executes every step. Two cases qualify. First, when
+  its whole state (buffer, instruction pointer, both heads) recurs at a jump back with no
+  byte changed in between, it adds as many whole periods of steps and steals as the budget
+  holds. Second, on a buffer that can no longer grow, a loop that closes twice on the same
+  bracket has its next lap noted: the acting steps (bracket tests, copies, increments)
+  with head offsets. Later laps replay those steps at the shifted heads instead of
+  stepping through the no-op bytes between them. Replay stops before a bracket that would
+  read the other way, and before a write that would change the lap's own code. The results
+  are the ones a run of every step gives: the buffer, the halt, the step count the economy
+  debits, and the steals it settles. An emerged world's copier loop spans tens of bytes
+  and never exits, so this is where its cost goes. Equivalence tests hold both skips to an
+  interpreter that runs every step, over random pairs, handwritten copiers and whole
+  emerged worlds (`docs/design_record.md`, 2026-09-25). `bff::first_image` still runs
+  every step.
 - **Mutation**: after every epoch each byte is replaced by a uniformly random byte with
   probability `mutation_rate` (default 1/4096 per byte per epoch... tune by measurement).
 - **Environmental structure** (`structure`, default `uniform` = off): with a structure
@@ -108,7 +157,13 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   (`init = zero`) — a control that must never produce replicators without mutation.
 - **Determinism**: a run is fully determined by `(params, seed)`. Same inputs, same
   bytes, on native and on wasm. RNG is `xoshiro256**` seeded from the run seed; per-epoch
-  visiting order and neighbour choice come from that stream only.
+  visiting order and neighbour choice come from that stream only. A **descendant** run,
+  which starts from a finished parent run's stored world instead of an initial state, is
+  fully determined by `(parent run's world at parent_epoch, params, seed)`, its epoch count
+  continuing the parent's; it may change the parent's dynamics but not the world's shape
+  (`docs/design_record.md`, 2026-09-25, "Runs that start from an emerged world"). Its
+  params are validated as a new run's are, and refused at descent; a resumed run is not
+  re-validated, so it keeps resuming however validation has tightened since it started.
 
 The ordinary Game of Life (`B3/S23`) is also shipped, as the `Life` substrate, because it
 is what visitors recognise. It shares the viewer and the run pipeline but no research
@@ -127,6 +182,23 @@ claim rests on it.
   tape passed. A tape at the edge of the test passes or fails at random, so this is what
   says whether a count of 0 is an empty world or a draw that missed.
 - `replicator_count_mean`: the mean of what those 8 draws counted.
+- `replicator_share` / `replicator_share_rotated` / `dominant_self_replicates`: the
+  **orientation-aware companions** of the census. `replicator_share` is the share of 256
+  cells, drawn uniformly with replacement, whose tape passes the orientation-aware detector
+  (below) aligned; `replicator_share_rotated` reads the same draw under the detector's best
+  rotation, so it is never below the first; `dominant_self_replicates` says whether the
+  dominant tape — the one `dominant_replicates` describes — passes aligned.
+  `replicator_count` and `copy_rate` stay exactly as locked, and they are orientation-blind
+  by definition: each asks for a copy in the tape's own orientation. These companions exist
+  because the dominant replicators of the corpus copy themselves in **reverse**, which both
+  locked readings count as nothing (docs/design_record.md 2026-09-25). They draw from
+  streams of their own, a pure function of `(seed, epoch)`, and write nothing back, so no
+  run and no other observable moves. The census's `top_k` window does not bound them: the
+  cells are drawn from the whole world. Null on the life substrate and on every sample
+  recorded before they existed. Read over every stored world of the finished corpus, they
+  find a colony at the end of 74 runs where the census finds 1; whether the census, the
+  emergence confirmation and the persistence readings relock on them is the user's to decide
+  (docs/design_record.md 2026-09-25, "The corpus read by the orientation-aware detector").
 - `entropy_bits`: Shannon entropy of the byte distribution.
 - `alphabet_size`: how many of the 256 byte values the world still holds, 1–256. Only
   `+` and `-` can mint a byte value, so with `mutation_rate = 0` the alphabet is a
@@ -144,18 +216,49 @@ claim rests on it.
   halves of equal length both readings are the plain equality they always were. Replication caught in situ, so it sees the replicators the
   replicator test misses — those that only copy with a kin partner or into a particular
   layout. Counted only on the epochs a sample reads; the life substrate reports 0.
+- `reverse_copy_rate`: `copy_rate` with the image reversed — the share of the same
+  interactions that ended with one half holding the byte-exact **reverse** of the tape its
+  partner arrived with, read from the half's first byte over the partner's arriving length,
+  among the pairs that did not arrive that way. A companion (docs/design_record.md
+  2026-09-25): `copy_rate` is untouched by it to the bit. A palindrome's copy satisfies both
+  rules and counts in both rates. Counted only on the epochs a sample reads; the life
+  substrate reports 0, and every sample recorded before it existed carries none.
 - `distinct_lineages`: how many lineage ids the cells hold. Every cell starts its own at
   init; after an interaction a cell takes its partner's lineage id when the tape it ends
   with is closer — Hamming distance over the tape's bytes — to the tape its partner
   arrived with than to the tape it arrived with itself, and keeps its own on a tie. The
   reading counts descent rather than shape, so two lineages that drifted onto the same
-  tape still read as two. Tags sit beside the tapes: they are never written into a tape,
-  never drawn from the RNG stream, and mutation never moves one, so a run's bytes are what
-  they were before lineages existed. A snapshot (format version 3) carries the tags beside
+  tape still read as two. How "closer" is read is the **lineage rule** (`lineage_rule`,
+  default `aligned`; docs/design_record.md 2026-09-25). At `aligned` both distances are
+  Hamming distance byte for byte, the rule every run before the parameter used and still
+  uses. At `oriented` each is the smaller of the distance to the arriving tape and to its
+  reverse — its live bytes last to first, read from the cell's first byte as
+  `reverse_copy_rate` reads a reverse copy — so a cell overwritten by `reverse(A)` takes
+  `A`'s tag. The own tape is oriented as well as the partner's, so neither side of the
+  comparison is given a reading the other is not, and a cell whose own bytes came back to
+  it reversed keeps its tag; the tie still keeps the cell's own tag. The rule is dynamics,
+  not structure: it moves no byte and draws nothing, so a world's bytes are the same
+  under both rules and only the tags differ, and a descendant may switch it. Tags sit
+  beside the tapes: they are never written into a tape, never drawn from the RNG stream,
+  and mutation never moves one, so a run's bytes are what they were before lineages
+  existed. A snapshot (format version 3) carries the tags beside
   the tapes, so a run resumed from one continues the census it was keeping; a version 1 or
   2 blob, written before the tags existed, restores with one id per cell. The life
   substrate reports 0.
 - `top_lineage_share`: fraction of cells held by the largest lineage.
+- `lineage_effective_count` / `lineages_over_one_percent`: how many lineages the world is
+  split between, read as diversity rather than as a count of tags. The first is the
+  **inverse Simpson index** of the lineage shares, `1 / Σ pᵢ²` over the tags the cells hold,
+  computed as `N² / Σ nᵢ²` in integers so the one division is the only rounding: 1 for a
+  monophyletic world, k for k equal lineages. `distinct_lineages` counts every tag, and
+  every cell starts with a tag of its own, so the relics of cells no copy ever reached
+  inflate it; they barely move the index. The second counts the tags that each hold **at
+  least 1%** of the cells (`metrics::LINEAGE_FLOOR_PERCENT`, inclusive). They are read off
+  the tags alone, draw nothing and move no byte; the life substrate reports 0, and every
+  sample recorded before they existed carries none. They are the reading of rung 2's
+  `lineage-diversity` sweep (docs/design_record.md 2026-09-25) and are **live-only**:
+  `oriented_census/2` does not read them, because an instrument version never changes
+  once readings exist under it, and that sweep samples them as it runs.
 - `lineage_variation`: heredity with variation, measured, in bytes per cell. Rank the
   lineages that hold **at least 2 cells** by population and take the 8 largest (ties by
   lowest lineage id). For each the reading takes that lineage's **modal tape** — the tape
@@ -167,6 +270,18 @@ claim rests on it.
   alone in its lineage sits at distance 0 from itself, and the crowd of them a young soup
   carries would dilute a drifting colony to nothing. The 8 is a constant of the engine
   (`metrics::VARIATION_TOP_LINEAGES`), not a parameter. The life substrate reports 0.
+- `lineage_variation_oriented`: `lineage_variation` read after each member of those same
+  lineages is put **the way round** — its live bytes as they are, or last to first — that is
+  Hamming-closer to its lineage's modal tape, a tie keeping it as it is; the modal tape and
+  the pooled mean are then read exactly as above, over the oriented members. A companion
+  (docs/design_record.md 2026-09-25): the emerged replicators copy themselves in reverse, so
+  a lineage of near-clones is half `X` and half `reverse(X)`, and the aligned reading counts
+  every reversed member as most of a tape of variation. A tape that grew is reversed over
+  its own live length, never over its slot. The lineage tags themselves are inherited by
+  the run's lineage rule above; under the default `aligned` rule a takeover by a reverse
+  copier leaves one lineage holding unrelated tapes, and neither reading can see past
+  that — which is what `lineage_rule = oriented` is for. It draws nothing; the life
+  substrate reports 0, and every sample recorded before it existed carries none.
 - `conserved_core_bytes` / `conserved_core_ops`: what the largest lineage holds
   invariant across its members — the reading that tells a conserved copy loop with junk
   around it from turnover at a flat size, which `lineage_variation` alone cannot. The
@@ -185,6 +300,12 @@ claim rests on it.
   holds two cells, on the life substrate, and on every sample recorded before they existed.
   The reading costs one pass over the top lineage's tapes — members × tape length — per
   sample.
+- `conserved_core_bytes_oriented` / `conserved_core_ops_oriented`: the same two counts over
+  the same lineage, read after each member is put the way round that is Hamming-closer to
+  that lineage's modal tape, as `lineage_variation_oriented` puts them. A lineage of a tape
+  and its reverse agrees aligned only on the positions the two happen to share, and on its
+  whole length oriented. Null exactly where the aligned counts are, and on every sample
+  recorded before they existed.
 - `copy_cost`: interpreter steps per byte-exact copy by the **dominant replicator** — the
   most populous tape among the `top_k` tested that passes the replicator test. The test
   already executes four trials per tape; the reading is the **median** of the steps the
@@ -193,6 +314,22 @@ claim rests on it.
   It is read off the runs the test performs — same order, same stream, no trial re-run —
   so it moves no tape byte and draws nothing. The hand-written replicator of the engine's
   test suite costs 1 794 steps.
+- `copy_latency` / `copy_latency_orientation`: how soon the **dominant tape** — the tape
+  `dominant_replicates` describes — has written itself: the interpreter step at which the
+  partner half first holds a complete byte-exact image of the tape, **in either
+  orientation**, whatever the program goes on to do. A companion of `copy_cost`
+  (docs/design_record.md 2026-09-25), which stays as locked: it prices a copy that halted,
+  and is undefined for the reverse copiers that dominate every emerged world, whose loop
+  never exits and runs out `max_steps`. The setup is the orientation-aware detector's —
+  the fixed `2·len` buffer, a fresh noise partner, `max_steps` — one generation per trial
+  over `SELF_REP_TRIALS` (5) trials, on a stream of its own. The reading is the **median**
+  trial, a trial that never completes an image ranking after every one that does, so it is
+  null where fewer than half the trials complete one; the orientation is that trial's —
+  `forward`, `reverse`, or `both` for a palindrome. The watch runs in a replica of the
+  interpreter kept only for this reading, pinned step for step against it, so the soup's own
+  interactions pay nothing for it. The hand-written replicator reads 1 790 steps forward, four
+  before it halts; a reverse copier that copies a byte every four steps reads `4L − 1`,
+  reverse. Null on the life substrate and on every sample recorded before they existed.
 - `dominant_compressed_len` / `dominant_instruction_count` / `dominant_replicates`: how much
   tape the **dominant tape** is, read two ways — the length in bytes of its tape under the
   same zlib compressor `compress_ratio` uses, and how many of its bytes the run's own
@@ -243,6 +380,31 @@ claim rests on it.
   tells an arm where theft never evolved from one where it was suppressed — or never
   possible. 0 wherever the steal op is off, which is every run at the defaults, and on the
   life substrate.
+- `task_share_echo` / `task_share_inc` / `task_share_dec` / `task_share_add` /
+  `task_share_sub` / `task_share_not` / `task_share_double` / `task_share_mul` /
+  `task_capability` / `task_capability_loop` / `dominant_tasks` / `dominant_task_count`:
+  the **task observables** (docs/design_record.md 2026-10-01, the task observables). Each
+  `task_share_*` is the share of 256 cells (`task::TASK_SAMPLE_CELLS`), drawn uniformly
+  with replacement, whose tape the task assay of §1.1 credits with that task; the cases
+  and then the cells are drawn on `STREAM_TASK | 1` at `(seed, epoch)`, and each distinct
+  tape is assayed once. `task_capability` counts the tasks whose share is at least 1/10,
+  compared in integers (26 of 256 or more); `task_capability_loop` counts the same over
+  ADD, SUB, NOT, DOUBLE and MUL, the tasks whose minimal program needs a loop.
+  `dominant_tasks` is the credit of the census's dominant tape — the one
+  `dominant_replicates` describes — as a bitmask in ladder order (ECHO 1, INC 2, … MUL
+  128), on cases of its own drawn on `STREAM_TASK | 2`; `dominant_task_count` is its
+  popcount. They are read whenever `tasks` is not `off`, paid for or not, and only read:
+  they draw on no stream the run, the payment or any other observable draws on and write
+  nothing, so a run with `tasks = arith` and `task_reward = 0` is still the run with
+  `tasks = off` byte for byte and stock for stock, with every other observable the same,
+  and the control arm carries the readings its treatment does. On restored emerged worlds
+  (128×128, 2 800 to 11 300 cells holding a `!`) they cost under about 1% of a sample
+  interval at `sample_every` 10, within the machine's noise. Null wherever `tasks = off`,
+  on the life substrate, and on every sample recorded before they existed. They are
+  **live-only**: neither `oriented_census/1` nor `/2` reads them, since an instrument
+  version never changes once readings exist under it, and the sweep that needs them
+  samples them as it runs. The run page names `dominant_tasks` rather than printing the
+  number, and draws the other eleven.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <=
   0.61 x baseline` **and** `op_density <= 0.9` **and** `alphabet_size >= 16`, where
@@ -252,9 +414,9 @@ claim rests on it.
   values, `op_density` exactly 1.0, `copy_rate` 0). Null until it happens, and null for a
   run with no sample inside the baseline window or none past it. The primary dependent
   variable of every sweep is this number. It was a constant `compress_ratio < 0.6` until
-  the 2026-09-21 record entry relocked it: a fresh soup's ratio depends on `max_tape_len`,
+  the 2026-10-01 record entry relocked it: a fresh soup's ratio depends on `max_tape_len`,
   so the constant threshold measured different falls at different caps (docs/design_record.md,
-  2026-09-19 and 2026-09-21). The engine's tracker is the single authority on this rule;
+  2026-09-19 and 2026-10-01). The engine's tracker is the single authority on this rule;
   Rails only re-reads stored samples by it, from the one place that spells the predicate
   out (`Lab::TransitionRule`) — to recover the epoch of a run measured before the tracker
   read it this way (`Runs::TransitionEpochService`) and to read what became of the world
@@ -272,7 +434,9 @@ claim rests on it.
   crossing would be judged against a baseline the first one contaminated. Everything read
   *after* a transition, `Runs::PersistenceSummaryService` included, is read by the rule
   above, whose window every such sample lies outside by construction
-  (docs/design_record.md, 2026-09-21).
+  (docs/design_record.md, 2026-10-01). A descendant starts past the window, so it has no
+  transition on either rule; its persistence is read from `parent_epoch` against the
+  baseline of the founding run its world descends from.
 - `transition_epoch_constant` (per run, once): the same measurement read against the
   constant threshold the observable was defined by before the relock — the first sampled
   epoch at which `compress_ratio < 0.6` and the next 3 samples do too, under the same two
@@ -288,7 +452,34 @@ holding a tape that passed. The trial is seeded per epoch, so a rescore of a sto
 is comparable only with the live sample at the same epoch (docs/design_record.md
 2026-09-18). The census runs the test **8 times**, each draw on its own seeded stream and
 a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
-`replicator_pass_rate` and `replicator_count_mean` read across all eight.
+`replicator_pass_rate` and `replicator_count_mean` read across all eight. The test asks for
+`T` itself in the partner, so a tape that writes `reverse(T)` fails it however exactly it
+copies; it stays locked as it is, and the orientation-aware detector below reads beside it.
+
+**Orientation-aware detector** (`replicator::self_replicates`, modelled on the 2026 BFF
+paper's Algorithm 1 and cubff's `CheckSelfRep`): a chain of **5** runs, each the soup's own
+interaction — the tape of the moment and fresh seeded noise of its length on the fixed
+`2·len` buffer, `max_steps` as the run's. After each run the partner half carries forward
+into the first half and fresh noise refills the second; after the fifth, the first half —
+the fourth copy down the chain — is compared with the original, position by position. The
+chain is odd so that a tape whose copy is its own reverse is read after an even number of
+copies, back in its own orientation. **5** independent chains per tape; a position agrees
+when a strict majority of them hold the original byte there, and the tape passes
+**aligned** when at least **3 of every 4** positions agree (the paper's 48 of 64 bytes, as
+a ratio of integers so it scales to any length). It passes **rotated** when some cyclic
+rotation of the comparison, one rotation for all five chains, passes the same bar — a
+separate boolean, so the aligned reading stays the paper's. It departs from the paper in
+three places, each toward a stricter or plainer reading: 5 chains where the paper runs 9
+(cubff 13), and a position agrees on a strict majority of them where the paper asks for 3
+of its 9 (cubff more than 3 of 13); only the carried first half is scored, where both also
+score how far the chains' second halves agree with one another and keep the smaller score;
+and every run draws fresh noise, where cubff reuses one chain's noise down its runs. The
+census companions run it on **256** cells a sample. The chain length, the trials, the 3/4
+and the 256 are constants of the engine (`replicator::SELF_REP_*`), exported through
+`runner schema` under `self_replication`; they are not parameters. Measured on the
+terminal worlds of runs 1007, 1029 and 1087 (128×128, every interaction running out the
+step budget), one sample's companions cost about 4% (3.7–4.1%) of the ten epochs they
+sample.
 
 ### 1.3 The sweeps (in order; each is one `Experiment`)
 
@@ -349,7 +540,11 @@ a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
    the richest, and never the zero a smaller amount would round to. Every arm runs 90 seeds,
    the control included: every priced arm so far lowered the emergence rate, the reading
    needs two emerged runs, and thirty seeds of this very substrate — sweep 8's 128 and 256
-   arms — left one emerged run under each cap.
+   arms — left one emerged run under each cap. Three arms then run seeds 1–270
+   (`docs/design_record.md`, 2026-09-25): `(2^11, 2^10)` at cap 128, the one priced arm that
+   read keeps rising at 90 seeds, on one of two measured runs, and its `(0, 0)` control at
+   cap 128, so more emerged runs decide it; and the `(0, 0)` control at cap 256, whose
+   emerged worlds join cap 128's as the parent pool of runs started from an emerged world.
    Dependent variables: `transition_epoch` and the confirmed `emergence_epoch` as in every
    sweep, then `dominant_instruction_count` and `conserved_core_bytes` as the complexity
    pair, with `dominant_compressed_len` and `steal_rate` beside them.
@@ -377,6 +572,11 @@ a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
    whose `steal_rate` never leaves zero reads **"theft never evolved"**, never "theft does
    not help": the op was available and no lineage picked it up — while an arm no
    `steal_rate` was ever sampled on reads **unmeasured**, which is no null at all.
+   **Outcome** (`docs/design_record.md`, 2026-09-27): read at 270 seeds, `(2^11, 2^10)` at
+   cap 128 no longer keeps rising — 1 rising and 3 plateauing of 8 measured runs, neither —
+   and both controls read neither, so no priced arm the rule reads keeps rising; two
+   unextended arms hold one measured run each, which rises, so the verdict is unresolved and
+   the finding stays `partial`.
 
 10. **Asymmetric execution** — does complexity keep rising when only one partner's code
     runs? Sweep 9 prices energy; this one prices *whose program runs*. Under
@@ -412,6 +612,81 @@ a pure function of `(seed, epoch, draw)`: `replicator_count` is draw 0, and
     lineages from fixating. Refuted if the `host` arms plateau where their own `concat`
     controls plateau — same caps, same rate, same world — which would say an asymmetric
     interaction buys this substrate no structure.
+11. **From an emerged world** — does an existing replicator keep getting more
+    complicated once a treatment is switched on, and does it hold at all? A descendant
+    sweep: every run starts from the terminal world of a sweep-9 economy-off control whose
+    orientation-aware census reads at least half replicators, and continues it under its
+    parent's own dynamics (the control), sweep 9's rising priced arm, the rich economy, or
+    host mode — seeds 1001–1003 under every treatment, paired by (parent, seed), 20 000
+    epochs past the parent. Readings per child over its own samples: persistence (held or
+    relapsed, on `replicator_share`) and complexity (`dominant_instruction_count` over the
+    samples whose dominant tape self-replicates), with paired sign tests against the
+    continuation. Pre-registered in `docs/design_record.md`, 2026-09-25, "Runs that start
+    from an emerged world", whose numbers live in `Lab::DescendantReading`.
+    **Result** (2026-09-28, final, 216 children of 18 parents): H-economy is not read at
+    either economy (each relapses more than the continuation; 8192's 12-to-1 is carried by
+    parents 1029 and 1103), H-host is refuted, and H-persistence is refuted by 2 of 54
+    continuations. The held-out confirmatory reading on 8 unseen parents (2026-09-25, #263)
+    shows H3-latency at both economies — 20 and 21 of 24 pairs, p = 0.00077 and 0.00014,
+    median latency ratio 0.82 and 0.75 against the continuation's 1.11 — and refutes or does
+    not show H4-survivors; findings `copying-gets-faster-under-an-economy`, `published`, and
+    `complexity-from-an-emerged-start`, `negative`.
+12. **Lineage diversity** — rung 2's diversity half of item 3: after a transition, does a
+    world stay polyphyletic, and do more lineages survive as a cell's reach shrinks?
+    Radius `{1, 2, 4, 0 = well-mixed}` at 128², fixed 64-byte tapes, the emergent mutation
+    rate and `lineage_rule = oriented`, seeds 1–90 per arm, 20 000 epochs. Per emerged run
+    (census-confirmed emergence plus `replicator_share ≥ 0.5` after it), the last-decile
+    median `lineage_effective_count` reads polyphyletic (≥ 2), monophyletic (< 1.5) or
+    between; the trend across the arms is a one-sided Jonckheere–Terpstra test with a
+    permutation p, and the hypothesis is shown only where the shortest read reach is also
+    polyphyletic.
+    Pre-registered in `docs/design_record.md`, 2026-09-25, "Lineage diversity after a
+    transition", whose numbers live in `Lab::LineageDiversityReading`.
+    **Result** (2026-09-27, final): none of the 32 emerged worlds stayed polyphyletic — 27
+    monophyletic, 5 between, median effective count 1 in every arm — and the trend is
+    neither shown nor refuted (p = 0.079); finding `lineages-after-emergence`, `negative`.
+13. **Locality and emergence** — the speed half of item 3 again, on how often a world
+    crosses at all: does emergence peak at an intermediate reach? Sweep 12's world (128²,
+    fixed 64-byte tapes, the emergent rate, `lineage_rule = oriented`) at radius
+    `{1, 2, 3, 4, 6, 8, 0 = well-mixed}`, fresh seeds 91–180 per arm, 20 000 epochs, 630
+    runs, emergence read by sweep 12's rule. H-peak, confirming sweep 12's exploratory
+    counts: radius 4 emerges more often than radius 1 and than well-mixed, two one-sided
+    Fisher exact tests Holm-corrected at family α = 0.05. H-shape: over the finite radii, a
+    logistic regression on radius and radius² whose radius² coefficient is negative at Wald
+    p < 0.05 with its fitted peak between radius 2 and 6. Pre-registered in
+    `docs/design_record.md`, 2026-09-27, "Does emergence peak at an intermediate reach?",
+    whose numbers live in `Lab::LocalityEmergenceReading`.
+    **Result** (2026-10-01, final): radius 4 emerged 16/90 against 4/90 at radius 1 and 3/90
+    well-mixed (Holm p = 0.0039, 0.0027) and the fit bends down (b₂ = −0.114, Wald p = 0.0041)
+    with its peak at radius 4.1 — both hypotheses shown; finding
+    `emergence-peaks-at-intermediate-reach`, `published`.
+14. **Reach with room to grow** — does item 13's reach effect carry to growable tapes, and
+    does it give rung 4 a pool of parents? Sweep 9's economy-off cap-128 control (128²,
+    `tape_len` 64 growing to `max_tape_len` 128, the emergent rate, the economy off) at
+    radius 4 with `lineage_rule = oriented`, seeds 1–270, 20 000 epochs, 270 runs.
+    Emergence is read identically in both arms off the stored worlds: a confirmed
+    `emergence_epoch` and an `oriented_census/1` reading of a kept world at or after it with
+    `replicator_share ≥ 0.5`, counted once a readings pass has read every kept world.
+    H-reach128: radius 4 emerges more often than that control's 11 of 270 at radius 1, one
+    one-sided Fisher exact test at p < 0.05. Emergence time, terminal share and the dominant
+    tape's raw length and instruction count are descriptive; an emerged world whose terminal
+    share is at least 0.5 is an eligible parent, and no later parent rule is locked.
+    Pre-registered in `docs/design_record.md`, 2026-10-01, "Does the reach effect carry to
+    growable tapes?", whose numbers live in `Lab::ReachCap128Reading`.
+15. **Metabolism** — does complexity rise once computing pays? The substrate of §1.4, a
+    descendant sweep from the from-emerged sweep's 18 parents under its own parent rule. Two
+    arms merged over each parent's params, sharing the `initiator` economy (influx 1 024,
+    cap 65 536, no theft) and the arithmetic assay every 8 epochs: **reward** at a
+    `task_reward` of 2 048 and **no reward** at 0. Seeds 2001–2003, 40 000 epochs past the
+    parent, priority 40, 108 children. Each reward child is paired with its twin of the same
+    (parent, seed) and read past #263's 1 000-epoch settling window, pairs with an extinct
+    child left out; three one-sided sign tests at p < 0.05: H-capability (last-decile median
+    `task_capability`), H-ladder (the same on `task_capability_loop`, the rung-4 question)
+    and H-complexity (the from-emerged rise rule on pairs that neither relapsed), each also
+    re-read without the four parents the design study piloted. Pre-
+    registered in `docs/design_record.md`, 2026-10-01, "Metabolism: a second, labelled
+    substrate that imports an objective", whose numbers live in `Lab::MetabolismReading`;
+    `lab:metabolism_report` reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -424,6 +699,23 @@ and the seed of every run.
 Emergence is the first rung, not the whole programme. The ladder above it — persistence,
 heredity with variation, adaptation, open-ended evolution — with the observable and the
 refutable sweep for each, is the "evolution programme" entry in `docs/design_record.md`.
+
+### 1.4 Metabolism: a second, labelled substrate that imports an objective
+
+Everything above keeps fitness out: a tape is selected only for getting itself copied.
+**Metabolism** is the one place an objective is imported. In the engine it is Soup plus
+opt-in parameters — the `initiator` payer, under which a cell's income is the rate at which
+it can initiate, and the task assay, which pays a cell energy for computing arithmetic on
+inputs the environment gives it (§1.1) — and the engine-side `substrate` stays `soup`. In
+the record and on the site it is a second substrate: every run with `task_reward > 0` is a
+Metabolism run, its runs are never pooled with fitness-free arms, its findings carry an
+"imports an objective" badge, and rung 4 on Soup stays "not shown" whatever it reads. It is
+read as a test of the record's explanation of the plateau (2026-09-16), "a byte off the copy
+path costs nothing and buys nothing": if complexity rises when paid and not in the unpaid
+twin under the same economy, the plateau was "nothing pays". Chosen 2026-10-01 as option 4
+of the 2026-09-24 entry; its sweep is §1.3 item 15, pre-registered in
+`docs/design_record.md`, 2026-10-01, "Metabolism: a second, labelled substrate that imports
+an objective".
 
 ## 2. Architecture
 
@@ -458,6 +750,22 @@ docs/              this file, design_record.md, findings
   world stored can sit well after the epoch the observable names, GitHub #185),
   `transition` (the sample that settled the transition) or `census` (the replicator census
   rising off zero, at most one per `snapshot_every` epochs).
+- **Readings from stored worlds live in `snapshot_readings`, never in `samples`.** A
+  pass over the corpus restores a kept world at `source_epoch`, steps it a few epochs
+  and reads it with a named, versioned instrument (`oriented_census/1`); the runner posts
+  the engine's values to `POST /api/runs/:id/readings`, keyed `(run, instrument, epoch)`
+  so a repeat pass overwrites. Samples are the live record, written only while the run
+  runs, and an instrument added later must not rewrite that record or pass for it.
+  Readings outlive the worlds they came from: pruning snapshots never deletes them.
+  `runner readings-corpus` is that pass for the orientation-aware observables: it reads
+  the census companions at each stored epoch E (with `replicator_count` as the control
+  against the live sample), then steps to the next sample epoch E′ and reads both copy
+  rates there, which is the only place a restored world can count them. What an instrument
+  version reads never changes once readings exist under it: `oriented_census/2` reads
+  everything `/1` reads and adds `lineage_variation_oriented`, the oriented conserved core
+  and `copy_latency` with its orientation, each beside the aligned reading it accompanies.
+  It is a pass of its own (`--instrument oriented_census/2`); `/1` stays the default, and
+  every summary that reads `/1` goes on reading it.
 - **The runner is a stateless worker.** In lab mode it polls `POST /api/runs/claim` with
   a bearer token, executes the run, streams sample batches to
   `POST /api/runs/:id/samples`, snapshots to `POST /api/runs/:id/snapshots`, and finishes
@@ -465,7 +773,10 @@ docs/              this file, design_record.md, findings
   seconds it covers (`interval_seconds`, optional) which the app sums into the run's
   `compute_seconds`, so a run's cost survives resumes. A run claimed but not
   heartbeated for 5 min is released. Several runs execute in parallel (one thread each,
-  `RUNNER_PARALLELISM`, default = cores − 2).
+  `RUNNER_PARALLELISM`, default = cores − 2). A descendant run (the claim carries
+  `parent_run_id` and `parent_epoch`) with no snapshot of its own starts from its parent's
+  stored world at `parent_epoch` under its own params and seed (`World::descend`), and
+  fails rather than ever starting from soup when that world cannot be fetched or read.
 - **The viewer** is a `<canvas>` driven by the wasm build through one Stimulus controller.
   The engine exposes `World.new(params_json, seed)`, `step(n)`, `render_rgba(buffer)`,
   `metrics_json()`. No other custom JavaScript.
@@ -495,6 +806,12 @@ Copied from the `grid_commanders`/`stock_market` pattern on the mini-pc
   binary in lab mode, talking to `app`), `cloudflared` (token from `.env`).
 - `deploy/deploy`: fetch + ff-only merge, build, `up -d`, wait healthy, roll back to the
   `:previous` image on failure. Same shape as `grid_commanders/deploy/web/deploy`.
+  App and runner are separate images, built with `BUILDX_NO_DEFAULT_ATTESTATIONS=1` so
+  that an app-only change leaves the runner's image ID, and its container, untouched.
+  After a healthy deploy it prunes the dangling images labelled with its own compose
+  project, at once and never with `-a` (the `:previous` tags stay for rollback); the
+  build cache is left alone, since `docker builder prune` cannot be scoped to one
+  project and the sibling stacks share it.
 - `deploy/systemd/`: nightly `pg_dump` timer like the stock market one.
 - Cloudflare: one tunnel `life-simulator` in the existing account, public hostname
   `simulator-life.com` → `http://app:8080`.

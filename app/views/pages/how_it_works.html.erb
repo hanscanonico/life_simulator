@@ -118,6 +118,20 @@
     <dt class="mono">replicator_count_mean</dt>
     <dd>The mean of what those eight draws counted.</dd>
 
+    <dt class="mono" id="replicator-share">replicator_share</dt>
+    <dd>
+      The share of 256 cells, drawn at random, whose tape reproduces itself in either
+      orientation: it runs five generations down a chain against fresh noise, and the copy
+      four generations on must agree with the original on three quarters of its bytes, by
+      majority over five chains. The census above asks for a same-orientation copy of one
+      of the sixteen commonest tapes, and the replicators that dominate every emerged world
+      copy themselves in reverse, so the census reads them as nothing. This reading exists
+      beside it rather than replacing it. <span class="mono">replicator_share_rotated</span>
+      also accepts a copy that lands a few bytes round, and
+      <span class="mono">dominant_self_replicates</span> says whether the dominant tape
+      passes. Null on the Life substrate and on every sample recorded before they existed.
+    </dd>
+
     <dt class="mono">entropy_bits</dt>
     <dd>The Shannon entropy of the byte distribution.</dd>
 
@@ -137,17 +151,41 @@
       a particular partner.
     </dd>
 
+    <dt class="mono">reverse_copy_rate</dt>
+    <dd>
+      The same count with the copy reversed: one half ends holding the other's tape last
+      byte first. A palindrome's copy counts in both rates.
+    </dd>
+
     <dt class="mono">distinct_lineages</dt>
     <dd>
       How many lineages the world holds. Every cell starts its own; after an interaction a
       cell takes its partner's lineage when the tape it ends with differs in fewer bytes
       from the tape its partner arrived with than from the tape it arrived with itself, and
       keeps its own on a tie. It counts descent rather than shape, so two lineages that
-      drifted onto the same tape still read as two.
+      drifted onto the same tape still read as two. By default those distances are read
+      byte for byte; a run with <span class="mono">lineage_rule</span> set to
+      <span class="mono">oriented</span> reads each arriving tape whichever way round is
+      nearer, so a cell overwritten by a reverse copy joins the copier's lineage.
     </dd>
 
     <dt class="mono">top_lineage_share</dt>
     <dd>The fraction of cells held by the largest lineage.</dd>
+
+    <dt class="mono">lineage_effective_count</dt>
+    <dd>
+      How many lineages the world is really split between: one over the sum of the squared
+      lineage shares, the inverse Simpson index. It reads 1 when one lineage holds every
+      cell and k when k lineages hold equal shares. A fresh soup reads about as many
+      lineages as it has cells, and the count falls as copies spread. Cells that nothing
+      ever overwrote each keep a lineage of their own, and
+      <span class="mono">distinct_lineages</span> counts every one of them. They barely move
+      this reading, so it can tell a world of several colonies from one colony with relics
+      left over. Null on every sample recorded before it existed.
+    </dd>
+
+    <dt class="mono">lineages_over_one_percent</dt>
+    <dd>How many lineages each hold at least one percent of the cells.</dd>
 
     <dt class="mono">lineage_variation</dt>
     <dd>
@@ -161,6 +199,19 @@
       tapes.
     </dd>
 
+    <dt class="mono">lineage_variation_oriented</dt>
+    <dd>
+      The same reading after each cell's tape is put the way round — as it is, or last byte
+      first — that sits closer to its lineage's modal tape, keeping it as it is on a tie. The
+      replicators of every emerged world copy themselves in reverse, so a lineage of
+      near-clones is half one tape and half its reverse, and the aligned reading counts
+      every reversed cell as most of a tape of variation. A tape that grew is reversed over
+      the bytes it holds, not its whole slot. Under the default
+      <span class="mono">lineage_rule</span>, lineages themselves are inherited aligned, so
+      after a takeover one lineage can hold many unrelated tapes, and neither reading can
+      see past that. Null on every sample recorded before it existed.
+    </dd>
+
     <dt class="mono">copy_cost</dt>
     <dd>
       What one copy costs the dominant replicator, in interpreter steps. The replicator
@@ -168,6 +219,21 @@
       copied, read off the most populous tape that passes the test. Null when no tested
       tape replicates. It is the observable a world that got better at copying itself would
       move: the hand-written replicator the engine tests itself against needs 1 794 steps.
+    </dd>
+
+    <dt class="mono">copy_latency</dt>
+    <dd>
+      How soon the dominant tape has written itself, in interpreter steps: the step at which
+      the partner half first holds a byte-exact copy of the tape, in either orientation,
+      whatever the program goes on to do. <span class="mono">copy_cost</span> counts the
+      steps of a copy that halted, and the reverse copiers that dominate every emerged world
+      never halt — their loop runs out the step budget — so it reads nothing there. This is
+      the median of five trials against fresh random partners, null when fewer than half of
+      them complete a copy. <span class="mono">copy_latency_orientation</span> says which
+      way round that copy lies: forward, reverse, or both for a palindrome. The hand-written
+      replicator reads 1 790 steps, forward; a 64-byte reverse copier that copies a byte
+      every four steps reads 255, reverse. Null on the Life substrate and on every sample
+      recorded before they existed.
     </dd>
 
     <dt class="mono">dominant_compressed_len</dt>
@@ -223,6 +289,15 @@
       recorded before they existed.
     </dd>
 
+    <dt class="mono">conserved_core_bytes_oriented</dt>
+    <dd>
+      The same core, read after each member of the lineage is put the way round that sits
+      closer to its modal tape, as <span class="mono">lineage_variation_oriented</span> puts
+      them; <span class="mono">conserved_core_ops_oriented</span> counts its instructions. A
+      lineage of a tape and its reverse agrees on almost no position aligned, and on its
+      whole length oriented.
+    </dd>
+
     <dt class="mono">lineage_compressed_len</dt>
     <dd>
       The same two readings as <span class="mono">dominant_compressed_len</span>, taken of a
@@ -243,6 +318,33 @@
       <span class="mono">steal_loss</span> share of it on the way. The rate reads 0 wherever
       the op is off, so an arm where theft never evolved can be told from one where it was
       never possible.
+    </dd>
+
+    <dt class="mono">task_share_echo</dt>
+    <dd>
+      The share of 256 cells, drawn at random, whose tape the task assay credits with ECHO:
+      run alone on three small input pairs, it emits the first input in every one of them.
+      <span class="mono">task_share_inc</span>, <span class="mono">task_share_dec</span>,
+      <span class="mono">task_share_add</span>, <span class="mono">task_share_sub</span>,
+      <span class="mono">task_share_not</span>, <span class="mono">task_share_double</span>
+      and <span class="mono">task_share_mul</span> are the same share for the rest of the
+      arithmetic ladder. The readings only read: a run with tasks on and no reward is the
+      run with tasks off, byte for byte, and carries them too. Null wherever tasks are off,
+      on the Life substrate, and on every sample recorded before they existed.
+    </dd>
+
+    <dt class="mono">task_capability</dt>
+    <dd>
+      How many tasks at least a tenth of those sampled cells solve, 26 of 256 or more.
+      <span class="mono">task_capability_loop</span> counts the same over ADD, SUB, NOT,
+      DOUBLE and MUL, the tasks whose shortest program needs a loop.
+    </dd>
+
+    <dt class="mono">dominant_tasks</dt>
+    <dd>
+      The tasks the dominant tape solves, as a bitmask in ladder order — ECHO is 1, INC 2,
+      DEC 4, and so on to MUL at 128 — which a run's page names rather than prints.
+      <span class="mono">dominant_task_count</span> is how many there are.
     </dd>
 
     <dt class="mono">transition_epoch</dt>
@@ -299,8 +401,33 @@
       reading, stated here because the design of the instrument does not define the word.
     </dd>
 
+    <dt>task</dt>
+    <dd>
+      One rung of the arithmetic ladder a soup may be assayed on — ECHO, INC, DEC, ADD, SUB,
+      NOT, DOUBLE, MUL. A tape solves one when some output it emits with the
+      <span class="mono">!</span> byte holds the answer on every input pair of the assay.
+    </dd>
+
+    <dt id="imports-an-objective">imports an objective</dt>
+    <dd>
+      Said of Metabolism, the one place this programme pays for anything but being copied: a
+      cell earns energy for computing the arithmetic <span class="mono">task</span>s above. It
+      runs on the same engine, but the record treats it as a second substrate. Its runs are
+      never pooled with the fitness-free ones in any count on this site, its findings carry
+      this badge, and whatever it reads, rung 4 on Soup stays "not shown". See
+      <a href="https://github.com/hanscanonico/life_simulator/blob/main/docs/DESIGN.md#14-metabolism-a-second-labelled-substrate-that-imports-an-objective">DESIGN §1.4</a>.
+    </dd>
+
     <dt>arm</dt>
     <dd>One grid value of a sweep, with its seeds.</dd>
+
+    <dt>lineage</dt>
+    <dd>
+      The cells whose tapes descend from one starting cell's, as the lineage rule reads
+      descent: <span class="mono">aligned</span> by default, which compares tapes byte for
+      byte, or <span class="mono">oriented</span>, which also reads a tape copied in reverse
+      as descended from the tape it copies.
+    </dd>
   </dl>
 
   <h2>The programme</h2>

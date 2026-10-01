@@ -9,24 +9,44 @@ module Runs
       "distinct_tapes" => "Distinct tapes",
       "top_share" => "Share of the most common tape",
       "replicator_count" => "Replicator count",
+      "replicator_share" => "Self-replicator share",
+      "replicator_share_rotated" => "Self-replicators, rotated",
       "op_density" => "Instruction density",
       "entropy_bits" => "Entropy (bits)",
       "alphabet_size" => "Alphabet size",
       "copy_rate" => "Copy rate",
+      "reverse_copy_rate" => "Reverse copy rate",
       "distinct_lineages" => "Distinct lineages",
       "top_lineage_share" => "Share of the largest lineage",
+      "lineage_effective_count" => "Effective number of lineages",
+      "lineages_over_one_percent" => "Lineages holding 1% of cells or more",
       "lineage_variation" => "Variation within a lineage",
+      "lineage_variation_oriented" => "Variation within a lineage, oriented",
       "copy_cost" => "Copy cost (steps)",
+      "copy_latency" => "Copy latency (steps)",
       "dominant_compressed_len" => "Compressed length of the dominant tape (bytes)",
       "dominant_instruction_count" => "Instructions in the dominant tape",
       "dominant_raw_len" => "Length of the dominant tape (bytes)",
       "conserved_core_bytes" => "Conserved core of the largest lineage (bytes)",
       "conserved_core_ops" => "Instructions in that conserved core",
+      "conserved_core_bytes_oriented" => "Conserved core, oriented (bytes)",
+      "conserved_core_ops_oriented" => "Instructions in that oriented core",
       "steal_rate" => "Steal rate",
       "replicator_pass_rate" => "Census pass rate",
       "replicator_count_mean" => "Mean census count",
       "lineage_compressed_len" => "Compressed length of the largest lineage's tape (bytes)",
-      "lineage_instruction_count" => "Instructions in the largest lineage's tape"
+      "lineage_instruction_count" => "Instructions in the largest lineage's tape",
+      "task_capability" => "Tasks a tenth of the cells solve",
+      "task_capability_loop" => "Loop tasks a tenth of the cells solve",
+      "dominant_task_count" => "Tasks the dominant tape solves",
+      "task_share_echo" => "Share of cells solving ECHO",
+      "task_share_inc" => "Share of cells solving INC",
+      "task_share_dec" => "Share of cells solving DEC",
+      "task_share_add" => "Share of cells solving ADD",
+      "task_share_sub" => "Share of cells solving SUB",
+      "task_share_not" => "Share of cells solving NOT",
+      "task_share_double" => "Share of cells solving DOUBLE",
+      "task_share_mul" => "Share of cells solving MUL"
     }.freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
@@ -43,6 +63,7 @@ module Runs
     # measurement: dividing by it reports megaepochs a second. A minute of observed time is
     # the floor under which this page says nothing rather than something impossible.
     MIN_MEASURED_SECONDS = 60
+    DESCENDANTS_SHOWN = 20
 
     def self.build(run:) = new(run: run)
 
@@ -53,7 +74,7 @@ module Runs
     attr_reader :run
 
     def charts
-      @charts ||= METRICS.map { |metric, title| chart_of(MetricSeriesService.call(run: run, metric: metric), title) } +
+      @charts ||= METRICS.map { |metric, title| chart_of(series_of(metric), title) } +
                   [chart_of(compressibility_points, COMPRESSIBILITY_TITLE, axis: COMPRESSIBILITY_AXIS),
                    chart_of(turnover_points, TURNOVER_TITLE, axis: TURNOVER_AXIS)]
     end
@@ -76,6 +97,31 @@ module Runs
                                       .map { |(_, before), (epoch, after)| [epoch, after == before ? 0 : 1] }
     end
 
+    # Which way round the dominant tape's copy lay at the last sample that read a
+    # `copy_latency`: a word, so it has no chart of its own and is read beside that one.
+    def copy_latency_orientation
+      @copy_latency_orientation ||= dominant_readings.reverse_each.lazy
+                                                     .map { |_, values| values["copy_latency_orientation"] }
+                                                     .find { |orientation| orientation.is_a?(String) }
+    end
+
+    # The tasks the dominant tape was credited with at the last sample that assayed it, by
+    # name: the engine records them as a bitmask in the order of its task ladder. `nil`
+    # where no sample read one, so a run with tasks off says nothing rather than "none".
+    def dominant_tasks
+      return @dominant_tasks if defined?(@dominant_tasks)
+
+      bits = dominant_readings.reverse_each.lazy.map { |_, values| values["dominant_tasks"] }
+                              .find { |mask| mask.is_a?(Integer) }
+      @dominant_tasks = bits && Lab::Schema.task_names.select.with_index { |_, index| bits[index] == 1 }
+    end
+
+    def dominant_tasks_label
+      return if dominant_tasks.nil?
+
+      dominant_tasks.empty? ? "no task" : dominant_tasks.map(&:upcase).to_sentence
+    end
+
     def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)
 
     # Only a run the detector flagged has one, and only once its finish — or
@@ -84,10 +130,21 @@ module Runs
 
     def census_peak_label = persistence.census_label
 
+    def parent = run.parent_run
+
+    def descendants
+      @descendants ||= run.descendants.order(:id).limit(DESCENDANTS_SHOWN).select(:id, :seed, :status).to_a
+    end
+
+    def descendant_count = @descendant_count ||= run.descendants.count
+
+    def more_descendants? = descendant_count > descendants.size
+
     def charts_empty? = charts.all?(&:empty?)
 
     def transition_label
       return delimited(run.transition_epoch) if run.transition_epoch
+      return "none of its own (a descendant)" if run.descendant?
 
       run.terminal? ? "no emergence" : "no emergence yet"
     end
@@ -121,7 +178,7 @@ module Runs
     def epochs_per_compute_second
       return nil unless run.compute_seconds.positive?
 
-      (run.epochs_done / run.compute_seconds).round(2)
+      (run.own_epochs_done / run.compute_seconds).round(2)
     end
 
     def compute_hours = (run.compute_seconds / 3600).round(2)
@@ -142,9 +199,9 @@ module Runs
     def params = run.params.sort.to_h
 
     def progress
-      return 0.0 if run.epochs.zero?
+      return 0.0 unless run.own_epochs.positive?
 
-      (run.epochs_done.fdiv(run.epochs) * 100).round(1)
+      (run.own_epochs_done.fdiv(run.own_epochs) * 100).round(1)
     end
 
     private
@@ -156,13 +213,15 @@ module Runs
       end
     end
 
+    def series_of(metric) = MetricSeriesService.call(run: run, metric: metric, samples: dominant_readings)
+
     def chart_of(points, title, axis: title)
       Charts::LineChart.new(points: points, title: title, x_label: "Epoch", y_label: axis,
                             marker: run.transition_epoch)
     end
 
-    # The same rows every series is read from: identical SQL inside one request is served
-    # by the query cache.
+    # The same rows every series is read from, plucked once: the query cache would spare
+    # the database a repeat, but not the parse of every sample's JSON.
     def dominant_readings = @dominant_readings ||= run.samples.order(:epoch).pluck(:epoch, :values)
 
     def emergence_label

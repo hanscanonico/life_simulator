@@ -48,6 +48,12 @@ RSpec.describe Runs::RecordSamplesService do
       expect(run.samples.sole.values).to include("steal_rate" => 0.25)
     end
 
+    it "still touches the run" do
+      described_class.call(run: run, samples: batch(300, 400))
+
+      expect { described_class.call(run: run, samples: batch(100, 200)) }.to(change { run.reload.updated_at })
+    end
+
     it "stores no duplicate rows" do
       described_class.call(run: run, samples: batch(100, 200))
 
@@ -103,6 +109,17 @@ RSpec.describe Runs::RecordSamplesService do
   context "with an empty batch" do
     it "records nothing" do
       expect { described_class.call(run: run, samples: []) }.not_to change(Sample, :count)
+    end
+  end
+
+  context "with a descendant" do
+    let(:run) { create(:run, :descendant, :claimed) }
+
+    it "records neither transition reading its runner reports" do
+      described_class.call(run: run, samples: batch(1_100), transition_epoch: 1_100,
+                           transition_epoch_constant: 1_100)
+
+      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_constant: nil)
     end
   end
 end

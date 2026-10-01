@@ -5,7 +5,7 @@ require "csv"
 module Experiments
   # Reconciles the transition detector with the replicator census over an experiment's
   # stored samples, under both of the detector's readings — the transition rule and the
-  # constant companion of `docs/design_record.md`, 2026-09-21. A crossing fires on
+  # constant companion of `docs/design_record.md`, 2026-10-01. A crossing fires on
   # `compress_ratio` alone, so a run can be flagged with no replicator ever counted, and a
   # run whose replicator count rose can go unflagged; a claim about emergence has to hold
   # on both observables (DESIGN.md §1.2), and this is where the two are read side by side,
@@ -162,7 +162,7 @@ module Experiments
     def sampled_rows
       rows = []
 
-      @experiment.runs.find_each do |run|
+      @experiment.runs.founding.find_each do |run|
         samples = samples_of(run)
         rows << row(run, samples) if samples.any?
       end

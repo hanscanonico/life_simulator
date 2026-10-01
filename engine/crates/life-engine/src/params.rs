@@ -6,6 +6,13 @@ use crate::metrics::{
     TRANSITION_BASELINE_EPOCHS, TRANSITION_HOLD_SAMPLES, TRANSITION_MAX_OP_DENSITY,
     TRANSITION_MIN_ALPHABET_SIZE, TRANSITION_RELATIVE_FRACTION, TRANSITION_THRESHOLD,
 };
+use crate::replicator::{
+    SELF_REP_AGREEMENT_DENOMINATOR, SELF_REP_AGREEMENT_NUMERATOR, SELF_REP_GENERATIONS,
+    SELF_REP_SAMPLE_CELLS, SELF_REP_TRIALS,
+};
+use crate::task::{
+    TASKS, TASK_CASES, TASK_CASE_DRAWS, TASK_INPUT_RANGE, TASK_MAX_OUTPUTS, TASK_STEPS,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -43,6 +50,43 @@ pub enum Interaction {
     Host,
 }
 
+/// Who pays for an interaction under an energy stock (`docs/DESIGN.md` §1.1; why it is a
+/// parameter is the 2026-10-01 design-record entry). `Pair` is the default and the rule
+/// every earlier stocked run paid by: the interaction runs on the poorer cell's stock and
+/// both cells are debited what ran. `Initiator` charges the cell that opens the interaction
+/// alone a fixed price of `max_steps`, and passes a cell over as initiator until its stock
+/// can pay it, so a cell's income is the rate it initiates at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EnergyPayer {
+    Pair,
+    Initiator,
+}
+
+/// Which tasks a soup's cells are assayed on (`docs/DESIGN.md` §1.1, "Tasks and the emit
+/// op"; the 2026-10-01 design-record entry on the task assay). `Off` is the default and the
+/// soup every earlier run lived in. `Arith` assays every cell on the arithmetic ladder of
+/// `task::TASKS` every `task_every` epochs and pays `task_reward` per unit it earns into
+/// the cell's stock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tasks {
+    Off,
+    Arith,
+}
+
+/// How a lineage tag follows descent (`docs/DESIGN.md` §1.2; why it is a parameter is the
+/// 2026-09-25 design-record entry). `Aligned` is the default and the rule every earlier
+/// run's tags were inherited by: a tape is compared with the two arriving tapes byte for
+/// byte. `Oriented` compares it with each arriving tape either way round, so a cell a
+/// reverse copier overwrote takes the copier's tag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineageRule {
+    Aligned,
+    Oriented,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Init {
@@ -73,6 +117,10 @@ pub struct Params {
     /// The most instruction energy one cell's stock may hold. Read only once an influx is
     /// set, and never below it.
     pub energy_stock_cap: u32,
+    /// Who pays for an interaction out of the stock: both cells what ran (`pair`, the
+    /// default and the rule of every earlier stocked run), or the initiator alone a fixed
+    /// `max_steps` (`initiator`). Read only once an influx is set, and refused without one.
+    pub energy_payer: EnergyPayer,
     /// Instruction energy one steal op moves out of the partner cell's stock; `0` (the
     /// default) leaves the steal byte the no-op it is in the substrate of DESIGN §1.1 and
     /// nothing is ever moved (DESIGN §1.1).
@@ -80,6 +128,15 @@ pub struct Params {
     /// The share of what a steal moves that is destroyed in transit. Read only once a
     /// `steal_amount` is set, so the default is no second off switch.
     pub steal_loss: f64,
+    /// The task ladder cells are assayed on: none (`off`, the default), or the arithmetic
+    /// ladder (`arith`).
+    pub tasks: Tasks,
+    /// Epochs between assays: a cell is assayed at the start of every epoch that is a
+    /// multiple of this.
+    pub task_every: u32,
+    /// Energy paid into a cell's stock per unit of the tasks it is credited with at one
+    /// assay; `0` (the default) pays nothing and runs no assay at all.
+    pub task_reward: u32,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -96,6 +153,9 @@ pub struct Params {
     /// What an interaction executes: the whole concatenation (`concat`, the default and
     /// the substrate of DESIGN §1.1), or the first tape's bytes only (`host`).
     pub interaction: Interaction,
+    /// How a lineage tag follows descent: byte for byte (`aligned`, the default and the
+    /// rule of every earlier run), or either way round (`oriented`). Moves no byte.
+    pub lineage_rule: LineageRule,
     pub init: Init,
     pub sample_every: u32,
     pub top_k: u32,
@@ -115,13 +175,18 @@ impl Default for Params {
             energy_per_epoch: 0,
             energy_influx: 0,
             energy_stock_cap: 0,
+            energy_payer: EnergyPayer::Pair,
             steal_amount: 0,
             steal_loss: 0.5,
+            tasks: Tasks::Off,
+            task_every: 8,
+            task_reward: 0,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
             structure_amplitude: 0.5,
             interaction: Interaction::Concat,
+            lineage_rule: LineageRule::Aligned,
             init: Init::Random,
             sample_every: 10,
             top_k: 16,
@@ -228,8 +293,9 @@ const FIELDS: &[Field] = &[
             max: 1_048_576.0,
         },
         doc: "Instructions one cell is given per epoch, added to a stock that carries \
-              across epochs up to energy_stock_cap rather than being refilled to it. An \
-              interaction runs on what the poorer of its two cells holds, both are \
+              across epochs up to energy_stock_cap rather than being refilled to it. Under \
+              the default energy_payer an interaction runs on what the poorer of its two \
+              cells holds, both are \
               debited what ran, and a cell whose stock is empty is not executed until it \
               has recharged. 0 turns the stock off, which is the substrate of DESIGN 1.1.",
     },
@@ -243,6 +309,18 @@ const FIELDS: &[Field] = &[
               stock every cell starts the run with, so the world's total energy never \
               exceeds cell count times this. Read only once energy_influx is set, and \
               refused below it.",
+    },
+    Field {
+        name: "energy_payer",
+        kind: Kind::Choice(&["pair", "initiator"]),
+        doc: "Who pays for an interaction out of the energy stock. pair runs it on what \
+              the poorer of its two cells holds and debits both what ran, which is the \
+              economy of DESIGN 1.1 every earlier stocked run used. initiator charges the \
+              cell whose turn it is alone a fixed max_steps, whatever ran, and passes a \
+              cell over as initiator until its stock holds that price; its partner is \
+              never gated and never debited, so a cell's income is the rate it initiates \
+              at. initiator needs an energy_influx, an energy_stock_cap of at least \
+              max_steps, and no energy_per_epoch.",
     },
     Field {
         name: "steal_amount",
@@ -263,6 +341,37 @@ const FIELDS: &[Field] = &[
         doc: "The share of what a run's steal ops move that is destroyed in transit: the \
               thief receives the rest, rounded down, so theft is never worth more to the \
               thief than it costs the world. Read only once steal_amount is set.",
+    },
+    Field {
+        name: "tasks",
+        kind: Kind::Choice(&["off", "arith"]),
+        doc: "Which tasks a soup cell is assayed on. off assays nothing, which is the \
+              substrate of DESIGN 1.1. arith runs each cell's tape alone, on two small \
+              inputs at the end of a buffer twice its length, with ! emitting the byte \
+              under head0, and credits the tasks of an arithmetic ladder (echo, inc, dec, \
+              add, sub, not, double, mul) that one of its outputs computes in all three \
+              cases. Outside that assay ! is never an instruction. Refused on life.",
+    },
+    Field {
+        name: "task_every",
+        kind: Kind::Integer {
+            min: 1.0,
+            max: 1_000_000.0,
+        },
+        doc: "Epochs between task assays: cells are assayed at the start of every epoch \
+              that is a multiple of this. Read only once a task_reward is set.",
+    },
+    Field {
+        name: "task_reward",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "Instruction energy paid into a cell's stock, before that epoch's influx and \
+              never past energy_stock_cap, per unit of the tasks its tape is credited \
+              with at an assay; the ladder's units are 1, 2, 2, 4, 4, 8, 8 and 16. 0 pays \
+              nothing and runs no assay, so the run is the same run as with tasks off. \
+              Any reward needs tasks on and an energy_influx to have a stock to pay into.",
     },
     Field {
         name: "ops",
@@ -298,6 +407,18 @@ const FIELDS: &[Field] = &[
               two tapes, which is the substrate of DESIGN 1.1; host runs the first tape's \
               bytes only, leaving the partner as data the program reads and writes. Both \
               heads range over the whole pair either way.",
+    },
+    Field {
+        name: "lineage_rule",
+        kind: Kind::Choice(&["aligned", "oriented"]),
+        doc: "How a soup cell's lineage tag follows descent. After an interaction a cell \
+              takes its partner's tag when its tape ends strictly closer, by Hamming \
+              distance, to the tape its partner arrived with than to its own. aligned \
+              compares byte for byte, which is the rule of DESIGN 1.2 every earlier run \
+              used; oriented takes each distance as the smaller of the arriving tape's and \
+              its reverse's, so a cell overwritten by a reverse copy takes the copier's \
+              tag. Moves no byte of the world: only the lineage tags and the readings \
+              made of them.",
     },
     Field {
         name: "init",
@@ -371,6 +492,31 @@ pub enum ParamError {
         energy_stock_cap: u32,
         energy_influx: u32,
     },
+    /// The initiator pays out of a stock: with no influx there is none, and no cell could
+    /// ever initiate.
+    InitiatorWithoutStock,
+    /// A stock capped below the price of one interaction can never pay it: no cell would
+    /// ever initiate.
+    InitiatorPriceAboveCap {
+        energy_stock_cap: u32,
+        max_steps: u32,
+    },
+    /// The per-epoch allowance bounds an interaction by both cells' purses, which is the
+    /// pair rule the initiator rule replaces; the two together would charge the partner
+    /// after all.
+    InitiatorWithAllowance {
+        energy_per_epoch: u32,
+    },
+    /// Life has no tapes to assay.
+    TasksOnLife,
+    /// A reward with no tasks to earn it by is silently inert.
+    TaskRewardWithoutTasks {
+        task_reward: u32,
+    },
+    /// The reward is paid into the stock: with no influx there is none.
+    TaskRewardWithoutStock {
+        task_reward: u32,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -414,6 +560,38 @@ impl fmt::Display for ParamError {
                 f,
                 "energy_stock_cap is {energy_stock_cap}, below the energy_influx of \
                  {energy_influx}: a stock must hold at least one epoch's influx"
+            ),
+            Self::InitiatorWithoutStock => write!(
+                f,
+                "energy_payer is initiator with no energy_influx: the initiator pays out of \
+                 a stock"
+            ),
+            Self::InitiatorPriceAboveCap {
+                energy_stock_cap,
+                max_steps,
+            } => write!(
+                f,
+                "energy_payer is initiator with an energy_stock_cap of {energy_stock_cap}, \
+                 below the max_steps of {max_steps}: no stock could ever pay for an \
+                 interaction"
+            ),
+            Self::InitiatorWithAllowance { energy_per_epoch } => write!(
+                f,
+                "energy_payer is initiator with an energy_per_epoch of {energy_per_epoch}: \
+                 the allowance charges both cells, which the initiator rule does not"
+            ),
+            Self::TasksOnLife => write!(
+                f,
+                "tasks is set on the life substrate: only soup tapes can be assayed"
+            ),
+            Self::TaskRewardWithoutTasks { task_reward } => write!(
+                f,
+                "task_reward is {task_reward} with tasks off: there is nothing to earn it by"
+            ),
+            Self::TaskRewardWithoutStock { task_reward } => write!(
+                f,
+                "task_reward is {task_reward} with no energy_influx: the reward is paid \
+                 into a stock"
             ),
         }
     }
@@ -465,11 +643,50 @@ impl Params {
                 steal_amount: self.steal_amount,
             });
         }
+        if self.energy_payer == EnergyPayer::Initiator {
+            self.validate_initiator()?;
+        }
+        self.validate_tasks()?;
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
             return Err(ParamError::RadiusTooWide {
                 radius: self.radius,
                 width: self.width,
                 height: self.height,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_initiator(&self) -> Result<(), ParamError> {
+        if self.energy_influx == 0 {
+            return Err(ParamError::InitiatorWithoutStock);
+        }
+        if self.energy_stock_cap < self.max_steps {
+            return Err(ParamError::InitiatorPriceAboveCap {
+                energy_stock_cap: self.energy_stock_cap,
+                max_steps: self.max_steps,
+            });
+        }
+        if self.energy_per_epoch > 0 {
+            return Err(ParamError::InitiatorWithAllowance {
+                energy_per_epoch: self.energy_per_epoch,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_tasks(&self) -> Result<(), ParamError> {
+        if self.tasks != Tasks::Off && self.substrate == Substrate::Life {
+            return Err(ParamError::TasksOnLife);
+        }
+        if self.task_reward > 0 && self.tasks == Tasks::Off {
+            return Err(ParamError::TaskRewardWithoutTasks {
+                task_reward: self.task_reward,
+            });
+        }
+        if self.task_reward > 0 && self.energy_influx == 0 {
+            return Err(ParamError::TaskRewardWithoutStock {
+                task_reward: self.task_reward,
             });
         }
         Ok(())
@@ -520,6 +737,25 @@ impl Params {
                 "min_alphabet_size": TRANSITION_MIN_ALPHABET_SIZE,
                 "relative_fraction": TRANSITION_RELATIVE_FRACTION,
                 "baseline_epochs": TRANSITION_BASELINE_EPOCHS,
+            },
+            "self_replication": {
+                "generations": SELF_REP_GENERATIONS,
+                "trials": SELF_REP_TRIALS,
+                "agreement": SELF_REP_AGREEMENT_NUMERATOR as f64
+                    / SELF_REP_AGREEMENT_DENOMINATOR as f64,
+                "sample_cells": SELF_REP_SAMPLE_CELLS,
+            },
+            "tasks": {
+                "steps": TASK_STEPS,
+                "cases": TASK_CASES,
+                "max_outputs": TASK_MAX_OUTPUTS,
+                "input_range": TASK_INPUT_RANGE,
+                "case_draws": TASK_CASE_DRAWS,
+                "emit": (crate::bff::EMIT as char).to_string(),
+                "ladder": TASKS
+                    .iter()
+                    .map(|task| serde_json::json!({"name": task.name, "units": task.units}))
+                    .collect::<Vec<_>>(),
             },
         }))
         .expect("schema always serialises")
@@ -576,6 +812,12 @@ impl Params {
     /// validation refuses an amount with no stock behind it.
     pub fn steals(&self) -> bool {
         self.stocked() && self.steal_amount > 0
+    }
+
+    /// Whether this run pays for tasks at all. The reward is the switch: at 0 no assay
+    /// runs, so a run with tasks on and no reward is byte for byte the run with tasks off.
+    pub fn rewards_tasks(&self) -> bool {
+        self.stocked() && self.tasks != Tasks::Off && self.task_reward > 0
     }
 
     /// Bytes of state one cell's slot holds: the tape cap in the soup, one byte in life.
@@ -996,7 +1238,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 21);
+        assert_eq!(fields.len(), 26);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -1044,6 +1286,31 @@ mod tests {
         assert_eq!(interaction["default"], "concat");
         assert_eq!(interaction["values"], serde_json::json!(["concat", "host"]));
 
+        let payer = fields.iter().find(|f| f["name"] == "energy_payer").unwrap();
+        assert_eq!(payer["type"], "enum");
+        assert_eq!(payer["default"], "pair");
+        assert_eq!(payer["values"], serde_json::json!(["pair", "initiator"]));
+
+        let tasks = fields.iter().find(|f| f["name"] == "tasks").unwrap();
+        assert_eq!(tasks["type"], "enum");
+        assert_eq!(tasks["default"], "off");
+        assert_eq!(tasks["values"], serde_json::json!(["off", "arith"]));
+        let every = fields.iter().find(|f| f["name"] == "task_every").unwrap();
+        assert_eq!(
+            (every["default"].as_i64(), every["min"].as_i64()),
+            (Some(8), Some(1))
+        );
+        let reward = fields.iter().find(|f| f["name"] == "task_reward").unwrap();
+        assert_eq!(
+            (reward["default"].as_i64(), reward["min"].as_i64()),
+            (Some(0), Some(0))
+        );
+
+        let rule = fields.iter().find(|f| f["name"] == "lineage_rule").unwrap();
+        assert_eq!(rule["type"], "enum");
+        assert_eq!(rule["default"], "aligned");
+        assert_eq!(rule["values"], serde_json::json!(["aligned", "oriented"]));
+
         let substrate = fields.iter().find(|f| f["name"] == "substrate").unwrap();
         assert_eq!(substrate["type"], "enum");
         assert_eq!(substrate["values"], serde_json::json!(["soup", "life"]));
@@ -1067,6 +1334,20 @@ mod tests {
             TRANSITION_RELATIVE_FRACTION
         );
         assert_eq!(transition["baseline_epochs"], TRANSITION_BASELINE_EPOCHS);
+    }
+
+    #[test]
+    fn schema_carries_the_orientation_aware_detector_the_census_companions_read_by() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        assert_eq!(
+            schema["self_replication"],
+            serde_json::json!({
+                "generations": 5,
+                "trials": 5,
+                "agreement": 0.75,
+                "sample_cells": 256,
+            })
+        );
     }
 
     #[test]
@@ -1131,5 +1412,238 @@ mod tests {
             }
         );
         assert!(serde_json::from_str::<Params>(r#"{"interaction": "duel"}"#).is_err());
+    }
+
+    /// The lineage rule of §1.2 is the aligned one unless a run asks for the other.
+    #[test]
+    fn a_lineage_tag_follows_aligned_descent_by_default() {
+        assert_eq!(Params::default().lineage_rule, LineageRule::Aligned);
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"lineage_rule": "oriented"}"#).unwrap(),
+            Params {
+                lineage_rule: LineageRule::Oriented,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"lineage_rule": "sideways"}"#).is_err());
+    }
+
+    fn initiator_params() -> Params {
+        Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            energy_payer: EnergyPayer::Initiator,
+            ..Params::default()
+        }
+    }
+
+    /// Both cells pay unless a run asks for the initiator to.
+    #[test]
+    fn both_cells_pay_for_an_interaction_by_default() {
+        assert_eq!(Params::default().energy_payer, EnergyPayer::Pair);
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"energy_payer": "initiator"}"#).unwrap(),
+            Params {
+                energy_payer: EnergyPayer::Initiator,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"energy_payer": "partner"}"#).is_err());
+        assert_eq!(initiator_params().validate(), Ok(()));
+    }
+
+    #[test]
+    fn rejects_an_initiator_with_no_stock_to_pay_from() {
+        let params = Params {
+            energy_influx: 0,
+            ..initiator_params()
+        };
+        assert_eq!(params.validate(), Err(ParamError::InitiatorWithoutStock));
+        assert!(params
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("energy_influx"));
+    }
+
+    #[test]
+    fn rejects_an_initiator_whose_stock_can_never_hold_the_price() {
+        let params = Params {
+            energy_stock_cap: 63,
+            ..initiator_params()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::InitiatorPriceAboveCap {
+                energy_stock_cap: 63,
+                max_steps: 64
+            })
+        );
+        assert!(params.validate().unwrap_err().to_string().contains("63"));
+    }
+
+    #[test]
+    fn rejects_an_initiator_beside_the_per_epoch_allowance() {
+        let params = Params {
+            energy_per_epoch: 32,
+            ..initiator_params()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::InitiatorWithAllowance {
+                energy_per_epoch: 32
+            })
+        );
+    }
+
+    /// The refusals are the initiator's alone: the pair rule keeps every combination it
+    /// accepted before the parameter existed.
+    #[test]
+    fn the_pair_rule_accepts_what_the_initiator_refuses() {
+        let pair = Params {
+            energy_payer: EnergyPayer::Pair,
+            energy_stock_cap: 32,
+            energy_per_epoch: 32,
+            ..initiator_params()
+        };
+        assert_eq!(pair.validate(), Ok(()));
+    }
+
+    #[test]
+    fn schema_carries_the_task_assay_and_its_ladder() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        assert_eq!(
+            schema["tasks"],
+            serde_json::json!({
+                "steps": 4096,
+                "cases": 3,
+                "max_outputs": 4,
+                "input_range": 16,
+                "case_draws": 1024,
+                "emit": "!",
+                "ladder": [
+                    {"name": "echo", "units": 1},
+                    {"name": "inc", "units": 2},
+                    {"name": "dec", "units": 2},
+                    {"name": "add", "units": 4},
+                    {"name": "sub", "units": 4},
+                    {"name": "not", "units": 8},
+                    {"name": "double", "units": 8},
+                    {"name": "mul", "units": 16},
+                ],
+            })
+        );
+    }
+
+    fn rewarded_params() -> Params {
+        Params {
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            tasks: Tasks::Arith,
+            task_reward: 2,
+            ..Params::default()
+        }
+    }
+
+    /// No task is assayed or paid unless a run asks for both.
+    #[test]
+    fn tasks_are_off_and_unpaid_by_default() {
+        let params = Params::default();
+        assert_eq!(
+            (params.tasks, params.task_every, params.task_reward),
+            (Tasks::Off, 8, 0)
+        );
+        assert!(!params.rewards_tasks());
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"tasks": "arith"}"#).unwrap(),
+            Params {
+                tasks: Tasks::Arith,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"tasks": "logic"}"#).is_err());
+        assert_eq!(rewarded_params().validate(), Ok(()));
+        assert!(rewarded_params().rewards_tasks());
+    }
+
+    /// Tasks with no reward are the control arm, and need no economy at all; under either
+    /// payer a reward is accepted, since the pair rule is a legitimate control too.
+    #[test]
+    fn tasks_need_a_stock_only_once_they_pay() {
+        let control = Params {
+            energy_influx: 0,
+            energy_stock_cap: 0,
+            task_reward: 0,
+            ..rewarded_params()
+        };
+        assert_eq!(control.validate(), Ok(()));
+        assert!(!control.rewards_tasks());
+        let initiator = Params {
+            max_steps: 64,
+            energy_payer: EnergyPayer::Initiator,
+            ..rewarded_params()
+        };
+        assert_eq!(initiator.validate(), Ok(()));
+    }
+
+    #[test]
+    fn rejects_a_task_reward_with_no_stock_to_pay_into() {
+        let params = Params {
+            energy_influx: 0,
+            ..rewarded_params()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::TaskRewardWithoutStock { task_reward: 2 })
+        );
+        assert!(params
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("energy_influx"));
+    }
+
+    #[test]
+    fn rejects_a_task_reward_with_no_tasks_to_earn_it() {
+        let params = Params {
+            tasks: Tasks::Off,
+            ..rewarded_params()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::TaskRewardWithoutTasks { task_reward: 2 })
+        );
+    }
+
+    #[test]
+    fn rejects_tasks_on_life() {
+        let params = Params {
+            substrate: Substrate::Life,
+            tasks: Tasks::Arith,
+            ..Params::default()
+        };
+        assert_eq!(params.validate(), Err(ParamError::TasksOnLife));
+        assert!(Params {
+            substrate: Substrate::Life,
+            ..Params::default()
+        }
+        .validate()
+        .is_ok());
+    }
+
+    #[test]
+    fn rejects_an_assay_every_zero_epochs() {
+        let params = Params {
+            task_every: 0,
+            ..rewarded_params()
+        };
+        assert!(matches!(
+            params.validate(),
+            Err(ParamError::OutOfRange {
+                field: "task_every",
+                ..
+            })
+        ));
     }
 }

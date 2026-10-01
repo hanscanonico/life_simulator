@@ -2,7 +2,7 @@
 
 module Runs
   # The transition read against the constant threshold the observable was defined by
-  # before the 2026-09-21 relock, off a run's stored samples: the companion reading beside
+  # before the 2026-10-01 relock, off a run's stored samples: the companion reading beside
   # `TransitionEpochService`, kept so every finding stated on the constant rule can still
   # be read and so a cap-confounded flag can still be told from the rule that now settles
   # the run's `transition_epoch`.

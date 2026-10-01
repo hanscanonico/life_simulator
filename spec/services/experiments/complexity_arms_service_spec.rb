@@ -217,6 +217,63 @@ RSpec.describe Experiments::ComplexityArmsService do
     end
   end
 
+  # A terminal run's reading is held on its own, so a view while the sweep runs reads again
+  # only the runs still under way; the test environment's null store would hide that.
+  describe "each terminal run's reading, held on its own" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let!(:finished) do
+      [emerged(instructions: ([10] * 10) + ([30] * 10), steal_rate: [0.25] * 20),
+       emerged(instructions: ([10] * 10) + ([10] * 10))]
+    end
+    let!(:live) do
+      emerged(instructions: ([10] * 10) + ([20] * 10), steal_rate: [0.5] * 20).tap { |run| run.update!(status: "running") }
+    end
+
+    before { allow(Rails).to receive(:cache).and_return(cache) }
+
+    def cells = described_class.call(experiment: experiment).map(&:cells)
+
+    it "reads the same from the cache as from the samples" do
+      uncached = RSpec::Mocks.with_temporary_scope do
+        allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::NullStore.new)
+        cells
+      end
+      cells
+
+      expect(cells).to eq(uncached)
+    end
+
+    it "reads a finished run's samples once" do
+      first = cells
+      Sample.where(run: finished).update_all(values: { "dominant_instruction_count" => 1 })
+
+      expect(cells).to eq(first)
+    end
+
+    # The live run's two spans it has samples for, then its peak steal rate.
+    it "reads only the runs still under way again" do
+      cells
+
+      expect(value_reads_during { cells }).to eq([2, 1])
+    end
+
+    it "reads a run still under way afresh" do
+      cells
+      Runs::RecordSamplesService.call(run: live, samples: [{ "epoch" => 400, "steal_rate" => 0.75 }])
+
+      expect(described_class.call(experiment: experiment).sole.peak_steal_rate).to eq(0.75)
+    end
+
+    it "reads a finished run afresh once it is written to" do
+      cells
+      Sample.where(run: finished.first).update_all(values: { "dominant_instruction_count" => 10,
+                                                             "conserved_core_bytes" => 40 })
+      finished.first.update!(updated_at: Time.current)
+
+      expect(described_class.call(experiment: experiment).sole.rising_count).to eq(1)
+    end
+  end
+
   # The spans moved from Ruby into one SQL statement (issue #236). Every value below was
   # worked by hand from the rule as the Ruby reading applied it — nulls and strings drop out
   # of their own series, a float reading truncates, the decile is ceil(n / 10) and its
@@ -327,5 +384,23 @@ RSpec.describe Experiments::ComplexityArmsService do
                                 "steal_rate" => steal_rate&.at(index) }.compact)
     end
     run
+  end
+
+  # A descendant carries its parent's emergence, which lies before any sample of its own:
+  # its span is the samples it took itself, from the parent epoch on.
+  describe "a descendant" do
+    it "reads its span from its own samples" do
+      parent = create(:run, :emerged, emergence_epoch: 100, params: control_params, epochs: 1_000)
+      20.times { |index| create(:sample, run: parent, epoch: 100 + (index * 10), values: { "dominant_instruction_count" => 1 }) }
+      child = create(:run, :descendant, parent_run: parent, experiment: experiment, status: "finished",
+                                        params: control_params)
+      (([10] * 10) + ([30] * 10)).each_with_index do |count, index|
+        create(:sample, run: child, epoch: 1_000 + (index * 10),
+                        values: { "dominant_instruction_count" => count, "conserved_core_bytes" => 40 })
+      end
+
+      expect(arms.sole).to have_attributes(emerged_count: 1, measured_count: 1, rising_count: 1)
+      expect(arms.sole.instructions).to have_attributes(first: 10, last: 30)
+    end
   end
 end

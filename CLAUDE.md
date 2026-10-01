@@ -23,7 +23,7 @@ loop; `/autonomous_improvements <until>` runs it unattended until a deadline.
 ## Commands
 - Setup: `bin/setup`
 - Run App: `bin/dev`
-- Tests: `bundle exec rspec` (or `bin/rspec` — bare `rspec` can activate the wrong json gem and fail to boot)
+- Tests: `bundle exec rspec` (or `bin/rspec`)
 - Single spec: `bundle exec rspec spec/path/to_spec.rb:42`
 - Specs for changed files only: `bin/rspec-auto`
 - Coverage: `COVERAGE=1 bundle exec rspec` (SimpleCov)

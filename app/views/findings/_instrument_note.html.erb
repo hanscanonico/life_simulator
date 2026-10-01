@@ -1,0 +1,13 @@
+<aside id="instrument-note" class="alert alert-warning instrument-note" aria-labelledby="instrument-note-title">
+  <p id="instrument-note-title" class="font-semibold">
+    Instrument note, <time datetime="<%= Findings::InstrumentNotes::DATE.iso8601 %>"><%= l Findings::InstrumentNotes::DATE, format: :long %></time>
+  </p>
+  <p><%= finding.instrument_note %></p>
+  <p class="text-sm">
+    The replicator census cannot count the replicators that copy themselves in reverse, and
+    those dominate the emerged worlds read so far
+    (<%= link_to "issue #245", Findings::InstrumentNotes::ISSUE_URL %>). The finding below
+    is shown as it was written until it is re-read with the orientation-aware
+    <%= link_to "replicator_share", how_it_works_path(anchor: "replicator-share"), class: "mono" %>.
+  </p>
+</aside>

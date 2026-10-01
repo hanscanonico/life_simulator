@@ -11,7 +11,7 @@ use std::io::Write;
 
 /// The companion reading's constant: `compress_ratio` below this, held for
 /// `TRANSITION_HOLD_SAMPLES` further samples. It was the transition rule until the
-/// 2026-09-21 record entry relocked `transition_epoch` on the relative rule below, and it
+/// 2026-10-01 record entry relocked `transition_epoch` on the relative rule below, and it
 /// is reported beside the primary reading ever since — a run's fall read on the one scale
 /// every finding stated before the relock.
 pub const TRANSITION_THRESHOLD: f64 = 0.6;
@@ -30,7 +30,7 @@ pub const TRANSITION_MIN_ALPHABET_SIZE: u32 = 16;
 /// threshold and crosses it with nothing replicating. The fraction is that constant
 /// expressed against the cap-64 start, 0.6 / 0.984 ≈ 0.61, so the arms the threshold was
 /// chosen on read the crossings they always did (`docs/design_record.md`, 2026-09-19).
-/// `transition_epoch` is this reading since the 2026-09-21 entry relocked it.
+/// `transition_epoch` is this reading since the 2026-10-01 entry relocked it.
 pub const TRANSITION_RELATIVE_FRACTION: f64 = 0.61;
 /// The last epoch counted into a run's baseline. A run whose first sample comes later has
 /// no baseline, and so no relative reading at all.
@@ -115,6 +115,83 @@ pub struct Metrics {
     pub lineage_compressed_len: Option<u32>,
     /// How many of that same representative's bytes the run's instruction set executes.
     pub lineage_instruction_count: Option<u32>,
+    /// `copy_rate` with the image reversed: the share of the sampled epoch's interactions
+    /// that ended with one half holding the byte-exact reverse of the tape its partner
+    /// arrived with, among the pairs that did not arrive that way. `copy_rate` is locked and
+    /// orientation-blind, and the dominant replicators of the corpus copy in reverse
+    /// (`docs/design_record.md`, 2026-09-25). A palindrome's copy counts in both. 0 on the
+    /// life substrate.
+    pub reverse_copy_rate: f64,
+    /// The share of `replicator::SELF_REP_SAMPLE_CELLS` cells, drawn uniformly with
+    /// replacement, whose tape passes the orientation-aware detector aligned: a companion
+    /// of `replicator_count`, which asks for a same-orientation copy of one of the `top_k`
+    /// tapes. `None` on the life substrate.
+    pub replicator_share: Option<f64>,
+    /// The same draw read under the detector's best rotation, so never below
+    /// `replicator_share`.
+    pub replicator_share_rotated: Option<f64>,
+    /// Whether the dominant tape — the one `dominant_replicates` describes — passes the
+    /// orientation-aware detector aligned. `None` on the life substrate.
+    pub dominant_self_replicates: Option<bool>,
+    /// `lineage_variation` with each member put the way round — its live bytes as they
+    /// are, or reversed — that is Hamming-closer to its lineage's modal tape, a tie keeping
+    /// them as they are. A world of `X` and `reverse(X)` reads a lineage of near-clones as
+    /// a cloud a whole tape wide on the aligned reading (`docs/design_record.md`,
+    /// 2026-09-25). 0 on the life substrate.
+    pub lineage_variation_oriented: f64,
+    /// `conserved_core_bytes` of the largest lineage's members put the same way round.
+    pub conserved_core_bytes_oriented: Option<u32>,
+    /// `conserved_core_ops` of those same oriented members.
+    pub conserved_core_ops_oriented: Option<u32>,
+    /// Interpreter steps until the dominant tape — the one `dominant_replicates` describes
+    /// — first leaves a complete byte-exact image of itself in the partner half, in either
+    /// orientation: the median of `replicator::copy_latency`'s trials. `copy_cost` stays
+    /// the locked reading and is undefined for a copier whose loop never exits, which is
+    /// every dominant copier of the emerged corpus. `None` where fewer than half the trials
+    /// complete an image, and on the life substrate.
+    pub copy_latency: Option<u32>,
+    /// Which way round that median trial's image lies: `forward`, `reverse`, or `both` for
+    /// a palindrome. `None` wherever `copy_latency` is.
+    pub copy_latency_orientation: Option<bff::Orientation>,
+    /// The inverse Simpson index of the lineage shares, 1 / Σ p², over the lineage ids the
+    /// cells hold: how many equal lineages would split the world the way it is split. It
+    /// reads 1 for a monophyletic world and k for k equal lineages, and the relic tags of
+    /// cells nothing ever overwrote barely move it, where they are most of
+    /// `distinct_lineages`. The rung-2 diversity reading (`docs/design_record.md`,
+    /// 2026-09-25). 0 on the life substrate.
+    pub lineage_effective_count: f64,
+    /// How many lineage ids each hold at least `LINEAGE_FLOOR_PERCENT` percent of the cells.
+    /// 0 on the life substrate.
+    pub lineages_over_one_percent: u64,
+    /// The share of `task::TASK_SAMPLE_CELLS` cells, drawn uniformly with replacement,
+    /// whose tape the task assay credits with ECHO, on cases of the sample's own
+    /// (`docs/design_record.md`, 2026-10-01, the task observables). This and every task
+    /// reading below is `None` wherever tasks are off, on the life substrate, and on every
+    /// sample recorded before they existed.
+    pub task_share_echo: Option<f64>,
+    /// The same share for INC.
+    pub task_share_inc: Option<f64>,
+    /// The same share for DEC.
+    pub task_share_dec: Option<f64>,
+    /// The same share for ADD.
+    pub task_share_add: Option<f64>,
+    /// The same share for SUB.
+    pub task_share_sub: Option<f64>,
+    /// The same share for NOT.
+    pub task_share_not: Option<f64>,
+    /// The same share for DOUBLE.
+    pub task_share_double: Option<f64>,
+    /// The same share for MUL.
+    pub task_share_mul: Option<f64>,
+    /// How many tasks at least a tenth of those sampled cells are credited with.
+    pub task_capability: Option<u32>,
+    /// The same count over the tasks that need a loop: ADD, SUB, NOT, DOUBLE and MUL.
+    pub task_capability_loop: Option<u32>,
+    /// The tasks the dominant tape — the one `dominant_replicates` describes — is credited
+    /// with, a bit per task in `task::TASKS` order, on cases of its own.
+    pub dominant_tasks: Option<u32>,
+    /// How many tasks that is.
+    pub dominant_task_count: Option<u32>,
 }
 
 impl Metrics {
@@ -366,6 +443,34 @@ pub fn lineage_census(lineages: &[u64]) -> (u64, f64) {
     (distinct, top as f64 / lineages.len() as f64)
 }
 
+/// The share of the world, in percent, a lineage must hold to count towards
+/// `lineages_over_one_percent`.
+pub const LINEAGE_FLOOR_PERCENT: u64 = 1;
+
+/// `lineage_effective_count` and `lineages_over_one_percent` of one world's tags, read off
+/// the same sorted runs `lineage_census` reads. The index is `N² / Σ nᵢ²` over the
+/// lineages' cell counts, summed in integers so the one division is the only rounding.
+pub fn lineage_diversity(lineages: &[u64]) -> (f64, u64) {
+    if lineages.is_empty() {
+        return (0.0, 0);
+    }
+    let mut sorted = lineages.to_vec();
+    sorted.sort_unstable();
+
+    let cells = lineages.len() as u64;
+    let mut squares: u128 = 0;
+    let mut over_floor: u64 = 0;
+    for run in sorted.chunk_by(|a, b| a == b) {
+        let size = run.len() as u64;
+        squares += u128::from(size) * u128::from(size);
+        if size * 100 >= LINEAGE_FLOOR_PERCENT * cells {
+            over_floor += 1;
+        }
+    }
+    let total = u128::from(cells) * u128::from(cells);
+    (total as f64 / squares as f64, over_floor)
+}
+
 /// How many of the largest lineages `lineage_variation` reads. A soup is a crowd of
 /// small lineages until a colony spreads through it, and the mean over all of them would
 /// read the crowd rather than the colonies; a handful of the largest reads the
@@ -393,9 +498,53 @@ pub fn lineage_variation(tapes: Tapes<'_>, lineages: &[u64]) -> f64 {
         return 0.0;
     }
 
-    let mut members: Vec<(u64, &[u8])> = tagged()
+    let members: Vec<(u64, &[u8])> = tagged()
         .filter(|(id, _)| read.iter().any(|(read, _)| read == id))
         .collect();
+    pooled_variation(members)
+}
+
+/// `lineage_variation` read after each member is put the way round that is Hamming-closer
+/// to its own lineage's modal tape (`orient`): the same lineages, the same modal rule and
+/// the same pooled mean, over tapes that may have been reversed. A population of `X` and
+/// `reverse(X)` is one tape copied two ways round, and the aligned reading counts every
+/// reversed member as a tape's width of variation.
+pub fn lineage_variation_oriented(tapes: Tapes<'_>, lineages: &[u64]) -> f64 {
+    if lineages.is_empty() || tapes.stride() == 0 {
+        return 0.0;
+    }
+    let mut read = ranked_lineages(lineages);
+    read.truncate(VARIATION_TOP_LINEAGES);
+    if read.is_empty() {
+        return 0.0;
+    }
+
+    let mut members: Vec<(u64, &[u8])> = lineages
+        .iter()
+        .copied()
+        .zip(tapes.iter())
+        .filter(|(id, _)| read.iter().any(|(read, _)| read == id))
+        .collect();
+    members.sort_unstable();
+    let oriented: Vec<(u64, Cow<'_, [u8]>)> = members
+        .chunk_by(|(one, _), (other, _)| one == other)
+        .flat_map(|members| {
+            let modal = Lineage { members }.modal_tape();
+            members
+                .iter()
+                .map(move |(id, tape)| (*id, orient(tape, modal)))
+        })
+        .collect();
+    pooled_variation(
+        oriented
+            .iter()
+            .map(|(id, tape)| (*id, tape.as_ref()))
+            .collect(),
+    )
+}
+
+/// The mean distance of `members` to their own lineage's modal tape, pooled over them all.
+fn pooled_variation(mut members: Vec<(u64, &[u8])>) -> f64 {
     // Ordered by lineage then by tape, so each lineage is a contiguous run and the tapes
     // inside it are run-length countable; a tie for the modal tape keeps the lowest tape.
     members.sort_unstable();
@@ -405,6 +554,17 @@ pub fn lineage_variation(tapes: Tapes<'_>, lineages: &[u64]) -> f64 {
         .map(|members| Lineage { members }.distance_to_modal_tape())
         .sum();
     distance as f64 / members.len() as f64
+}
+
+/// A tape the way round that is Hamming-closer to `modal`: its live bytes as they are, or
+/// the same bytes last to first, a tie keeping them as they are. A tape that grew is
+/// reversed over its own live length, never over its slot.
+fn orient<'a>(tape: &'a [u8], modal: &[u8]) -> Cow<'a, [u8]> {
+    let reversed: Vec<u8> = tape.iter().rev().copied().collect();
+    match hamming_distance(&reversed, modal) < hamming_distance(tape, modal) {
+        true => Cow::Owned(reversed),
+        false => Cow::Borrowed(tape),
+    }
 }
 
 /// The lineages that hold more than one cell, largest first and the lowest id of any that
@@ -452,12 +612,30 @@ pub fn conserved_core(
     ops: bff::OpSet,
 ) -> Option<ConservedCore> {
     let members = largest_lineage_members(tapes, lineages)?;
+    Some(core_of(&members, ops))
+}
 
+/// `conserved_core` over the largest lineage's members put the way round that is
+/// Hamming-closer to that lineage's modal tape, as `lineage_variation_oriented` puts them.
+pub fn conserved_core_oriented(
+    tapes: Tapes<'_>,
+    lineages: &[u64],
+    ops: bff::OpSet,
+) -> Option<ConservedCore> {
+    let members = largest_lineage_members(tapes, lineages)?;
+    let modal = modal_tape(&members)?;
+    let oriented: Vec<Cow<'_, [u8]>> = members.iter().map(|tape| orient(tape, modal)).collect();
+    let oriented: Vec<&[u8]> = oriented.iter().map(|tape| tape.as_ref()).collect();
+    Some(core_of(&oriented, ops))
+}
+
+/// The positions `members` agree on, and how many of them hold an instruction.
+fn core_of(members: &[&[u8]], ops: bff::OpSet) -> ConservedCore {
     let width = members.iter().map(|tape| tape.len()).max().unwrap_or(0);
     // The 256 counts of every position, laid out flat so each member's tape is read in one
     // sequential pass: the whole reading costs members × tape length.
     let mut counts = vec![0u32; width * 256];
-    for tape in &members {
+    for tape in members {
         for (position, byte) in tape.iter().enumerate() {
             counts[position * 256 + *byte as usize] += 1;
         }
@@ -473,7 +651,7 @@ pub fn conserved_core(
             core.ops += u32::from(ops.enables(byte as u8));
         }
     }
-    Some(core)
+    core
 }
 
 /// How much tape the largest lineage is, read off one representative of it: the same two
@@ -538,7 +716,7 @@ struct Lineage<'a> {
     members: &'a [(u64, &'a [u8])],
 }
 
-impl Lineage<'_> {
+impl<'a> Lineage<'a> {
     fn distance_to_modal_tape(&self) -> u64 {
         let modal = self.modal_tape();
         self.members
@@ -549,7 +727,7 @@ impl Lineage<'_> {
 
     /// The most common tape of the members, which arrive sorted by tape: the longest run
     /// of equal tapes, and the lowest tape of the runs that tie.
-    fn modal_tape(&self) -> &[u8] {
+    fn modal_tape(&self) -> &'a [u8] {
         let mut modal = self.members[0].1;
         let mut best = 0usize;
         for run in self.members.chunk_by(|(_, one), (_, other)| one == other) {
@@ -578,7 +756,7 @@ pub(crate) fn hamming_distance(one: &[u8], other: &[u8]) -> u64 {
 /// The first sampled epoch at which a qualifying sample appears and holds — the primary
 /// dependent variable of every sweep. A sample qualifies when `compress_ratio` has fallen
 /// to `TRANSITION_RELATIVE_FRACTION` of the run's own baseline and neither collapse guard
-/// is tripped (`docs/design_record.md`, 2026-09-21). The constant-threshold reading the
+/// is tripped (`docs/design_record.md`, 2026-10-01). The constant-threshold reading the
 /// observable was defined by until then is kept beside it, and settles independently.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransitionTracker {
@@ -770,7 +948,7 @@ impl TransitionTracker {
     }
 
     /// The same measurement made against the constant threshold the observable was defined
-    /// by before the 2026-09-21 relock: the companion reading, never the run's own.
+    /// by before the 2026-10-01 relock: the companion reading, never the run's own.
     pub fn constant_epoch(&self) -> Option<u64> {
         self.constant.settled
     }
@@ -1072,6 +1250,126 @@ mod tests {
         );
     }
 
+    /// One lineage of 27 cells: the hand-written reverse copier `X` twelve times and its
+    /// reverse ten times, three copies of `X` and two of `reverse(X)` with one byte
+    /// mutated each — the shape of a world whose replicators copy themselves in reverse.
+    /// Unmirrored, every one of those members is a copy of `X` instead.
+    fn copier_lineage(mirrored: bool) -> Vec<u8> {
+        let tape = crate::replicator::handwritten_reverse_replicator(64);
+        let other: Vec<u8> = match mirrored {
+            true => tape.iter().rev().copied().collect(),
+            false => tape.clone(),
+        };
+        let mut members: Vec<Vec<u8>> = Vec::new();
+        members.extend(std::iter::repeat_n(tape.clone(), 12));
+        members.extend(std::iter::repeat_n(other.clone(), 10));
+        for at in [3, 30, 50] {
+            let mut mutant = tape.clone();
+            mutant[at] = 0;
+            members.push(mutant);
+        }
+        for at in [10, 40] {
+            let mut mutant = other.clone();
+            mutant[at] = 0;
+            members.push(mutant);
+        }
+        members.concat()
+    }
+
+    /// The contrast the oriented readings exist for: a lineage of near-clones copied two
+    /// ways round reads most of a tape of variation aligned, and a core of only the six
+    /// program bytes `X` and its reverse happen to share; oriented, it reads a whole-tape
+    /// core and a byte's variation in five of 27 members.
+    #[test]
+    fn a_lineage_of_a_tape_and_its_reverse_reads_as_near_clones_oriented() {
+        let cells = copier_lineage(true);
+        let lineages = [7; 27];
+        let tapes = Tapes::uniform(&cells, 64);
+        let ops = bff::OpSet::ALL;
+        let program_ops = crate::replicator::handwritten_reverse_replicator(64)
+            .iter()
+            .filter(|byte| ops.enables(**byte))
+            .count() as u32;
+
+        assert_eq!(lineage_variation(tapes, &lineages), 699.0 / 27.0);
+        assert_eq!(
+            conserved_core(tapes, &lineages, ops),
+            Some(ConservedCore { bytes: 6, ops: 6 })
+        );
+        assert_eq!(lineage_variation_oriented(tapes, &lineages), 5.0 / 27.0);
+        assert_eq!(
+            conserved_core_oriented(tapes, &lineages, ops),
+            Some(ConservedCore {
+                bytes: 64,
+                ops: program_ops
+            })
+        );
+    }
+
+    /// Where no member is closer reversed, orienting changes nothing: the oriented readings
+    /// are the aligned ones, lineage by lineage.
+    #[test]
+    fn a_population_copied_forward_reads_the_same_oriented_and_aligned() {
+        let forward = copier_lineage(false);
+        let lineages: Vec<u64> = (0..27).map(|cell| 1 + cell % 3).collect();
+        let tapes = Tapes::uniform(&forward, 64);
+        let ops = bff::OpSet::ALL;
+
+        assert!(lineage_variation(tapes, &lineages) > 0.0);
+        assert_eq!(
+            lineage_variation_oriented(tapes, &lineages),
+            lineage_variation(tapes, &lineages)
+        );
+        assert_eq!(
+            conserved_core_oriented(tapes, &lineages, ops),
+            conserved_core(tapes, &lineages, ops)
+        );
+    }
+
+    /// A tie keeps the member as it is: `d+-a` sits two bytes from the modal `a+-d` read
+    /// either way round, and kept, it agrees with the modal on the two instructions where
+    /// reversed it would agree on the two letters instead.
+    #[test]
+    fn a_member_as_close_either_way_round_is_kept_as_it_is() {
+        let cells = [b"a+-d".repeat(8), b"d+-a".repeat(2)].concat();
+        let lineages = [1; 10];
+        let tapes = Tapes::uniform(&cells, 4);
+
+        assert_eq!(
+            conserved_core_oriented(tapes, &lineages, bff::OpSet::ALL),
+            Some(ConservedCore { bytes: 2, ops: 2 })
+        );
+    }
+
+    /// A tape that grew is reversed over its live bytes: reversing the whole slot would
+    /// carry its zero padding to the front and leave it far from the tape it mirrors.
+    #[test]
+    fn a_grown_tape_is_reversed_over_its_live_bytes_only() {
+        let cells = b"abcd\0\0dcba\0\0abcd\0\0";
+        let lens = [4, 4, 4];
+        let lineages = [1, 1, 1];
+        let tapes = Tapes::ragged(cells, 6, &lens);
+
+        assert_eq!(lineage_variation(tapes, &lineages), 4.0 / 3.0);
+        assert_eq!(lineage_variation_oriented(tapes, &lineages), 0.0);
+        assert_eq!(
+            conserved_core_oriented(tapes, &lineages, bff::OpSet::ALL),
+            Some(ConservedCore { bytes: 4, ops: 0 })
+        );
+    }
+
+    #[test]
+    fn the_oriented_readings_read_nothing_without_a_lineage_of_two() {
+        let cells = b"abcd";
+        let tapes = Tapes::uniform(cells, 2);
+        assert_eq!(lineage_variation_oriented(tapes, &[1, 2]), 0.0);
+        assert_eq!(
+            conserved_core_oriented(tapes, &[1, 2], bff::OpSet::ALL),
+            None
+        );
+        assert_eq!(lineage_variation_oriented(tapes, &[]), 0.0);
+    }
+
     /// The definition of `docs/DESIGN.md` §1.2 written out without the counting pass the
     /// reading uses to keep the sort off every cell: every lineage grouped in a map, the
     /// ones holding more than a cell ranked, the modal tape counted tape by tape.
@@ -1219,6 +1517,40 @@ mod tests {
         assert_eq!(lineage_census(&[7, 7, 7, 7]), (1, 1.0));
         assert_eq!(lineage_census(&[0, 1, 2, 3]), (4, 0.25));
         assert_eq!(lineage_census(&[5, 9, 5, 2]), (3, 0.5));
+    }
+
+    #[test]
+    fn the_effective_lineage_count_reads_how_many_equal_lineages_split_the_world() {
+        assert_eq!(lineage_diversity(&[]), (0.0, 0));
+        assert_eq!(lineage_diversity(&[7, 7, 7, 7]), (1.0, 1));
+        assert_eq!(lineage_diversity(&[0, 1, 2, 3]), (4.0, 4));
+        assert_eq!(lineage_diversity(&[5, 9, 5, 9]), (2.0, 2));
+        assert_eq!(lineage_diversity(&[5, 9, 5, 2]), (16.0 / 6.0, 3));
+    }
+
+    /// A monophyletic world with a crowd of relic singletons: `distinct_lineages` reads
+    /// the crowd, the effective count barely leaves 1, and no singleton clears the floor.
+    #[test]
+    fn relic_singletons_barely_move_the_effective_lineage_count() {
+        let mut lineages = vec![0u64; 9_900];
+        lineages.extend(1..=100);
+        let (effective, over_floor) = lineage_diversity(&lineages);
+        assert_eq!(lineage_census(&lineages).0, 101);
+        assert!((1.0..1.021).contains(&effective), "{effective}");
+        assert_eq!(over_floor, 1);
+    }
+
+    /// The floor is inclusive: a lineage of exactly one percent counts, one cell fewer
+    /// does not.
+    #[test]
+    fn a_lineage_of_exactly_one_percent_clears_the_floor() {
+        let mut lineages = vec![0u64; 99];
+        lineages.push(1);
+        assert_eq!(lineage_diversity(&lineages).1, 2);
+
+        let mut lineages = vec![0u64; 199];
+        lineages.push(1);
+        assert_eq!(lineage_diversity(&lineages).1, 1);
     }
 
     #[test]
@@ -1370,6 +1702,29 @@ mod tests {
             replicator_count_mean: None,
             lineage_compressed_len: None,
             lineage_instruction_count: None,
+            reverse_copy_rate: 0.0,
+            replicator_share: None,
+            replicator_share_rotated: None,
+            dominant_self_replicates: None,
+            lineage_variation_oriented: 0.0,
+            conserved_core_bytes_oriented: None,
+            conserved_core_ops_oriented: None,
+            copy_latency: None,
+            copy_latency_orientation: None,
+            lineage_effective_count: 128.0,
+            lineages_over_one_percent: 0,
+            task_share_echo: None,
+            task_share_inc: None,
+            task_share_dec: None,
+            task_share_add: None,
+            task_share_sub: None,
+            task_share_not: None,
+            task_share_double: None,
+            task_share_mul: None,
+            task_capability: None,
+            task_capability_loop: None,
+            dominant_tasks: None,
+            dominant_task_count: None,
         }
     }
 

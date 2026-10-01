@@ -290,12 +290,40 @@ RSpec.describe "lab:sweep" do
   end
 
   describe "host_parasite" do
-    it "builds every arm at ninety seeds, the control included" do
+    it "builds every arm at ninety seeds but the rising arm and the two controls, at two hundred and seventy" do
       build_sweep("host_parasite")
 
-      expect(Experiment.find_by(slug: "host-parasite").runs_count).to eq(1_260)
-      expect(Run.group("params->>'energy_influx'").count)
-        .to eq("0" => 180, "512" => 360, "2048" => 360, "8192" => 360)
+      expect(Experiment.find_by(slug: "host-parasite").runs_count).to eq(1_800)
+      expect(Run.group(Arel.sql("params->>'energy_influx'"), Arel.sql("params->>'steal_amount'"),
+                       Arel.sql("params->>'max_tape_len'")).count.select { |_, count| count > 90 })
+        .to eq(%w[2048 1024 128] => 270, %w[0 0 128] => 270, %w[0 0 256] => 270)
+    end
+
+    context "with the sweep already seeded at the ninety seeds every arm first ran" do
+      before { seed_sweep_at("host_parasite", (1..90).to_a) }
+
+      it "queues only the hundred and eighty new seeds of each of the three widened arms" do
+        expect { build_sweep("host_parasite") }.to change(Run, :count).by(3 * 180)
+        expect(Run.where(seed: 91..).distinct.pluck(Arel.sql("params->>'energy_influx'"),
+                                                    Arel.sql("params->>'max_tape_len'")).sort)
+          .to eq([%w[0 128], %w[0 256], %w[2048 128]])
+      end
+
+      it "touches none of the runs the lab already holds" do
+        held = Run.order(:id).pluck(:id, :params, :seed, :updated_at)
+
+        build_sweep("host_parasite")
+
+        expect(Run.where(seed: ..90).order(:id).pluck(:id, :params, :seed, :updated_at)).to eq(held)
+      end
+
+      it "leaves no two runs sharing a (params, seed)" do
+        build_sweep("host_parasite")
+
+        experiment = Experiment.find_by(slug: "host-parasite")
+
+        expect(Runs::DiscardDuplicatesService.call(experiment: experiment)).to be_empty
+      end
     end
 
     it "pairs every influx with theft on and off, and never theft without a stock" do
@@ -333,6 +361,36 @@ RSpec.describe "lab:sweep" do
         .to eq(Lab::Schema.run_defaults.merge("interaction" => "concat", "max_tape_len" => 128,
                                               "tape_len" => 64, "width" => 128, "height" => 128,
                                               "mutation_rate" => 2.0**-13))
+    end
+  end
+
+  describe "from_emerged" do
+    let(:source) { create(:experiment, slug: "host-parasite") }
+    let!(:parent) do
+      params = Lab::Schema.run_defaults.merge("energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128,
+                                              "tape_len" => 64)
+      create(:run, experiment: source, params: params, status: "finished", epochs: 1_000).tap do |run|
+        create(:snapshot, run: run, epoch: run.epochs)
+        create(:snapshot_reading, run: run, epoch: run.epochs, source_epoch: run.epochs,
+                                  values: { "replicator_share" => 0.8 })
+      end
+    end
+
+    it "starts four treatments times three seeds from each qualifying parent" do
+      build_sweep("from_emerged")
+
+      experiment = Experiment.find_by(slug: "from-emerged")
+      expect(experiment.runs_count).to eq(12)
+      expect(experiment.runs.distinct.pluck(:parent_run_id, :parent_epoch)).to eq([[parent.id, 1_000]])
+    end
+
+    it "prints how many parents qualified and which were skipped" do
+      expect { build_sweep("from_emerged", quiet: false) }
+        .to output(/From an emerged world: 1 qualifying parents, 12 children created/).to_stdout
+    end
+
+    it "leaves the founding sweep it draws from alone" do
+      expect { build_sweep("from_emerged") }.not_to(change { source.runs.pluck(:id, :updated_at) })
     end
   end
 
@@ -423,12 +481,12 @@ RSpec.describe "lab:sweep" do
     Experiments::SweepBuilderService.call(experiment)
   end
 
-  def build_sweep(name)
+  def build_sweep(name, quiet: true)
     Rails.application.load_tasks if Rake::Task.tasks.empty?
     task = Rake::Task["lab:sweep"]
     task.reenable
     original = $stdout
-    $stdout = StringIO.new
+    $stdout = StringIO.new if quiet
     task.invoke(name)
   ensure
     $stdout = original

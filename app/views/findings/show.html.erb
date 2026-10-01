@@ -7,11 +7,23 @@
 <div class="container-narrow">
   <p class="finding-meta text-sm text-muted">
     <span class="badge <%= @show.finding.badge_class %>"><%= @show.finding.status_label %></span>
+    <% if @show.finding.imports_objective? %><%= render "findings/objective_badge" %><% end %>
     <time datetime="<%= @show.finding.date.iso8601 %>"><%= l @show.finding.date, format: :long %></time>
   </p>
 
   <h1><%= @show.finding.title %></h1>
   <p class="text-muted"><%= @show.finding.summary %></p>
+
+  <% if @show.finding.imports_objective? %>
+    <p class="text-sm text-muted" id="objective-note">
+      <%= Findings::Finding::OBJECTIVE_MEANING %>
+      <%= link_to "What that means", how_it_works_path(anchor: "imports-an-objective") %>.
+    </p>
+  <% end %>
+
+  <% if @show.finding.instrument_note? %>
+    <%= render "findings/instrument_note", finding: @show.finding %>
+  <% end %>
 
   <%= render @show.finding.body_partial %>
 

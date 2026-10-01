@@ -41,6 +41,18 @@ RSpec.describe Findings::IndexPage do
       expect(row.transition_rate.fraction).to eq(0.5)
     end
 
+    it "counts a finished descendant done but rates the founding runs alone" do
+      experiment = create(:experiment, slug: "mutation-rate")
+      create(:run, experiment: experiment, status: "finished", transition_epoch: 5_030)
+      create(:run, experiment: experiment, status: "finished", transition_epoch: nil)
+      create(:run, :descendant, experiment: experiment, status: "finished")
+
+      row = page.rows.find { |candidate| candidate.finding.experiment_slug == "mutation-rate" }
+
+      expect(row).to have_attributes(runs_done: 3, transitioned: 1)
+      expect(row.transition_rate.fraction).to eq(0.5)
+    end
+
     it "rates a sweep over the same population its own page does" do
       experiment = create(:experiment, slug: "mutation-rate")
       create(:run, experiment: experiment, status: "finished", transition_epoch: 5_030)
@@ -65,8 +77,20 @@ RSpec.describe Findings::IndexPage do
       expect(page.transitioned_runs_count).to eq(2)
     end
 
+    context "with a run paid for its tasks" do
+      it "leaves it and a sweep holding only it out of the denominator" do
+        create(:run, experiment: create(:experiment, name: "Radius", slug: "radius"), status: "finished",
+                     transition_epoch: 900)
+        create(:run, :metabolism, experiment: create(:experiment, name: "Metabolism", slug: "metabolism"),
+                                  status: "finished", transition_epoch: 900)
+
+        expect(page.transitioned_sweeps.map(&:name)).to eq(["Radius"])
+        expect(page.transitioned_runs_count).to eq(1)
+      end
+    end
+
     it "reads everything the page asks it for in a fixed number of queries" do
-      Findings::Registry.all.select(&:sweep?).each { |finding| create(:experiment, slug: finding.experiment_slug) }
+      Findings::Registry.all.select(&:sweep?).map(&:experiment_slug).uniq.each { |slug| create(:experiment, slug: slug) }
       3.times { |seed| create(:run, seed: seed, status: "finished", transition_epoch: 900) }
 
       built = described_class.build

@@ -28,7 +28,7 @@
   first <%= number_with_delimiter window %> epochs, with no alphabet collapse — so Rails
   re-reads a stored series by the criterion the engine used to flag it and never invents a
   second one. That is the rule the transition itself was relocked on
-  (<span class="mono">docs/design_record.md</span>, 2026-09-21), and every sample read here
+  (<span class="mono">docs/design_record.md</span>, 2026-10-01), and every sample read here
   falls outside the baseline window, which is what makes it readable that far out. Leaving the state is
   that rule's hold in reverse: the state ends at the first of <%= exit_samples %> consecutive
   samples the rule rejects, mirroring the <%= hold %> further qualifying samples that confirm
@@ -43,7 +43,7 @@
   and never a hazard.
 </p>
 <p>
-  <strong>The population moved when the rule did.</strong> Until 2026-09-21 a run entered
+  <strong>The population moved when the rule did.</strong> Until 2026-10-01 a run entered
   this survey on the constant threshold, <span class="mono">compress_ratio</span> below 0.6,
   which a wide-tape soup can sit under from its first epoch. The 29 cap-512 runs of the
   <%= link_to "room-to-grow sweep", finding_path("complexity-keeps-rising") %> whose crossing

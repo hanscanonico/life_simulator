@@ -76,7 +76,8 @@ RSpec.describe Experiments::SweepBuilderService do
   context "with runs stored before the engine schema grew a parameter" do
     it "recognises them instead of re-creating the whole sweep" do
       build_sweep
-      experiment.runs.each { |run| run.update!(params: run.params.except("ops", "top_k")) }
+      grown = %w[ops top_k lineage_rule energy_payer tasks task_every task_reward]
+      experiment.runs.each { |run| run.update!(params: run.params.except(*grown)) }
 
       expect { described_class.call(experiment.reload) }.not_to change(Run, :count)
     end
@@ -139,6 +140,47 @@ RSpec.describe Experiments::SweepBuilderService do
     end
   end
 
+  context "with an arm named by a bundle and a crossed axis together" do
+    let(:experiment) do
+      create(:experiment, param_grid: { "world_size" => [{ "width" => 32, "height" => 32 },
+                                                         { "width" => 64, "height" => 64 }],
+                                        "radius" => [1, 2] },
+                          seeds: [1],
+                          seeds_by_arm: [{ "params" => { "width" => 64, "height" => 64, "radius" => 2 },
+                                           "seeds" => [1, 2, 3] }])
+    end
+
+    it "runs only the grid point matching every named parameter at the arm's seeds" do
+      build_sweep
+
+      expect(experiment.runs.group(Arel.sql("params->>'width'"), Arel.sql("params->>'radius'")).count)
+        .to eq(%w[32 1] => 1, %w[32 2] => 1, %w[64 1] => 1, %w[64 2] => 3)
+    end
+
+    context "with the arm widened after its sweep was built" do
+      it "adds only the arm's missing seeds" do
+        build_sweep
+        experiment.update!(seeds_by_arm: [{ "params" => { "width" => 64, "height" => 64, "radius" => 2 },
+                                            "seeds" => [1, 2, 3, 4, 5] }])
+
+        expect { described_class.call(experiment.reload) }.to change(Run, :count).by(2)
+      end
+    end
+  end
+
+  context "with an arm given seeds of its own before a jsonb round trip" do
+    let(:experiment) do
+      create(:experiment, param_grid: { "radius" => [1, 2] }, seeds: [1],
+                          seeds_by_arm: { "radius" => { 2 => [1, 2] } }).reload
+    end
+
+    it "still recognises the arm by its value read back as a string" do
+      build_sweep
+
+      expect(experiment.runs.group("params->>'radius'").count).to eq("1" => 1, "2" => 2)
+    end
+  end
+
   context "with an empty grid" do
     let(:experiment) { create(:experiment, param_grid: {}, seeds: [1, 2]) }
 
@@ -146,6 +188,18 @@ RSpec.describe Experiments::SweepBuilderService do
       build_sweep
 
       expect(experiment.runs.pluck(:params).uniq).to eq([Lab::Schema.run_defaults])
+    end
+  end
+
+  context "with a descendant sweep" do
+    let(:experiment) do
+      create(:experiment, parents: Lab::SWEEPS.fetch("from_emerged").fetch(:parents),
+                          param_grid: { "treatment" => [{}] }, seeds: [1001])
+    end
+
+    it "hands the sweep to the descendant builder and starts no run from a random fill" do
+      expect(build_sweep).to be_a(Experiments::DescendantSweepBuilderService::Report)
+      expect(experiment.runs).to be_empty
     end
   end
 end

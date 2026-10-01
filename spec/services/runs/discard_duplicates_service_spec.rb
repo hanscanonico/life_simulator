@@ -76,4 +76,14 @@ RSpec.describe Runs::DiscardDuplicatesService do
       expect(experiment.runs.count).to eq(2)
     end
   end
+
+  context "with descendants of two parents under the same params and seed" do
+    it "keeps both: they start from different worlds" do
+      first = create(:run, :descendant, experiment: experiment, seed: 7)
+      second = create(:run, :descendant, experiment: experiment, seed: 7)
+
+      expect(discard).to be_empty
+      expect(experiment.runs.pluck(:id)).to contain_exactly(first.id, second.id)
+    end
+  end
 end

@@ -123,7 +123,7 @@ jobs:
 
       - name: Install wasm-bindgen
         if: steps.wasm.outputs.cache-hit != 'true'
-        uses: taiki-e/cache-cargo-install-action@v2
+        uses: taiki-e/cache-cargo-install-action@v3
         with:
           tool: wasm-bindgen-cli@0.2.128
 
@@ -140,7 +140,7 @@ jobs:
           bundle exec rspec
 
       - name: Keep screenshots from failed system tests
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: screenshots
@@ -198,7 +198,7 @@ jobs:
 
       - name: Install wasm-bindgen
         if: steps.engine.outputs.present == 'true' && steps.wasm.outputs.cache-hit != 'true'
-        uses: taiki-e/cache-cargo-install-action@v2
+        uses: taiki-e/cache-cargo-install-action@v3
         with:
           tool: wasm-bindgen-cli@0.2.128
 

@@ -3,7 +3,7 @@
 source "https://rubygems.org"
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
-gem "rails", "~> 8.1.3", ">= 8.1.3.1"
+gem "rails", "~> 8.1.4"
 # The modern asset pipeline for Rails [https://github.com/rails/propshaft]
 gem "propshaft"
 # Use postgresql as the database for Active Record
@@ -18,9 +18,9 @@ gem "turbo-rails"
 gem "stimulus-rails"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
 gem "jbuilder"
-# json 3.0 dropped positional parse options; Active Support 8.1 still calls
-# `JSON.parse(json, options)`, which breaks every jsonb attribute read.
-gem "json", "~> 2.7"
+# json 3.0 rejects positional parse options; Active Support passes them as
+# keywords from 8.1.4 on, so keep the two floors together.
+gem "json", "~> 3.0"
 # The CSV exports; csv leaves the default gems in Ruby 3.4
 gem "csv"
 

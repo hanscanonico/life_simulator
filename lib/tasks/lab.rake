@@ -3,16 +3,17 @@
 namespace :lab do
   desc "Build a sweep experiment from DESIGN.md 1.3 " \
        "(mutation_rate, world_size, radius, max_steps, ops, energy_per_epoch, " \
-       "environmental_structure, max_tape_len, host_parasite, asymmetric_execution)"
+       "environmental_structure, max_tape_len, host_parasite, asymmetric_execution, from_emerged, metabolism)"
   task :sweep, [:sweep] => :environment do |_task, args|
     definition = Lab::SWEEPS[args[:sweep]]
     raise "Unknown sweep #{args[:sweep].inspect}. Known sweeps: #{Lab::SWEEPS.keys.join(', ')}" if definition.nil?
 
     experiment = Experiment.find_or_initialize_by(slug: Lab.slug_for(args[:sweep]))
     experiment.update!(definition.merge(substrate: "soup"))
-    Experiments::SweepBuilderService.call(experiment)
+    built = Experiments::SweepBuilderService.call(experiment)
 
     puts "#{experiment.name}: #{experiment.reload.runs_count} runs"
+    puts "#{experiment.name}: #{built}" if experiment.descendant_sweep?
   end
 
   desc "Send the failed runs of an experiment back to the pending queue"
@@ -96,7 +97,7 @@ namespace :lab do
 
   desc "Recompute both transition readings from the stored samples of terminal runs (one experiment, or all)"
   task :backfill_transitions, [:slug] => :environment do |_task, args|
-    runs = Run.terminal.order(:id)
+    runs = Run.founding.terminal.order(:id)
     if args[:slug].present?
       experiment = Experiment.find_by(slug: args[:slug])
       raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
@@ -119,7 +120,7 @@ namespace :lab do
       # Every run is resummarised, not only the ones whose epochs moved: the summary is
       # read by the same rule as `transition_epoch`, so a run stored under an older reading
       # of that rule is stale at an epoch that did not move (docs/design_record.md,
-      # 2026-09-21).
+      # 2026-10-01).
       resummarised = Runs::PersistenceRefreshService.call(run: run)
       puts "run #{run.id}: persistence #{run.persistence.presence || 'no transition'}" if resummarised && !moved
 
@@ -131,7 +132,7 @@ namespace :lab do
 
   desc "Confirm the crossing of every terminal run against its stored census and copy rate (one experiment, or all)"
   task :backfill_emergence, [:slug] => :environment do |_task, args|
-    runs = Run.terminal.order(:id)
+    runs = Run.founding.terminal.order(:id)
     if args[:slug].present?
       experiment = Experiment.find_by(slug: args[:slug])
       raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
@@ -193,6 +194,21 @@ namespace :lab do
     puts ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
+  desc "Read the detector, the emergence rule and the orientation-aware census side by side, per arm " \
+       "(one experiment, or `all` for every experiment's totals). Prints them; changes nothing (FORMAT=csv)"
+  task :oriented_report, [:slug] => :environment do |_task, args|
+    report = if args[:slug] == "all"
+               Experiments::OrientedCorpusService.call
+             else
+               experiment = Experiment.find_by(slug: args[:slug])
+               raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
+
+               Experiments::OrientedArmsService.call(experiment: experiment)
+             end
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
   desc "List the stored transitions the alphabet guard would no longer accept (one experiment, or all). " \
        "Prints them; changes nothing"
   task :transition_audit, [:slug] => :environment do |_task, args|
@@ -233,6 +249,73 @@ namespace :lab do
     raise "Unknown experiment #{args[:slug].inspect}." if experiment.nil?
 
     print Experiments::CostReportService.call(experiment: experiment).to_text
+  end
+
+  desc "Read the from-emerged sweep as pre-registered: every child, every treatment, every hypothesis " \
+       "(FORMAT=csv); labelled interim until every child of every qualifying parent is terminal"
+  task from_emerged_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("from_emerged"))
+    raise "The from-emerged sweep is not seeded." if experiment.nil?
+
+    report = Experiments::FromEmergedReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
+  desc "Read the from-emerged sweep's held-out children as pre-registered: every held-out child, " \
+       "every treatment, H3-latency and H4-survivors (FORMAT=csv for CSV)"
+  task from_emerged_heldout_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("from_emerged"))
+    raise "The from-emerged sweep is not seeded." if experiment.nil?
+
+    report = Experiments::FromEmergedReadingService.call(experiment: experiment)
+    heldout = report.heldout
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? heldout.to_csv(final: report.final) : heldout.to_text(final: report.final)
+  end
+
+  desc "Read the metabolism sweep as pre-registered: every child, every arm, H-capability, H-ladder and " \
+       "H-complexity (FORMAT=csv for CSV); labelled interim until every child of every qualifying parent is terminal"
+  task metabolism_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("metabolism"))
+    raise "The metabolism sweep is not seeded." if experiment.nil?
+
+    report = Experiments::MetabolismReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
+  desc "Read the lineage-diversity sweep as pre-registered: every run, every arm, the hypothesis " \
+       "(FORMAT=csv for CSV)"
+  task lineage_diversity_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("lineage_diversity"))
+    raise "The lineage-diversity sweep is not seeded." if experiment.nil?
+
+    report = Experiments::LineageDiversityReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
+  desc "Read the locality-emergence sweep as pre-registered: every run, every arm, H-peak and H-shape " \
+       "(FORMAT=csv for CSV)"
+  task locality_emergence_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("locality_emergence"))
+    raise "The locality-emergence sweep is not seeded." if experiment.nil?
+
+    report = Experiments::LocalityEmergenceReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
+  desc "Read the reach-cap128 sweep as pre-registered: every run of both arms, the arms and H-reach128 " \
+       "(FORMAT=csv for CSV)"
+  task reach_cap128_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("reach_cap128"))
+    raise "The reach-cap128 sweep is not seeded." if experiment.nil?
+
+    report = Experiments::ReachCap128ReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"

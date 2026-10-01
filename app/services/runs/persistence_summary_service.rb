@@ -7,7 +7,7 @@ module Runs
   #
   # "In the transitioned state" is the rule `transition_epoch` itself is read by, applied
   # sample by sample (`Lab::TransitionRule`): `compress_ratio` at or below the fraction of
-  # the run's own baseline, with no alphabet collapse (docs/design_record.md, 2026-09-21).
+  # the run's own baseline, with no alphabet collapse (docs/design_record.md, 2026-10-01).
   # Every sample at or after a transition lies outside the baseline window by construction
   # — the tracker reads nothing until the window closes — so the relative predicate is well
   # defined over the whole span this reads, and a run that has no baseline has no reading
@@ -15,6 +15,13 @@ module Runs
   # the first of `hold_samples + 1` consecutive samples the rule rejects, so a single
   # sample flickering back above the threshold is no more a relapse than a single sample
   # below it is a transition. A state that never ends persisted to the last sample.
+  #
+  # A descendant has no transition of its own: its colony was established when it started
+  # from its parent's world, so it is read from `parent_epoch` on. It has no baseline of
+  # its own either — it starts past the window — so it is read against the baseline of
+  # the founding run whose random start its world continues (docs/design_record.md,
+  # 2026-10-01): under its parent's params and seed it is the parent carried on, and reads
+  # as the parent would.
   #
   # It reads stored samples and changes nothing — not the detector, not a metric, not a run.
   class PersistenceSummaryService
@@ -25,7 +32,7 @@ module Runs
     end
 
     def call
-      return nil if @run.transition_epoch.nil? || baseline.nil? || transitioned_samples.empty?
+      return nil if anchor.nil? || baseline.nil? || transitioned_samples.empty?
 
       Persistence.new(census_peak: census_peak, peak_epoch: peak_epoch,
                       epochs_persisted: epochs_persisted, relapsed: exit_index.present?)
@@ -33,21 +40,30 @@ module Runs
 
     private
 
+    def anchor = @run.descendant? ? @run.parent_epoch : @run.transition_epoch
+
     def samples = @samples ||= @run.samples.order(:epoch).pluck(:epoch, :values)
 
     def baseline
       return @baseline if defined?(@baseline)
 
-      @baseline = Lab::TransitionRule.baseline_of(samples)
+      @baseline = Lab::TransitionRule.baseline_of(@run.descendant? ? founding_baseline_samples : samples)
+    end
+
+    def founding_baseline_samples
+      founding = @run
+      founding = founding.parent_run while founding.descendant?
+
+      founding.samples.where(epoch: ..Lab::TransitionRule::BASELINE_EPOCHS).order(:epoch).pluck(:epoch, :values)
     end
 
     def transitioned?(values) = Lab::TransitionRule.qualifies_relative?(values, baseline: baseline)
 
     def transitioned_samples
-      @transitioned_samples ||= samples.drop_while { |epoch, _| epoch < @run.transition_epoch }
+      @transitioned_samples ||= samples.drop_while { |epoch, _| epoch < anchor }
     end
 
-    def epochs_persisted = [persisted_through.to_i - @run.transition_epoch, 0].max
+    def epochs_persisted = [persisted_through.to_i - anchor, 0].max
 
     # The last epoch the world was still in the transitioned state: the last sample the
     # rule accepts before the exit, or before the end of the series when there is none.

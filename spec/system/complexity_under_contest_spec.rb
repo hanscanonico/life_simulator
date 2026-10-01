@@ -49,6 +49,16 @@ RSpec.describe "The complexity-under-contest finding", type: :system do
     expect(page).to have_text("1 of the 2 measured runs of the priced arms keep rising")
   end
 
+  it "states the aligned core's confound and the oriented core's descriptive reading beside both rules" do
+    expect(page).to have_text("may be that confound rather than no core")
+    expect(page).to have_text("descriptively and on those runs only")
+  end
+
+  it "says why the finding stays partial while two unextended arms hold one measured run each" do
+    expect(page).to have_text("That decides the arm the extension was run for, but not the sweep")
+    expect(page).to have_text("the finding stays partial rather than negative")
+  end
+
   it "reads the theft the steal arm evolved" do
     expect(page).to have_text("Theft evolved in the one steal arm, peak steal_rate 0.30.")
   end

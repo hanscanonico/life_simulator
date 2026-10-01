@@ -1,0 +1,117 @@
+<%# The lineage-diversity sweep's pre-registered reading (docs/design_record.md, 2026-09-25):
+    `reading` is a Lab::LineageDiversityReading::Report. The per-run rows stay in
+    `lab:lineage_diversity_report`. %>
+<% hypothesis = reading.hypothesis %>
+<section class="mt-6" id="lineage-diversity-reading">
+  <h2>
+    The pre-registered reading
+    <span class="badge <%= reading.interim? ? 'badge-warning' : 'badge-success' %>">
+      <%= reading.interim? ? "interim" : "final" %>
+    </span>
+  </h2>
+  <p class="text-sm text-muted">
+    <% if reading.interim? %>
+      Interim: not every run of the sweep has finished, and only the finished ones are read.
+      Nothing here is the sweep's result yet.
+    <% else %>
+      Every run of the sweep has finished.
+    <% end %>
+    A run emerged where it has a confirmed emergence epoch and reads
+    <span class="mono">replicator_share</span> of at least
+    <%= percent_value Lab::LineageDiversityReading::MIN_SHARE %> at some sample from it on. It is
+    polyphyletic where the median <span class="mono">lineage_effective_count</span> of the last
+    decile of its samples since emergence is at least <%= Lab::LineageDiversityReading::POLYPHYLETIC %>,
+    monophyletic below <%= Lab::LineageDiversityReading::MONOPHYLETIC %>, between otherwise, and
+    unmeasured where fewer than <%= Lab::LineageDiversityReading::MIN_DECILE_SAMPLES %> of that decile's
+    samples carry it. An arm with fewer than <%= Lab::LineageDiversityReading::MIN_ARM_RUNS %> measured emerged
+    runs is unread.
+  </p>
+
+  <figure class="table-figure mt-4">
+    <figcaption class="table-caption text-sm text-muted" id="lineage-diversity-arms">
+      Runs per arm, read so far. The effective count is the median over the arm's measured runs;
+      the columns after it are last-decile medians over the same runs, and descriptive only, as is the
+      radius sweep's emergence count, which ran at another rate, other seeds and another lineage rule.
+    </figcaption>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="lineage-diversity-arms">
+      <table class="data-table" aria-labelledby="lineage-diversity-arms">
+        <thead>
+          <tr>
+            <th>Arm</th>
+            <th class="numeric">Runs</th>
+            <th class="numeric">Finished</th>
+            <th class="numeric">Emerged</th>
+            <th class="numeric">Measured</th>
+            <th class="numeric">Polyphyletic</th>
+            <th class="numeric">Between</th>
+            <th class="numeric">Monophyletic</th>
+            <th class="numeric">Unmeasured</th>
+            <th class="numeric"><span class="mono">lineage_effective_count</span></th>
+            <th>Reading</th>
+            <th class="numeric"><span class="mono">lineages_over_one_percent</span></th>
+            <th class="numeric"><span class="mono">lineage_variation_oriented</span></th>
+            <th class="numeric"><span class="mono">conserved_core_bytes_oriented</span></th>
+            <th class="numeric"><span class="mono">conserved_core_ops_oriented</span></th>
+            <th class="numeric"><span class="mono">copy_latency</span>, first → last decile</th>
+            <th class="numeric">Radius sweep emerged</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% reading.arms.each do |arm| %>
+            <tr>
+              <td><%= arm.label %></td>
+              <td class="numeric"><%= arm.rows.size %></td>
+              <td class="numeric"><%= arm.finished.size %></td>
+              <td class="numeric"><%= arm.emerged.size %></td>
+              <td class="numeric"><%= arm.measured.size %></td>
+              <% Lab::LineageDiversityReading::VERDICTS.each do |verdict| %>
+                <td class="numeric"><%= arm.verdict_count(verdict) %></td>
+              <% end %>
+              <td class="numeric"><%= metric_value arm.effective_count %></td>
+              <td><%= arm.read? ? "read" : "unread" %></td>
+              <% Lab::LineageDiversityReading::DESCRIPTIVE_KEYS.excluding("copy_latency").each do |key| %>
+                <td class="numeric"><%= metric_value arm.descriptive(key) %></td>
+              <% end %>
+              <td class="numeric">
+                <%= metric_value arm.copy_latency_first %> → <%= metric_value arm.descriptive("copy_latency") %>
+              </td>
+              <td class="numeric">
+                <% if arm.radius_finished %>
+                  <%= arm.radius_emerged %> of <%= arm.radius_finished %>
+                <% else %>
+                  —
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <h3 class="mt-4">Hypothesis</h3>
+  <p>
+    After a transition a world stays polyphyletic, and more lineages survive as a cell's reach shrinks:
+    <span class="badge <%= hypothesis.badge_class %>"><%= hypothesis.outcome_label %></span>
+  </p>
+  <p class="text-sm text-muted">
+    <% if hypothesis.testable? %>
+      One-sided Jonckheere–Terpstra trend over <%= hypothesis.read_arms.map(&:label).join(" < ") %>:
+      statistic <%= metric_value hypothesis.statistic.to_f %>, permutation
+      p = <%= metric_value hypothesis.p_value.to_f %> over
+      <%= number_with_delimiter Lab::LineageDiversityReading::PERMUTATIONS %> dealings, read at
+      p &lt; <%= Lab::LineageDiversityReading::TREND_LEVEL %>.
+      The read arm of shortest reach, <%= hypothesis.shortest_read_arm.label %>, has a median
+      effective count of <%= metric_value hypothesis.shortest_read_arm.effective_count %>.
+      <% if hypothesis.trend_without_polyphyly? %>
+        That is a trend, not the hypothesis: the shortest read reach is not polyphyletic.
+      <% end %>
+    <% else %>
+      No trend is tested and nothing is refuted before
+      <%= Lab::LineageDiversityReading::MIN_READ_ARMS %> arms are read.
+    <% end %>
+    <% if hypothesis.unread_arms.any? %>
+      Unread: <%= hypothesis.unread_arms.map(&:label).to_sentence %>.
+    <% end %>
+  </p>
+</section>

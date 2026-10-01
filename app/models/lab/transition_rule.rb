@@ -13,7 +13,7 @@ module Lab
   #
   # `qualifies_constant?` is the companion rule of the same tracker, the constant
   # `THRESHOLD` the observable was defined by until the relock (`docs/design_record.md`,
-  # 2026-09-21).
+  # 2026-10-01).
   module TransitionRule
     THRESHOLD = Schema.transition.fetch("threshold")
     HOLD_SAMPLES = Schema.transition.fetch("hold_samples")
