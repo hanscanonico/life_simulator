@@ -568,7 +568,7 @@ mod tests {
     }
 
     /// A tenth of 256 is 25.6, so 25 cells are not a capability and 26 are; the deep count
-    /// reads only XOR and EQU.
+    /// reads only XOR and EQU, not NOR just below them.
     #[test]
     fn a_logic_capability_is_a_tenth_of_the_sampled_cells_counted_in_integers() {
         let mut tally = LogicTally::default();
@@ -582,14 +582,20 @@ mod tests {
         assert_eq!(tally.capability(), 1);
         assert_eq!(tally.capability_deep(), 0);
 
-        tally.add(Credit(1 << 8));
+        for _ in 0..26 {
+            tally.add(Credit(1 << (FIRST_DEEP_TASK - 1)));
+        }
         assert_eq!(tally.capability(), 2);
+        assert_eq!(tally.capability_deep(), 0);
+
+        tally.add(Credit(1 << 8));
+        assert_eq!(tally.capability(), 3);
         assert_eq!(tally.capability_deep(), 1);
 
         for _ in 0..26 {
             tally.add(Credit(0b10_0010_0001));
         }
-        assert_eq!(tally.capability(), 5);
+        assert_eq!(tally.capability(), 6);
         assert_eq!(tally.capability_deep(), 2);
     }
 }

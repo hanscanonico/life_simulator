@@ -14,7 +14,7 @@ RSpec.describe Runs::ShowPage do
       end
     end
 
-    def chart_for(metric) = page.charts[described_class::METRICS.keys.index(metric)]
+    def chart_for(metric) = page.charts.find { |chart| chart.title == described_class::METRICS.fetch(metric) }
 
     it "draws one chart per plottable DESIGN observable" do
       expect(described_class::METRICS.keys)
@@ -34,9 +34,38 @@ RSpec.describe Runs::ShowPage do
                   logic_share_and logic_share_orn logic_share_or logic_share_andn logic_share_nor
                   logic_share_xor logic_share_equ])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
+      create(:sample, run: run, epoch: 100, values: { "task_capability" => 0, "logic_capability" => 0 })
       expect(page.charts.map(&:title))
         .to eq(described_class::METRICS.values +
                [described_class::COMPRESSIBILITY_TITLE, described_class::TURNOVER_TITLE])
+    end
+
+    it "groups the readings of each task ladder" do
+      expect(described_class::LADDERS)
+        .to eq([%w[task_capability task_capability_loop dominant_task_count task_share_echo task_share_inc
+                   task_share_dec task_share_add task_share_sub task_share_not task_share_double task_share_mul],
+                %w[logic_capability logic_capability_deep dominant_logic_task_count logic_share_echo
+                   logic_share_not logic_share_nand logic_share_and logic_share_orn logic_share_or
+                   logic_share_andn logic_share_nor logic_share_xor logic_share_equ]])
+    end
+
+    context "with samples of a run assayed on neither task ladder" do
+      it "draws no chart of either ladder" do
+        create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794, "task_capability" => nil })
+
+        expect(page.charts.size).to eq(described_class::METRICS.size - described_class::LADDERS.sum(&:size) + 2)
+        expect(described_class::LADDERS.flatten.map { |metric| chart_for(metric) }).to all(be_nil)
+      end
+    end
+
+    context "with samples of a run assayed on the logic ladder" do
+      it "draws every logic chart, an unsolved rung's included, and no arithmetic one" do
+        create(:sample, run: run, epoch: 100, values: { "logic_capability" => 0, "logic_share_xor" => 0.0 })
+
+        expect(described_class::LADDERS.last.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
+        expect(chart_for("logic_share_equ")).to be_empty
+        expect(described_class::LADDERS.first.map { |metric| chart_for(metric) }).to all(be_nil)
+      end
     end
 
     it "reads the compressed length against the tape's own length" do

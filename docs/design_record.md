@@ -3047,6 +3047,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   is **one substrate**, one budget, three correlated children per parent, and four of its
   parents were piloted. The design study numbered this item 14 and DESIGN §1.3 gave 14 to
   the reach-cap128 sweep first, so it is item 15.
+
 - 2026-10-01 — **The Metabolism label, implemented.** The entry above locks that a run with
   `task_reward > 0` is a Metabolism run, that its runs are never pooled with fitness-free
   arms and that its findings carry an "imports an objective" badge; this is how the site
@@ -3076,6 +3077,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     three tests with their per-parent agreement and their re-reading without the piloted
     parents, the pairs, and the descriptive ladder. It is one pass over the children's
     samples, held under the page's cache key as the from-emerged reading is.
+
 - 2026-10-01 — **The logic assay, the NAND op `~` and `task_floor` (Logic, slice 1).**
   "Logic" is a variant of the Metabolism substrate. It keeps Metabolism's economy, assay
   and reward, and swaps the arithmetic ladder for a logic one. It imports an objective
@@ -3242,8 +3244,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   `STREAM_TASK | 3` at `(seed, epoch)`; each distinct tape in the sample is assayed once
   (`logic::Memo`). The cases are drawn fresh at every sample, keyed by `(seed, epoch)`,
   as slice 1's deep-rung check asks, so a partial solver's chance credit does not repeat
-  from one sample to the next. A rung is a capability at a share of at least 1/10, compared in integers
-  (26 of 256), and `logic_capability_deep` counts XOR and EQU only
+  from one sample to the next. A rung is a capability at a share of at least 1/10,
+  compared in integers (26 of 256), and `logic_capability_deep` counts XOR and EQU only
   (`logic::FIRST_DEEP_TASK..`), the count H-deep reads. `dominant_logic_tasks` is the
   census's dominant tape's credit as a `u32` bitmask in `logic::LOGIC_TASKS` order, on
   cases drawn on `STREAM_TASK | 4`, 0 rather than null where that tape solves nothing.
@@ -3254,7 +3256,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   arithmetic readings stay null under `logic`, as slice 1 left them. Live-only: neither
   `oriented_census/1` nor `/2` reads them. Rails stores them in `Sample::OBSERVABLES`,
   `dominant_logic_tasks` as a flag the run page names from the logic ladder `runner schema`
-  exports; a missing key draws no point and is never read as 0.
+  exports; a missing key draws no point and is never read as 0. The run page draws a
+  ladder's charts, arithmetic or logic, only for a run with a reading of that ladder, so a
+  run on neither carries no block of empty charts.
 
   **The invariant, pinned.** Nothing else draws on the two streams, and the readings write
   nothing. A test steps `tasks = logic, task_reward = 0` beside `tasks = off` under both
@@ -3270,6 +3274,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   the eight stored Metabolism-study worlds (128×128, 3 300 to 16 400 cells holding a `!`,
   a loaded Mac): 0.08 to 0.73 ms a sample, one reading of 3.5 ms, which is 0.02% to 0.3% of
   a sample interval at `sample_every` 10. Relocks nothing.
+
 - 2026-10-01 — **Logic: does a soup assemble features beyond its one-step rungs when the
   parts are paid? The `logic` sweep, pre-registered.** This is §1.3 item 16 and it adds a
   paragraph to DESIGN §1.4. The experiment is `logic` (sweep key `logic`), and its numbers

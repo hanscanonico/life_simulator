@@ -424,7 +424,7 @@ claim rests on it.
   **live-only**: neither `oriented_census/1` nor `/2` reads them, since an instrument
   version never changes once readings exist under it, and the sweep that needs them
   samples them as it runs. The run page names `dominant_tasks` rather than printing the
-  number, and draws the other eleven.
+  number, and draws the other eleven on the page of a run that has a reading of them.
 - `logic_share_echo` / `logic_share_not` / `logic_share_nand` / `logic_share_and` /
   `logic_share_orn` / `logic_share_or` / `logic_share_andn` / `logic_share_nor` /
   `logic_share_xor` / `logic_share_equ` / `logic_capability` / `logic_capability_deep` /
@@ -433,7 +433,8 @@ claim rests on it.
   logic ladder. The prefix keeps them apart from the arithmetic keys: bitwise NOT of a byte
   is 255 − x, the arithmetic NOT. Each `logic_share_*` is the share of 256 cells, drawn
   uniformly with replacement, that the logic assay credits with that rung; the cases and
-  then the cells are drawn on `STREAM_TASK | 3`, and each distinct tape is assayed once.
+  then the cells are drawn afresh at every sample on `STREAM_TASK | 3`, keyed by
+  `(seed, epoch)`, and each distinct tape is assayed once.
   `logic_capability` counts the rungs at a share of at least 1/10 (26 of 256, in
   integers), and `logic_capability_deep` the same over XOR and EQU
   (`logic::FIRST_DEEP_TASK` onwards). `dominant_logic_tasks` is the census's dominant
@@ -448,7 +449,8 @@ claim rests on it.
   interval at `sample_every` 10. Null unless `tasks = logic`: with tasks off or `arith`, on the life
   substrate, and on every sample recorded before they existed. Like the task observables
   they are **live-only**: neither `oriented_census/1` nor `/2` reads them. The run page
-  names `dominant_logic_tasks` and draws the other thirteen.
+  names `dominant_logic_tasks` and draws the other thirteen, again only for a run that has
+  a reading of them.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard
