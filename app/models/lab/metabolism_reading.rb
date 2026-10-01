@@ -81,6 +81,11 @@ module Lab
     ].freeze
     AGREEMENT_COLUMNS = %w[hypothesis treatment parent favour_reward favour_no_reward ties unmeasured].freeze
 
-    def self.metabolism_run?(params) = params.fetch(REWARD_KEY, 0).to_i.positive?
+    # The engine reads the reward only as a JSON number: a missing, null or non-numeric one
+    # pays nothing. Run.metabolism is the same rule in SQL.
+    def self.metabolism_run?(params)
+      reward = params[REWARD_KEY]
+      reward.is_a?(Numeric) && reward.positive?
+    end
   end
 end

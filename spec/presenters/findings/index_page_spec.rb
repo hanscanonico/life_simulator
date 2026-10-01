@@ -77,6 +77,18 @@ RSpec.describe Findings::IndexPage do
       expect(page.transitioned_runs_count).to eq(2)
     end
 
+    context "with a run paid for its tasks" do
+      it "leaves it and a sweep holding only it out of the denominator" do
+        create(:run, experiment: create(:experiment, name: "Radius", slug: "radius"), status: "finished",
+                     transition_epoch: 900)
+        create(:run, :metabolism, experiment: create(:experiment, name: "Metabolism", slug: "metabolism"),
+                                  status: "finished", transition_epoch: 900)
+
+        expect(page.transitioned_sweeps.map(&:name)).to eq(["Radius"])
+        expect(page.transitioned_runs_count).to eq(1)
+      end
+    end
+
     it "reads everything the page asks it for in a fixed number of queries" do
       Findings::Registry.all.select(&:sweep?).map(&:experiment_slug).uniq.each { |slug| create(:experiment, slug: slug) }
       3.times { |seed| create(:run, seed: seed, status: "finished", transition_epoch: 900) }

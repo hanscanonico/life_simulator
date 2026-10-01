@@ -137,10 +137,12 @@ module Experiments
       end
     end
 
+    # Across the lab, a run paid for its tasks is never pooled with the fitness-free ones
+    # (DESIGN.md §1.4); one sweep's own baseline keeps every run it holds.
     def scope
       runs = Run.founding.terminal.order(:id).includes(:experiment)
 
-      @experiment ? runs.where(experiment: @experiment) : runs
+      @experiment ? runs.where(experiment: @experiment) : runs.fitness_free
     end
 
     def arm_label(run)

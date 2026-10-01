@@ -3047,6 +3047,35 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   is **one substrate**, one budget, three correlated children per parent, and four of its
   parents were piloted. The design study numbered this item 14 and DESIGN §1.3 gave 14 to
   the reach-cap128 sweep first, so it is item 15.
+- 2026-10-01 — **The Metabolism label, implemented.** The entry above locks that a run with
+  `task_reward > 0` is a Metabolism run, that its runs are never pooled with fitness-free
+  arms and that its findings carry an "imports an objective" badge; this is how the site
+  keeps it. Nothing is relocked.
+  - **One predicate.** `Run.metabolism` and `Run.fitness_free` read `task_reward` off a run's
+    params, a missing or null key as 0, so a run stored before the parameter is fitness-free.
+    The engine reads the reward only as a JSON number, so any other value pays nothing and is
+    read as 0, never cast. `Lab::MetabolismReading.metabolism_run?` is the same rule on a
+    params hash.
+  - **The badge** is a boolean on the finding's registry entry, `imports_objective`, not a
+    reading of its sweep's runs: the findings index would otherwise query runs for it, and a
+    finding is content written against its runs anyway. The registry spec holds every
+    finding resting on the `metabolism` sweep to it. The badge sits beside a finding's
+    status wherever that renders (the findings index and page, the home page, a sweep's and
+    a run's citations), and links to an "imports an objective" entry in the how-it-works
+    glossary that names §1.4. A sweep holding a paid run carries it beside its substrate.
+  - **Never pooled.** Every site-wide or cross-sweep reading takes the fitness-free runs
+    alone: the status strip's largest census and seeds transitioned, the surveys of every
+    transitioned or emerged run (persistence, copy cost, complexity) and the findings
+    index's denominator for them, the detector baseline read across the lab and
+    `lab:oriented_report[all]`. The open-endedness survey pools only the fitness-free bets it
+    names, so it needs no filter. The strip's counts of work done (sweeps queued, runs
+    finished, epochs simulated) and the lab status page are throughput, not readings, and
+    keep every run. A sweep's own page and its own reports keep its paid runs.
+  - **The reading on the page.** The `metabolism` sweep's page prints the reading of the
+    entry above, interim until final as `lab:metabolism_report` labels it: the arms, the
+    three tests with their per-parent agreement and their re-reading without the piloted
+    parents, the pairs, and the descriptive ladder. It is one pass over the children's
+    samples, held under the page's cache key as the from-emerged reading is.
 - 2026-10-01 — **The logic assay, the NAND op `~` and `task_floor` (Logic, slice 1).**
   "Logic" is a variant of the Metabolism substrate. It keeps Metabolism's economy, assay
   and reward, and swaps the arithmetic ladder for a logic one. It imports an objective

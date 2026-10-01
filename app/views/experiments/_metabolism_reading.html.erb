@@ -1,0 +1,193 @@
+<%# The metabolism sweep's pre-registered reading (docs/design_record.md, 2026-10-01,
+    "Metabolism: a second, labelled substrate that imports an objective"): `reading` is a
+    Lab::MetabolismReading::Report. The per-child rows stay in `lab:metabolism_report`. %>
+<section class="mt-6" id="metabolism-reading">
+  <h2>
+    The pre-registered reading
+    <% if reading.any? %>
+      <span class="badge <%= reading.interim? ? 'badge-warning' : 'badge-success' %>">
+        <%= reading.interim? ? "interim" : "final" %>
+      </span>
+    <% end %>
+    <%= render "findings/objective_badge" %>
+  </h2>
+  <p class="text-sm text-muted">
+    <% if reading.interim? %>
+      Interim: not every child of every qualifying parent has finished, and nothing here is
+      the sweep's result yet.
+    <% else %>
+      Every child of every qualifying parent has finished.
+    <% end %>
+    Each reward child is paired with the no-reward child of the same parent and seed, and both
+    are read over their own samples past a settling window of
+    <%= number_with_delimiter Lab::MetabolismReading::SETTLING_WINDOW %> epochs. A child is extinct
+    where its last-decile median share is below <%= percent_value Lab::MetabolismReading::EXTINCT_SHARE %>,
+    and a pair with an extinct child is in no test. Each test is a one-sided sign test at
+    p &lt; <%= Lab::MetabolismReading::SIGN_TEST_LEVEL %>, re-read without the parents the design
+    study piloted (runs <%= Lab::MetabolismReading::PILOT_PARENTS.to_sentence %>).
+    Whatever it reads, this substrate pays for computing, so rung 4 on Soup stays not shown.
+  </p>
+
+  <% if reading.any? %>
+    <figure class="table-figure mt-4">
+      <figcaption class="table-caption text-sm text-muted" id="metabolism-arms">
+        Children per arm, read so far. A loop rung is ADD, SUB, NOT, DOUBLE or MUL held by a tenth
+        of the world; a stepping stone is INC or DEC held first.
+      </figcaption>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="metabolism-arms">
+        <table class="data-table" aria-labelledby="metabolism-arms">
+          <thead>
+            <tr>
+              <th>Arm</th>
+              <th class="numeric">Children</th>
+              <th class="numeric">Finished</th>
+              <th class="numeric">Settled relapses</th>
+              <th class="numeric">Extinct</th>
+              <th class="numeric">Capability measured</th>
+              <th class="numeric">Reached a loop rung</th>
+              <th class="numeric">Through a stepping stone</th>
+              <th class="numeric">Complexity survivors</th>
+              <th class="numeric">Rises</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% reading.arms.each do |arm| %>
+              <tr>
+                <td><%= arm.name %></td>
+                <% arm.cells.drop(1).each do |count| %>
+                  <td class="numeric"><%= count %></td>
+                <% end %>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </figure>
+
+    <h3 class="mt-4">Hypotheses</h3>
+    <ul>
+      <% reading.tests.zip(reading.unpiloted_tests).each do |test, unpiloted| %>
+        <% comparison = test.comparison %>
+        <li class="mb-3">
+          <strong><%= test.hypothesis %></strong>, reward against no reward:
+          <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>
+          <p class="text-sm text-muted">
+            <%= pluralize(comparison.measured_count, "pair") %> measured on both sides:
+            <%= comparison.favouring %> favour the reward, <%= comparison.against %> the twin,
+            <%= comparison.ties %> tie<% if comparison.p_value %>; p = <%= metric_value comparison.p_value.to_f %><% end %>.
+            <% if comparison.carried_by.any? %>
+              Carried by parents
+              <%= comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>:
+              without their pairs the test falls to p ≥ <%= Lab::MetabolismReading::SIGN_TEST_LEVEL %>.
+            <% end %>
+            Without the piloted parents:
+            <span class="badge <%= unpiloted.badge_class %>"><%= unpiloted.outcome_label %></span>,
+            <%= unpiloted.comparison.favouring %> to <%= unpiloted.comparison.against %><% if unpiloted.comparison.p_value %>,
+            p = <%= metric_value unpiloted.comparison.p_value.to_f %><% end %>.
+          </p>
+          <% if comparison.agreement.any? %>
+            <details class="text-sm">
+              <summary>Per-parent agreement</summary>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Parent</th>
+                    <th class="numeric">Favour the reward</th>
+                    <th class="numeric">Favour the twin</th>
+                    <th class="numeric">Tie</th>
+                    <th class="numeric">Not both measured</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% comparison.agreement.each do |row| %>
+                    <tr>
+                      <td><%= link_to "run #{row.parent_id}", run_path(row.parent_id) %></td>
+                      <td class="numeric"><%= row.treatment %></td>
+                      <td class="numeric"><%= row.continuation %></td>
+                      <td class="numeric"><%= row.ties %></td>
+                      <td class="numeric"><%= row.unmeasured %></td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </details>
+          <% end %>
+        </li>
+      <% end %>
+    </ul>
+
+    <details class="text-sm mt-4" id="metabolism-pairs">
+      <summary>The pairs</summary>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="The pairs">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Parent</th>
+              <th class="numeric">Seed</th>
+              <th>Reward child</th>
+              <th class="numeric">Capability</th>
+              <th class="numeric">Loop capability</th>
+              <th>Twin</th>
+              <th class="numeric">Capability</th>
+              <th class="numeric">Loop capability</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% reading.pairs.each do |reward, twin| %>
+              <tr>
+                <td><%= link_to "run #{reward.parent_id}", run_path(reward.parent_id) %></td>
+                <td class="numeric"><%= reward.seed %></td>
+                <% [reward, twin].each do |child| %>
+                  <% if child %>
+                    <td>
+                      <%= link_to "run #{child.run_id}", run_path(child.run_id) %>
+                      <% if child.extinct? %><span class="text-muted">extinct</span><% end %>
+                    </td>
+                    <td class="numeric"><%= child.capability(Lab::MetabolismReading::CAPABILITY_KEY) || "—" %></td>
+                    <td class="numeric"><%= child.capability(Lab::MetabolismReading::LOOP_CAPABILITY_KEY) || "—" %></td>
+                  <% else %>
+                    <td class="text-muted">not seeded</td><td class="numeric">—</td><td class="numeric">—</td>
+                  <% end %>
+                <% end %>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <figure class="table-figure mt-4">
+      <figcaption class="table-caption text-sm text-muted" id="metabolism-ladder">
+        The ladder, descriptive only: how many children's worlds held each task at a share of
+        <%= percent_value Lab::MetabolismReading::TASK_PRESENT_SHARE %>, settling window included,
+        and the median first epoch they did.
+      </figcaption>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="metabolism-ladder">
+        <table class="data-table" aria-labelledby="metabolism-ladder">
+          <thead>
+            <tr>
+              <th>Task</th>
+              <% reading.arms.each do |arm| %>
+                <th class="numeric"><%= arm.name.capitalize %>: children</th>
+                <th class="numeric"><%= arm.name.capitalize %>: median first epoch</th>
+              <% end %>
+            </tr>
+          </thead>
+          <tbody>
+            <% reading.arms.map(&:ladder).transpose.each do |rungs| %>
+              <tr>
+                <td class="uppercase"><%= rungs.first.task %></td>
+                <% rungs.each do |rung| %>
+                  <td class="numeric"><%= rung.reached %></td>
+                  <td class="numeric"><%= rung.median_first_epoch ? number_with_delimiter(rung.median_first_epoch) : "—" %></td>
+                <% end %>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </figure>
+  <% else %>
+    <p class="mt-4">No child yet.</p>
+  <% end %>
+</section>

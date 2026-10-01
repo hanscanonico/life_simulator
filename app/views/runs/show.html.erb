@@ -29,6 +29,7 @@
     <% @show.findings.each do |finding| %>
       <%= link_to finding.title, finding_path(finding) %>
       <span class="badge <%= finding.badge_class %>"><%= finding.status_label %></span>
+      <% if finding.imports_objective? %><%= render "findings/objective_badge" %><% end %>
     <% end %>
   </p>
 <% end %>
