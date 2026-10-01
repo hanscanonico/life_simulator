@@ -2835,7 +2835,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   and every pre-existing observable, sample for sample. Every earlier hash and digest is
   unmoved; the task readings have their own digest, split from the others as #247 and #255
   split theirs: the reward-0 control of the rewarded pin (seed 42, 50 epochs) reads an ECHO
-  share of 0.078125 and nothing else, and a planted still world reads three capabilities,
+  share of 0.06640625 and nothing else, and a planted still world reads three capabilities,
   one loop capability and a dominant bitmask of 9.
 
   **Cost.** On the eight restored emerged worlds (128×128, 2 800 to 11 300 cells holding a

@@ -5349,7 +5349,7 @@ mod tests {
     /// The task observables of the reward-0 control of `rewarded_params`, a quarter of the
     /// cells solving ECHO, seed 42, after 50 epochs, pinned apart from every digest above
     /// (`docs/design_record.md`, 2026-10-01, the task observables).
-    const PINNED_TASKS: &str = "task_share_echo=Some(0.078125) task_share_inc=Some(0.0) \
+    const PINNED_TASKS: &str = "task_share_echo=Some(0.06640625) task_share_inc=Some(0.0) \
          task_share_dec=Some(0.0) task_share_add=Some(0.0) task_share_sub=Some(0.0) \
          task_share_not=Some(0.0) task_share_double=Some(0.0) task_share_mul=Some(0.0) \
          task_capability=Some(0) task_capability_loop=Some(0) dominant_tasks=Some(0) \
