@@ -2711,16 +2711,41 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   pure function of (tape, seed, epoch), so each distinct tape is assayed once per assay
   epoch and cell order cannot matter.
 
-  **The separating rule.** The cases are redrawn until, within each task, the three
-  expected outputs are pairwise distinct, so no constant can pass, and no two tasks expect
-  the same three outputs, so one output slot matches at most one task. The rule exists
-  because the input domain is small: in the design study's pilot, without it, tapes that
-  only echo x were credited ADD and SUB on draws whose y was 0 in all three cases, and MUL
-  on draws whose y was 1, five false credits in run 1007's world alone. With it there were
-  none outside genuine computation in six emerged worlds of 16 384 cells. About 40% of
-  draws are redrawn; the draw is bounded at `TASK_CASE_DRAWS` = 1 024 and then falls back to
-  a fixed separating set, (3, 5), (7, 2), (12, 9), so it is total and deterministic. A test
-  holds the rule over 10^5 draws.
+  **The separating rule.** The cases are redrawn until five things hold. Within each task
+  the three expected outputs are pairwise distinct, so no constant can pass. No two tasks
+  expect the same three outputs, so one output slot matches at most one task. The three x
+  values are pairwise distinct, and so are the three y values. No task's outputs sit a
+  constant offset from x, or from y, unless the task is that offset of that input
+  everywhere, as ECHO, INC and DEC are of x. And no input is 0. The rule exists because the
+  input domain is small: in the design study's pilot, without its first two clauses, tapes
+  that only echo x were credited ADD and SUB on draws whose y was 0 in all three cases, and
+  MUL on draws whose y was 1, five false credits in run 1007's world alone; with them there
+  were none outside genuine computation in six emerged worlds of 16 384 cells.
+
+  The last three clauses were added in review, before any run used the assay. The study's
+  two clauses rule out only one ladder task passing for another, not a cheap function
+  outside the ladder passing for a task. Review found `<+++!`, which emits x+3, credited
+  ADD on any draw whose y is 3 in all three cases, about one draw in 2 500; distinct inputs
+  close it, since no input can then be held constant for another task to absorb. A search
+  of every program of up to 5 bytes, and 120 000 sampled programs of 6 and 7, against
+  thousands of draws then found two cheap classes the distinct inputs leave open. The
+  first is an input plus a constant matching a task through a relation between the inputs:
+  `<<+!`, which emits y+1, was credited DOUBLE wherever y = 2x−1, and y±1 credited SUB
+  wherever x−2y was constant. The offset clause closes it: an input plus a constant, the
+  cheapest thing a tape can emit, earns only the task it is. The second is a zero test,
+  BFF's only branch, telling one case apart: `[<]>!` scans left to the first zero byte and
+  emits x where y is 0 and y elsewhere, credited SUB wherever x = 2y in the other two
+  cases. Refusing an input of 0 closes it. With all five clauses the same search found no
+  credit to a slot that does not compute its task on at least half of the 256 inputs. A
+  zero test can still split cases on another value after decrements (`-[`), but that
+  costs a byte per unit tested, and none surfaced up to 7 bytes.
+
+  About 68% of draws are redrawn (5 434 392 of the 16^6 triples separate); the draw is
+  bounded at `TASK_CASE_DRAWS` = 1 024 and then falls back to a fixed separating set,
+  (3, 5), (7, 2), (12, 9), so it is total and deterministic. Tests hold every clause over
+  10^5 draws, and hold `<+++!`, the other x±c and y±c, and the scan `[<]>!` to the credit
+  they compute over 10^5 draws. The rewarded run's pin below did not move with the tighter
+  rule: its solvers echo x, which every separating draw credits alike.
 
   **The ladder.** ECHO x, INC x+1, DEC x−1, ADD x+y, SUB x−y, NOT 255−x, DOUBLE 2x and MUL
   x·y, mod 256, worth 1, 2, 2, 4, 4, 8, 8 and 16 units, doubling with difficulty as Avida's
