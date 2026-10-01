@@ -3390,6 +3390,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **H-deep shown, H-stones refuted.** The deep rungs are directly reachable, so the depth
     the study measured overstates the barrier. Complexity rises when paid, with or without
     parts.
+  - **H-deep shown, H-stones not shown.** A soup assembles the deep rungs when the ladder is
+    paid; whether it needs the paid parts is below what the pairs resolve, and nothing is
+    claimed about stepping stones.
   - **H-deep refuted.** With a composable primitive and every lower rung paid, the soup
     still stops short of a feature four or more substitutions deep. The binding constraint
     is then the copier and its population, not the instruction set: the code must run before
@@ -3422,12 +3425,15 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     *Why 5.* #283's review showed that a tape computing a rung on a share p of inputs is
     credited on about p³ of the draws, and the logic observables draw fresh cases at every
     sample, so samples trip independently. The commonest masked XOR circuit it found
-    (p = 0.425) trips a sample with q ≈ 0.077 wherever it holds a tenth of the world; the
-    brief put it at about 6%. A child has about 4 000 own samples (40 000 epochs at the
+    (p = 0.425, so p³ ≈ 0.077; 7.2% of draws measured) trips a sample with q ≈ 0.077
+    wherever it holds a tenth of the world, since every cell of a sample is read on that
+    sample's one case set. A child has about 4 000 own samples (40 000 epochs at the
     default `sample_every` of 10), so the expected number of chance runs of k samples is
     about n·qᵏ: **1.8** at k = 3, **0.14** at k = 4, **0.011** at k = 5. k = 3 would make a
     false "reach" likely in any world dominated by such a circuit; 5 brings it to about 1 in
-    90 such worlds, and costs a genuine rung 40 epochs of lag beside climbs of 500–13 000.
+    90 such worlds. A genuine rung is still dated at the first sample of its run; the rule
+    misses only one that never holds 1/10 over five samples running (40 epochs), where the
+    pilot's rungs arrived 500 epochs or more apart.
     The last-decile medians the tests read need no such rule: a rung credited on more than
     half of a decile's samples needs p above 0.79, at most one masked bit;
   - **Lenski's stepping stones**: whether a child whose world reached a deep rung had OR,

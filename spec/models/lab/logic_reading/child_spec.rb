@@ -32,7 +32,7 @@ RSpec.describe Lab::LogicReading::Child do
     end
 
     it "ignores a rung that trips the line on fewer than five samples running" do
-      series = samples(200) { |index| { "logic_share_xor" => (index % 5).zero? || index % 5 == 1 ? 0.2 : 0.0 } }
+      series = samples(200) { |index| { "logic_share_xor" => index % 5 < 4 ? 0.2 : 0.0 } }
 
       expect(read(series)).to have_attributes(climbed_deep?: false)
       expect(read(series).first_epochs["xor"]).to be_nil
