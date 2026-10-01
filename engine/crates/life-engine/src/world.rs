@@ -6,7 +6,9 @@
 use crate::bff;
 use crate::hash::{fnv1a64, fnv1a64_of};
 use crate::metrics::{self, Metrics, TransitionTracker};
-use crate::params::{EnergyPayer, Init, Interaction, LineageRule, ParamError, Params, Substrate};
+use crate::params::{
+    EnergyPayer, Init, Interaction, LineageRule, ParamError, Params, Substrate, Tasks,
+};
 use crate::render;
 use crate::replicator;
 use crate::rng::{self, Rng};
@@ -40,6 +42,11 @@ const STREAM_COPY_LATENCY: u64 = 0x4c41_5445_0000_0000;
 /// every id above, so paying for tasks moves no draw the run or any observable makes
 /// (`docs/design_record.md`, 2026-10-01, the task assay).
 const STREAM_TASK: u64 = 0x5441_534b_0000_0000;
+/// The task observables read on streams beside it: the sampled cells and their cases, and
+/// the dominant tape's cases. They draw nothing the payment draws, so reading a run moves
+/// nothing it pays.
+const STREAM_TASK_SHARE: u64 = STREAM_TASK | 1;
+const STREAM_TASK_DOMINANT: u64 = STREAM_TASK | 2;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -609,6 +616,8 @@ impl World {
         let core_oriented = self.conserved_core_oriented();
         let lineage = self.lineage_complexity();
         let share = self.replicator_share();
+        let tally = self.task_tally();
+        let task_share = |task: usize| tally.map(|tally| tally.share(task));
 
         Metrics {
             compress_ratio,
@@ -649,7 +658,45 @@ impl World {
             copy_latency_orientation: census.copy_latency.map(|image| image.orientation),
             lineage_effective_count,
             lineages_over_one_percent,
+            task_share_echo: task_share(0),
+            task_share_inc: task_share(1),
+            task_share_dec: task_share(2),
+            task_share_add: task_share(3),
+            task_share_sub: task_share(4),
+            task_share_not: task_share(5),
+            task_share_double: task_share(6),
+            task_share_mul: task_share(7),
+            task_capability: tally.map(|tally| tally.capability()),
+            task_capability_loop: tally.map(|tally| tally.capability_loop()),
+            dominant_tasks: census.dominant_tasks.map(|credit| u32::from(credit.bits())),
+            dominant_task_count: census.dominant_tasks.map(|credit| credit.count()),
         }
+    }
+
+    /// Whether the samples read the task observables: whenever tasks are on, paid for or
+    /// not, so a control arm with no reward carries the readings its treatment does.
+    fn reads_tasks(&self) -> bool {
+        self.params.substrate == Substrate::Soup && self.params.tasks != Tasks::Off
+    }
+
+    /// The task observables' companion of `replicator_share`: `task::TASK_SAMPLE_CELLS`
+    /// cells drawn uniformly with replacement, each tape assayed on cases drawn first off
+    /// the same stream, `STREAM_TASK_SHARE` at this epoch. Each distinct tape is assayed
+    /// once. It writes nothing, and pays nothing, so it moves no byte, no stock and no
+    /// other observable.
+    fn task_tally(&self) -> Option<task::TaskTally> {
+        if !self.reads_tasks() {
+            return None;
+        }
+        let mut rng = rng::seeded(self.seed, STREAM_TASK_SHARE, self.epoch);
+        let mut memo = task::Memo::new(task::Cases::draw(&mut rng), self.params.op_set());
+        let cells = self.params.cell_count() as u64;
+        let mut tally = task::TaskTally::default();
+        for _ in 0..task::TASK_SAMPLE_CELLS {
+            let cell = rng::below(&mut rng, cells) as usize;
+            tally.add(memo.credit(self.tape(cell)));
+        }
+        Some(tally)
     }
 
     /// The orientation-aware companion of the census: `SELF_REP_SAMPLE_CELLS` cells drawn
@@ -747,6 +794,10 @@ impl World {
                     &mut rng,
                 )
             }),
+            dominant_tasks: first.dominant.filter(|_| self.reads_tasks()).map(|tape| {
+                let mut rng = rng::seeded(self.seed, STREAM_TASK_DOMINANT, self.epoch);
+                task::assay(tape, &task::Cases::draw(&mut rng), self.params.op_set())
+            }),
             counts: draws.iter().map(|draw| draw.count).collect(),
         }
     }
@@ -801,6 +852,9 @@ struct ReplicatorCensus {
     dominant_self_replicates: Option<bool>,
     /// When that same tape first completes an image of itself, on a stream of its own.
     copy_latency: Option<bff::Image>,
+    /// The tasks that same tape is credited with, on cases of its own. `None` wherever
+    /// tasks are off.
+    dominant_tasks: Option<task::Credit>,
     /// What each of the `CENSUS_DRAWS` draws counted, draw 0 first — the count above being
     /// that first draw's. Empty on the life substrate, where no assay runs at all.
     counts: Vec<u64>,
@@ -5244,5 +5298,236 @@ mod tests {
         };
         assert!(refused.validate().is_err());
         assert!(World::from_snapshot(&refused, 11, &blob).is_ok());
+    }
+
+    fn task_digest(measured: &Metrics) -> String {
+        format!(
+            "task_share_echo={:?} task_share_inc={:?} task_share_dec={:?} task_share_add={:?} \
+             task_share_sub={:?} task_share_not={:?} task_share_double={:?} \
+             task_share_mul={:?} task_capability={:?} task_capability_loop={:?} \
+             dominant_tasks={:?} dominant_task_count={:?}",
+            measured.task_share_echo,
+            measured.task_share_inc,
+            measured.task_share_dec,
+            measured.task_share_add,
+            measured.task_share_sub,
+            measured.task_share_not,
+            measured.task_share_double,
+            measured.task_share_mul,
+            measured.task_capability,
+            measured.task_capability_loop,
+            measured.dominant_tasks,
+            measured.dominant_task_count,
+        )
+    }
+
+    /// The same sample with every task reading taken out, so the readings that existed
+    /// before them can be compared whole.
+    fn without_task_readings(measured: &Metrics) -> Metrics {
+        Metrics {
+            task_share_echo: None,
+            task_share_inc: None,
+            task_share_dec: None,
+            task_share_add: None,
+            task_share_sub: None,
+            task_share_not: None,
+            task_share_double: None,
+            task_share_mul: None,
+            task_capability: None,
+            task_capability_loop: None,
+            dominant_tasks: None,
+            dominant_task_count: None,
+            ..measured.clone()
+        }
+    }
+
+    const UNREAD_TASKS: &str = "task_share_echo=None task_share_inc=None task_share_dec=None \
+         task_share_add=None task_share_sub=None task_share_not=None task_share_double=None \
+         task_share_mul=None task_capability=None task_capability_loop=None \
+         dominant_tasks=None dominant_task_count=None";
+
+    /// The task observables of the reward-0 control of `rewarded_params`, a quarter of the
+    /// cells solving ECHO, seed 42, after 50 epochs, pinned apart from every digest above
+    /// (`docs/design_record.md`, 2026-10-01, the task observables).
+    const PINNED_TASKS: &str = "task_share_echo=Some(0.06640625) task_share_inc=Some(0.0) \
+         task_share_dec=Some(0.0) task_share_add=Some(0.0) task_share_sub=Some(0.0) \
+         task_share_not=Some(0.0) task_share_double=Some(0.0) task_share_mul=Some(0.0) \
+         task_capability=Some(0) task_capability_loop=Some(0) dominant_tasks=Some(0) \
+         dominant_task_count=Some(0)";
+    /// And of `task_world`'s planted solvers, where every reading has something to read.
+    const PINNED_PLANTED_TASKS: &str = "task_share_echo=Some(0.640625) \
+         task_share_inc=Some(0.0) task_share_dec=Some(0.20703125) task_share_add=Some(0.640625) \
+         task_share_sub=Some(0.0) task_share_not=Some(0.0) task_share_double=Some(0.0) \
+         task_share_mul=Some(0.0546875) task_capability=Some(3) task_capability_loop=Some(1) \
+         dominant_tasks=Some(9) dominant_task_count=Some(2)";
+
+    #[test]
+    fn the_task_observables_are_null_wherever_tasks_are_off() {
+        let mut off = World::new(&soup(16, 16), 42).unwrap();
+        assert_eq!(task_digest(&off.metrics()), UNREAD_TASKS);
+        assert_eq!(task_digest(&seeded_world().metrics()), UNREAD_TASKS);
+
+        let mut grid = World::new(&life(16, 16), 42).unwrap();
+        assert_eq!(task_digest(&grid.metrics()), UNREAD_TASKS);
+
+        let life_with_tasks = Params {
+            tasks: Tasks::Arith,
+            ..life(16, 16)
+        };
+        assert!(life_with_tasks.validate().is_err());
+        let blob = grid.snapshot();
+        let mut resumed = World::from_snapshot(&life_with_tasks, 42, &blob).unwrap();
+        assert_eq!(task_digest(&resumed.metrics()), UNREAD_TASKS);
+    }
+
+    #[test]
+    fn the_task_observables_of_a_fixed_seed_are_pinned() {
+        let params = unrewarded(&rewarded_params());
+        let mut control = stepped_world(with_solvers(&params, 42), 50);
+        assert_eq!(task_digest(&control.metrics()), PINNED_TASKS);
+        let mut planted = task_world(&[(0..10, ECHO_THEN_ADD), (10..13, b"<-!>"), (13..14, MUL)]);
+        assert_eq!(task_digest(&planted.metrics()), PINNED_PLANTED_TASKS);
+    }
+
+    /// The observables only read: a run with tasks on and no reward samples the task
+    /// readings beside every other one and is still the run with tasks off — the same
+    /// bytes, the same stocks, and the same value of every reading the two share, sample
+    /// for sample — under either payer.
+    #[test]
+    fn reading_the_tasks_moves_no_byte_and_no_other_observable() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            let params = Params {
+                energy_payer: payer,
+                ..unrewarded(&rewarded_params())
+            };
+            let mut control = with_solvers(&params, 42);
+            let mut off = with_solvers(&without_tasks(&params), 42);
+            for _ in 0..6 {
+                let (read, unread) = (control.metrics(), off.metrics());
+                assert!(read.task_share_echo.is_some());
+                assert_eq!(task_digest(&unread), UNREAD_TASKS);
+                assert_eq!(without_task_readings(&read), unread, "{payer:?}");
+                for _ in 0..5 {
+                    control.step();
+                    off.step();
+                }
+            }
+            assert_eq!(control.world_hash(), off.world_hash(), "{payer:?}");
+            assert_eq!(control.stock, off.stock);
+            assert_eq!(control.snapshot(), off.snapshot());
+        }
+    }
+
+    /// Reading a sample twice reads it the same: the draws are keyed by `(seed, epoch)`
+    /// alone, and the shares draw on a stream the dominant tape's assay does not.
+    #[test]
+    fn the_task_observables_draw_on_streams_of_their_own() {
+        let params = unrewarded(&rewarded_params());
+        let mut world = stepped_world(with_solvers(&params, 42), 20);
+        let first = world.metrics();
+        assert_eq!(task_digest(&world.metrics()), task_digest(&first));
+        let mut restored =
+            World::from_snapshot(world.params(), world.seed(), &world.snapshot()).unwrap();
+        assert_eq!(task_digest(&restored.metrics()), task_digest(&first));
+
+        let taken = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        for stream in [STREAM_TASK_SHARE, STREAM_TASK_DOMINANT] {
+            assert!(!taken.contains(&stream) && !draws.contains(&stream));
+        }
+        assert_ne!(STREAM_TASK_SHARE, STREAM_TASK_DOMINANT);
+    }
+
+    /// A still 16×16 soup of zero tapes, with each program planted at the front of every
+    /// cell of its rows.
+    fn task_world(plantings: &[(std::ops::Range<u32>, &[u8])]) -> World {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            tasks: Tasks::Arith,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 9).unwrap();
+        for (rows, program) in plantings {
+            let mut tape = program.to_vec();
+            tape.resize(params.tape_len as usize, 0);
+            for y in rows.clone() {
+                for x in 0..params.width {
+                    world.set_cell(x, y, &tape);
+                }
+            }
+        }
+        world
+    }
+
+    const ECHO_THEN_ADD: &[u8] = b"<!><<[->+<]>!>";
+    const MUL: &[u8] = b"<[-<[-<+<+>>]<<[->>+<<]>>>]<<!>>>";
+
+    /// A quarter of the cells credited with ECHO and ADD on two slots, a quarter with DEC,
+    /// one row with MUL and the rest zeros: ECHO, ADD and DEC are capabilities, MUL, at a
+    /// sixteenth of the cells, is not, and of the loop tasks only ADD is.
+    #[test]
+    fn the_capability_counts_the_tasks_a_tenth_of_the_cells_solve() {
+        let mut world = task_world(&[(0..4, ECHO_THEN_ADD), (4..8, b"<-!>"), (8..9, MUL)]);
+        let measured = world.metrics();
+
+        assert_eq!(measured.task_share_echo, measured.task_share_add);
+        for share in [measured.task_share_echo, measured.task_share_dec] {
+            let share = share.expect("tasks are on");
+            assert!((0.15..0.35).contains(&share), "{share}");
+        }
+        let mul = measured.task_share_mul.expect("tasks are on");
+        assert!(mul > 0.0 && mul < 0.1, "{mul}");
+        for share in [
+            measured.task_share_inc,
+            measured.task_share_sub,
+            measured.task_share_not,
+            measured.task_share_double,
+        ] {
+            assert_eq!(share, Some(0.0));
+        }
+        assert_eq!(measured.task_capability, Some(3));
+        assert_eq!(measured.task_capability_loop, Some(1));
+    }
+
+    /// The loop count reads ADD onwards only: a world of straight-line solvers is capable
+    /// of three tasks and of no loop.
+    #[test]
+    fn the_loop_capability_ignores_the_straight_line_tasks() {
+        let mut world = task_world(&[(0..16, b"<!+!--!++>")]);
+        let measured = world.metrics();
+        assert_eq!(
+            (
+                measured.task_share_echo,
+                measured.task_share_inc,
+                measured.task_share_dec
+            ),
+            (Some(1.0), Some(1.0), Some(1.0))
+        );
+        assert_eq!(measured.task_capability, Some(3));
+        assert_eq!(measured.task_capability_loop, Some(0));
+    }
+
+    /// The dominant tape's credit, as a bitmask in `task::TASKS` order: ECHO is bit 0 and
+    /// ADD bit 3. Where the most common tape solves nothing, it reads 0, not null.
+    #[test]
+    fn the_dominant_tape_reads_its_tasks_as_a_bitmask() {
+        let mut solved = task_world(&[(0..12, ECHO_THEN_ADD)]);
+        let measured = solved.metrics();
+        assert_eq!(measured.dominant_tasks, Some(0b1001));
+        assert_eq!(measured.dominant_task_count, Some(2));
+
+        let mut unsolved = task_world(&[(0..4, ECHO_THEN_ADD)]);
+        let measured = unsolved.metrics();
+        assert_eq!(measured.dominant_tasks, Some(0));
+        assert_eq!(measured.dominant_task_count, Some(0));
     }
 }

@@ -320,6 +320,33 @@
       never possible.
     </dd>
 
+    <dt class="mono">task_share_echo</dt>
+    <dd>
+      The share of 256 cells, drawn at random, whose tape the task assay credits with ECHO:
+      run alone on three small input pairs, it emits the first input in every one of them.
+      <span class="mono">task_share_inc</span>, <span class="mono">task_share_dec</span>,
+      <span class="mono">task_share_add</span>, <span class="mono">task_share_sub</span>,
+      <span class="mono">task_share_not</span>, <span class="mono">task_share_double</span>
+      and <span class="mono">task_share_mul</span> are the same share for the rest of the
+      arithmetic ladder. The readings only read: a run with tasks on and no reward is the
+      run with tasks off, byte for byte, and carries them too. Null wherever tasks are off,
+      on the Life substrate, and on every sample recorded before they existed.
+    </dd>
+
+    <dt class="mono">task_capability</dt>
+    <dd>
+      How many tasks at least a tenth of those sampled cells solve, 26 of 256 or more.
+      <span class="mono">task_capability_loop</span> counts the same over ADD, SUB, NOT,
+      DOUBLE and MUL, the tasks whose shortest program needs a loop.
+    </dd>
+
+    <dt class="mono">dominant_tasks</dt>
+    <dd>
+      The tasks the dominant tape solves, as a bitmask in ladder order — ECHO is 1, INC 2,
+      DEC 4, and so on to MUL at 128 — which a run's page names rather than prints.
+      <span class="mono">dominant_task_count</span> is how many there are.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which
@@ -365,6 +392,13 @@
     <dd>
       A transition <em>and</em> a non-zero census in the same run. That is this site's
       reading, stated here because the design of the instrument does not define the word.
+    </dd>
+
+    <dt>task</dt>
+    <dd>
+      One rung of the arithmetic ladder a soup may be assayed on — ECHO, INC, DEC, ADD, SUB,
+      NOT, DOUBLE, MUL. A tape solves one when some output it emits with the
+      <span class="mono">!</span> byte holds the answer on every input pair of the assay.
     </dd>
 
     <dt>arm</dt>

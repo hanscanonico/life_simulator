@@ -387,6 +387,26 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
+    context "with a sample that assayed the dominant tape's tasks" do
+      it "names them rather than printing the bitmask" do
+        create(:sample, run: run, epoch: 100, values: { "dominant_tasks" => 9, "dominant_task_count" => 2 })
+
+        get run_path(run)
+
+        expect(response.body).to include("dominant-tasks", "<strong>ECHO and ADD</strong>")
+      end
+    end
+
+    context "with samples recorded with tasks off" do
+      it "says nothing about the dominant tape's tasks" do
+        create(:sample, run: run, epoch: 100, values: { "dominant_tasks" => nil, "copy_cost" => 1_794 })
+
+        get run_path(run)
+
+        expect(response.body).not_to include("dominant-tasks")
+      end
+    end
+
     context "with samples recorded before the copy latency existed" do
       it "says nothing about its orientation" do
         create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794 })
