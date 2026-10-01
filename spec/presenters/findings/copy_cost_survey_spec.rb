@@ -61,6 +61,15 @@ RSpec.describe Findings::CopyCostSurvey do
     expect(survey.rows.sole).to have_attributes(direction: nil, compared?: false)
   end
 
+  context "with a run paid for its tasks" do
+    it "leaves it out of the fitness-free survey" do
+      transitioned_run([40, 30])
+      transitioned_run([40, 30], params: Lab::Schema.run_defaults.merge("task_reward" => 2048))
+
+      expect(described_class.build).to have_attributes(transitioned_count: 1, measured_count: 1)
+    end
+  end
+
   it "rows no run whose samples never carried a cost" do
     run = transitioned_run([])
     create(:sample, run: run, epoch: 100, values: { "copy_cost" => nil })

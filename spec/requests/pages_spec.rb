@@ -147,6 +147,15 @@ RSpec.describe "Pages", type: :request do
       expect(response.parsed_body.at_css("dt#replicator-share").text).to eq("replicator_share")
     end
 
+    it "anchors the Metabolism label the objective badge links to" do
+      get how_it_works_path
+
+      entry = response.parsed_body.at_css("dt#imports-an-objective")
+      expect(entry.text).to eq("imports an objective")
+      expect(entry.next_element.text.squish).to include("never pooled with the fitness-free ones",
+                                                        'rung 4 on Soup stays "not shown"', "DESIGN §1.4")
+    end
+
     it "lists the ten instructions and the opt-in steal byte" do
       get how_it_works_path
 

@@ -546,6 +546,47 @@ RSpec.describe "Experiments", type: :request do
         expect(response).to have_http_status(:ok)
         expect(response.parsed_body.at_css("#descendant-reading, #heldout-reading")).to be_nil
       end
+
+      it "labels the sweep as importing an objective" do
+        get experiment_path(experiment)
+
+        substrate = response.parsed_body.css("dl.facts dt").find { |term| term.text == "Substrate" }.next_element
+        expect(substrate.at_css("a.objective-badge")["href"]).to eq(how_it_works_path(anchor: "imports-an-objective"))
+      end
+
+      context "with no child sampled yet" do
+        it "reads the sweep as pre-registered, interim, under the badge" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#metabolism-reading")
+          expect(section.at_css("h2").text.squish).to eq("The pre-registered reading interim imports an objective")
+          expect(section.text.squish).to include("H-capability", "H-ladder", "H-complexity", "no measured pairs",
+                                                 "rung 4 on Soup stays not shown")
+        end
+      end
+
+      context "with every child finished, the rewarded arm the more capable" do
+        before do
+          metabolism_children(experiment, reward: true).each do |run|
+            metabolism_sample(run, capability: 3, task_shares: { "echo" => 0.5 })
+          end
+          metabolism_children(experiment, reward: false).each { |run| metabolism_sample(run) }
+        end
+
+        it "prints the arms, the tests, the pairs and the ladder" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#metabolism-reading")
+          arms = section.css("#metabolism-arms ~ .table-scroll tbody tr").map { |row| row.css("td").map(&:text) }
+          expect(arms).to eq([%w[reward 3 3 0 0 3 0 0 3 0], ["no reward", "3", "3", "0", "0", "3", "0", "0", "3", "0"]])
+          expect(section.text.squish).to include("The pre-registered reading final", "H-capability",
+                                                 "3 pairs measured on both sides: 3 favour the reward",
+                                                 "Without the piloted parents", "Per-parent agreement")
+          expect(section.css("#metabolism-pairs tbody tr").size).to eq(3)
+          echo = section.css("#metabolism-ladder ~ .table-scroll tbody tr").first.css("td").map(&:text)
+          expect(echo.first(2)).to eq(%w[echo 3])
+        end
+      end
     end
 
     context "with a descendant sweep seeded from an emerged world" do

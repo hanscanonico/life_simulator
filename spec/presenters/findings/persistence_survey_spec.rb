@@ -39,6 +39,16 @@ RSpec.describe Findings::PersistenceSurvey do
     expect(described_class.build.transitioned_count).to eq(1)
   end
 
+  context "with a run paid for its tasks" do
+    it "leaves it out of the fitness-free survey" do
+      transitioned_run(persistence: { census_peak: 1, peak_epoch: 110, epochs_persisted: 30, relapsed: false })
+      transitioned_run(params: Lab::Schema.run_defaults.merge("task_reward" => 2048),
+                       persistence: { census_peak: 9, peak_epoch: 110, epochs_persisted: 30, relapsed: false })
+
+      expect(described_class.build.transitioned_count).to eq(1)
+    end
+  end
+
   it "splits the summarised runs into persisters and relapsers" do
     transitioned_run(persistence: { census_peak: 3, peak_epoch: 120, epochs_persisted: 40, relapsed: false })
     transitioned_run(persistence: { census_peak: 9, peak_epoch: 150, epochs_persisted: 80, relapsed: true })
