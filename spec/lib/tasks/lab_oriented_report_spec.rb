@@ -35,6 +35,16 @@ RSpec.describe "lab:oriented_report" do
       expect(text).to match(/^\s*cap\s+1\s+0\s+0\s+1\s+0\s+0\s+0\s+0\s+—$/)
       expect(text).to match(/^\s*all\s+2\s+1\s+1\s+1\s+1\s+1\s+1\s+0\s+2000$/)
     end
+
+    context "with a run paid for its tasks" do
+      it "leaves it out of its experiment's totals and the corpus total" do
+        create(:run, :metabolism, experiment: experiment, status: "finished", transition_epoch: 500)
+
+        text = invoke("lab:oriented_report", "all")
+
+        expect(text).to match(/^\s*all\s+2\s+1\s+1\s+1\s+1\s+1\s+1\s+0\s+2000$/)
+      end
+    end
   end
 
   it "refuses an experiment it does not know" do

@@ -3,7 +3,9 @@
 module Programme
   # Where the research programme stands, in five numbers read live from the lab database:
   # what has been queued, what has finished, and the largest replicator census any run has
-  # ever recorded. Every page that carries the status strip builds one of these.
+  # ever recorded. Every page that carries the status strip builds one of these. The counts
+  # of work done take every run; the two readings of what the worlds did take the
+  # fitness-free runs alone, since a Metabolism run is never pooled with them (DESIGN.md §1.4).
   class Status
     def self.build = new
 
@@ -18,16 +20,18 @@ module Programme
     end
 
     def seeds_transitioned
-      @seeds_transitioned ||= Run.where(status: "finished").where.not(transition_epoch: nil).count
+      @seeds_transitioned ||= Run.fitness_free.where(status: "finished").where.not(transition_epoch: nil).count
     end
 
     # nil until some sample has counted a replicator. The predicate matches
     # `index_samples_on_run_id_replicated` (db/schema.rb) exactly, so the maximum is read
-    # off that partial index instead of scanning every sample ever taken.
+    # off that partial index instead of scanning every sample ever taken; the paid runs are
+    # few, so leaving them out is a hashed NOT IN beside it.
     def peak_replicator_count
       return @peak_replicator_count if defined?(@peak_replicator_count)
 
       @peak_replicator_count = Sample.where("values -> 'replicator_count' > '0'::jsonb")
+                                     .where.not(run_id: Run.metabolism.select(:id))
                                      .maximum(Arel.sql("(values ->> 'replicator_count')::numeric"))
     end
   end

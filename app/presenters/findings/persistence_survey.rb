@@ -8,7 +8,8 @@ module Findings
   #
   # This is a survey of runs that already exist rather than a sweep: the runs come from
   # different grids at different budgets, so it counts outcomes and never estimates a
-  # hazard.
+  # hazard. A run paid for its tasks is left out: it imports an objective, and is never
+  # pooled with the fitness-free runs (DESIGN.md §1.4).
   class PersistenceSurvey
     Row = Data.define(:run, :experiment, :persistence, :sample_count_from_transition) do
       delegate :seed, :transition_epoch, to: :run
@@ -98,7 +99,7 @@ module Findings
     # Ordered the way the table reads: sweep by sweep, and inside a sweep by the epoch the
     # world crossed.
     def transitioned_runs
-      @transitioned_runs ||= Run.transitioned.includes(:experiment)
+      @transitioned_runs ||= Run.transitioned.fitness_free.includes(:experiment)
                                 .order(:experiment_id, :transition_epoch, :id).to_a
     end
 

@@ -4,8 +4,13 @@ module Findings
   # One published claim: a sweep written up against its own runs (DESIGN.md §1.3). A
   # finding is content in the repo, not a database row, so it is versioned with the
   # narrative it introduces and never drifts from the data it points at.
+  #
+  # `imports_objective` is the Metabolism label (DESIGN.md §1.4): a finding read from runs
+  # paid for computing carries the "imports an objective" badge wherever its status does. It
+  # is stated in the entry rather than derived from the runs, so the index reads no run for
+  # it, and the registry spec holds every finding on a Metabolism sweep to it.
   class Finding < Data.define(:slug, :title, :date, :experiment_slug, :status, :summary, :body_partial,
-                              :related_experiment_slugs, :related_finding_slugs)
+                              :related_experiment_slugs, :related_finding_slugs, :imports_objective)
     STATUSES = %i[open partial published negative].freeze
 
     BADGE_CLASSES = {
@@ -22,16 +27,20 @@ module Findings
       negative: "The sweep finished and the effect was not there."
     }.freeze
 
+    OBJECTIVE_MEANING = "Read from Metabolism, a second substrate that pays a cell for computing: " \
+                        "it imports an objective and is never pooled with the fitness-free runs. " \
+                        "Rung 4 on Soup is unaffected by it."
+
     # ERB partial names must be valid Ruby identifiers, so a slug's hyphens become
     # underscores on the way to the file name.
     def initialize(slug:, title:, date:, experiment_slug:, status:, summary:, body_partial: nil,
-                   related_experiment_slugs: [], related_finding_slugs: [])
+                   related_experiment_slugs: [], related_finding_slugs: [], imports_objective: false)
       raise ArgumentError, "unknown finding status #{status.inspect}" unless STATUSES.include?(status)
 
       super(slug: slug, title: title, date: date, experiment_slug: experiment_slug, status: status,
             summary: summary, body_partial: body_partial || "findings/bodies/#{slug.tr('-', '_')}",
             related_experiment_slugs: related_experiment_slugs.freeze,
-            related_finding_slugs: related_finding_slugs.freeze)
+            related_finding_slugs: related_finding_slugs.freeze, imports_objective: imports_objective)
     end
 
     def to_param = slug
@@ -52,6 +61,8 @@ module Findings
     def status_label = status.to_s
 
     def status_meaning = STATUS_MEANINGS.fetch(status)
+
+    def imports_objective? = imports_objective
 
     def instrument_note = InstrumentNotes.for(slug)
 

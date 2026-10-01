@@ -508,6 +508,49 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  # The metabolism reading passes over every child's samples once and is held under the
+  # page's key; whether it is final is laid on top, read from the parent pool each time.
+  describe "#metabolism_reading" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let(:experiment) { metabolism_experiment }
+
+    before do
+      allow(Rails).to receive(:cache).and_return(cache)
+      metabolism_parent
+      Experiments::SweepBuilderService.call(experiment)
+      metabolism_children(experiment, reward: true).each { |run| metabolism_sample(run, capability: 3) }
+      metabolism_children(experiment, reward: false).first(2).each { |run| metabolism_sample(run) }
+    end
+
+    def read_reading
+      reads = []
+      collect = ->(*, payload) { reads << payload[:sql] if payload[:sql].include?("samples") }
+      fresh = described_class.build(experiment: experiment, paginate: paginate)
+
+      [ActiveSupport::Notifications.subscribed(collect, "sql.active_record") { fresh.metabolism_reading }, reads]
+    end
+
+    it "reads the children's samples once, and serves the same reading after" do
+      first, first_reads = read_reading
+      again, again_reads = read_reading
+
+      expect(first_reads).not_to be_empty
+      expect(again_reads).to be_empty
+      expect(again.arms.map(&:cells)).to eq(first.arms.map(&:cells))
+    end
+
+    it "reads it afresh, and final, once the last child finishes" do
+      first, = read_reading
+      metabolism_sample(metabolism_children(experiment, reward: false).last)
+      last, last_reads = read_reading
+
+      expect(first).to be_interim
+      expect(last_reads).not_to be_empty
+      expect(last).not_to be_interim
+      expect(last.arms.last.cells.third).to eq(3)
+    end
+  end
+
   describe "#series_cache_key" do
     let!(:run) { finished_run(radius: 1) }
 

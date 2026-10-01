@@ -29,6 +29,17 @@ RSpec.describe Findings::Registry do
                 replicator-complexity-plateau])
   end
 
+  it "labels every finding resting on the Metabolism sweep as importing an objective" do
+    metabolism = described_class.all.select { |finding| finding.rests_on?(Lab.slug_for("metabolism")) }
+
+    expect(metabolism).to all(be_imports_objective)
+  end
+
+  it "labels no finding on a fitness-free sweep as importing an objective" do
+    expect(described_class.all.select(&:imports_objective?))
+      .to all(satisfy { |finding| finding.rests_on?(Lab.slug_for("metabolism")) })
+  end
+
   it "keeps the order of findings sharing a date fixed across calls" do
     same_date = %w[first second third].map do |slug|
       Findings::Finding.new(slug: slug, title: slug, date: Date.new(2026, 9, 11),

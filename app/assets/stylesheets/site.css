@@ -504,11 +504,14 @@ ul.chart-legend li {
 }
 
 .instrument-note-badge,
-.instrument-note-badge:hover {
+.instrument-note-badge:hover,
+.objective-badge,
+.objective-badge:hover {
   color: var(--paper);
   text-decoration: none;
 }
 
-.instrument-note-badge:hover {
+.instrument-note-badge:hover,
+.objective-badge:hover {
   background: var(--ink-secondary);
 }

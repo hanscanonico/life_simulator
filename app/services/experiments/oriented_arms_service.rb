@@ -98,8 +98,11 @@ module Experiments
            "only stored worlds are read, about every 1000 epochs, so a first replicator epoch is no finer " \
            "than that;\na run is measured once the corpus pass has read every world it kept\n".freeze
 
-    def initialize(experiment:)
+    # `fitness_free` leaves out the runs paid for their tasks, which a reading pooled across
+    # sweeps never holds (DESIGN.md §1.4).
+    def initialize(experiment:, fitness_free: false)
       @experiment = experiment
+      @fitness_free = fitness_free
     end
 
     def call = Report.new(arms: arms_of(runs))
@@ -115,8 +118,11 @@ module Experiments
     def summaries = @summaries ||= Runs::OrientedSummariesService.call(runs: runs)
 
     def runs
-      @runs ||= experiment.runs.founding.where(status: "finished").order(:id)
-                          .select(:id, :params, :epochs, :transition_epoch, :emergence_epoch).to_a
+      @runs ||= begin
+        scope = experiment.runs.founding.where(status: "finished")
+        scope = scope.fitness_free if @fitness_free
+        scope.order(:id).select(:id, :params, :epochs, :transition_epoch, :emergence_epoch).to_a
+      end
     end
 
     attr_reader :experiment

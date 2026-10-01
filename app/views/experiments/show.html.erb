@@ -5,7 +5,11 @@
 <p class="text-muted"><%= @show.experiment.description %></p>
 
 <dl class="facts">
-  <dt>Substrate</dt><dd><%= @show.experiment.substrate %></dd>
+  <dt>Substrate</dt>
+  <dd>
+    <%= @show.experiment.substrate %>
+    <% if @show.imports_objective? %><%= render "findings/objective_badge" %><% end %>
+  </dd>
   <dt>Status</dt><dd><%= @show.experiment.status %></dd>
   <dt>Epochs per run</dt><dd><%= number_with_delimiter @show.experiment.epochs %></dd>
   <dt>Runs finished</dt><dd><%= @show.finished_count %> / <%= @show.experiment.runs_count %></dd>
@@ -32,6 +36,7 @@
     <% @show.findings.each do |finding| %>
       <%= link_to finding.title, finding_path(finding) %>
       <span class="badge <%= finding.badge_class %>"><%= finding.status_label %></span>
+      <% if finding.imports_objective? %><%= render "findings/objective_badge" %><% end %>
     <% end %>
   </p>
 <% end %>
@@ -80,6 +85,10 @@
 <% if @show.descendant_reading %>
   <%= render "experiments/descendant_reading", reading: @show.descendant_reading %>
   <%= render "experiments/heldout_reading", reading: @show.descendant_reading %>
+<% end %>
+
+<% if @show.metabolism_reading %>
+  <%= render "experiments/metabolism_reading", reading: @show.metabolism_reading %>
 <% end %>
 
 <% if @show.lineage_diversity_reading %>

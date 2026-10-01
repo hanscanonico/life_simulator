@@ -44,6 +44,12 @@ FactoryBot.define do
       end
     end
 
+    # A run paid for its tasks: a Metabolism run (DESIGN.md §1.4), never pooled with a
+    # fitness-free one.
+    trait :metabolism do
+      params { Lab::Schema.run_defaults.merge(Lab::MetabolismReading::REWARD_BUNDLE) }
+    end
+
     trait :stale do
       claimed
       heartbeat_at { 10.minutes.ago }
