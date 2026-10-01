@@ -190,6 +190,20 @@ mod tests {
             task_capability_loop: None,
             dominant_tasks: None,
             dominant_task_count: None,
+            logic_share_echo: None,
+            logic_share_not: None,
+            logic_share_nand: None,
+            logic_share_and: None,
+            logic_share_orn: None,
+            logic_share_or: None,
+            logic_share_andn: None,
+            logic_share_nor: None,
+            logic_share_xor: None,
+            logic_share_equ: None,
+            logic_capability: None,
+            logic_capability_deep: None,
+            dominant_logic_tasks: None,
+            dominant_logic_task_count: None,
         }
     }
 

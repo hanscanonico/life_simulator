@@ -149,10 +149,11 @@ module Experiments
     # The from-emerged sweep's pre-registered reading, on a sweep with a parent rule only.
     # Whether it is final also turns on the parent pool, whose runs belong to another
     # experiment and so are not in this key: the settled service keys it on that pool. The
-    # metabolism sweep has a parent rule but its own reading (`lab:metabolism_report`): this
-    # one would pair its arms against a continuation it does not have.
+    # metabolism and logic sweeps have a parent rule but their own readings
+    # (`lab:metabolism_report`, `lab:logic_report`): this one would pair their arms against a
+    # continuation they do not have.
     def descendant_reading
-      return nil if experiment.parents.blank? || MetabolismReadingService.applies_to?(experiment)
+      return nil if experiment.parents.blank? || own_descendant_reading?
 
       @descendant_reading ||= cached("descendant_reading") { FromEmergedReadingService.call(experiment: experiment) }
                               .with(final: DescendantSweepSettledService.call(experiment))
@@ -195,6 +196,15 @@ module Experiments
                               .with(final: DescendantSweepSettledService.call(experiment))
     end
 
+    # The logic sweep's pre-registered reading, on that sweep only, cached and finalised as
+    # the metabolism reading is.
+    def logic_reading
+      return nil unless LogicReadingService.applies_to?(experiment)
+
+      @logic_reading ||= cached("logic_reading") { LogicReadingService.call(experiment: experiment) }
+                         .with(final: DescendantSweepSettledService.call(experiment))
+    end
+
     # A sweep holding a run paid for its tasks imports an objective (DESIGN.md §1.4), and its
     # page says so beside its substrate.
     def imports_objective?
@@ -204,6 +214,10 @@ module Experiments
     end
 
     private
+
+    def own_descendant_reading?
+      [MetabolismReadingService, LogicReadingService].any? { |reading| reading.applies_to?(experiment) }
+    end
 
     def own_emergence_rule?
       [LineageDiversityReadingService, LocalityEmergenceReadingService, ReachCap128ReadingService]

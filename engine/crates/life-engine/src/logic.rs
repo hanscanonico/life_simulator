@@ -284,6 +284,48 @@ impl<'a> Memo<'a> {
     }
 }
 
+/// How many of `task::TASK_SAMPLE_CELLS` sampled cells each logic rung was credited to: the
+/// read-side tally of the logic observables (`docs/DESIGN.md` §1.2), the arithmetic
+/// `task::TaskTally`'s counterpart on this ladder.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LogicTally([u32; LOGIC_TASKS.len()]);
+
+impl LogicTally {
+    pub fn add(&mut self, credit: Credit) {
+        for (task, credited) in self.0.iter_mut().enumerate() {
+            *credited += u32::from(credit.has(task));
+        }
+    }
+
+    pub fn credited(&self, task: usize) -> u32 {
+        self.0[task]
+    }
+
+    pub fn share(&self, task: usize) -> f64 {
+        f64::from(self.0[task]) / f64::from(task::TASK_SAMPLE_CELLS)
+    }
+
+    /// How many rungs at least a tenth of the sampled cells are credited with, by the
+    /// arithmetic ladder's rule: 26 of 256, compared as integers.
+    pub fn capability(&self) -> u32 {
+        self.capable(0)
+    }
+
+    /// The same count over the deep rungs, XOR and EQU.
+    pub fn capability_deep(&self) -> u32 {
+        self.capable(FIRST_DEEP_TASK)
+    }
+
+    fn capable(&self, from: usize) -> u32 {
+        self.0[from..]
+            .iter()
+            .filter(|credited| {
+                **credited * task::TASK_CAPABILITY_DENOMINATOR >= task::TASK_SAMPLE_CELLS
+            })
+            .count() as u32
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -523,5 +565,37 @@ mod tests {
             assert_eq!(memo.credit(solver), assay(solver, &cases, OpSet::ALL));
         }
         assert_eq!(memo.seen.len(), SOLVERS.len());
+    }
+
+    /// A tenth of 256 is 25.6, so 25 cells are not a capability and 26 are; the deep count
+    /// reads only XOR and EQU, not NOR just below them.
+    #[test]
+    fn a_logic_capability_is_a_tenth_of_the_sampled_cells_counted_in_integers() {
+        let mut tally = LogicTally::default();
+        let not_and_xor = Credit(0b01_0000_0010);
+        for _ in 0..25 {
+            tally.add(not_and_xor);
+        }
+        tally.add(Credit(0b10));
+        assert_eq!((tally.credited(1), tally.credited(8)), (26, 25));
+        assert_eq!(tally.share(1), 26.0 / 256.0);
+        assert_eq!(tally.capability(), 1);
+        assert_eq!(tally.capability_deep(), 0);
+
+        for _ in 0..26 {
+            tally.add(Credit(1 << (FIRST_DEEP_TASK - 1)));
+        }
+        assert_eq!(tally.capability(), 2);
+        assert_eq!(tally.capability_deep(), 0);
+
+        tally.add(Credit(1 << 8));
+        assert_eq!(tally.capability(), 3);
+        assert_eq!(tally.capability_deep(), 1);
+
+        for _ in 0..26 {
+            tally.add(Credit(0b10_0010_0001));
+        }
+        assert_eq!(tally.capability(), 6);
+        assert_eq!(tally.capability_deep(), 2);
     }
 }

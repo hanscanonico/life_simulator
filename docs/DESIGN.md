@@ -413,18 +413,44 @@ claim rests on it.
   `dominant_tasks` is the credit of the census's dominant tape — the one
   `dominant_replicates` describes — as a bitmask in ladder order (ECHO 1, INC 2, … MUL
   128), on cases of its own drawn on `STREAM_TASK | 2`; `dominant_task_count` is its
-  popcount. They are read whenever `tasks` is not `off`, paid for or not, and only read:
+  popcount. They are read whenever `tasks = arith`, paid for or not, and only read:
   they draw on no stream the run, the payment or any other observable draws on and write
   nothing, so a run with `tasks = arith` and `task_reward = 0` is still the run with
   `tasks = off` byte for byte and stock for stock, with every other observable the same,
   and the control arm carries the readings its treatment does. On restored emerged worlds
   (128×128, 2 800 to 11 300 cells holding a `!`) they cost under about 1% of a sample
-  interval at `sample_every` 10, within the machine's noise. Null wherever `tasks = off`,
-  on the life substrate, and on every sample recorded before they existed. They are
+  interval at `sample_every` 10, within the machine's noise. Null wherever `tasks` is not
+  `arith`, on the life substrate, and on every sample recorded before they existed. They are
   **live-only**: neither `oriented_census/1` nor `/2` reads them, since an instrument
   version never changes once readings exist under it, and the sweep that needs them
   samples them as it runs. The run page names `dominant_tasks` rather than printing the
-  number, and draws the other eleven.
+  number, and draws the other eleven on the page of a run that has a reading of them.
+- `logic_share_echo` / `logic_share_not` / `logic_share_nand` / `logic_share_and` /
+  `logic_share_orn` / `logic_share_or` / `logic_share_andn` / `logic_share_nor` /
+  `logic_share_xor` / `logic_share_equ` / `logic_capability` / `logic_capability_deep` /
+  `dominant_logic_tasks` / `dominant_logic_task_count`: the **logic observables**
+  (docs/design_record.md 2026-10-01, Logic slice 2), the task observables' twins on the
+  logic ladder. The prefix keeps them apart from the arithmetic keys: bitwise NOT of a byte
+  is 255 − x, the arithmetic NOT. Each `logic_share_*` is the share of 256 cells, drawn
+  uniformly with replacement, that the logic assay credits with that rung; the cases and
+  then the cells are drawn afresh at every sample on `STREAM_TASK | 3`, keyed by
+  `(seed, epoch)`, and each distinct tape is assayed once.
+  `logic_capability` counts the rungs at a share of at least 1/10 (26 of 256, in
+  integers), and `logic_capability_deep` the same over XOR and EQU
+  (`logic::FIRST_DEEP_TASK` onwards). `dominant_logic_tasks` is the census's dominant
+  tape's credit as a bitmask in `logic::LOGIC_TASKS` order (ECHO 1, NOT 2, NAND 4, … EQU
+  512), on cases of its own drawn on `STREAM_TASK | 4`, and `dominant_logic_task_count`
+  its popcount. They are read whenever `tasks = logic`, paid for or not, and only read: no
+  other reading and not the payment draws on their streams, so `tasks = logic` at
+  `task_reward = 0` is still the run with `tasks = off` byte for byte, with every other
+  observable, the arithmetic ones included, the same. On restored worlds (the logic
+  pilot's end worlds and the Metabolism study's emerged ones, 128×128, 3 300 to 16 400
+  cells holding a `!`) they cost 0.08 to 3.5 ms a sample, at most 0.3% of a sample
+  interval at `sample_every` 10. Null unless `tasks = logic`: with tasks off or `arith`, on the life
+  substrate, and on every sample recorded before they existed. Like the task observables
+  they are **live-only**: neither `oriented_census/1` nor `/2` reads them. The run page
+  names `dominant_logic_tasks` and draws the other thirteen, again only for a run that has
+  a reading of them.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard
@@ -701,6 +727,21 @@ sample.
     rises"; all three read the same without the piloted parents, and no one or two parents
     carry a shown test. Finding `paid-computation-stops-at-one-step-tasks`, `negative`,
     imports an objective.
+16. **Logic** — does a soup assemble features beyond its one-step rungs when the parts are
+    paid? The Logic variant of §1.4, a descendant sweep from the same 18 parents under the
+    same rule, seeded only once the Metabolism reading is final. Three arms merged over each
+    parent's params, sharing Metabolism's economy and the logic assay every 8 epochs:
+    **full** (`tasks: logic`, `task_reward` 2 048), **deep-only** (the same at `task_floor:
+    xor`, Lenski's control) and **none** (`task_reward` 0, Metabolism's no-reward worlds
+    byte for byte). Seeds 2001–2003, 40 000 epochs past the parent, priority 40, 162
+    children. Read as Metabolism is, pairs with an extinct child left out; four one-sided
+    sign tests at p < 0.05: H-capability-L (full against none, last-decile median
+    `logic_capability`), H-deep (the same on `logic_capability_deep`, XOR and EQU, the
+    rung-4 question), H-stones (H-deep's key, full against deep-only) and H-complexity (the
+    from-emerged rise rule), each also read with the extinct pairs kept and without the four
+    piloted parents. Pre-registered in `docs/design_record.md`, 2026-10-01, "Logic: does a
+    soup assemble features beyond its one-step rungs when the parts are paid?", whose
+    numbers live in `Lab::LogicReading`; `lab:logic_report` reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -730,6 +771,15 @@ twin under the same economy, the plateau was "nothing pays". Chosen 2026-10-01 a
 of the 2026-09-24 entry; its sweep is §1.3 item 15, pre-registered in
 `docs/design_record.md`, 2026-10-01, "Metabolism: a second, labelled substrate that imports
 an objective".
+
+**Logic** is a variant of Metabolism that imports a **primitive** as well as an objective:
+one assay-only NAND byte, `~`, and Avida's logic tasks as the ladder (`tasks = logic`,
+§1.1), so every rung is a composition of one op and the lower rungs are parts of the higher.
+It answers the design study's diagnosis that BFF's instruction set, not its variation
+operator, holds Metabolism's ladder at one substitution. It carries Metabolism's label and
+pooling rule unchanged, and rung 4 on Soup stays "not shown" whatever it reads. Its sweep is
+§1.3 item 16, pre-registered in `docs/design_record.md`, 2026-10-01, "Logic: does a soup
+assemble features beyond its one-step rungs when the parts are paid?".
 
 ## 2. Architecture
 

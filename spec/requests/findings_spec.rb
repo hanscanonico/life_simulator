@@ -1515,7 +1515,7 @@ RSpec.describe "Findings", type: :request do
         expect(response.body.squish)
           .to include("DESIGN §1.3 item 15", "a tie throughout as refuted",
                       "5–7 coordinated substitutions", "no partial kernel",
-                      "Logic, pre-registered as DESIGN §1.3 item 16", "rung 4 on Soup stays \"not shown\"")
+                      "pre-registered as DESIGN §1.3 item 16", "rung 4 on Soup stays \"not shown\"")
       end
 
       context "with none of its children in this database" do
