@@ -8,7 +8,8 @@ module Findings
   #
   # This is a survey of runs that already exist rather than the adaptation sweep: the runs
   # come from different grids at different budgets, so it counts directions and never fits
-  # a trend.
+  # a trend. A run paid for its tasks is left out: it imports an objective, and is never
+  # pooled with the fitness-free runs (DESIGN.md §1.4).
   class CopyCostSurvey
     Row = Data.define(:run, :experiment, :costs) do
       delegate :seed, :transition_epoch, to: :run
@@ -82,7 +83,7 @@ module Findings
     private
 
     def transitioned_runs
-      @transitioned_runs ||= Run.transitioned.includes(:experiment)
+      @transitioned_runs ||= Run.transitioned.fitness_free.includes(:experiment)
                                 .order(:experiment_id, :transition_epoch, :id).to_a
     end
 

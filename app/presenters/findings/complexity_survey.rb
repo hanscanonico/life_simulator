@@ -10,7 +10,8 @@ module Findings
   # recipe and stopped has plateaued, and the two read differently here.
   #
   # This is a survey of runs that already exist rather than a sweep designed to ask it, so
-  # it counts directions and never fits a trend.
+  # it counts directions and never fits a trend. A run paid for its tasks is left out: it
+  # imports an objective, and is never pooled with the fitness-free runs (DESIGN.md §1.4).
   class ComplexitySurvey
     Row = Data.define(:run, :experiment, :series) do
       delegate :seed, :emergence_epoch, to: :run
@@ -67,7 +68,7 @@ module Findings
 
     # What the detector flagged, over the same terminal runs: the page prints both, because
     # most of the difference is the detector firing on a random fill settling.
-    def flagged_count = @flagged_count ||= Run.transitioned.count
+    def flagged_count = @flagged_count ||= Run.transitioned.fitness_free.count
 
     def measured_count = rows.size
 
@@ -92,7 +93,7 @@ module Findings
     private
 
     def emerged_runs
-      @emerged_runs ||= Run.emerged.includes(:experiment)
+      @emerged_runs ||= Run.emerged.fitness_free.includes(:experiment)
                            .order(:experiment_id, :emergence_epoch, :id).to_a
     end
 
