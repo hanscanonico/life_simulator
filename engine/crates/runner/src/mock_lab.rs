@@ -59,7 +59,9 @@ struct Front {
 #[derive(Default)]
 struct Links {
     vanished: bool,
-    open: Vec<TcpStream>,
+    /// Both ends of every piped connection, shared with the two threads copying between
+    /// them: a link whose threads are done is held here alone and is let go.
+    open: Vec<Arc<TcpStream>>,
 }
 
 impl MockLab {
@@ -251,15 +253,15 @@ impl Front {
             let Ok(server) = TcpStream::connect(backend) else {
                 continue;
             };
+            let (client, server) = (Arc::new(client), Arc::new(server));
             for (from, to) in [(&client, &server), (&server, &client)] {
-                let (Ok(mut from), Ok(mut to)) = (from.try_clone(), to.try_clone()) else {
-                    continue;
-                };
+                let (from, to) = (Arc::clone(from), Arc::clone(to));
                 thread::spawn(move || {
-                    let _ = io::copy(&mut from, &mut to);
+                    let _ = io::copy(&mut &*from, &mut &*to);
                     let _ = to.shutdown(Shutdown::Write);
                 });
             }
+            links.open.retain(|stream| Arc::strong_count(stream) > 1);
             links.open.extend([client, server]);
         }
     }
@@ -391,4 +393,22 @@ fn answer(mut request: Request, state: &Arc<Mutex<State>>) {
         )),
         None => request.respond(Response::empty(204)),
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A port the vanished lab let go could be bound by a mock another test starts
+    /// meanwhile, and that mock would answer the calls meant to meet the outage.
+    #[test]
+    fn a_vanished_lab_keeps_its_port() {
+        let lab = MockLab::start();
+        lab.vanish();
+
+        for _ in 0..50 {
+            assert!(TcpListener::bind(("127.0.0.1", lab.port)).is_err());
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
 }
