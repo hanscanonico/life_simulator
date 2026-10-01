@@ -792,6 +792,10 @@ Copied from the `grid_commanders`/`stock_market` pattern on the mini-pc
   `:previous` image on failure. Same shape as `grid_commanders/deploy/web/deploy`.
   App and runner are separate images, built with `BUILDX_NO_DEFAULT_ATTESTATIONS=1` so
   that an app-only change leaves the runner's image ID, and its container, untouched.
+  After a healthy deploy it prunes the dangling images labelled with its own compose
+  project, at once and never with `-a` (the `:previous` tags stay for rollback); the
+  build cache is left alone, since `docker builder prune` cannot be scoped to one
+  project and the sibling stacks share it.
 - `deploy/systemd/`: nightly `pg_dump` timer like the stock market one.
 - Cloudflare: one tunnel `life-simulator` in the existing account, public hostname
   `simulator-life.com` → `http://app:8080`.

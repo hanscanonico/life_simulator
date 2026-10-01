@@ -40,4 +40,21 @@ RSpec.describe "deploy/deploy" do
   it "has no build step that could omit the variable" do
     expect(script.scan("$compose build").size).to eq(1)
   end
+
+  describe "the image prune" do
+    let(:prunes) { script.lines.grep(/docker image prune/) }
+
+    # The sibling stacks share the daemon; their dangling images are not ours.
+    it "prunes only the images labelled with this compose project" do
+      expect(prunes).to be_present.and all(include('--filter "label=com.docker.compose.project=$project"'))
+    end
+
+    it "keeps the tagged :previous images by never pruning with -a" do
+      expect(prunes).to all(satisfy { |line| !line.match?(/\s(-a|--all)\b/) })
+    end
+
+    it "keeps no age window on superseded builds" do
+      expect(prunes).to all(satisfy { |line| line.exclude?("until=") })
+    end
+  end
 end
