@@ -7,6 +7,24 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "emergence-peaks-at-intermediate-reach",
+        title: "Emergence peaks at an intermediate reach",
+        date: Date.new(2026, 10, 1),
+        experiment_slug: "locality-emergence",
+        related_finding_slugs: %w[lineages-after-emergence radius-locality],
+        status: :published,
+        summary: "DESIGN §1.3 sweep 13 put an exploratory pattern from sweep 12 to fresh " \
+                 "worlds under rules fixed first: does a replicator arise more often at an " \
+                 "intermediate reach than at the tightest one or in a well-mixed world? All " \
+                 "630 runs finished, 90 fresh seeds at each of seven reaches. Radius 4 " \
+                 "emerged in 16 of 90 worlds, against 4 of 90 at radius 1 and 3 of 90 " \
+                 "well-mixed (one-sided Fisher, Holm-corrected p = 0.0039 and 0.0027), and a " \
+                 "logistic fit over the six finite radii bends down (radius² coefficient " \
+                 "−0.114, Wald p = 0.0041) with its peak at radius 4.1. Both pre-registered " \
+                 "hypotheses are shown. Four of the seven arms emerged exactly as often as " \
+                 "sweep 12's did: different seeds and different worlds, the same totals."
+      ),
+      Finding.new(
         slug: "copying-gets-faster-under-an-economy",
         title: "Under an energy economy, the dominant replicator copies itself faster",
         date: Date.new(2026, 9, 28),

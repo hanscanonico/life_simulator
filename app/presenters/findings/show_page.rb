@@ -92,6 +92,16 @@ module Findings
       @from_emerged = report && FromEmerged.build(report)
     end
 
+    # Sweep 13 read under its own pre-registered rule, from the report its sweep page draws,
+    # beside sweep 12's worlds read by the same emergence rule. Nil where the sweep is not in
+    # the lab.
+    def locality_emergence
+      return @locality_emergence if defined?(@locality_emergence)
+
+      report = evidence&.locality_emergence_reading
+      @locality_emergence = report && LocalityEmergence.build(report, exploratory: exploratory_emergence)
+    end
+
     def diagrams = evidence ? evidence.diagrams : []
 
     def runs_done = evidence ? evidence.finished_count : 0
@@ -110,6 +120,11 @@ module Findings
     def arm_column = evidence&.arm_columns&.first || "Arm"
 
     private
+
+    def exploratory_emergence
+      sweep = Experiment.find_by(slug: Lab.slug_for("lineage_diversity"))
+      sweep && Experiments::LocalityEmergenceReadingService.call(experiment: sweep)
+    end
 
     def interaction_of(params) = params.fetch("interaction") { Lab::Schema.defaults.fetch("interaction") }
 

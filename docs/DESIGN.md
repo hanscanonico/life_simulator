@@ -583,6 +583,10 @@ sample.
     p < 0.05 with its fitted peak between radius 2 and 6. Pre-registered in
     `docs/design_record.md`, 2026-09-27, "Does emergence peak at an intermediate reach?",
     whose numbers live in `Lab::LocalityEmergenceReading`.
+    **Result** (2026-10-01, final): radius 4 emerged 16/90 against 4/90 at radius 1 and 3/90
+    well-mixed (Holm p = 0.0039, 0.0027) and the fit bends down (b₂ = −0.114, Wald p = 0.0041)
+    with its peak at radius 4.1 — both hypotheses shown; finding
+    `emergence-peaks-at-intermediate-reach`, `published`.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
