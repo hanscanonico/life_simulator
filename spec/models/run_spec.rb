@@ -128,17 +128,21 @@ RSpec.describe Run, type: :model do
     let!(:unpaid) { create(:run, params: defaults.merge("task_reward" => 0)) }
     let!(:predating) { create(:run, params: defaults.except("task_reward")) }
     let!(:null_reward) { create(:run, params: defaults.merge("task_reward" => nil)) }
+    # The engine refuses a reward that is not a JSON number, so such a run never ran paid.
+    let!(:text_reward) { create(:run, params: defaults.merge("task_reward" => "2048")) }
+    let!(:rational_reward) { create(:run, params: defaults.merge("task_reward" => Rational(2048, 1))) }
 
     it "reads a positive reward as a Metabolism run" do
       expect(described_class.metabolism).to contain_exactly(paid)
     end
 
-    it "reads a zero, a null and a missing reward as fitness-free" do
-      expect(described_class.fitness_free).to contain_exactly(unpaid, predating, null_reward)
+    it "reads a zero, a null, a missing and a non-numeric reward as fitness-free" do
+      expect(described_class.fitness_free)
+        .to contain_exactly(unpaid, predating, null_reward, text_reward, rational_reward)
     end
 
     it "agrees with the reading's own rule on every run" do
-      [paid, unpaid, predating, null_reward].each do |run|
+      [paid, unpaid, predating, null_reward, text_reward, rational_reward].each do |run|
         expect(described_class.metabolism.exists?(run.id))
           .to eq(Lab::MetabolismReading.metabolism_run?(run.params))
       end

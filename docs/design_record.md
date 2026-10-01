@@ -3054,7 +3054,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   keeps it. Nothing is relocked.
   - **One predicate.** `Run.metabolism` and `Run.fitness_free` read `task_reward` off a run's
     params, a missing or null key as 0, so a run stored before the parameter is fitness-free.
-    `Lab::MetabolismReading.metabolism_run?` is the same rule on a params hash.
+    The engine reads the reward only as a JSON number, so any other value pays nothing and is
+    read as 0, never cast. `Lab::MetabolismReading.metabolism_run?` is the same rule on a
+    params hash.
   - **The badge** is a boolean on the finding's registry entry, `imports_objective`, not a
     reading of its sweep's runs: the findings index would otherwise query runs for it, and a
     finding is content written against its runs anyway. The registry spec holds every
@@ -3066,7 +3068,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     alone: the status strip's largest census and seeds transitioned, the surveys of every
     transitioned or emerged run (persistence, copy cost, complexity) and the findings
     index's denominator for them, the detector baseline read across the lab and
-    `lab:oriented_report[all]`. The strip's counts of work done (sweeps queued, runs
+    `lab:oriented_report[all]`. The open-endedness survey pools only the fitness-free bets it
+    names, so it needs no filter. The strip's counts of work done (sweeps queued, runs
     finished, epochs simulated) and the lab status page are throughput, not readings, and
     keep every run. A sweep's own page and its own reports keep its paid runs.
   - **The reading on the page.** The `metabolism` sweep's page prints the reading of the
