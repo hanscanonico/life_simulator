@@ -6,14 +6,21 @@ use base64::Engine as _;
 use life_engine::Params;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::io;
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 use tiny_http::{Header, Method, Request, Response, Server};
 
 pub const TOKEN: &str = "token";
 /// The length of the run the mock hands out; short enough to execute in a test.
 pub const EPOCHS: u64 = 6;
 const BINARY: &str = "application/octet-stream";
+/// How long a test waits on something the mock is bound to see; far past any load, so
+/// reaching it means the event is not coming rather than that the machine is slow.
+pub const PATIENCE: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
 struct State {
@@ -30,59 +37,88 @@ struct State {
 }
 
 pub struct MockLab {
-    /// `None` while the lab has vanished; the port stays reserved to this instance, so
-    /// what a client meets in the meantime is a refused connection.
-    listener: Mutex<Option<(Arc<Server>, JoinHandle<()>)>>,
+    front: Arc<Front>,
+    acceptor: Option<JoinHandle<()>>,
+    server: Arc<Server>,
+    handler: Option<JoinHandle<()>>,
     state: Arc<Mutex<State>>,
     port: u16,
+}
+
+/// The port a client dials. It stays bound for the mock's whole life and pipes each
+/// connection through to the HTTP server behind it — or, while the lab has vanished,
+/// closes it unanswered. Releasing the port instead would let a mock started by another
+/// test bind it meanwhile, and the vanished lab would answer under someone else's name.
+#[derive(Default)]
+struct Front {
+    links: Mutex<Links>,
+    turned_away: AtomicU32,
+    closing: AtomicBool,
+}
+
+#[derive(Default)]
+struct Links {
+    vanished: bool,
+    open: Vec<TcpStream>,
 }
 
 impl MockLab {
     pub fn start() -> Self {
         let server = Arc::new(Server::http("127.0.0.1:0").expect("binding the mock lab"));
-        let port = server.server_addr().to_ip().expect("an ip address").port();
+        let backend = server.server_addr().to_ip().expect("an ip address");
         let state = Arc::new(Mutex::new(State::default()));
-        let lab = Self {
-            listener: Mutex::new(None),
-            state,
-            port,
-        };
-        lab.serve(server);
-        lab
-    }
-
-    pub fn base_url(&self) -> String {
-        format!("http://127.0.0.1:{}", self.port)
-    }
-
-    /// Takes the lab off the network, as recreating the app container does: the port
-    /// stops listening and every call refuses to connect until `revive`.
-    pub fn vanish(&self) {
-        if let Some((server, handler)) = self.listener.lock().unwrap().take() {
-            server.unblock();
-            let _ = handler.join();
-        }
-    }
-
-    /// Puts the lab back on the same port, as the new container does.
-    pub fn revive(&self) {
-        let address = format!("127.0.0.1:{}", self.port);
-        self.serve(Arc::new(
-            Server::http(&address).expect("rebinding the mock lab"),
-        ));
-    }
-
-    fn serve(&self, server: Arc<Server>) {
         let handler = thread::spawn({
             let server = Arc::clone(&server);
-            let state = Arc::clone(&self.state);
+            let state = Arc::clone(&state);
             move || {
                 for request in server.incoming_requests() {
                     answer(request, &state);
                 }
             }
         });
-        *self.listener.lock().unwrap() = Some((server, handler));
+        let listener = TcpListener::bind("127.0.0.1:0").expect("binding the mock lab");
+        let port = listener.local_addr().expect("a local address").port();
+        let front = Arc::new(Front::default());
+        let acceptor = thread::spawn({
+            let front = Arc::clone(&front);
+            move || front.accept(&listener, backend)
+        });
+        Self {
+            front,
+            acceptor: Some(acceptor),
+            server,
+            handler: Some(handler),
+            state,
+            port,
+        }
+    }
+
+    pub fn base_url(&self) -> String {
+        format!("http://127.0.0.1:{}", self.port)
+    }
+
+    /// Takes the lab off the network, as recreating the app container does: every
+    /// connection open to it is cut, and every new one is closed unanswered until
+    /// `revive`.
+    pub fn vanish(&self) {
+        let mut links = self.front.links.lock().unwrap();
+        links.vanished = true;
+        for stream in links.open.drain(..) {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+    }
+
+    /// Puts the lab back on the same port, as the new container does.
+    pub fn revive(&self) {
+        self.front.links.lock().unwrap().vanished = false;
+    }
+
+    /// Blocks until the vanished lab has turned `connections` away, so a test acts on
+    /// the client being in the outage rather than on a guess at how long that takes.
+    pub fn wait_until_turned_away(&self, connections: u32) {
+        wait_until("a client meeting the outage", || {
+            self.front.turned_away.load(Ordering::Relaxed) >= connections
+        });
     }
 
     /// The params the mock hands out, small enough for a test to actually run.
@@ -185,7 +221,57 @@ impl MockLab {
 
 impl Drop for MockLab {
     fn drop(&mut self) {
+        self.front.closing.store(true, Ordering::Relaxed);
         self.vanish();
+        let _ = TcpStream::connect(("127.0.0.1", self.port));
+        if let Some(acceptor) = self.acceptor.take() {
+            let _ = acceptor.join();
+        }
+        self.server.unblock();
+        if let Some(handler) = self.handler.take() {
+            let _ = handler.join();
+        }
+    }
+}
+
+impl Front {
+    fn accept(&self, listener: &TcpListener, backend: SocketAddr) {
+        for client in listener.incoming() {
+            if self.closing.load(Ordering::Relaxed) {
+                return;
+            }
+            let Ok(client) = client else { continue };
+            let mut links = self.links.lock().unwrap();
+            if links.vanished {
+                drop(links);
+                drop(client);
+                self.turned_away.fetch_add(1, Ordering::Relaxed);
+                continue;
+            }
+            let Ok(server) = TcpStream::connect(backend) else {
+                continue;
+            };
+            for (from, to) in [(&client, &server), (&server, &client)] {
+                let (Ok(mut from), Ok(mut to)) = (from.try_clone(), to.try_clone()) else {
+                    continue;
+                };
+                thread::spawn(move || {
+                    let _ = io::copy(&mut from, &mut to);
+                    let _ = to.shutdown(Shutdown::Write);
+                });
+            }
+            links.open.extend([client, server]);
+        }
+    }
+}
+
+/// Polls `condition` until it holds, failing the test once `PATIENCE` has gone by: a
+/// test waits on what it needs to have happened, never on a guess at how long it takes.
+pub fn wait_until(what: &str, condition: impl Fn() -> bool) {
+    let deadline = Instant::now() + PATIENCE;
+    while !condition() {
+        assert!(Instant::now() < deadline, "{what} within {PATIENCE:?}");
+        thread::sleep(Duration::from_millis(5));
     }
 }
 
