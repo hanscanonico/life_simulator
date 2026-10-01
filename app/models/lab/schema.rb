@@ -35,6 +35,13 @@ module Lab
         @task_names ||= document.fetch("tasks").fetch("ladder").map { |task| task.fetch("name") }.freeze
       end
 
+      # The logic ladder's names in the engine's order, the bit order of
+      # `dominant_logic_tasks`.
+      def logic_task_names
+        @logic_task_names ||= document.fetch("tasks").fetch("logic").fetch("ladder")
+                                      .map { |task| task.fetch("name") }.freeze
+      end
+
       def defaults
         @defaults ||= fields.to_h { |field| [field["name"], field["default"]] }.freeze
       end

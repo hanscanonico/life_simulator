@@ -51,7 +51,10 @@ RSpec.describe "Pages", type: :request do
          conserved_core_bytes_oriented conserved_core_ops_oriented copy_latency copy_latency_orientation
          lineage_effective_count lineages_over_one_percent task_share_echo task_share_inc task_share_dec
          task_share_add task_share_sub task_share_not task_share_double task_share_mul task_capability
-         task_capability_loop dominant_tasks dominant_task_count transition_epoch]
+         task_capability_loop dominant_tasks dominant_task_count logic_share_echo logic_share_not
+         logic_share_nand logic_share_and logic_share_orn logic_share_or logic_share_andn logic_share_nor
+         logic_share_xor logic_share_equ logic_capability logic_capability_deep dominant_logic_tasks
+         dominant_logic_task_count transition_epoch]
     end
 
     it "defines the substrate and links to the sweeps" do

@@ -3228,3 +3228,49 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   floor it ran at, so stored runs keep their identity. `runner schema` exports the logic
   ladder (names, units, minimal NANDs), the NAND byte and the first deep rung under
   `tasks.logic`, beside the arithmetic ladder Rails already reads.
+
+- 2026-10-01 — **The logic observables: fourteen live-only readings of the logic ladder
+  (Logic, slice 2).** The logic assay of the entry above pays; these read, as the task
+  observables read the arithmetic ladder, and with their shape. They are appended to
+  `Metrics` with these exact keys, which the Logic pre-registration codes against:
+  `logic_share_echo`, `logic_share_not`, `logic_share_nand`, `logic_share_and`,
+  `logic_share_orn`, `logic_share_or`, `logic_share_andn`, `logic_share_nor`,
+  `logic_share_xor`, `logic_share_equ`, `logic_capability`, `logic_capability_deep`,
+  `dominant_logic_tasks` and `dominant_logic_task_count`. The `logic_` prefix keeps them
+  apart from the arithmetic keys, since bitwise NOT of a byte is the arithmetic NOT.
+
+  **What they read.** A share is the fraction of 256 cells, drawn uniformly with
+  replacement, credited with its rung, on cases drawn first and then cells drawn on
+  `STREAM_TASK | 3` at `(seed, epoch)`; each distinct tape in the sample is assayed once
+  (`logic::Memo`). The cases are drawn fresh at every sample, keyed by `(seed, epoch)`,
+  as slice 1's deep-rung check asks, so a partial solver's chance credit does not repeat
+  from one sample to the next. A rung is a capability at a share of at least 1/10,
+  compared in integers (26 of 256), and `logic_capability_deep` counts XOR and EQU only
+  (`logic::FIRST_DEEP_TASK..`), the count H-deep reads. `dominant_logic_tasks` is the
+  census's dominant tape's credit as a `u32` bitmask in `logic::LOGIC_TASKS` order, on
+  cases drawn on `STREAM_TASK | 4`, 0 rather than null where that tape solves nothing.
+
+  **When.** Whenever `tasks = logic`, rewarded or not, so the none arm carries the readings
+  the full and deep-only arms do. Null with tasks `off` or `arith`, on life (including a
+  life run resumed with `tasks = logic`), and on every sample recorded before them. The
+  arithmetic readings stay null under `logic`, as slice 1 left them. Live-only: neither
+  `oriented_census/1` nor `/2` reads them. Rails stores them in `Sample::OBSERVABLES`,
+  `dominant_logic_tasks` as a flag the run page names from the logic ladder `runner schema`
+  exports; a missing key draws no point and is never read as 0. The run page draws a
+  ladder's charts, arithmetic or logic, only for a run with a reading of that ladder, so a
+  run on neither carries no block of empty charts.
+
+  **The invariant, pinned.** Nothing else draws on the two streams, and the readings write
+  nothing. A test steps `tasks = logic, task_reward = 0` beside `tasks = off` under both
+  payers, sampling every 5 epochs, and holds them to the same world hash, stocks, snapshot
+  and every other observable, the arithmetic ones included, sample for sample. Every
+  earlier hash and digest is unmoved; the logic readings have their own digest, split from
+  the others as the task readings' is. The reward-0 control of the logic reward pin (seed
+  42, 50 epochs) reads a NOT share of 0.10546875 and an XOR share of 0.07421875, one
+  capability and no deep one, and a planted still world (half XOR, a quarter OR, a row of
+  EQU) reads two capabilities, one deep, and a dominant tape of XOR alone (256).
+
+  **What it costs.** Measured beside the sample on the logic pilot's seven end worlds and
+  the eight stored Metabolism-study worlds (128×128, 3 300 to 16 400 cells holding a `!`,
+  a loaded Mac): 0.08 to 0.73 ms a sample, one reading of 3.5 ms, which is 0.02% to 0.3% of
+  a sample interval at `sample_every` 10. Relocks nothing.

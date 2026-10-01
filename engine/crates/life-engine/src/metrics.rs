@@ -189,6 +189,40 @@ pub struct Metrics {
     pub dominant_tasks: Option<u32>,
     /// How many tasks that is.
     pub dominant_task_count: Option<u32>,
+    /// The share of `task::TASK_SAMPLE_CELLS` cells, drawn uniformly with replacement,
+    /// whose tape the logic assay credits with ECHO, on cases of the sample's own
+    /// (`docs/design_record.md`, Logic slice 2). This and every logic reading below is
+    /// `None` unless tasks are `logic`: with tasks off or `arith`, on the life substrate,
+    /// and on every sample recorded before they existed. The prefix keeps them apart from
+    /// the arithmetic readings, whose NOT is the same function of a byte.
+    pub logic_share_echo: Option<f64>,
+    /// The same share for NOT.
+    pub logic_share_not: Option<f64>,
+    /// The same share for NAND.
+    pub logic_share_nand: Option<f64>,
+    /// The same share for AND.
+    pub logic_share_and: Option<f64>,
+    /// The same share for ORN.
+    pub logic_share_orn: Option<f64>,
+    /// The same share for OR.
+    pub logic_share_or: Option<f64>,
+    /// The same share for ANDN.
+    pub logic_share_andn: Option<f64>,
+    /// The same share for NOR.
+    pub logic_share_nor: Option<f64>,
+    /// The same share for XOR.
+    pub logic_share_xor: Option<f64>,
+    /// The same share for EQU.
+    pub logic_share_equ: Option<f64>,
+    /// How many logic rungs at least a tenth of those sampled cells are credited with.
+    pub logic_capability: Option<u32>,
+    /// The same count over the deep rungs, XOR and EQU.
+    pub logic_capability_deep: Option<u32>,
+    /// The logic rungs the dominant tape is credited with, a bit per rung in
+    /// `logic::LOGIC_TASKS` order, on cases of its own.
+    pub dominant_logic_tasks: Option<u32>,
+    /// How many rungs that is.
+    pub dominant_logic_task_count: Option<u32>,
 }
 
 impl Metrics {
@@ -1704,6 +1738,20 @@ mod tests {
             task_capability_loop: None,
             dominant_tasks: None,
             dominant_task_count: None,
+            logic_share_echo: None,
+            logic_share_not: None,
+            logic_share_nand: None,
+            logic_share_and: None,
+            logic_share_orn: None,
+            logic_share_or: None,
+            logic_share_andn: None,
+            logic_share_nor: None,
+            logic_share_xor: None,
+            logic_share_equ: None,
+            logic_capability: None,
+            logic_capability_deep: None,
+            dominant_logic_tasks: None,
+            dominant_logic_task_count: None,
         }
     }
 

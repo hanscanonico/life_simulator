@@ -46,8 +46,26 @@ module Runs
       "task_share_sub" => "Share of cells solving SUB",
       "task_share_not" => "Share of cells solving NOT",
       "task_share_double" => "Share of cells solving DOUBLE",
-      "task_share_mul" => "Share of cells solving MUL"
+      "task_share_mul" => "Share of cells solving MUL",
+      "logic_capability" => "Logic rungs a tenth of the cells solve",
+      "logic_capability_deep" => "Deep logic rungs (XOR, EQU) a tenth of the cells solve",
+      "dominant_logic_task_count" => "Logic rungs the dominant tape solves",
+      "logic_share_echo" => "Share of cells solving logic ECHO",
+      "logic_share_not" => "Share of cells solving logic NOT",
+      "logic_share_nand" => "Share of cells solving NAND",
+      "logic_share_and" => "Share of cells solving AND",
+      "logic_share_orn" => "Share of cells solving ORN",
+      "logic_share_or" => "Share of cells solving OR",
+      "logic_share_andn" => "Share of cells solving ANDN",
+      "logic_share_nor" => "Share of cells solving NOR",
+      "logic_share_xor" => "Share of cells solving XOR",
+      "logic_share_equ" => "Share of cells solving EQU"
     }.freeze
+
+    # The readings of one task ladder are null at every sample of a run not assayed on it
+    # (DESIGN §1.2), so a ladder's charts are drawn only for a run that has a reading of it,
+    # rather than as a block of empty charts on every other run.
+    LADDERS = [METRICS.keys.grep(/\A(dominant_)?task_/), METRICS.keys.grep(/\A(dominant_)?logic_/)].freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
     TURNOVER_TITLE = "Dominant tape turnover (1 = a different tape than the sample before)"
@@ -74,7 +92,7 @@ module Runs
     attr_reader :run
 
     def charts
-      @charts ||= METRICS.map { |metric, title| chart_of(series_of(metric), title) } +
+      @charts ||= drawn_metrics.map { |metric| chart_of(series_of(metric), METRICS.fetch(metric)) } +
                   [chart_of(compressibility_points, COMPRESSIBILITY_TITLE, axis: COMPRESSIBILITY_AXIS),
                    chart_of(turnover_points, TURNOVER_TITLE, axis: TURNOVER_AXIS)]
     end
@@ -111,16 +129,20 @@ module Runs
     def dominant_tasks
       return @dominant_tasks if defined?(@dominant_tasks)
 
-      bits = dominant_readings.reverse_each.lazy.map { |_, values| values["dominant_tasks"] }
-                              .find { |mask| mask.is_a?(Integer) }
-      @dominant_tasks = bits && Lab::Schema.task_names.select.with_index { |_, index| bits[index] == 1 }
+      @dominant_tasks = latest_tasks("dominant_tasks", Lab::Schema.task_names)
     end
 
-    def dominant_tasks_label
-      return if dominant_tasks.nil?
+    def dominant_tasks_label = tasks_label(dominant_tasks)
 
-      dominant_tasks.empty? ? "no task" : dominant_tasks.map(&:upcase).to_sentence
+    # The same, for the logic ladder's `dominant_logic_tasks`: `nil` unless a sample of a
+    # run with tasks = logic read one.
+    def dominant_logic_tasks
+      return @dominant_logic_tasks if defined?(@dominant_logic_tasks)
+
+      @dominant_logic_tasks = latest_tasks("dominant_logic_tasks", Lab::Schema.logic_task_names)
     end
+
+    def dominant_logic_tasks_label = tasks_label(dominant_logic_tasks)
 
     def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)
 
@@ -213,7 +235,25 @@ module Runs
       end
     end
 
-    def series_of(metric) = MetricSeriesService.call(run: run, metric: metric, samples: dominant_readings)
+    def latest_tasks(key, ladder)
+      bits = dominant_readings.reverse_each.lazy.map { |_, values| values[key] }.find { |mask| mask.is_a?(Integer) }
+      bits && ladder.select.with_index { |_, index| bits[index] == 1 }
+    end
+
+    def tasks_label(tasks)
+      return if tasks.nil?
+
+      tasks.empty? ? "no task" : tasks.map(&:upcase).to_sentence
+    end
+
+    def drawn_metrics
+      unread = LADDERS.reject { |ladder| ladder.any? { |metric| series_of(metric).any? } }
+      METRICS.keys - unread.flatten
+    end
+
+    def series_of(metric)
+      (@series ||= {})[metric] ||= MetricSeriesService.call(run: run, metric: metric, samples: dominant_readings)
+    end
 
     def chart_of(points, title, axis: title)
       Charts::LineChart.new(points: points, title: title, x_label: "Epoch", y_label: axis,
