@@ -695,6 +695,12 @@ sample.
     registered in `docs/design_record.md`, 2026-10-01, "Metabolism: a second, labelled
     substrate that imports an objective", whose numbers live in `Lab::MetabolismReading`;
     `lab:metabolism_report` reads it.
+    **Result** (2026-10-01, final): all 108 children finished, none extinct; H-capability
+    shown, 54 pairs to 0 (p = 5.55e-17); H-ladder refuted, 0 to 0 with 54 ties, no loop task
+    at a tenth in either arm; H-complexity shown, 18 to 1 (p = 3.81e-05), "paid complexity
+    rises"; all three read the same without the piloted parents, and no one or two parents
+    carry a shown test. Finding `paid-computation-stops-at-one-step-tasks`, `negative`,
+    imports an objective.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no

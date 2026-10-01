@@ -3228,3 +3228,103 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   floor it ran at, so stored runs keep their identity. `runner schema` exports the logic
   ladder (names, units, minimal NANDs), the NAND byte and the first deep rung under
   `tasks.logic`, beside the arithmetic ladder Rails already reads.
+
+- 2026-10-02 — **The Metabolism finding states its claim: paid to compute, replicators take
+  the one-step tasks and stop there.** Sweep 15 (`metabolism`, entry of 2026-10-01,
+  "Metabolism: a second, labelled substrate that imports an objective") is final: all 108
+  children of its 18 parents finished. It is read here as registered, on the lab
+  (`lab:metabolism_report`, 2026-10-01 22:05Z, "metabolism reading, final (Metabolism:
+  imports an objective)").
+
+  | arm | children | finished | settled relapses | extinct | capability measured | reached a loop task | stepping stone | complexity survivors | rises |
+  |---|---|---|---|---|---|---|---|---|---|
+  | reward | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 18 |
+  | no reward | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 1 |
+
+  | hypothesis | pairs | favour reward | favour twin | ties | p | outcome | without the piloted parents |
+  |---|---|---|---|---|---|---|---|
+  | H-capability | 54 | 54 | 0 | 0 | 5.55e-17 | shown | 42 to 0, p = 2.27e-13, shown |
+  | H-ladder | 54 | 0 | 0 | 54 | — | refuted | 0 to 0, 42 ties, refuted |
+  | H-complexity | 54 | 18 | 1 | 35 | 3.81e-05 | shown | 11 to 1, 30 ties, p = 0.00317, shown |
+
+  No pair was excluded: no child is extinct and none relapsed. The reading on the piloted
+  parents decides nothing, and it changes no outcome.
+
+  **Per parent.** H-capability: all 18 parents go 3 to 0. H-ladder: all 18 tie 3 times.
+  H-complexity: 10 parents lean to the reward (944 at 2 to 1, 2577 at 3 to 0, the rest 2 or
+  1 to 0 with ties), 8 tie throughout, and none leans to the twin. The one pair favouring the
+  twin is parent 944's at seed 2003: the twin, run 4578, rises, and its reward child reads
+  mixed.
+
+  **The leave-out.** The entry above takes the from-emerged reading's
+  leave-one-or-two-parents-out rule (clarification 5): on a shown test, list every minimal
+  set of one or two parents whose pairs, left out, bring p to 0.05 or above. The reading
+  service already applies it — `Lab::DescendantReading::Comparison#carried_by`, the report's
+  `carried_by` column, the sweep page's "Carried by parents" line — and prints "—" for both
+  shown tests: no set carries either. So no row was missing and the service is unchanged.
+  Re-derived from the per-parent table for the record: H-capability left without any two
+  parents reads 48 to 0; H-complexity's hardest single leave-out is parent 2577, 15 to 1
+  (p = 0.00026), and its hardest pair is 2577 with 2590, 14 to 1 (p = 0.00049), or 2577 with
+  any 2-to-0 parent, 13 to 1 (p = 0.00092).
+
+  **Descriptive**, from the report's per-child rows. A task's line is a share of 0.1 at any
+  own sample, the settling window included; epochs are the children's own (a child runs
+  20 000 → 60 000):
+
+  | task | reward: children | median first epoch | no reward: children | median first epoch |
+  |---|---|---|---|---|
+  | ECHO | 54 | 20 750 | 27 | 24 910 |
+  | INC | 52 | 22 060 | 1 | 44 120 |
+  | DEC | 50 | 22 550 | 0 | — |
+  | ADD, SUB, NOT, DOUBLE, MUL | 0 | — | 0 | — |
+
+  The median paid world took ECHO about 750 epochs after descent, and INC and DEC about
+  1 300 and 1 800 epochs after that. At the end of the run (last-decile medians) every reward
+  child holds 2 or 3 tasks at a tenth of its world (40 at 3, 14 at 2) and every twin 0, but
+  for run 4679 at 1. The reward children's dominant tapes are credited 3 tasks in 34, 2 in
+  19 and 1 in 1, the twins' none. No child reached a loop task, so no stepping stone was
+  read in either arm. The estimated share of a reward cell's income from tasks averages
+  0.498 (0.350 to 0.550). A read-only count over the stored samples on the lab found
+  `task_capability_loop` at 0 in all 432 000 samples of the 108 children, and a nonzero
+  loop-task share in one sample only: `task_share_double` at 1/256.
+
+  **The claim**, finding `paid-computation-stops-at-one-step-tasks`, "Paid to compute,
+  replicators take the one-step tasks and stop there": when computation pays, BFF copiers
+  take ECHO, INC and DEC, the tasks one substitution of a copier computes, and go no further.
+  H-ladder is refuted on ties throughout, which the entry above reads "as strongly as the
+  power below allows". The test needed 5 discordant pairs; 0 loop children in 54 reward
+  children puts a two-sided 95% upper bound of 0.066 on the rate per child over this budget,
+  against the pilot's 0.34. H-complexity is shown and reads, as registered, "paid complexity
+  rises", never "open-ended": mirroring a solver and stacking one-step tasks adds executed
+  instructions without a loop.
+
+  **Registry status `negative`.** The sweep was registered to answer one rung-4 question,
+  H-ladder, and the sweep finished without the effect, which is the registry's `negative`.
+  This follows `complexity-from-an-emerged-start` and `lineages-after-emergence`: in both,
+  the headline was not there, and the tests that held beside it are stated on the page
+  without lifting the status. The from-emerged sweep split its shown rung-3 test into a
+  `published` finding of its own because that test answered a rung's question. Neither shown
+  test here does. H-capability is the pilot's predicted manipulation check, that pay buys the
+  cheap tasks. H-complexity is registered to read only "paid complexity rises" inside an
+  imported objective. So they stay in this finding, named in its title's first half. It
+  carries `imports_objective: true`, and with it the badge and the note that rung 4 on Soup
+  is unaffected.
+
+  **What the refutation points at.** The entry above names two suspects if H-ladder is
+  refuted: the instruction set and the substitution-only mutation operator. The design
+  study's landscape measurement, recorded in "The logic assay, the NAND op `~` and
+  `task_floor`" (2026-10-01), separates them. BFF has no two-input data op. The nearest loop
+  solver that still copies is 5–7 coordinated substitutions from any evolved solver
+  measured, and no partial kernel on the way computes anything rewardable. Indels do not
+  shorten the path. So the instruction set holds the ladder at one substitution, and Logic
+  (DESIGN §1.3 item 16), which imports the NAND primitive with an objective, is the next
+  question. Rung 4 on Soup stays "not shown".
+
+  **The page** renders the tests, their parent leanings, the leave-out, the re-reading
+  without the piloted parents and the descriptive ladder at render time, through
+  `Findings::Metabolism` over `Experiments::MetabolismReadingService`'s report, the reading
+  the sweep page draws, and includes that page's section. The numbers the page hand-types
+  are the registry summary's, which match the report, the lab's sample count above and the
+  bound derived from it.
+  DESIGN §1.3 item 15 gains a result line. Nothing about the engine, the rules or any
+  observable moves.

@@ -1,0 +1,224 @@
+<% sweep = Lab::SWEEPS.fetch("metabolism") %>
+<% seeds = sweep.fetch(:seeds) %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% bundle = Lab::MetabolismReading::REWARD_BUNDLE %>
+<% constants = Lab::MetabolismReading %>
+<% record_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/design_record.md" %>
+
+<h2>Question</h2>
+<p>
+  Complexity rises at emergence and then stops rising on every fitness-free substrate the
+  programme has tested, and
+  <%= link_to "from an emerged start", finding_path("complexity-from-an-emerged-start") %> an
+  energy economy did not change that. One reading of the plateau is that nothing in the soup
+  is worth computing: a byte off the copy path costs its tape nothing and earns it nothing.
+  The Metabolism substrate of DESIGN §1.4 changes that one thing. A cell is paid in energy for
+  computing arithmetic on inputs the environment hands it. <strong>Once computing pays, do
+  replicators climb past the tasks one mutation reaches, to the ones that need a counted
+  loop?</strong>
+</p>
+
+<h2>Method</h2>
+<p>
+  The parents are the emerged worlds the
+  <%= link_to "from-emerged sweep", experiment_path("from-emerged") %> continued, chosen by
+  its rule. Each terminal world runs another <%= epochs %> epochs, seeds
+  <%= seeds.first %>–<%= seeds.last %>, in two arms. Both run an economy in which only the cell
+  that starts an interaction pays (influx <%= number_with_delimiter bundle.fetch("energy_influx"), delimiter: " " %>,
+  a stock cap of <%= number_with_delimiter bundle.fetch("energy_stock_cap"), delimiter: " " %>, no theft), and both run
+  an arithmetic assay every <%= bundle.fetch("task_every") %> epochs. In the
+  <strong>reward</strong> arm a credited task pays
+  <%= number_with_delimiter bundle.fetch("task_reward"), delimiter: " " %> energy a unit. In
+  the <strong>no reward</strong> arm it pays nothing, so that world runs byte for byte as if
+  the assay were off. A tape is credited with a task when one of its outputs is right on all
+  three input cases. ECHO, INC and DEC are one substitution away from a copier. ADD, SUB, NOT,
+  DOUBLE and MUL are the loop tasks: in BFF each needs a counted loop.
+</p>
+<p>
+  The reading is <strong>pre-registered</strong>, with every number fixed before a child was
+  seeded: <%= link_to "docs/design_record.md", record_url %>, 2026-10-01, "Metabolism: a
+  second, labelled substrate that imports an objective", DESIGN §1.3 item 15. Each reward
+  child is paired with the no-reward twin of the same parent and seed. Both are read past a
+  settling window of <%= number_with_delimiter constants::SETTLING_WINDOW, delimiter: " " %>
+  epochs, and a pair with an extinct child is in no test. There are three one-sided sign tests
+  at p &lt; <%= constants::SIGN_TEST_LEVEL %>:
+</p>
+<ul>
+  <li>
+    <strong>H-capability</strong>: the last-decile median
+    <span class="mono">task_capability</span>, the number of tasks held by a tenth of the
+    world.
+  </li>
+  <li>
+    <strong>H-ladder</strong>, the rung-4 question: the same count over the loop tasks,
+    <span class="mono">task_capability_loop</span>.
+  </li>
+  <li>
+    <strong>H-complexity</strong>: the from-emerged rule, under which the dominant replicator's
+    executed instruction count rises when its last-decile median is at least 1.2 times its
+    first. It reads only pairs in which neither child relapsed.
+  </li>
+</ul>
+<p>
+  Each test is also read without the four parents the design study piloted, and a shown test
+  lists any one or two parents whose pairs it cannot do without.
+</p>
+
+<% reading = @show.metabolism %>
+<h2>Result</h2>
+<% if reading&.any? %>
+  <p>
+    <% [reading.capability, reading.ladder, reading.complexity].each do |test| %>
+      <span class="badge <%= test.badge_class %>"><%= test.hypothesis %> <%= test.outcome_label %></span>
+    <% end %>
+    <% if reading.ladder_climbed? %>
+      <strong>Paid computation climbed to a loop task: see the readings below.</strong>
+    <% else %>
+      <strong>Paid to compute, replicators took the one-step tasks and stopped there.</strong>
+    <% end %>
+    <% if reading.interim? %>
+      Not every child of the sweep has finished, so this reading is interim.
+    <% end %>
+  </p>
+  <ul id="metabolism-finding-tests">
+    <% [reading.capability, reading.ladder, reading.complexity].each do |test| %>
+      <% comparison = test.comparison %>
+      <% leaning = reading.leaning(test) %>
+      <% unpiloted = reading.unpiloted(test.hypothesis) %>
+      <li class="mb-3">
+        <strong><%= test.hypothesis %></strong>: <%= comparison.favouring %> pairs favour the
+        reward, <%= comparison.against %> the twin and <%= comparison.ties %> tie, of
+        <%= comparison.measured_count %> measured<% if comparison.p_value %>, p = <%= Charts.format_value(comparison.p_value.to_f) %><% end %>,
+        <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>.
+        <% if reading.unanimous?(test) %>
+          Every pair of all <%= reading.parent_count %> parents favours the reward.
+        <% else %>
+          By parent, <%= leaning.reward %> lean to the reward, <%= leaning.tied %> tie throughout
+          and <%= leaning.twin %> lean to the twin.
+        <% end %>
+        Without the piloted parents: <%= unpiloted.comparison.favouring %> to
+        <%= unpiloted.comparison.against %> with <%= unpiloted.comparison.ties %> ties<% if unpiloted.comparison.p_value %>,
+        p = <%= Charts.format_value(unpiloted.comparison.p_value.to_f) %><% end %>,
+        <span class="badge <%= unpiloted.badge_class %>"><%= unpiloted.outcome_label %></span>.
+      </li>
+    <% end %>
+  </ul>
+  <% if reading.shown_tests.any? %>
+    <p id="metabolism-finding-leave-out">
+      <% if reading.carried_tests.empty? %>
+        No one or two parents carry a shown test: whichever one or two are left out, the rest
+        still read p &lt; <%= constants::SIGN_TEST_LEVEL %>.
+      <% else %>
+        <% reading.carried_tests.each do |test| %>
+          <%= test.hypothesis %> rests on parents
+          <%= test.comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>.
+        <% end %>
+      <% end %>
+    </p>
+  <% end %>
+  <p class="text-sm text-muted">
+    Every count on this page is read from the sweep's stored samples at render time, through
+    the same reading <%= link_to "the sweep page", experiment_path("metabolism", anchor: "metabolism-reading") %>
+    draws.
+  </p>
+
+  <h2>The ladder</h2>
+  <% reward = reading.reward_arm %>
+  <% twin = reading.twin_arm %>
+  <% income = reading.income_share %>
+  <p id="metabolism-finding-ladder">
+    Descriptively, counting a task where it held a tenth of a child's world at any sample:
+    ECHO in <%= reading.reached(reward, "echo") %> of <%= reward.children.size %> reward
+    children, INC in <%= reading.reached(reward, "inc") %> and DEC in
+    <%= reading.reached(reward, "dec") %>, against <%= reading.reached(twin, "echo") %>,
+    <%= reading.reached(twin, "inc") %> and <%= reading.reached(twin, "dec") %> of
+    <%= twin.children.size %> twins. ECHO came first and INC and DEC close behind it; the
+    table below gives the median epochs. <%= reading.loop_children(reward) %> reward children
+    and <%= reading.loop_children(twin) %> twins reached a loop task, so
+    <%= reading.stepping_stones(reward) + reading.stepping_stones(twin) %> climbed one through
+    INC or DEC, the stepping stones of Lenski et al. 2003.
+    <% capable = reading.capable_twins %>
+    <% if capable.any? %>
+      At the end of the run
+      <%= capable.size == 1 ? "only one twin" : "only #{capable.size} twins" %>,
+      <%= safe_join(capable.map { |child| link_to("run #{child.run_id}", run_path(child.run_id)) }, ", ") %>,
+      held a task at a tenth of the world.
+    <% end %>
+    <% if income %>
+      Tasks gave a reward cell about <%= percent_value income.mean %> of its income, between
+      <%= percent_value income.low %> and <%= percent_value income.high %> across the children,
+      an estimate that ignores the stock cap.
+    <% end %>
+  </p>
+
+  <%= render "experiments/metabolism_reading", reading: reading.report %>
+<% else %>
+  <p class="text-muted">
+    No child of <%= link_to "the sweep", experiment_path("metabolism") %> is in this database,
+    so there is nothing to read here. This page reads the children at render time and states
+    the claim from them.
+  </p>
+<% end %>
+
+<h2>What a refuted ladder means</h2>
+<p>
+  On the lab, a read-only count over all 432 000 stored samples of the 108 children found
+  <span class="mono">task_capability_loop</span> at 0 in every one. In only one sample did the
+  assay credit any loop task at all: DOUBLE, to 1 of the 256 cells it drew. With no loop task in either arm the test
+  cannot favour the reward, and the pre-registration reads a tie throughout as refuted, as
+  strongly as its power allows. It needed only 5 discordant pairs, and 0 of 54 reward children
+  puts a two-sided 95% upper bound of about 0.066 on the rate at which a paid child reaches a
+  loop task in this budget, against the pilot's 0.34.
+</p>
+<p>
+  So when computation pays, BFF copiers take the tasks one substitution away and stop. The
+  registered reading of that outcome was that the plateau holds for every feature that needs
+  several coordinated mutations, and that the suspects are BFF's instruction set and its
+  substitution-only mutation. The design study's landscape measurement, recorded in the
+  <%= link_to "design record", record_url %> on 2026-10-01 ("The logic assay, the NAND op
+  <span class="mono">~</span> and <span class="mono">task_floor</span>"), points at the
+  instruction set. BFF has no two-input data op, so every two-input task needs a counted loop,
+  and the only loop a copier owns is its copy loop. The nearest loop solver that still copies
+  is 5–7 coordinated substitutions from any evolved solver measured, and no partial kernel on
+  the way computes anything the assay pays for. Indels do not shorten the path. Pay cannot
+  pull a population across a gap with nothing to select along it.
+</p>
+<p>
+  H-complexity being shown is consistent with that. Mirroring a solver and stacking the
+  one-step tasks adds executed instructions without a loop, so the dominant replicator grows
+  more elaborate in 18 pairs against 1. That reads "paid complexity rises", as the
+  pre-registration words it, never "open-ended".
+</p>
+
+<h2>What comes next</h2>
+<p>
+  Logic, pre-registered as DESIGN §1.3 item 16, keeps this substrate's economy, assay and
+  reward and imports a primitive as well as an objective: one assay-only NAND byte, with
+  Avida's logic tasks as the ladder, so every rung is a composition of NANDs and a lower rung
+  is a part of a higher one. It runs on the same parents and asks the question this sweep
+  could not reach: whether a soup assembles the deep rungs, XOR and EQU, from paid parts.
+</p>
+
+<h2>What is not claimed</h2>
+<ul>
+  <li>
+    <strong>Nothing about rung 4 on Soup.</strong> This substrate imports an objective:
+    whatever rose here was paid for by tasks the programme chose. It is never pooled with the
+    fitness-free runs, and rung 4 on Soup stays "not shown".
+  </li>
+  <li>
+    <strong>Not open-ended.</strong> H-complexity says the dominant replicator executes more
+    of its tape under pay. It says nothing about unbounded growth, and the ladder it would
+    have to climb stopped at its first rung of loops.
+  </li>
+  <li>
+    <strong>A small, arithmetic world.</strong> The inputs are 0 to 15, three cases an assay,
+    and the ladder is arithmetic because BFF has no bitwise ops. Another task set, a larger
+    input domain or a longer budget is untested.
+  </li>
+  <li>
+    <strong>Children are correlated.</strong> Three children share each parent's world, four
+    of the parents were piloted, and it is one substrate and one budget. That is why every
+    test is read by parent and without the piloted parents.
+  </li>
+</ul>

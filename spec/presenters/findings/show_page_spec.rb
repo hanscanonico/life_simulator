@@ -302,4 +302,22 @@ RSpec.describe Findings::ShowPage do
       expect(page.locality_emergence).to be_nil
     end
   end
+
+  context "with the metabolism sweep" do
+    let(:finding) { Findings::Registry.find("paid-computation-stops-at-one-step-tasks") }
+
+    before { metabolism_experiment }
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.metabolism.report).to be_a(Lab::MetabolismReading::Report)
+    end
+  end
+
+  context "with the metabolism sweep missing" do
+    let(:finding) { Findings::Registry.find("paid-computation-stops-at-one-step-tasks") }
+
+    it "has no reading" do
+      expect(page.metabolism).to be_nil
+    end
+  end
 end
