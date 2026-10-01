@@ -17,10 +17,10 @@ pub const TASK_CASES: usize = 3;
 /// The most outputs one case may emit before it stops; a task may be credited on any slot.
 pub const TASK_MAX_OUTPUTS: usize = 4;
 /// Both inputs are drawn uniformly below this, as 2607.09211 draws its inputs: a small
-/// domain keeps loops over an input bounded.
+/// domain keeps loops over an input bounded. A draw holding a 0 is redrawn (`separates`).
 pub const TASK_INPUT_RANGE: u8 = 16;
 /// The most case draws one assay epoch makes before it falls back to `FALLBACK_CASES`.
-/// About 40% of draws fail to separate, so the bound is never reached in practice; it is
+/// About 68% of draws fail to separate, so the bound is never reached in practice; it is
 /// there so the draw is total and deterministic.
 pub const TASK_CASE_DRAWS: u32 = 1024;
 
@@ -36,6 +36,30 @@ pub struct Task {
 impl Task {
     pub fn expected(&self, x: u8, y: u8) -> u8 {
         (self.expect)(x, y)
+    }
+
+    /// Whether this task is one input plus `offset` on every input, x for `Input::X` and
+    /// y for `Input::Y`: ECHO, INC and DEC are x plus 0, 1 and 255.
+    fn is_offset_of(&self, input: Input, offset: u8) -> bool {
+        (0..TASK_INPUT_RANGE).all(|x| {
+            (0..TASK_INPUT_RANGE)
+                .all(|y| self.expected(x, y) == input.of(x, y).wrapping_add(offset))
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Input {
+    X,
+    Y,
+}
+
+impl Input {
+    fn of(self, x: u8, y: u8) -> u8 {
+        match self {
+            Self::X => x,
+            Self::Y => y,
+        }
     }
 }
 
@@ -128,22 +152,48 @@ impl Cases {
         &self.0
     }
 
-    /// Whether no constant and no wrong task can pass: within each task the expected
-    /// outputs are pairwise distinct, and no two tasks expect the same outputs, so one
-    /// output slot can match at most one task.
+    /// Whether no constant, no wrong task and no cheap function of the inputs can pass:
+    ///
+    /// - within each task the expected outputs are pairwise distinct, so no constant can;
+    /// - no two tasks expect the same outputs, so one output slot matches at most one task;
+    /// - the x values are pairwise distinct and so are the y values, so no input is held
+    ///   constant for another task to absorb: x+3 is ADD wherever y is 3 in every case;
+    /// - no task's outputs sit a constant offset from x, or from y, unless the task is that
+    ///   offset everywhere, so an input plus a constant, the cheapest thing a tape can
+    ///   emit, earns only the task it is: y+1 is DOUBLE wherever y = 2x−1;
+    /// - no input is 0, the value BFF's only branch tests, so no case can be told apart by
+    ///   a zero test: `[<]>!` emits x where y is 0 and y elsewhere, which is SUB wherever
+    ///   x = 2y in the other two cases.
     pub fn separates(&self) -> bool {
+        let xs = self.0.map(|(x, _)| x);
+        let ys = self.0.map(|(_, y)| y);
+        if xs.contains(&0) || ys.contains(&0) || !distinct(&xs) || !distinct(&ys) {
+            return false;
+        }
         let expected: Vec<[u8; TASK_CASES]> =
             TASKS.iter().map(|task| self.expected(task)).collect();
-        let distinct_within = expected
-            .iter()
-            .all(|outputs| (1..TASK_CASES).all(|j| !outputs[..j].contains(&outputs[j])));
+        let distinct_within = expected.iter().all(distinct);
         let distinct_across = (1..expected.len()).all(|t| !expected[..t].contains(&expected[t]));
-        distinct_within && distinct_across
+        let offsets_are_tasks = TASKS.iter().zip(&expected).all(|(task, outputs)| {
+            [(Input::X, xs), (Input::Y, ys)]
+                .into_iter()
+                .all(|(input, values)| {
+                    let offsets: [u8; TASK_CASES] =
+                        std::array::from_fn(|case| outputs[case].wrapping_sub(values[case]));
+                    !offsets.iter().all(|offset| *offset == offsets[0])
+                        || task.is_offset_of(input, offsets[0])
+                })
+        });
+        distinct_within && distinct_across && offsets_are_tasks
     }
 
     fn expected(&self, task: &Task) -> [u8; TASK_CASES] {
         self.0.map(|(x, y)| task.expected(x, y))
     }
+}
+
+fn distinct(values: &[u8; TASK_CASES]) -> bool {
+    (1..TASK_CASES).all(|j| !values[..j].contains(&values[j]))
 }
 
 /// The tasks one tape was credited with, a bit per entry of `TASKS`.
@@ -418,28 +468,104 @@ mod tests {
         }
     }
 
-    /// The separating rule, over draws: no draw is returned that fails it, and it bites,
-    /// since an echo of x is credited ADD on cases whose y is always 0.
+    /// The separating rule, over draws, read off the inputs and the ladder directly: no
+    /// draw is returned that fails it, and the fallback passes it too.
     #[test]
     fn every_drawn_set_of_cases_separates_the_tasks() {
+        let distinct = |values: [u8; TASK_CASES]| {
+            values[0] != values[1] && values[1] != values[2] && values[0] != values[2]
+        };
         let mut rng = rng::seeded(11, 0, 0);
         for _ in 0..100_000 {
             let cases = Cases::draw(&mut rng);
             assert!(cases.separates(), "{cases:?}");
-            assert!(cases
-                .inputs()
-                .iter()
-                .all(|(x, y)| *x < TASK_INPUT_RANGE && *y < TASK_INPUT_RANGE));
+            let inputs = *cases.inputs();
+            assert!(inputs.iter().all(
+                |(x, y)| (1..TASK_INPUT_RANGE).contains(x) && (1..TASK_INPUT_RANGE).contains(y)
+            ));
+            assert!(distinct(inputs.map(|(x, _)| x)), "{cases:?}");
+            assert!(distinct(inputs.map(|(_, y)| y)), "{cases:?}");
+            for (t, task) in TASKS.iter().enumerate() {
+                let outputs = cases.expected(task);
+                assert!(distinct(outputs), "{} on {cases:?}", task.name);
+                assert!(
+                    TASKS[..t]
+                        .iter()
+                        .all(|other| cases.expected(other) != outputs),
+                    "{} on {cases:?}",
+                    task.name
+                );
+            }
         }
         assert!(Cases::new(FALLBACK_CASES).separates());
+    }
 
-        let unseparated = Cases::new([(3, 0), (5, 0), (9, 0)]);
-        assert!(!unseparated.separates());
-        let echo = assay(b"<!>", &unseparated, OpSet::ALL);
-        assert!(
-            echo.has(3) && echo.has(4),
-            "the trap the rule closes: {echo:?}"
-        );
+    /// The traps the rule closes, each on cases it refuses and where the cheap tape would
+    /// be credited: an echo of x earns ADD on a constant y of 0 (the pilot's), x+3 earns
+    /// ADD on a constant y of 3, y+1 earns DOUBLE where y = 2x−1, and the zero-test scan
+    /// `[<]>!` earns SUB where one y is 0 and x = 2y in the other two cases.
+    #[test]
+    fn the_separating_rule_closes_each_trap_a_cheap_tape_springs() {
+        let traps = [
+            (&b"<!>"[..], [(3, 0), (5, 0), (9, 0)], 3),
+            (&b"<+++!"[..], [(2, 3), (5, 3), (9, 3)], 3),
+            (&b"<<+!"[..], [(4, 7), (3, 5), (5, 9)], 6),
+            (&b"[<]>!"[..], [(6, 3), (11, 0), (14, 7)], 4),
+        ];
+        for (tape, inputs, task) in traps {
+            let cases = Cases::new(inputs);
+            assert!(!cases.separates(), "{inputs:?}");
+            let credit = assay(tape, &cases, OpSet::ALL);
+            assert!(
+                credit.has(task),
+                "{} would earn {} on {inputs:?}: {credit:?}",
+                String::from_utf8_lossy(tape),
+                TASKS[task].name
+            );
+        }
+    }
+
+    /// No input plus a constant, and nothing read off y alone, is ever credited a task it
+    /// does not compute: x+c earns ECHO, INC or DEC where it is one and nothing otherwise,
+    /// and y and y±c earn nothing, over 10^5 drawn case sets. The zero-test scans earn what
+    /// they compute on inputs that are never 0: `[<]>!` emits y, which is nothing, and
+    /// `[<!]!` emits x first, which is ECHO.
+    #[test]
+    fn no_input_plus_a_constant_is_credited_a_task_it_is_not() {
+        let plus = |reach: &[u8], step: u8, times: usize| {
+            let mut tape = reach.to_vec();
+            tape.extend(std::iter::repeat_n(step, times));
+            tape.push(bff::EMIT);
+            tape.push(b'>');
+            tape
+        };
+        let mut tapes: Vec<(Vec<u8>, Credit)> = vec![
+            (plus(b"<", b'+', 0), Credit(1)),
+            (plus(b"<", b'+', 1), Credit(1 << 1)),
+            (plus(b"<", b'-', 1), Credit(1 << 2)),
+            (b"[<]>!".to_vec(), Credit::default()),
+            (b"[<!]!".to_vec(), Credit(1)),
+        ];
+        for times in 2..=5 {
+            tapes.push((plus(b"<", b'+', times), Credit::default()));
+            tapes.push((plus(b"<", b'-', times), Credit::default()));
+        }
+        for times in 0..=5 {
+            tapes.push((plus(b"<<", b'+', times), Credit::default()));
+            tapes.push((plus(b"<<", b'-', times), Credit::default()));
+        }
+        let mut rng = rng::seeded(13, 0, 0);
+        for _ in 0..100_000 {
+            let cases = Cases::draw(&mut rng);
+            for (tape, credit) in &tapes {
+                assert_eq!(
+                    assay(tape, &cases, OpSet::ALL),
+                    *credit,
+                    "{} on {cases:?}",
+                    String::from_utf8_lossy(tape)
+                );
+            }
+        }
     }
 
     #[test]
