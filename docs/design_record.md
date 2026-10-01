@@ -2754,9 +2754,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   **What it costs.** On restored emerged worlds (128×128) one full assay epoch took 1.5 to
   22 ms memoised with the skips, 3.6 to 42 ms without the memo, 9.5 to 108 ms with the memo
   and every step run, and 43 to 272 ms with neither, against a soup epoch of 11 to 15 ms
-  under the metabolism economy. At an assay every 8 epochs the control arm pays nothing
-  and a rewarded arm pays the assay's 3 to 8%, before the reward's own effect on the
-  dynamics.
+  under the metabolism economy. At an assay every 8 epochs the control arm pays nothing,
+  and a rewarded arm pays 0.2 to 2.8 ms an epoch for the assay: about 1% of a soup epoch
+  in the world with the fewest emitting tapes and about 20% in the one with the most,
+  before the reward's own effect on the dynamics.
 
   **The invariant.** Nothing moves at the defaults, `tasks = off` and `task_reward = 0`,
   and every pinned hash and observable digest stays as it was. `!` is never an instruction
