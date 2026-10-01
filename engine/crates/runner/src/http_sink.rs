@@ -117,7 +117,7 @@ impl RunSink for HttpSink<'_> {
             &self.slot.claim_id,
             Transitions {
                 epoch: result.transition_epoch,
-                relative: result.transition_epoch_relative,
+                constant: result.transition_epoch_constant,
             },
             self.last_metrics.as_ref(),
             None,
@@ -268,8 +268,8 @@ mod tests {
         };
 
         run::execute_world(
-            run::settling_world(&ordered, 7),
-            6,
+            run::world_past_its_baseline(&ordered, 7, 504),
+            510,
             None,
             None,
             &mut sink,
@@ -279,7 +279,12 @@ mod tests {
 
         let posted = lab.request("POST /api/runs/1/samples");
         assert_eq!(posted["samples"].as_array().unwrap().len(), 4);
-        assert_eq!(posted["transition_epoch"], json!(0));
+        assert_eq!(posted["transition_epoch_relative"], json!(504));
+        assert_eq!(
+            posted["transition_epoch_constant"],
+            json!(504),
+            "a world this compressible crosses on either rule"
+        );
     }
 
     #[test]
@@ -296,8 +301,8 @@ mod tests {
         };
 
         run::execute_world(
-            run::settling_world(&ordered, 7),
-            6,
+            run::world_past_its_baseline(&ordered, 7, 504),
+            510,
             None,
             None,
             &mut sink,
@@ -311,7 +316,7 @@ mod tests {
             3,
             "two cadence epochs and the settling sample"
         );
-        assert_eq!(posted[2]["epoch"], json!(6));
+        assert_eq!(posted[2]["epoch"], json!(510));
         let reasons: Vec<_> = posted.iter().map(|body| body["reason"].clone()).collect();
         assert_eq!(
             reasons,
@@ -333,7 +338,7 @@ mod tests {
             &metrics(0.4),
             Transitions {
                 epoch: Some(2),
-                relative: Some(2),
+                constant: Some(2),
             },
         )
         .unwrap();
@@ -345,8 +350,8 @@ mod tests {
         let batches = lab.requests("POST /api/runs/1/samples");
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[1]["samples"][0]["epoch"], json!(4));
-        assert_eq!(batches[1]["transition_epoch"], json!(2));
         assert_eq!(batches[1]["transition_epoch_relative"], json!(2));
+        assert_eq!(batches[1]["transition_epoch_constant"], json!(2));
     }
 
     #[test]
@@ -363,7 +368,7 @@ mod tests {
             &metrics(0.4),
             Transitions {
                 epoch: Some(2),
-                relative: Some(2),
+                constant: Some(2),
             },
         )
         .unwrap();
@@ -372,15 +377,15 @@ mod tests {
             seed: 7,
             epochs: 2,
             transition_epoch: Some(2),
-            transition_epoch_relative: Some(2),
+            transition_epoch_constant: Some(2),
             wall_seconds: 1.0,
             epochs_per_second: 2.0,
         })
         .unwrap();
 
         let finished = lab.request("POST /api/runs/1/finish");
-        assert_eq!(finished["transition_epoch"], json!(2));
         assert_eq!(finished["transition_epoch_relative"], json!(2));
+        assert_eq!(finished["transition_epoch_constant"], json!(2));
         assert_eq!(finished["summary"]["compress_ratio"], json!(0.4));
         assert_eq!(finished["runner_id"], json!("runner-1"));
     }

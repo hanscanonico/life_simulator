@@ -52,7 +52,7 @@ RSpec.describe Runs::FinishService do
                       values: { "compress_ratio" => ratio, "replicator_count" => index })
     end
 
-    described_class.call(run: run, transition_epoch: 100)
+    described_class.call(run: run, transition_epoch: 100, transition_epoch_constant: 100)
 
     expect(run.reload).to have_attributes(emergence_epoch: 100, emergence_witness: "census")
   end
@@ -69,11 +69,11 @@ RSpec.describe Runs::FinishService do
   end
 
   it "confirms against the transition epoch the finish settled on, not the one reported" do
-    run.update!(transition_epoch: 100)
+    run.update!(transition_epoch_constant: 100)
     create(:sample, run: run, epoch: 100, values: { "replicator_count" => 4 })
     create(:sample, run: run, epoch: 100_000, values: { "replicator_count" => 0 })
 
-    described_class.call(run: run, transition_epoch: 100_000)
+    described_class.call(run: run, transition_epoch_constant: 100_000)
 
     expect(run.reload.emergence_epoch).to eq(100)
   end
@@ -153,6 +153,7 @@ RSpec.describe Runs::FinishService do
     let(:run) { create(:run, :descendant, :claimed, experiment: experiment) }
 
     before do
+      create(:sample, run: run.parent_run, epoch: 0, values: { "compress_ratio" => 0.94 })
       [0.3, 0.3, 0.3, 0.9, 0.9, 0.9, 0.9].each_with_index do |ratio, index|
         create(:sample, run: run, epoch: 1_000 + (index * 100),
                         values: { "compress_ratio" => ratio, "replicator_count" => 0 })
@@ -166,9 +167,9 @@ RSpec.describe Runs::FinishService do
     end
 
     it "records neither transition reading its runner reports" do
-      described_class.call(run: run, transition_epoch: 1_000, transition_epoch_relative: 1_000)
+      described_class.call(run: run, transition_epoch: 1_000, transition_epoch_constant: 1_000)
 
-      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_relative: nil)
+      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_constant: nil)
     end
 
     it "summarises what became of the colony from the parent epoch on" do

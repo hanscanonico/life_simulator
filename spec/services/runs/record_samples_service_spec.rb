@@ -86,13 +86,13 @@ RSpec.describe Runs::RecordSamplesService do
     end
   end
 
-  context "with a relative transition epoch already recorded" do
+  context "with a constant transition epoch already recorded" do
     it "keeps the earliest of the two" do
-      run.update!(transition_epoch_relative: 300)
+      run.update!(transition_epoch_constant: 300)
 
-      described_class.call(run: run, samples: batch(900), transition_epoch_relative: 900)
+      described_class.call(run: run, samples: batch(900), transition_epoch_constant: 900)
 
-      expect(run.reload.transition_epoch_relative).to eq(300)
+      expect(run.reload.transition_epoch_constant).to eq(300)
     end
   end
 
@@ -116,9 +116,10 @@ RSpec.describe Runs::RecordSamplesService do
     let(:run) { create(:run, :descendant, :claimed) }
 
     it "records neither transition reading its runner reports" do
-      described_class.call(run: run, samples: batch(1_100), transition_epoch: 1_100, transition_epoch_relative: 1_100)
+      described_class.call(run: run, samples: batch(1_100), transition_epoch: 1_100,
+                           transition_epoch_constant: 1_100)
 
-      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_relative: nil)
+      expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_constant: nil)
     end
   end
 end

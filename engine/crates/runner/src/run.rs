@@ -102,6 +102,41 @@ pub(crate) fn settling_world(params: &Params, seed: u64) -> World {
     world
 }
 
+/// The same world with a closed baseline window behind it. The transition rule reads a
+/// run's fall against the mean `compress_ratio` of its samples at epoch <= 500
+/// (`docs/DESIGN.md` §1.2), so nothing crosses inside that window and a short test run can
+/// only cross where a real run does: past it, carrying the baseline a snapshot holds. The
+/// blob is the world's own with that state written into its header, which is how a resumed
+/// run carries it.
+#[cfg(test)]
+pub(crate) fn world_past_its_baseline(params: &Params, seed: u64, epoch: u64) -> World {
+    use life_engine::metrics::{RelativeState, TransitionState};
+    use life_engine::snapshot;
+
+    let world = settling_world(params, seed);
+    let restored = snapshot::decode(params, &world.snapshot()).expect("the world's own blob");
+    let header = snapshot::Header {
+        epoch,
+        transition: TransitionState {
+            relative: RelativeState {
+                baseline_sum: 0.98,
+                baseline_count: 1,
+                ..RelativeState::default()
+            },
+            ..TransitionState::default()
+        },
+        ..restored.header
+    };
+    let blob = snapshot::encode(
+        &header,
+        &restored.cells,
+        &restored.lineages.unwrap_or_default(),
+        &restored.lens.unwrap_or_default(),
+        &restored.stock.unwrap_or_default(),
+    );
+    World::from_snapshot(params, seed, &blob).expect("a blob this crate just wrote")
+}
+
 /// A sample reading rising off false — the replicator census going positive, or a sample
 /// crossing the transition threshold — rate limited to one snapshot per `snapshot_every`
 /// epochs so a world whose reading flickers cannot flood the lab with worlds. A rise is
@@ -216,7 +251,7 @@ pub fn execute_world(
                 let (metrics, raw) = world.metrics_with_snapshot();
                 sink.sample(epoch, &metrics, Transitions::of(&world))?;
                 census = Some(saw_a_replicator(&metrics));
-                crossing = Some(metrics.transition_candidate());
+                crossing = Some(world.crossed_at_last_sample());
                 sink.snapshot(epoch, &raw, buffers.render_png(&world)?, reason)?;
                 last_snapshot_at = Instant::now();
             }
@@ -224,7 +259,7 @@ pub fn execute_world(
                 let metrics = world.metrics();
                 sink.sample(epoch, &metrics, Transitions::of(&world))?;
                 census = Some(saw_a_replicator(&metrics));
-                crossing = Some(metrics.transition_candidate());
+                crossing = Some(world.crossed_at_last_sample());
             }
             (false, Some(reason)) => {
                 let raw = world.snapshot();
@@ -302,7 +337,7 @@ pub fn execute_world(
         seed,
         epochs,
         transition_epoch: world.transition_epoch(),
-        transition_epoch_relative: world.transition_epoch_relative(),
+        transition_epoch_constant: world.transition_epoch_constant(),
         wall_seconds,
         epochs_per_second: if wall_seconds > 0.0 {
             epochs as f64 / wall_seconds
@@ -447,8 +482,9 @@ mod tests {
         assert_eq!(again, png, "a reused buffer renders the same bytes");
     }
 
-    /// An ordered world's compress ratio is under the threshold from the start, so the
-    /// drop settles on the fourth sample — epoch 6, which no snapshot cadence of 4 hits.
+    /// An ordered world's compress ratio is far under its baseline from the first sample
+    /// past the window, so the drop settles on the fourth of them — epoch 510, which no
+    /// snapshot cadence of 4 hits.
     fn settling_params() -> Params {
         Params {
             init: Init::Zero,
@@ -458,6 +494,9 @@ mod tests {
         }
     }
 
+    /// The first epoch past the baseline window a cadence of 2 and of 4 both land on.
+    const PAST_THE_WINDOW: u64 = 504;
+
     fn execute_settling(
         params: &Params,
         seed: u64,
@@ -465,7 +504,7 @@ mod tests {
         sink: &mut dyn RunSink,
     ) -> RunResult {
         let completion = execute_world(
-            settling_world(params, seed),
+            world_past_its_baseline(params, seed, PAST_THE_WINDOW),
             epochs,
             None,
             None,
@@ -490,11 +529,11 @@ mod tests {
         assert_eq!(cadence_only.snapshots, vec![0, 4]);
 
         let mut sink = RecordingSink::default();
-        let result = execute_settling(&settling_params(), 3, 6, &mut sink);
+        let result = execute_settling(&settling_params(), 3, 510, &mut sink);
 
-        assert_eq!(result.transition_epoch, Some(0));
-        assert_eq!(sink.samples, vec![0, 2, 4, 6]);
-        assert_eq!(sink.snapshots, vec![0, 4, 6]);
+        assert_eq!(result.transition_epoch, Some(504));
+        assert_eq!(sink.samples, vec![504, 506, 508, 510]);
+        assert_eq!(sink.snapshots, vec![504, 508, 510]);
         assert!(sink.snapshots.len() > cadence_only.snapshots.len());
     }
 
@@ -504,25 +543,20 @@ mod tests {
     #[test]
     fn the_crossing_snapshot_sits_on_the_epoch_the_transition_names() {
         let params = Params {
-            snapshot_every: 12,
+            snapshot_every: 100,
             ..settling_params()
         };
-        let mut world = settling_world(&params, 3);
-        for _ in 0..2 {
-            world.step();
-        }
-
-        let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
+        let world = world_past_its_baseline(&params, 3, 502);
         let mut sink = RecordingSink::default();
         let completion =
-            execute_world(restored, 8, None, None, &mut sink, &Progress::default()).unwrap();
+            execute_world(world, 508, None, None, &mut sink, &Progress::default()).unwrap();
 
         let Completion::Finished(result) = completion else {
             panic!("the run stopped short of its epochs")
         };
-        assert_eq!(result.transition_epoch, Some(2));
-        assert_eq!(sink.samples, vec![2, 4, 6, 8]);
-        assert_eq!(sink.snapshots, vec![2, 8]);
+        assert_eq!(result.transition_epoch, Some(502));
+        assert_eq!(sink.samples, vec![502, 504, 506, 508]);
+        assert_eq!(sink.snapshots, vec![502, 508]);
         assert_eq!(
             sink.reasons,
             vec![SnapshotReason::Crossing, SnapshotReason::Transition]
@@ -535,26 +569,32 @@ mod tests {
     #[test]
     fn a_crossing_stores_a_world_before_the_settle_confirms_it() {
         let params = Params {
-            snapshot_every: 8,
+            snapshot_every: 100,
             ..settling_params()
         };
-        let mut world = settling_world(&params, 3);
-        for _ in 0..2 {
-            world.metrics();
-            world.step();
-        }
+        let mut world = world_past_its_baseline(&params, 3, 502);
+        world.metrics();
+        world.step();
         assert_eq!(world.transition_epoch(), None, "the drop has not held yet");
 
         let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
         let mut sink = RecordingSink::default();
-        execute_world(restored, 6, Some(2), None, &mut sink, &Progress::default()).unwrap();
+        execute_world(
+            restored,
+            508,
+            Some(503),
+            None,
+            &mut sink,
+            &Progress::default(),
+        )
+        .unwrap();
 
-        assert_eq!(sink.snapshots, vec![4, 6]);
+        assert_eq!(sink.snapshots, vec![504, 508]);
         assert_eq!(
             sink.reasons,
             vec![SnapshotReason::Crossing, SnapshotReason::Transition]
         );
-        assert!(!sink.blob_at(4).is_empty());
+        assert!(!sink.blob_at(504).is_empty());
     }
 
     /// A crossing that falls back below the threshold and returns is one world, not two:
@@ -562,21 +602,27 @@ mod tests {
     #[test]
     fn a_crossing_takes_no_second_world_while_it_holds() {
         let params = Params {
-            snapshot_every: 8,
+            snapshot_every: 100,
             ..settling_params()
         };
-        let mut world = settling_world(&params, 3);
-        for _ in 0..2 {
-            world.metrics();
-            world.step();
-        }
+        let mut world = world_past_its_baseline(&params, 3, 502);
+        world.metrics();
+        world.step();
 
         let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
         let mut sink = RecordingSink::default();
-        execute_world(restored, 12, Some(2), None, &mut sink, &Progress::default()).unwrap();
+        execute_world(
+            restored,
+            514,
+            Some(503),
+            None,
+            &mut sink,
+            &Progress::default(),
+        )
+        .unwrap();
 
         assert_eq!(
-            sink.snapshots.iter().filter(|&&epoch| epoch == 4).count(),
+            sink.snapshots.iter().filter(|&&epoch| epoch == 504).count(),
             1
         );
         assert_eq!(
@@ -592,29 +638,29 @@ mod tests {
     #[test]
     fn only_the_first_settling_sample_forces_a_snapshot() {
         let mut sink = RecordingSink::default();
-        execute_settling(&settling_params(), 3, 12, &mut sink);
+        execute_settling(&settling_params(), 3, 516, &mut sink);
 
-        assert_eq!(sink.snapshots, vec![0, 4, 6, 8, 12]);
+        assert_eq!(sink.snapshots, vec![504, 508, 510, 512, 516]);
     }
 
     #[test]
     fn a_resumed_world_does_not_force_a_second_transition_snapshot() {
         let params = settling_params();
-        let mut world = settling_world(&params, 3);
+        let mut world = world_past_its_baseline(&params, 3, PAST_THE_WINDOW);
         for _ in 0..6 {
             world.metrics();
             world.step();
         }
-        assert_eq!(world.transition_epoch(), Some(0));
+        assert_eq!(world.transition_epoch(), Some(PAST_THE_WINDOW));
 
         let restored = World::from_snapshot(&params, 3, &world.snapshot()).unwrap();
         let mut sink = RecordingSink::default();
-        execute_world(restored, 8, None, None, &mut sink, &Progress::default()).unwrap();
+        execute_world(restored, 512, None, None, &mut sink, &Progress::default()).unwrap();
 
         assert_eq!(
             sink.snapshots,
-            vec![8],
-            "the resumed sample at epoch 6 carries a transition already snapshotted"
+            vec![512],
+            "the resumed sample at epoch 510 carries a transition already snapshotted"
         );
     }
 

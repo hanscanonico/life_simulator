@@ -7,7 +7,8 @@ RSpec.describe "lab:backfill_emergence" do
   let!(:experiment) { create(:experiment, slug: "max-tape-len") }
 
   def sampled_run(counts, transition_epoch: 100, **attributes)
-    run = create(:run, experiment: experiment, status: "finished", transition_epoch: transition_epoch, **attributes)
+    run = create(:run, experiment: experiment, status: "finished", transition_epoch: transition_epoch,
+                       transition_epoch_constant: transition_epoch, **attributes)
     counts.each_with_index do |count, index|
       create(:sample, run: run, epoch: transition_epoch + (index * 10),
                       values: { "replicator_count" => count, "copy_rate" => 0.0 })
@@ -63,7 +64,8 @@ RSpec.describe "lab:backfill_emergence" do
   # the world comes alive ten thousand epochs later (docs/design_record.md, 2026-09-15).
   context "with a run confirmed on a later crossing than the one the detector stored" do
     let!(:run) do
-      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 600)
+      run = create(:run, experiment: experiment, status: "finished", transition_epoch: 600,
+                         transition_epoch_constant: 600)
       (0..20_000).step(100) do |epoch|
         create(:sample, run: run, epoch: epoch, values: values_at(epoch))
       end

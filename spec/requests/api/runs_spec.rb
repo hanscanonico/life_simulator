@@ -245,10 +245,10 @@ RSpec.describe "Api::Runs", type: :request do
       it "stores the samples and neither reading" do
         post samples_api_run_path(run),
              params: { runner_id: "runner-1", samples: [{ epoch: 1_010, compress_ratio: 0.3 }],
-                       transition_epoch: 1_010, transition_epoch_relative: 1_010 },
+                       transition_epoch_relative: 1_010, transition_epoch_constant: 1_010 },
              headers: headers, as: :json
 
-        expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_relative: nil)
+        expect(run.reload).to have_attributes(transition_epoch: nil, transition_epoch_constant: nil)
         expect(run.samples.pluck(:epoch)).to eq([1_010])
       end
     end
@@ -260,16 +260,38 @@ RSpec.describe "Api::Runs", type: :request do
     end
 
     it "records the transition epoch the payload carries" do
-      post samples_api_run_path(run), params: payload.merge(transition_epoch: 200), headers: headers, as: :json
+      post samples_api_run_path(run), params: payload.merge(transition_epoch_relative: 200), headers: headers,
+                                      as: :json
 
       expect(run.reload.transition_epoch).to eq(200)
     end
 
-    it "records the relative transition epoch beside it" do
+    it "records the constant reading beside it" do
+      post samples_api_run_path(run),
+           params: payload.merge(transition_epoch_relative: 260, transition_epoch_constant: 200),
+           headers: headers, as: :json
+
+      expect(run.reload).to have_attributes(transition_epoch: 260, transition_epoch_constant: 200)
+    end
+
+    # A runner built before the 2026-10-01 relock posts its constant reading under the
+    # name the observable had then, and the app deploys ahead of the runners.
+    it "reads a pre-relock runner's transition epoch as the constant reading" do
       post samples_api_run_path(run), params: payload.merge(transition_epoch: 200, transition_epoch_relative: 260),
                                       headers: headers, as: :json
 
-      expect(run.reload).to have_attributes(transition_epoch: 200, transition_epoch_relative: 260)
+      expect(run.reload).to have_attributes(transition_epoch: 260, transition_epoch_constant: 200)
+    end
+
+    # A relocked runner repeats its constant reading under the pre-relock name, for an app
+    # that has not deployed the relock yet.
+    it "reads a relocked runner's repeated constant reading once" do
+      post samples_api_run_path(run),
+           params: payload.merge(transition_epoch_relative: 260, transition_epoch_constant: 200,
+                                 transition_epoch: 200),
+           headers: headers, as: :json
+
+      expect(run.reload).to have_attributes(transition_epoch: 260, transition_epoch_constant: 200)
     end
 
     context "with a batch the runner already posted" do
@@ -541,23 +563,23 @@ RSpec.describe "Api::Runs", type: :request do
 
       it "stores neither reading and keeps the inherited emergence" do
         post finish_api_run_path(run),
-             params: { runner_id: "runner-1", transition_epoch: 1_010, transition_epoch_relative: 1_020 },
+             params: { runner_id: "runner-1", transition_epoch_relative: 1_020, transition_epoch_constant: 1_010 },
              headers: headers, as: :json
 
         expect(run.reload).to have_attributes(status: "finished", transition_epoch: nil,
-                                              transition_epoch_relative: nil, emergence_epoch: 100,
+                                              transition_epoch_constant: nil, emergence_epoch: 100,
                                               emergence_witness: "census")
       end
     end
 
     it "finishes the run" do
       post finish_api_run_path(run),
-           params: { runner_id: "runner-1", transition_epoch: 4_200, transition_epoch_relative: 4_600,
+           params: { runner_id: "runner-1", transition_epoch_relative: 4_600, transition_epoch_constant: 4_200,
                      summary: { compress_ratio: 0.31 } },
            headers: headers, as: :json
 
-      expect(run.reload).to have_attributes(status: "finished", transition_epoch: 4_200,
-                                            transition_epoch_relative: 4_600,
+      expect(run.reload).to have_attributes(status: "finished", transition_epoch: 4_600,
+                                            transition_epoch_constant: 4_200,
                                             summary: { "compress_ratio" => 0.31 })
     end
 

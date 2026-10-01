@@ -48,9 +48,21 @@ and `"lab:discard_duplicates[<slug>]"` deletes the pending duplicates an older,
 non-idempotent seeding created, keeping one run per (params, seed). Both delete pending
 runs only — a claimed, running or terminal run is left where it is — and print the ids they
 removed; quote the whole task name in zsh, brackets and commas included.
-`lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes
-`transition_epoch` from the stored samples of terminal runs, for runs measured before the
-tracker survived a snapshot resume. `"lab:backfill_emergence[<slug>]"` (or with no slug,
+`lab:backfill_transitions[<slug>]` (or with no slug, every experiment) recomputes both
+transition readings from the stored samples of terminal founding runs — `transition_epoch`,
+read against the run's own baseline, and `transition_epoch_constant`, the constant-threshold
+companion (`docs/design_record.md`, 2026-10-01, the relock) — and refreshes the persistence
+summary of every run it visits, whether or not its epochs moved. Descendants record no
+transition and it does not visit them. **After the deploy that carries the relock**, run, one
+task per invocation and in this order: `lab:backfill_transitions`, then
+`lab:backfill_emergence`, then `lab:backfill_persistence`, which resummarises the
+descendants on their founding run's baseline. A run in flight across that deploy is
+filed correctly either way: a pre-relock runner already posts both readings
+(`transition_epoch` constant, `transition_epoch_relative` relative) and the relocked app
+files them under their new names, while a relocked runner also repeats its constant
+reading under `transition_epoch` for an app that has not migrated yet.
+`"lab:backfill_persistence[<slug>]"` is also the standalone that rewrites the summaries
+alone, for a run that needs nothing else rescored. `"lab:backfill_emergence[<slug>]"` (or with no slug,
 every experiment) confirms those crossings: it stores `emergence_epoch` /
 `emergence_witness` on every terminal run whose crossing the replicator census or the copy
 rate backs within the confirmation window — the detector's stored crossing or any later one
@@ -59,18 +71,17 @@ its second (`docs/design_record.md`, 2026-09-15) — and prints per flagged run 
 emerged and by which witness, shouting when it clears a stored emergence. Run it after
 `lab:backfill_transitions`, since a crossing that moved is a different candidate; the
 open-endedness findings read only the confirmed ones.
-`"lab:backfill_relative_transitions[<slug>]"` (or with no slug, every experiment) fills
-`transition_epoch_relative`, the companion reading measured against a run's own baseline
-rather than the constant threshold (`docs/design_record.md`, 2026-09-19), from the stored
-samples of terminal runs. It leaves `transition_epoch` — the locked reading every finding
-is stated in — untouched, and it is how the corpus gets rescored for the relock decision. `"lab:transition_report[<slug>]"` reads the detector
+`"lab:transition_report[<slug>]"` reads the detector
 and the replicator census side by side over the stored samples — per run the flagged
 epoch, the bare threshold crossing, the entropy minimum, the replicator and copy-rate
 peaks and the final observables, then a per-arm count of the runs the two observables
 disagree on (`FORMAT=csv` for CSV); the per-arm counts read terminal runs only — `n` is
 every sampled run of the arm and `n_terminal` the ones counted, `INCLUDE_RUNNING=1` counts
 the in-flight ones too — and it is how a claim about emergence gets written on both
-observables before it is published. `"lab:snapshot_audit[<slug>]"` checks that each
+observables before it is published. Its per-arm `flagged`, `constant` and `both_rules`
+columns are also where the two transition rules part: an arm at `max_tape_len` 256 or below
+where `flagged` or `constant` differs from `both_rules` is the trigger the 2026-10-01 entry
+names for a follow-up record entry. `"lab:snapshot_audit[<slug>]"` checks that each
 measured transition has a world behind it — per run the snapshot nearest its
 `transition_epoch`, why the loop took it (cadence, age or transition) and how far off it
 fell — and counts the experiment's snapshots by reason. `"lab:cost_report[<slug>]"` reads what an
@@ -84,8 +95,9 @@ tape cap, the mean and minimum `compress_ratio` over the terminal runs' first 50
 the mean epoch of the first crossing and the share of runs that crossed by epoch 1000
 (`FORMAT=csv` for CSV). It is the instrument for issue #174: if the gap to the threshold
 tracks `max_tape_len`, a run whose soup starts compressible crosses on the substrate and
-not on anything that replicated. It measures only — changing the detector to a per-run
-baseline moves a locked observable and starts with a `docs/design_record.md` entry.
+not on anything that replicated. It measures only. The 2026-10-01 entry already relocked
+`transition_epoch` on a per-run baseline, so the threshold this reads against is the
+constant companion's, `transition_epoch_constant`.
 `lab:db_size` and
 `lab:prune_snapshots` are the maintenance tasks.
 `runner rescore` re-reads a run's stored world at other `top_k` settings, for the question

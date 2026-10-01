@@ -108,11 +108,11 @@ class Run < ApplicationRecord
     transition_epoch.nil? || epoch.to_i < transition_epoch
   end
 
-  # The same guard for the companion reading (docs/design_record.md, 2026-09-19).
-  def earlier_transition_epoch_relative?(epoch)
+  # The same guard for the companion reading (docs/design_record.md, 2026-10-01).
+  def earlier_transition_epoch_constant?(epoch)
     return false if epoch.blank? || descendant?
 
-    transition_epoch_relative.nil? || epoch.to_i < transition_epoch_relative
+    transition_epoch_constant.nil? || epoch.to_i < transition_epoch_constant
   end
 
   private

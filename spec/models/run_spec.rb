@@ -259,7 +259,7 @@ RSpec.describe Run, type: :model do
       child = described_class.descend_from(parent, params: params, seed: 9, budget: 5_000, experiment: experiment)
 
       expect(child).to have_attributes(emergence_epoch: 4_200, emergence_witness: parent.emergence_witness,
-                                       transition_epoch: nil, transition_epoch_relative: nil)
+                                       transition_epoch: nil, transition_epoch_constant: nil)
     end
 
     it "refuses a child that changes the parent's structure" do
@@ -287,8 +287,8 @@ RSpec.describe Run, type: :model do
       expect(build(:run, parent_run_id: 1, parent_epoch: 1_000)).not_to be_earlier_transition_epoch(1_200)
     end
 
-    it "never takes a relative crossing a descendant reports" do
-      expect(build(:run, parent_run_id: 1, parent_epoch: 1_000)).not_to be_earlier_transition_epoch_relative(1_200)
+    it "never takes a constant crossing a descendant reports" do
+      expect(build(:run, parent_run_id: 1, parent_epoch: 1_000)).not_to be_earlier_transition_epoch_constant(1_200)
     end
   end
 

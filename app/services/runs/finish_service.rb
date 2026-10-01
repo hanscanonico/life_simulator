@@ -5,10 +5,10 @@ module Runs
   class FinishService
     include Callable
 
-    def initialize(run:, transition_epoch: nil, transition_epoch_relative: nil, summary: nil, error: nil)
+    def initialize(run:, transition_epoch: nil, transition_epoch_constant: nil, summary: nil, error: nil)
       @run = run
       @transition_epoch = transition_epoch
-      @transition_epoch_relative = transition_epoch_relative
+      @transition_epoch_constant = transition_epoch_constant
       @summary = summary
       @error = error
     end
@@ -46,8 +46,8 @@ module Runs
       attributes[:epochs_done] = @run.epochs if @error.blank?
       attributes[:summary] = @summary if @summary.present?
       attributes[:transition_epoch] = @transition_epoch if @run.earlier_transition_epoch?(@transition_epoch)
-      if @run.earlier_transition_epoch_relative?(@transition_epoch_relative)
-        attributes[:transition_epoch_relative] = @transition_epoch_relative
+      if @run.earlier_transition_epoch_constant?(@transition_epoch_constant)
+        attributes[:transition_epoch_constant] = @transition_epoch_constant
       end
       attributes
     end

@@ -34,14 +34,16 @@ findings and issues use the locked vocabulary.
 ## Detection: transition, emergence, census
 
 - **Transition / crossing** — `transition_epoch`: the first sampled epoch whose sample
-  qualifies (`compress_ratio < 0.6`, `op_density <= 0.9`, `alphabet_size >= 16`) and the
-  next 3 do too (§1.2). It is a **crossing**, a *candidate* that reads compression, not a
-  copier (2026-09-15, "A crossing is a candidate"), and it stays the primary dependent
-  variable of every sweep.
-- **Constant vs relative** — `transition_epoch` is the constant rule above.
-  `transition_epoch_relative` reads `compress_ratio <= 0.61 × baseline` (baseline: mean of
-  samples at epoch ≤ 500) under the same guards; it is a companion and relocks nothing
-  (2026-09-19). Relocking the transition on it is pending with the user (#229, PR #237).
+  qualifies (`compress_ratio <= 0.61 × baseline`, the baseline the mean of the run's own
+  samples at epoch ≤ 500; `op_density <= 0.9`, `alphabet_size >= 16`) and the next 3 do too
+  (§1.2; relocked 2026-10-01, drafted 2026-09-21, #229, #237). It is a **crossing**, a
+  *candidate* that reads compression, not a copier (2026-09-15, "A crossing is a
+  candidate"), and it stays the primary dependent variable of every sweep. It cannot fire
+  before epoch 500, and a descendant, which starts past the window, never has one.
+- **Constant vs relative** — `transition_epoch_constant` is the companion: the same hold
+  on `compress_ratio < 0.6`, the rule `transition_epoch` was defined by until the relock,
+  confounded by `max_tape_len` (2026-09-19). The crossing series, and `emergence_epoch`
+  through it, stay on the constant rule.
 - **Emergence / emerged** — `emergence_epoch` (with `emergence_witness`): the earliest of a
   run's crossings that the census or `copy_rate` confirms within
   `Runs::EmergenceEpochService::CONFIRM_WINDOW` (10) samples either side (2026-09-15, both
@@ -87,7 +89,9 @@ findings and issues use the locked vocabulary.
   tape** (§1.2; 2026-09-25, "Lineage diversity after a transition").
 - **Persistence / relapse** — a transitioned world **persisted** while its transitioned
   state held and **relapsed** at the first `hold_samples + 1` consecutive rejecting samples,
-  a Rails-side rule (`Runs::PersistenceSummaryService`; 2026-09-12). The from-emerged sweep
+  a Rails-side rule (`Runs::PersistenceSummaryService`; 2026-09-12). Since the relock it is
+  anchored on `transition_epoch` and judges each sample by the relative rule; a descendant
+  is read from `parent_epoch` against its founding ancestor's baseline. The from-emerged sweep
   reads persistence on `replicator_share` instead: a child **held** when its last-decile
   share is at least 0.5 and never sat below 0.1 for 3 samples running, **relapsed**
   otherwise (`Lab::DescendantReading`; 2026-09-25). Relocking the locked reading on the

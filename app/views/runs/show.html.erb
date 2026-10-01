@@ -47,7 +47,8 @@
     <% if @show.run.descendant? %>
       What became of the world after it started from its parent's at epoch
       <%= number_with_delimiter @show.run.parent_epoch %>, read off this run's stored samples by the
-      engine's own transition rule: a transition is a state a world can leave.
+      engine's own transition rule, against the baseline of the founding run its world descends from:
+      a transition is a state a world can leave.
     <% else %>
       What became of the world after the transition at epoch
       <%= number_with_delimiter @show.run.transition_epoch %>, read off this run's stored samples by the

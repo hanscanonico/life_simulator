@@ -261,12 +261,7 @@ impl LabClient {
         transitions: Transitions,
     ) -> Result<()> {
         let mut body = json!({ "samples": samples });
-        if let Some(epoch) = transitions.epoch {
-            body["transition_epoch"] = json!(epoch);
-        }
-        if let Some(epoch) = transitions.relative {
-            body["transition_epoch_relative"] = json!(epoch);
-        }
+        put_transitions(&mut body, transitions);
         self.member(run, runner_id, "samples", body)
     }
 
@@ -298,12 +293,7 @@ impl LabClient {
         error: Option<&str>,
     ) -> Result<()> {
         let mut body = json!({});
-        if let Some(epoch) = transitions.epoch {
-            body["transition_epoch"] = json!(epoch);
-        }
-        if let Some(epoch) = transitions.relative {
-            body["transition_epoch_relative"] = json!(epoch);
-        }
+        put_transitions(&mut body, transitions);
         if let Some(summary) = summary {
             body["summary"] = serde_json::to_value(summary)?;
         }
@@ -733,6 +723,21 @@ fn number(value: &Value, key: &str) -> Result<u64> {
         .ok_or_else(|| anyhow!("the response has no numeric {key}"))
 }
 
+/// Each reading goes under the rule that made it. The constant one also goes under
+/// `transition_epoch`, the name it had before the 2026-10-01 relock, so an app that has
+/// not deployed the relock yet still files it in its own constant column; the relocked app
+/// reads `transition_epoch_constant` first and takes the legacy key only from an older
+/// runner that sends nothing else.
+fn put_transitions(body: &mut Value, transitions: Transitions) {
+    if let Some(epoch) = transitions.epoch {
+        body["transition_epoch_relative"] = json!(epoch);
+    }
+    if let Some(epoch) = transitions.constant {
+        body["transition_epoch_constant"] = json!(epoch);
+        body["transition_epoch"] = json!(epoch);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -755,6 +760,37 @@ mod tests {
             png: b"png",
             reason,
         }
+    }
+
+    /// The constant reading goes out under its pre-relock name as well, so an app that
+    /// still names its constant column `transition_epoch` files it there during a deploy.
+    #[test]
+    fn each_transition_reading_goes_under_its_rule_and_the_constant_one_under_its_old_name_too() {
+        let mut body = json!({});
+        put_transitions(
+            &mut body,
+            Transitions {
+                epoch: Some(560),
+                constant: Some(510),
+            },
+        );
+
+        assert_eq!(
+            body,
+            json!({
+                "transition_epoch_relative": 560,
+                "transition_epoch_constant": 510,
+                "transition_epoch": 510,
+            })
+        );
+    }
+
+    #[test]
+    fn an_unsettled_transition_posts_no_reading() {
+        let mut body = json!({});
+        put_transitions(&mut body, Transitions::default());
+
+        assert_eq!(body, json!({}));
     }
 
     #[test]

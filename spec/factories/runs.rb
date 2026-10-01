@@ -25,6 +25,7 @@ FactoryBot.define do
     trait :emerged do
       status { "finished" }
       transition_epoch { 100 }
+      transition_epoch_constant { transition_epoch }
       emergence_epoch { transition_epoch }
       emergence_witness { Runs::Emergence::CENSUS }
     end
