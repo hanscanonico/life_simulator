@@ -310,6 +310,17 @@ namespace :lab do
     print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
+  desc "Read the reach-cap128 sweep as pre-registered: every run of both arms, the arms and H-reach128 " \
+       "(FORMAT=csv for CSV)"
+  task reach_cap128_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("reach_cap128"))
+    raise "The reach-cap128 sweep is not seeded." if experiment.nil?
+
+    report = Experiments::ReachCap128ReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
   desc "Thin the snapshots of every terminal run (one-off; the recurring job covers new runs)"
   task prune_snapshots: :environment do
     deleted = Run.terminal.find_each.sum { |run| Runs::PruneSnapshotsService.call(run: run) }

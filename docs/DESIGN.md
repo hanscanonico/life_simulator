@@ -599,6 +599,19 @@ sample.
     well-mixed (Holm p = 0.0039, 0.0027) and the fit bends down (b₂ = −0.114, Wald p = 0.0041)
     with its peak at radius 4.1 — both hypotheses shown; finding
     `emergence-peaks-at-intermediate-reach`, `published`.
+14. **Reach with room to grow** — does item 13's reach effect carry to growable tapes, and
+    does it give rung 4 a pool of parents? Sweep 9's economy-off cap-128 control (128²,
+    `tape_len` 64 growing to `max_tape_len` 128, the emergent rate, the economy off) at
+    radius 4 with `lineage_rule = oriented`, seeds 1–270, 20 000 epochs, 270 runs.
+    Emergence is read identically in both arms off the stored worlds: a confirmed
+    `emergence_epoch` and an `oriented_census/1` reading of a kept world at or after it with
+    `replicator_share ≥ 0.5`, counted once a readings pass has read every kept world.
+    H-reach128: radius 4 emerges more often than that control's 11 of 270 at radius 1, one
+    one-sided Fisher exact test at p < 0.05. Emergence time, terminal share and the dominant
+    tape's raw length and instruction count are descriptive; an emerged world whose terminal
+    share is at least 0.5 is an eligible parent, and no later parent rule is locked.
+    Pre-registered in `docs/design_record.md`, 2026-10-01, "Does the reach effect carry to
+    growable tapes?", whose numbers live in `Lab::ReachCap128Reading`.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no

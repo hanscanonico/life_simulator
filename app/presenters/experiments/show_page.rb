@@ -115,8 +115,8 @@ module Experiments
 
     # A descendant sweep is read under its own rule (`descendant_reading`): this one would
     # read its children under the conserved-core clause that sweep's entry drops.
-    # The lineage-diversity and locality-emergence sweeps are read under their own rules:
-    # this one would read their emerged runs without those entries' share clause.
+    # The lineage-diversity, locality-emergence and reach-cap128 sweeps are read under their
+    # own rules: this one would read their emerged runs without those entries' share clause.
     def complexity_reading?
       experiment.parents.blank? && !own_emergence_rule? && complexity_arms.any?
     end
@@ -174,10 +174,20 @@ module Experiments
       end
     end
 
+    # The reach-cap128 sweep's pre-registered reading, on that sweep only. It reads another
+    # experiment's runs and readings beside this one's, so it is read afresh, never cached
+    # under this page's key.
+    def reach_cap128_reading
+      return nil unless ReachCap128ReadingService.applies_to?(experiment)
+
+      @reach_cap128_reading ||= ReachCap128ReadingService.call(experiment: experiment)
+    end
+
     private
 
     def own_emergence_rule?
-      [LineageDiversityReadingService, LocalityEmergenceReadingService].any? { |rule| rule.applies_to?(experiment) }
+      [LineageDiversityReadingService, LocalityEmergenceReadingService, ReachCap128ReadingService]
+        .any? { |rule| rule.applies_to?(experiment) }
     end
 
     def arm_means

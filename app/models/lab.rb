@@ -368,6 +368,36 @@ module Lab
       # After the from-emerged children (50), ahead of sweep 9's extension.
       priority: 30
     },
+    "reach_cap128" => {
+      name: "Reach with room to grow",
+      description: "Does the reach effect carry to growable tapes? The locality-emergence " \
+                   "sweep saw radius 4 emerge four times as often as radius 1 on fixed " \
+                   "64-byte tapes. The host–parasite control's world at cap 128, at radius " \
+                   "4: does it emerge more often than that control did at radius 1, and so " \
+                   "give a pool of emerged worlds with room to grow?",
+      # §1.3 item 14, pre-registered on 2026-10-01, "Does the reach effect carry to growable
+      # tapes?", whose numbers live in `Lab::ReachCap128Reading`. Every parameter but the
+      # radius is sweep 9's economy-off cap-128 control's, the inert economy keys included,
+      # so a run's params differ from that arm's in `radius` and `lineage_rule` alone, and
+      # `lineage_rule` changes no byte of a world. At radius 4 seeds 1–270 are new worlds.
+      param_grid: {
+        "radius" => [4],
+        "energy_influx" => [0],
+        "steal_amount" => [0],
+        "energy_stock_cap" => [4 * (2**13)],
+        "steal_loss" => [0.5],
+        "max_tape_len" => [128],
+        "tape_len" => [64],
+        "width" => [128],
+        "height" => [128],
+        "mutation_rate" => [EMERGENT_MUTATION_RATE],
+        "lineage_rule" => ["oriented"]
+      },
+      # The control's 270 seeds, seed for seed.
+      seeds: (1..270).to_a,
+      epochs: 20_000,
+      priority: 30
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \
