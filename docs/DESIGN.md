@@ -550,6 +550,14 @@ sample.
     samples whose dominant tape self-replicates), with paired sign tests against the
     continuation. Pre-registered in `docs/design_record.md`, 2026-09-25, "Runs that start
     from an emerged world", whose numbers live in `Lab::DescendantReading`.
+    **Result** (2026-09-28, final, 216 children of 18 parents): H-economy is not read at
+    either economy (each relapses more than the continuation; 8192's 12-to-1 is carried by
+    parents 1029 and 1103), H-host is refuted, and H-persistence is refuted by 2 of 54
+    continuations. The held-out confirmatory reading on 8 unseen parents (2026-09-25, #263)
+    shows H3-latency at both economies — 20 and 21 of 24 pairs, p = 0.00077 and 0.00014,
+    median latency ratio 0.82 and 0.75 against the continuation's 1.11 — and refutes or does
+    not show H4-survivors; findings `copying-gets-faster-under-an-economy`, `published`, and
+    `complexity-from-an-emerged-start`, `negative`.
 12. **Lineage diversity** — rung 2's diversity half of item 3: after a transition, does a
     world stay polyphyletic, and do more lineages survive as a cell's reach shrinks?
     Radius `{1, 2, 4, 0 = well-mixed}` at 128², fixed 64-byte tapes, the emergent mutation

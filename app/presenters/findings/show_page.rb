@@ -83,6 +83,15 @@ module Findings
       @lineages_after_emergence = report && LineagesAfterEmergence.build(report)
     end
 
+    # The from-emerged sweep read under both its pre-registered entries, from the report its
+    # sweep page draws. Nil where the sweep is not in the lab.
+    def from_emerged
+      return @from_emerged if defined?(@from_emerged)
+
+      report = evidence&.descendant_reading
+      @from_emerged = report && FromEmerged.build(report)
+    end
+
     def diagrams = evidence ? evidence.diagrams : []
 
     def runs_done = evidence ? evidence.finished_count : 0

@@ -7,6 +7,46 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "copying-gets-faster-under-an-economy",
+        title: "Under an energy economy, the dominant replicator copies itself faster",
+        date: Date.new(2026, 9, 28),
+        experiment_slug: "from-emerged",
+        related_finding_slugs: %w[copy-cost-adaptation complexity-from-an-emerged-start],
+        status: :published,
+        summary: "DESIGN §1.3 sweep 11 continued emerged worlds for another 20 000 epochs, " \
+                 "each paired with a continuation under its own dynamics. A confirmatory " \
+                 "reading, written after ten parents had been seen and tested only on the " \
+                 "eight that qualified afterwards, asked rung 3's question: under an energy " \
+                 "economy, does the dominant replicator get faster at copying itself? It " \
+                 "does. Its copy_latency, the step at which a partner first holds a " \
+                 "complete image, fell relative to the paired continuation in 20 of 24 pairs " \
+                 "at economy 2048 (p = 0.00077) and 21 of 24 at economy 8192 (p = 0.00014). " \
+                 "The median child's last-decile latency was 0.82 and 0.75 of its " \
+                 "first-decile latency under the two economies, against 1.11 in the " \
+                 "continuation, and the result holds in 7 and 8 of the 8 parents. It is the " \
+                 "programme's first confirmed adaptation: one substrate, survivors only, " \
+                 "and the mechanism is not identified."
+      ),
+      Finding.new(
+        slug: "complexity-from-an-emerged-start",
+        title: "From an emerged start, an energy economy does not keep complexity rising",
+        date: Date.new(2026, 9, 28),
+        experiment_slug: "from-emerged",
+        related_finding_slugs: %w[complexity-under-contest copying-gets-faster-under-an-economy],
+        status: :negative,
+        summary: "DESIGN §1.3 sweep 11 asked whether an existing replicator keeps getting " \
+                 "more complicated once a treatment is switched on: 216 continuations of 18 " \
+                 "emerged worlds, 20 000 epochs each, under the parent's own dynamics, two " \
+                 "energy economies or host mode. Read as pre-registered, neither economy " \
+                 "arm can be read, because each relapses more than the continuation; the " \
+                 "rich economy's sign test (12 pairs to 1) rests on two parents. Host mode " \
+                 "is refuted, and so is strict persistence: 52 of 54 continuations held " \
+                 "their replicators and 2 relapsed. A held-out confirmatory reading on the " \
+                 "survivors of 8 unseen parents did not replicate the complexity signal: " \
+                 "refuted at economy 2048, not shown at economy 8192 (1 pair to 0). From an " \
+                 "emerged start the economy does not keep complexity rising."
+      ),
+      Finding.new(
         slug: "lineages-after-emergence",
         title: "After emergence, one lineage takes the world at every reach",
         date: Date.new(2026, 9, 27),

@@ -1,0 +1,188 @@
+<% record_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/design_record.md" %>
+<% preregistration_url = "https://github.com/hanscanonico/life_simulator/pull/263" %>
+<% window = number_with_delimiter Lab::FromEmergedHeldout::SETTLING_WINDOW, delimiter: " " %>
+
+<h2>Question</h2>
+<p>
+  Rung 3 of the programme asks whether replicators, once they exist, adapt: whether
+  selection makes them better at the one thing every replicator does. The
+  <%= link_to "copy-cost survey", finding_path("copy-cost-adaptation") %> looked for it in
+  every transitioned run and could not separate one lineage improving from a cheaper
+  replicator winning. DESIGN §1.3 sweep 11 gives the question a control: it continues an
+  emerged world under a treatment and, seed for seed, under its own dynamics. <strong>Under an
+  energy economy, does the dominant replicator get faster at copying itself than the same
+  world does left alone?</strong>
+</p>
+
+<h2>Method</h2>
+<p>
+  Each parent is an economy-off control of sweep 9 whose last stored world is at least half
+  replicators by the orientation-aware census. Its terminal world is continued for another
+  20 000 epochs under four treatments, three seeds each, paired by (parent, seed): the
+  continuation, an economy with influx 2048, a rich economy with influx 8192 (both with steal
+  1024, a stock cap of 32 768 and loss 0.5), and host mode.
+</p>
+<p>
+  The reading here is a <strong>held-out confirmatory</strong> one
+  (<%= link_to "docs/design_record.md", record_url %>, 2026-09-25, "The from-emerged economy
+  arms, confirmed on held-out parents", <%= link_to "#263", preregistration_url %>). Its rules
+  were written <strong>after</strong> the sweep's own pre-registered reading
+  (2026-09-25, "Runs that start from an emerged world", and its six clarifications) and an
+  exploratory look at the children of the first ten parents had been seen, and it is read
+  only on the parents that qualified afterwards, none of whose children had been seen.
+  For each child that is not extinct, the latency ratio R is its last-decile median
+  <span class="mono">copy_latency</span> over its first-decile median, past a settling
+  window of <%= window %> epochs. <span class="mono">copy_latency</span> is the step at which a
+  noise partner first holds a complete image of the dominant tape, in either orientation.
+  A pair favours the treatment where the economy child's R is lower than the continuation
+  child's. H3-latency is a one-sided sign test per economy arm at p &lt; 0.05.
+</p>
+
+<% reading = @show.from_emerged %>
+<h2>Result</h2>
+<% if reading&.any? %>
+  <p>
+    <% if reading.latency_shown? %>
+      <span class="badge badge-success">shown</span>
+    <% end %>
+    <strong><%= reading.claim_sentence %></strong>
+  </p>
+  <ul>
+    <% reading.latency_tests.each do |test| %>
+      <% comparison = test.comparison %>
+      <li>
+        <%= test.treatment.name %>: <%= comparison.favouring %> of <%= comparison.measured_count %> pairs
+        favour the treatment and <%= comparison.against %> the continuation, one-sided sign test
+        p = <%= metric_value comparison.p_value.to_f %>,
+        <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>.
+        The treatment wins the majority of its pairs in <%= reading.parents_favouring(test) %> of
+        <%= comparison.agreement.size %> held-out parents.
+        <% if test.outcome == :held && comparison.carried_by.empty? %>
+          No one or two parents carry the result: leaving any of them out keeps p below
+          <%= Lab::FromEmergedHeldout::SIGN_TEST_LEVEL %>.
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+  <p>
+    The economy lowers <span class="mono">copy_latency</span> against the paired continuation,
+    on <%= reading.heldout_parent_count %> parents whose children nobody had seen when the rule
+    was written. That is selection for faster copying, and it is the programme's first
+    confirmed adaptation result.
+    <% if reading.interim? %>
+      Not every child of the sweep has finished, so this reading is interim.
+    <% end %>
+  </p>
+
+  <figure class="table-figure mt-4">
+    <figcaption class="table-caption text-sm text-muted" id="latency-effect">
+      The size of the effect: medians over each treatment's held-out children whose latency is
+      measured, in interpreter steps. The ratio is the median of the children's own ratios, not
+      the ratio of the two medians beside it.
+    </figcaption>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="latency-effect">
+      <table class="data-table" aria-labelledby="latency-effect">
+        <thead>
+          <tr>
+            <th>Treatment</th>
+            <th class="numeric">Measured</th>
+            <th class="numeric">First-decile latency</th>
+            <th class="numeric">Last-decile latency</th>
+            <th class="numeric">Median ratio R</th>
+            <th class="numeric">R below 1</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% reading.latency_effects.each do |effect| %>
+            <tr>
+              <td><%= effect.name %></td>
+              <td class="numeric"><%= effect.measured %></td>
+              <td class="numeric"><%= count_value effect.first_latency %></td>
+              <td class="numeric"><%= count_value effect.last_latency %></td>
+              <td class="numeric"><%= effect.ratio ? metric_value(effect.ratio.to_f) : "—" %></td>
+              <td class="numeric"><%= effect.falling %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <figure class="table-figure mt-4">
+    <figcaption class="table-caption text-sm text-muted" id="latency-agreement">
+      H3-latency per held-out parent: the pairs favouring each side.
+    </figcaption>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="latency-agreement">
+      <table class="data-table" aria-labelledby="latency-agreement">
+        <thead>
+          <tr>
+            <th>Treatment</th>
+            <th>Parent</th>
+            <th class="numeric">Favour the treatment</th>
+            <th class="numeric">Favour the continuation</th>
+            <th class="numeric">Tie</th>
+            <th class="numeric">Not both measured</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% reading.latency_tests.each do |test| %>
+            <% test.comparison.agreement.each do |row| %>
+              <tr>
+                <td><%= test.treatment.name %></td>
+                <td><%= link_to "run #{row.parent_id}", run_path(row.parent_id) %></td>
+                <td class="numeric"><%= row.treatment %></td>
+                <td class="numeric"><%= row.continuation %></td>
+                <td class="numeric"><%= row.ties %></td>
+                <td class="numeric"><%= row.unmeasured %></td>
+              </tr>
+            <% end %>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </figure>
+
+  <p class="text-sm text-muted">
+    Every count on this page is read from the sweep's stored samples at render time, through
+    the same reading <%= link_to "the sweep page", experiment_path("from-emerged", anchor: "heldout-reading") %>
+    draws.
+  </p>
+
+  <%= render "experiments/heldout_reading", reading: reading.report %>
+<% else %>
+  <p class="text-muted">
+    No held-out child of <%= link_to "the sweep", experiment_path("from-emerged") %> is in this
+    database, so there is nothing to read here. This page reads the children at render time
+    and states the claim from them.
+  </p>
+<% end %>
+
+<h2>What is not claimed</h2>
+<ul>
+  <li>
+    <strong>Not in situ.</strong> <span class="mono">copy_latency</span> is measured on the
+    world's dominant tape against a fresh noise partner, not in the colony. A lower ratio says
+    the dominant copier copies faster in isolation, not that the colony replicates faster.
+  </li>
+  <li>
+    <strong>Survivors only.</strong> An extinct child has no ratio and leaves H3-latency, and a
+    treatment that kills the colonies that would not have sped up leaves survivors that did.
+    No held-out child went extinct; the settled relapses per treatment are tabled above.
+  </li>
+  <li>
+    <strong>One substrate, one budget.</strong> Every child is sweep 9's world at caps 128 and
+    256, continued for 20 000 epochs, three correlated children per parent.
+  </li>
+  <li>
+    <strong>The mechanism is not identified.</strong> Why copies get faster under an economy —
+    a shorter copy loop, a different winner, a tape that spends less before it starts
+    copying — is not read here. The ratio is also read only past the settling window, so a
+    speed-up inside the first <%= window %> epochs after the switch is not counted.
+  </li>
+  <li>
+    <strong>No halting copier.</strong> <span class="mono">copy_cost</span>, the steps for one
+    byte-exact copy that halts, stays at <span class="mono">max_steps</span> wherever it is
+    measured: the copiers loop rather than finish. That is exploratory, not part of the
+    pre-registered reading.
+  </li>
+</ul>
