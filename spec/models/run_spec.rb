@@ -153,6 +153,11 @@ RSpec.describe Run, type: :model do
       expect(descendant(params: parent.params.merge("lineage_rule" => "oriented"))).to be_valid
     end
 
+    it "accepts a child that switches who pays for an interaction" do
+      expect(descendant(params: parent.params.merge("energy_influx" => 2**10, "energy_stock_cap" => 2**16,
+                                                    "energy_payer" => "initiator"))).to be_valid
+    end
+
     it "accepts the parent's params and seed, the exact continuation" do
       expect(descendant(params: parent.params, seed: parent.seed)).to be_valid
     end

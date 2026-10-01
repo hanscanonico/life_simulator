@@ -21,6 +21,17 @@ RSpec.describe Lab::CanonicalParams do
       expect(described_class.for("lineage_rule" => "oriented")).not_to eq(described_class.for({}))
     end
 
+    it "reads a run stored before the energy payer existed as the pair arm it ran" do
+      stored = Lab::Schema.run_defaults.except("energy_payer")
+
+      expect(described_class.for(stored)).to eq(described_class.for(Lab::Schema.run_defaults))
+      expect(described_class.for(stored)).to include("energy_payer" => "pair")
+    end
+
+    it "keeps an initiator run apart from the pair one" do
+      expect(described_class.for("energy_payer" => "initiator")).not_to eq(described_class.for({}))
+    end
+
     it "reads an integer and a float of the same value as one arm" do
       expect(described_class.for("radius" => 0)).to eq(described_class.for("radius" => 0.0))
     end
@@ -67,6 +78,11 @@ RSpec.describe Lab::CanonicalParams do
 
     it "reads the lineage rule as dynamics a descendant may change" do
       expect(described_class.structure_of({ "lineage_rule" => "oriented" }, substrate: "soup"))
+        .to eq(described_class.structure_of({}, substrate: "soup"))
+    end
+
+    it "reads the energy payer as dynamics a descendant may change" do
+      expect(described_class.structure_of({ "energy_payer" => "initiator" }, substrate: "soup"))
         .to eq(described_class.structure_of({}, substrate: "soup"))
     end
 

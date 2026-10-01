@@ -2631,3 +2631,58 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   run, 270 runs are about **112 compute-hours**; at the pre-#256 1 261 s, about 170. Sweep 13
   ran 124 compute-hours in 11 hours of wall time (about 11 runs at once), so this is about
   **10 hours** of wall time with the lab to itself, 15 at the high end.
+- 2026-10-01 — **Who pays for an interaction becomes a parameter: `energy_payer`, `pair` by
+  default, `initiator` so that income can buy copies.** The user's instruction was
+  "continue, don't stop until life exists". Of the six options of the 2026-09-24
+  entry the orchestrator chose option 4, a second, labelled substrate with an exogenous
+  task, as the next rung-4 bet. In the record and on the site it will be called
+  "Metabolism": computing earns the energy to copy. In the engine it is Soup plus opt-in
+  parameters. This entry is its first slice and changes the economy alone. The task assay,
+  the reward and the observables come in later slices, and the `metabolism` sweep is
+  pre-registered in its own entry before any of its runs is seeded.
+
+  **Why `pair` cannot carry a reward.** Under the stock economy of §1.1 an interaction runs
+  `min(stock_a, stock_b)` steps and debits both cells, and every cell initiates every epoch.
+  A copy from a rich cell into a poorer one, and a copy back, are both bounded by the poorer
+  stock, so extra income is neutral at the frontier where composition changes. It enriches
+  only interactions between rich cells. A rich cell is also never starved, so it loses the
+  protection an empty stock gives against being overwritten. A pilot on a throwaway copy of
+  the engine (a design study's, not a finding) planted task-solving copiers into run 2577's
+  world and paid each solving cell a second income. Under `pair` every planted solver died
+  out within 500 epochs, in 17 of 17 runs, and in the five matched runs its sham, the same
+  tape with the task's output op disabled, outlasted it. Under the initiator rule below
+  every planted solver held 69 to 97% of the world 1 500 epochs after planting, in 11 of
+  11 runs.
+
+  **The rule.** `energy_payer ∈ {pair, initiator}`, default `pair` (DESIGN §1.1). At `pair`
+  the engine runs exactly the code it ran before. At `initiator`:
+  - a cell initiates only if its stock is at least `max_steps`, the price of one
+    interaction, and is otherwise passed over as initiator. Its partner is drawn
+    regardless, so the shuffle and every partner draw are the ones `pair` makes and no RNG
+    stream moves;
+  - the interaction's budget is `max_steps`;
+  - the initiator alone is debited the full price, whatever ran. Debiting the steps run
+    instead would favour copiers that halt early, which already initiate once per epoch
+    and could buy nothing with a reward;
+  - the partner is never gated and never debited, and steals settle after the price as
+    they settle after a pair's debit.
+
+  A cell's income is then the rate at which it initiates. The rule is refused without an
+  `energy_influx` (there is no stock to pay from), with an `energy_stock_cap` below
+  `max_steps` (no stock could ever pay), and beside an `energy_per_epoch` (the allowance
+  bounds an interaction by both cells' purses, which is the pair rule again). The study
+  weighed one other variant: the initiator's stock as the budget, with no fixed price. It
+  was rejected because a copier that never halts would then copy if and only if its influx
+  covered its copy latency, a knife edge rather than a rate.
+
+  **What it moves.** Nothing at the default. Every pinned hash and observable digest stays
+  as it was. A new pin, taken on the code before the parameter existed, holds a stocked
+  soup with theft (32×32, seed 42, influx 2 048, cap 8 192, steal 1 024, 50 epochs) at
+  `0xff36_fede_bb44_6d42` with `pair` named. The initiator rule has its own pin: 32×32,
+  seed 42, influx 1 024, cap 65 536 (eight prices), 50 epochs, `0x6009_9358_301f_03ac`. A
+  test records the partner sequence and finds the two rules draw the same one. The
+  parameter is dynamics, not structure: a descendant may switch it,
+  `Lab::CanonicalParams::STRUCTURAL_KEYS` does not name it, and `World::descend` from an
+  unstocked parent mints full stocks under it as under `pair`. A run stored before the
+  parameter existed carries no `energy_payer` key, and `Lab::CanonicalParams` fills in the
+  engine default, `pair`, so stored runs keep their identity. Nothing is relocked.

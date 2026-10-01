@@ -22,6 +22,7 @@ RSpec.describe Lab::Schema do
     expect(described_class.values_for("structure")).to eq(%w[uniform gradient patchwork])
     expect(described_class.values_for("interaction")).to eq(%w[concat host])
     expect(described_class.values_for("lineage_rule")).to eq(%w[aligned oriented])
+    expect(described_class.values_for("energy_payer")).to eq(%w[pair initiator])
   end
 
   it "has no values for a numeric parameter" do
@@ -35,7 +36,7 @@ RSpec.describe Lab::Schema do
   it "drops the parameters a run never carries from the defaults a sweep starts from" do
     expect(described_class.run_defaults.keys)
       .to eq(%w[width height tape_len max_tape_len radius max_steps energy_per_epoch energy_influx
-                energy_stock_cap steal_amount steal_loss ops mutation_rate structure structure_amplitude
+                energy_stock_cap energy_payer steal_amount steal_loss ops mutation_rate structure structure_amplitude
                 interaction lineage_rule init top_k])
   end
 
@@ -44,7 +45,7 @@ RSpec.describe Lab::Schema do
   it "keeps the engine's own value for every default a sweep starts from" do
     expect(described_class.run_defaults).to eq(
       "width" => 128, "height" => 128, "tape_len" => 64, "max_tape_len" => 0, "radius" => 1, "max_steps" => 2**13,
-      "energy_per_epoch" => 0, "energy_influx" => 0, "energy_stock_cap" => 0,
+      "energy_per_epoch" => 0, "energy_influx" => 0, "energy_stock_cap" => 0, "energy_payer" => "pair",
       "steal_amount" => 0, "steal_loss" => 0.5, "ops" => "<>{}+-.,[]", "mutation_rate" => 1.0 / 4096,
       "structure" => "uniform", "structure_amplitude" => 0.5, "interaction" => "concat",
       "lineage_rule" => "aligned", "init" => "random", "top_k" => 16
