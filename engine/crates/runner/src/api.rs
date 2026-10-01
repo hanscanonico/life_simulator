@@ -874,7 +874,7 @@ mod tests {
 
         let claimed = thread::scope(|scope| {
             scope.spawn(|| {
-                thread::sleep(Duration::from_millis(200));
+                lab.wait_until_turned_away(1);
                 lab.revive();
             });
             client.claim("runner-1").expect("the claim")
@@ -948,7 +948,7 @@ mod tests {
 
         let (error, waited) = thread::scope(|scope| {
             scope.spawn(|| {
-                thread::sleep(Duration::from_millis(100));
+                lab.wait_until_turned_away(1);
                 stop.store(true, Ordering::Relaxed);
             });
             let started = Instant::now();
@@ -968,6 +968,16 @@ mod tests {
         for status in [200, 204, 400, 401, 403, 404, 409, 422] {
             assert!(!transient_status(status), "{status}");
         }
+    }
+
+    /// The mock's vanished lab closes connections unanswered; an app container that is
+    /// gone refuses them, which has to read as the same outage.
+    #[test]
+    fn a_refused_connection_is_transient() {
+        let refused = std::io::Error::from(std::io::ErrorKind::ConnectionRefused);
+
+        assert!(transient_error(&ureq::Error::ConnectionFailed.into()));
+        assert!(transient_error(&ureq::Error::Io(refused).into()));
     }
 
     /// A body over its bound is the answer being wrong, not the network: retrying it

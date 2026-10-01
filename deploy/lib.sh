@@ -5,6 +5,9 @@ compose="docker compose -f deploy/docker-compose.yml"
 
 # Read once: it also fails the caller early on an unusable compose file.
 services=$($compose config --services)
+# The `name:` the compose file sets, which compose stamps on every image it builds
+# as the com.docker.compose.project label.
+project=$($compose config | sed -n 's/^name: //p')
 
 # A container whose start failed — a dependency that never turned healthy, an
 # allocation refused while the build's memory was still resident, a deploy job
