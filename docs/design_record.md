@@ -3140,6 +3140,27 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   computation, which three cases of whole bytes cannot tell from the whole and which is a
   part of the task rather than something outside it, at a fraction of the task's pay.
 
+  **No cheap tape is credited a deep rung** (measured at review, on this engine):
+  - no program of up to 6 bytes over the ten ops, `!` and `~`, in front of a zero tail or
+    either of two random tails (20 003, 25 375 and 20 207 distinct behaviours), is
+    credited XOR or EQU on any of 4 000 separating draws;
+  - among every single and double substitution, over those 12 bytes and 0x00, 0x01, 0x55
+    and 0xFF, in the code of the hand-written AND, ORN, OR, ANDN and NOR solvers, none is
+    ever credited XOR, and two are credited EQU on 1 draw in 4 000 (they compute it on
+    6.6% of inputs);
+  - in the pilot's seven logic end worlds, about 95 000 distinct tapes over 1 000 draws
+    each, three tapes, each one cell of 944's rewarded world, are credited XOR, on at most
+    7.2% of draws. The commonest two are masked XOR circuits: exact on five bits and OR on
+    three, so 42.5% of inputs. No draw put XOR or EQU at a share of 1/10 in any world.
+
+  A tape that computes a task on a share p of inputs is credited on about p³ of the
+  draws, so it needs p above 0.79 to be credited on more than half of a decile's samples.
+  For a masked circuit, that means at most one masked bit. So the last-decile median that
+  H-deep reads cannot be lifted by partial solvers. A single sample can be, so readings
+  taken off one sample need a persistence rule. That applies to the first epoch at which
+  a rung reaches 1/10, and to the stepping-stone order read from it. The observables must
+  draw fresh cases at each sample.
+
   **`task_floor`** (default `echo`) names the lowest rung paid, under either ladder. Rungs
   below it are still assayed, since the observables read them, and pay nothing. It must
   name a rung of the chosen ladder, `echo` … `mul` under `arith` and `echo` … `equ` under
