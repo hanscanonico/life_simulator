@@ -397,13 +397,24 @@ RSpec.describe "Runs", type: :request do
       end
     end
 
+    context "with a sample that assayed the dominant tape's logic rungs" do
+      it "names them rather than printing the bitmask" do
+        create(:sample, run: run, epoch: 100,
+                        values: { "dominant_logic_tasks" => 0b1_0000_0010, "dominant_logic_task_count" => 2 })
+
+        get run_path(run)
+
+        expect(response.body).to include("dominant-logic-tasks", "<strong>NOT and XOR</strong> on the logic ladder")
+      end
+    end
+
     context "with samples recorded with tasks off" do
       it "says nothing about the dominant tape's tasks" do
         create(:sample, run: run, epoch: 100, values: { "dominant_tasks" => nil, "copy_cost" => 1_794 })
 
         get run_path(run)
 
-        expect(response.body).not_to include("dominant-tasks")
+        expect(response.body).not_to include("dominant-tasks", "dominant-logic-tasks")
       end
     end
 

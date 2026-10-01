@@ -29,7 +29,10 @@ RSpec.describe Runs::ShowPage do
                   replicator_count_mean lineage_compressed_len lineage_instruction_count
                   task_capability task_capability_loop dominant_task_count task_share_echo
                   task_share_inc task_share_dec task_share_add task_share_sub task_share_not
-                  task_share_double task_share_mul])
+                  task_share_double task_share_mul logic_capability logic_capability_deep
+                  dominant_logic_task_count logic_share_echo logic_share_not logic_share_nand
+                  logic_share_and logic_share_orn logic_share_or logic_share_andn logic_share_nor
+                  logic_share_xor logic_share_equ])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
       expect(page.charts.map(&:title))
         .to eq(described_class::METRICS.values +
@@ -198,6 +201,46 @@ RSpec.describe Runs::ShowPage do
           create(:sample, run: run, epoch: 100, values: { "dominant_tasks" => nil, "copy_cost" => 1_794 })
 
           expect(page.dominant_tasks_label).to be_nil
+        end
+      end
+    end
+
+    # The logic readings are null unless tasks are logic: such a sample draws no point,
+    # never a zero.
+    it "draws the logic readings of the samples that carry them" do
+      create(:sample, run: run, epoch: 100, values: { "logic_share_xor" => nil, "logic_capability_deep" => nil })
+      create(:sample, run: run, epoch: 200, values: { "copy_cost" => 1_794 })
+      create(:sample, run: run, epoch: 300, values: { "logic_share_xor" => 0.0, "logic_capability_deep" => 1 })
+
+      expect(%w[logic_share_xor logic_capability_deep].map { |metric| Runs::MetricSeriesService.call(run: run, metric: metric) })
+        .to eq([[[300, 0.0]], [[300, 1]]])
+      expect(chart_for("logic_share_equ")).to be_empty
+    end
+
+    describe "#dominant_logic_tasks_label" do
+      it "names the logic rungs of the latest sample that assayed the dominant tape, in ladder order" do
+        create(:sample, run: run, epoch: 100, values: { "dominant_logic_tasks" => 0b10 })
+        create(:sample, run: run, epoch: 200, values: { "dominant_logic_tasks" => 0b11_0010_0000, "dominant_tasks" => 0b1 })
+        create(:sample, run: run, epoch: 300, values: { "dominant_logic_tasks" => nil })
+
+        expect(page.dominant_logic_tasks).to eq(%w[or xor equ])
+        expect(page.dominant_logic_tasks_label).to eq("OR, XOR, and EQU")
+        expect(page.dominant_tasks_label).to eq("ECHO")
+      end
+
+      context "with a dominant tape that solves no rung" do
+        it "says so" do
+          create(:sample, run: run, epoch: 100, values: { "dominant_logic_tasks" => 0 })
+
+          expect(page.dominant_logic_tasks_label).to eq("no task")
+        end
+      end
+
+      context "with tasks other than logic, or samples recorded before the logic readings existed" do
+        it "reads none rather than no task" do
+          create(:sample, run: run, epoch: 100, values: { "dominant_tasks" => 0b1001, "copy_cost" => 1_794 })
+
+          expect(page.dominant_logic_tasks_label).to be_nil
         end
       end
     end

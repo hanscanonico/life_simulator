@@ -95,6 +95,13 @@
     (<span class="mono">dominant_tasks</span>).
   </p>
 <% end %>
+<% if @show.dominant_logic_tasks_label %>
+  <p class="text-muted text-sm" id="dominant-logic-tasks">
+    At its latest sample that assayed it, the dominant tape solved
+    <strong><%= @show.dominant_logic_tasks_label %></strong> on the logic ladder
+    (<span class="mono">dominant_logic_tasks</span>).
+  </p>
+<% end %>
 <% if @show.charts_empty? %>
   <p class="text-muted">This run has not reported a sample yet.</p>
 <% else %>

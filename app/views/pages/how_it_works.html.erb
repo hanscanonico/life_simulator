@@ -347,6 +347,35 @@
       <span class="mono">dominant_task_count</span> is how many there are.
     </dd>
 
+    <dt class="mono">logic_share_echo</dt>
+    <dd>
+      The share of 256 cells, drawn at random, whose tape the logic assay credits with ECHO:
+      run alone on three pairs of whole bytes, it emits one of the inputs in every one of
+      them. <span class="mono">logic_share_not</span>, <span class="mono">logic_share_nand</span>,
+      <span class="mono">logic_share_and</span>, <span class="mono">logic_share_orn</span>,
+      <span class="mono">logic_share_or</span>, <span class="mono">logic_share_andn</span>,
+      <span class="mono">logic_share_nor</span>, <span class="mono">logic_share_xor</span>
+      and <span class="mono">logic_share_equ</span> are the same share for the rest of the
+      logic ladder. The prefix keeps them apart from the arithmetic readings: bitwise NOT of a
+      byte is the arithmetic NOT. They only read, on draws of their own, and are null unless
+      the run's tasks are logic — with tasks off or arithmetic, on the Life substrate, and on
+      every sample recorded before they existed.
+    </dd>
+
+    <dt class="mono">logic_capability</dt>
+    <dd>
+      How many logic rungs at least a tenth of those sampled cells solve, 26 of 256 or more.
+      <span class="mono">logic_capability_deep</span> counts the same over XOR and EQU, the
+      deep rungs: each needs four or five NANDs and a stored intermediate.
+    </dd>
+
+    <dt class="mono">dominant_logic_tasks</dt>
+    <dd>
+      The logic rungs the dominant tape solves, as a bitmask in ladder order — ECHO is 1, NOT
+      2, NAND 4, and so on to EQU at 512 — which a run's page names rather than prints.
+      <span class="mono">dominant_logic_task_count</span> is how many there are.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which
@@ -399,6 +428,8 @@
       One rung of the arithmetic ladder a soup may be assayed on — ECHO, INC, DEC, ADD, SUB,
       NOT, DOUBLE, MUL. A tape solves one when some output it emits with the
       <span class="mono">!</span> byte holds the answer on every input pair of the assay.
+      Under logic tasks the ladder is ECHO, NOT, NAND, AND, ORN, OR, ANDN, NOR, XOR, EQU
+      instead, on whole bytes, with <span class="mono">~</span> writing a NAND.
     </dd>
 
     <dt>arm</dt>

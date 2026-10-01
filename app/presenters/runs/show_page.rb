@@ -46,7 +46,20 @@ module Runs
       "task_share_sub" => "Share of cells solving SUB",
       "task_share_not" => "Share of cells solving NOT",
       "task_share_double" => "Share of cells solving DOUBLE",
-      "task_share_mul" => "Share of cells solving MUL"
+      "task_share_mul" => "Share of cells solving MUL",
+      "logic_capability" => "Logic rungs a tenth of the cells solve",
+      "logic_capability_deep" => "Deep logic rungs (XOR, EQU) a tenth of the cells solve",
+      "dominant_logic_task_count" => "Logic rungs the dominant tape solves",
+      "logic_share_echo" => "Share of cells solving logic ECHO",
+      "logic_share_not" => "Share of cells solving logic NOT",
+      "logic_share_nand" => "Share of cells solving NAND",
+      "logic_share_and" => "Share of cells solving AND",
+      "logic_share_orn" => "Share of cells solving ORN",
+      "logic_share_or" => "Share of cells solving OR",
+      "logic_share_andn" => "Share of cells solving ANDN",
+      "logic_share_nor" => "Share of cells solving NOR",
+      "logic_share_xor" => "Share of cells solving XOR",
+      "logic_share_equ" => "Share of cells solving EQU"
     }.freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
@@ -111,16 +124,20 @@ module Runs
     def dominant_tasks
       return @dominant_tasks if defined?(@dominant_tasks)
 
-      bits = dominant_readings.reverse_each.lazy.map { |_, values| values["dominant_tasks"] }
-                              .find { |mask| mask.is_a?(Integer) }
-      @dominant_tasks = bits && Lab::Schema.task_names.select.with_index { |_, index| bits[index] == 1 }
+      @dominant_tasks = latest_tasks("dominant_tasks", Lab::Schema.task_names)
     end
 
-    def dominant_tasks_label
-      return if dominant_tasks.nil?
+    def dominant_tasks_label = tasks_label(dominant_tasks)
 
-      dominant_tasks.empty? ? "no task" : dominant_tasks.map(&:upcase).to_sentence
+    # The same, for the logic ladder's `dominant_logic_tasks`: `nil` unless a sample of a
+    # run with tasks = logic read one.
+    def dominant_logic_tasks
+      return @dominant_logic_tasks if defined?(@dominant_logic_tasks)
+
+      @dominant_logic_tasks = latest_tasks("dominant_logic_tasks", Lab::Schema.logic_task_names)
     end
+
+    def dominant_logic_tasks_label = tasks_label(dominant_logic_tasks)
 
     def findings = @findings ||= Findings::Registry.for_experiment(run.experiment.slug)
 
@@ -211,6 +228,17 @@ module Runs
         hash = values["dominant_tape_hash"]
         [epoch, hash] if hash.is_a?(String)
       end
+    end
+
+    def latest_tasks(key, ladder)
+      bits = dominant_readings.reverse_each.lazy.map { |_, values| values[key] }.find { |mask| mask.is_a?(Integer) }
+      bits && ladder.select.with_index { |_, index| bits[index] == 1 }
+    end
+
+    def tasks_label(tasks)
+      return if tasks.nil?
+
+      tasks.empty? ? "no task" : tasks.map(&:upcase).to_sentence
     end
 
     def series_of(metric) = MetricSeriesService.call(run: run, metric: metric, samples: dominant_readings)

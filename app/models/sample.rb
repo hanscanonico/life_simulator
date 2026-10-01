@@ -14,14 +14,19 @@ class Sample < ApplicationRecord
     copy_latency copy_latency_orientation lineage_effective_count lineages_over_one_percent
     task_share_echo task_share_inc task_share_dec task_share_add task_share_sub task_share_not task_share_double
     task_share_mul task_capability task_capability_loop dominant_tasks dominant_task_count
+    logic_share_echo logic_share_not logic_share_nand logic_share_and logic_share_orn logic_share_or
+    logic_share_andn logic_share_nor logic_share_xor logic_share_equ logic_capability logic_capability_deep
+    dominant_logic_tasks dominant_logic_task_count
   ].freeze
 
   # The observables that are not numbers: exported like the rest, but there is no series a
   # chart could draw of them. The tape hash is one of them — sixteen hex digits that are
   # only ever compared for equality (DESIGN §1.2). So is the latency's orientation: one of
-  # three words. `dominant_tasks` is a bitmask of tasks, a set rather than a quantity.
+  # three words. `dominant_tasks` and `dominant_logic_tasks` are bitmasks of tasks, sets
+  # rather than quantities.
   FLAGS = %w[
     dominant_replicates dominant_tape_hash dominant_self_replicates copy_latency_orientation dominant_tasks
+    dominant_logic_tasks
   ].freeze
   PLOTTABLE = (OBSERVABLES - FLAGS).freeze
 

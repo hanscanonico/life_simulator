@@ -48,6 +48,10 @@ const STREAM_TASK: u64 = 0x5441_534b_0000_0000;
 /// nothing it pays.
 const STREAM_TASK_SHARE: u64 = STREAM_TASK | 1;
 const STREAM_TASK_DOMINANT: u64 = STREAM_TASK | 2;
+/// The logic observables' own pair, the same two readings on the logic ladder: they share
+/// no draw with the arithmetic readings or with the payment.
+const STREAM_LOGIC_SHARE: u64 = STREAM_TASK | 3;
+const STREAM_LOGIC_DOMINANT: u64 = STREAM_TASK | 4;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -633,6 +637,8 @@ impl World {
         let share = self.replicator_share();
         let tally = self.task_tally();
         let task_share = |task: usize| tally.map(|tally| tally.share(task));
+        let logic = self.logic_tally();
+        let logic_share = |task: usize| logic.map(|tally| tally.share(task));
 
         Metrics {
             compress_ratio,
@@ -685,6 +691,22 @@ impl World {
             task_capability_loop: tally.map(|tally| tally.capability_loop()),
             dominant_tasks: census.dominant_tasks.map(|credit| u32::from(credit.bits())),
             dominant_task_count: census.dominant_tasks.map(|credit| credit.count()),
+            logic_share_echo: logic_share(0),
+            logic_share_not: logic_share(1),
+            logic_share_nand: logic_share(2),
+            logic_share_and: logic_share(3),
+            logic_share_orn: logic_share(4),
+            logic_share_or: logic_share(5),
+            logic_share_andn: logic_share(6),
+            logic_share_nor: logic_share(7),
+            logic_share_xor: logic_share(8),
+            logic_share_equ: logic_share(9),
+            logic_capability: logic.map(|tally| tally.capability()),
+            logic_capability_deep: logic.map(|tally| tally.capability_deep()),
+            dominant_logic_tasks: census
+                .dominant_logic_tasks
+                .map(|credit| u32::from(credit.bits())),
+            dominant_logic_task_count: census.dominant_logic_tasks.map(|credit| credit.count()),
         }
     }
 
@@ -708,6 +730,30 @@ impl World {
         let mut memo = task::Memo::new(task::Cases::draw(&mut rng), self.params.op_set());
         let cells = self.params.cell_count() as u64;
         let mut tally = task::TaskTally::default();
+        for _ in 0..task::TASK_SAMPLE_CELLS {
+            let cell = rng::below(&mut rng, cells) as usize;
+            tally.add(memo.credit(self.tape(cell)));
+        }
+        Some(tally)
+    }
+
+    /// Whether the samples read the logic observables: whenever the logic ladder is on,
+    /// paid for or not, as `reads_tasks` is for the arithmetic one.
+    fn reads_logic(&self) -> bool {
+        self.params.substrate == Substrate::Soup && self.params.tasks == Tasks::Logic
+    }
+
+    /// `task_tally` on the logic ladder: the same 256 cells' worth of draws, on cases and
+    /// cells of `STREAM_LOGIC_SHARE`'s own, each distinct tape assayed once. It writes and
+    /// pays nothing.
+    fn logic_tally(&self) -> Option<logic::LogicTally> {
+        if !self.reads_logic() {
+            return None;
+        }
+        let mut rng = rng::seeded(self.seed, STREAM_LOGIC_SHARE, self.epoch);
+        let mut memo = logic::Memo::new(logic::Cases::draw(&mut rng), self.params.op_set());
+        let cells = self.params.cell_count() as u64;
+        let mut tally = logic::LogicTally::default();
         for _ in 0..task::TASK_SAMPLE_CELLS {
             let cell = rng::below(&mut rng, cells) as usize;
             tally.add(memo.credit(self.tape(cell)));
@@ -814,6 +860,10 @@ impl World {
                 let mut rng = rng::seeded(self.seed, STREAM_TASK_DOMINANT, self.epoch);
                 task::assay(tape, &task::Cases::draw(&mut rng), self.params.op_set())
             }),
+            dominant_logic_tasks: first.dominant.filter(|_| self.reads_logic()).map(|tape| {
+                let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DOMINANT, self.epoch);
+                logic::assay(tape, &logic::Cases::draw(&mut rng), self.params.op_set())
+            }),
             counts: draws.iter().map(|draw| draw.count).collect(),
         }
     }
@@ -871,6 +921,9 @@ struct ReplicatorCensus {
     /// The tasks that same tape is credited with, on cases of its own. `None` wherever
     /// tasks are off.
     dominant_tasks: Option<task::Credit>,
+    /// The logic rungs that same tape is credited with, on cases of its own. `None` unless
+    /// tasks are `logic`.
+    dominant_logic_tasks: Option<logic::Credit>,
     /// What each of the `CENSUS_DRAWS` draws counted, draw 0 first — the count above being
     /// that first draw's. Empty on the life substrate, where no assay runs at all.
     counts: Vec<u64>,
@@ -5719,5 +5772,245 @@ mod tests {
         let measured = unsolved.metrics();
         assert_eq!(measured.dominant_tasks, Some(0));
         assert_eq!(measured.dominant_task_count, Some(0));
+    }
+
+    fn logic_digest(measured: &Metrics) -> String {
+        format!(
+            "logic_share_echo={:?} logic_share_not={:?} logic_share_nand={:?} \
+             logic_share_and={:?} logic_share_orn={:?} logic_share_or={:?} \
+             logic_share_andn={:?} logic_share_nor={:?} logic_share_xor={:?} \
+             logic_share_equ={:?} logic_capability={:?} logic_capability_deep={:?} \
+             dominant_logic_tasks={:?} dominant_logic_task_count={:?}",
+            measured.logic_share_echo,
+            measured.logic_share_not,
+            measured.logic_share_nand,
+            measured.logic_share_and,
+            measured.logic_share_orn,
+            measured.logic_share_or,
+            measured.logic_share_andn,
+            measured.logic_share_nor,
+            measured.logic_share_xor,
+            measured.logic_share_equ,
+            measured.logic_capability,
+            measured.logic_capability_deep,
+            measured.dominant_logic_tasks,
+            measured.dominant_logic_task_count,
+        )
+    }
+
+    /// The same sample with every logic reading taken out, so the readings that existed
+    /// before them, the arithmetic ones included, can be compared whole.
+    fn without_logic_readings(measured: &Metrics) -> Metrics {
+        Metrics {
+            logic_share_echo: None,
+            logic_share_not: None,
+            logic_share_nand: None,
+            logic_share_and: None,
+            logic_share_orn: None,
+            logic_share_or: None,
+            logic_share_andn: None,
+            logic_share_nor: None,
+            logic_share_xor: None,
+            logic_share_equ: None,
+            logic_capability: None,
+            logic_capability_deep: None,
+            dominant_logic_tasks: None,
+            dominant_logic_task_count: None,
+            ..measured.clone()
+        }
+    }
+
+    const UNREAD_LOGIC: &str = "logic_share_echo=None logic_share_not=None \
+         logic_share_nand=None logic_share_and=None logic_share_orn=None logic_share_or=None \
+         logic_share_andn=None logic_share_nor=None logic_share_xor=None logic_share_equ=None \
+         logic_capability=None logic_capability_deep=None dominant_logic_tasks=None \
+         dominant_logic_task_count=None";
+
+    /// The logic observables of the reward-0 control of `logic_params`, an eighth of the
+    /// cells solving NOT and an eighth XOR, seed 42, after 50 epochs, pinned apart from
+    /// every digest above (`docs/design_record.md`, Logic slice 2).
+    const PINNED_LOGIC: &str = "logic_share_echo=Some(0.01171875) \
+         logic_share_not=Some(0.10546875) logic_share_nand=Some(0.00390625) \
+         logic_share_and=Some(0.00390625) logic_share_orn=Some(0.0078125) logic_share_or=Some(0.0) \
+         logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) logic_share_xor=Some(0.07421875) \
+         logic_share_equ=Some(0.0) logic_capability=Some(1) logic_capability_deep=Some(0) \
+         dominant_logic_tasks=Some(0) dominant_logic_task_count=Some(0)";
+    /// And of `logic_world`'s planted solvers, where every reading has something to read.
+    const PINNED_PLANTED_LOGIC: &str = "logic_share_echo=Some(0.0) \
+         logic_share_not=Some(0.0) logic_share_nand=Some(0.0) logic_share_and=Some(0.0) \
+         logic_share_orn=Some(0.0) logic_share_or=Some(0.24609375) logic_share_andn=Some(0.0) \
+         logic_share_nor=Some(0.0) logic_share_xor=Some(0.49609375) logic_share_equ=Some(0.078125) \
+         logic_capability=Some(2) logic_capability_deep=Some(1) dominant_logic_tasks=Some(256) \
+         dominant_logic_task_count=Some(1)";
+
+    #[test]
+    fn the_logic_observables_are_null_unless_tasks_are_logic() {
+        let mut off = World::new(&soup(16, 16), 42).unwrap();
+        assert_eq!(logic_digest(&off.metrics()), UNREAD_LOGIC);
+        assert_eq!(logic_digest(&seeded_world().metrics()), UNREAD_LOGIC);
+
+        for params in [rewarded_params(), unrewarded(&rewarded_params())] {
+            let mut arith = with_logic_solvers(&params, 42);
+            let measured = arith.metrics();
+            assert!(measured.task_share_echo.is_some());
+            assert_eq!(logic_digest(&measured), UNREAD_LOGIC);
+        }
+
+        let mut grid = World::new(&life(16, 16), 42).unwrap();
+        assert_eq!(logic_digest(&grid.metrics()), UNREAD_LOGIC);
+
+        let life_with_logic = Params {
+            tasks: Tasks::Logic,
+            ..life(16, 16)
+        };
+        assert!(life_with_logic.validate().is_err());
+        let blob = grid.snapshot();
+        let mut resumed = World::from_snapshot(&life_with_logic, 42, &blob).unwrap();
+        assert_eq!(logic_digest(&resumed.metrics()), UNREAD_LOGIC);
+    }
+
+    #[test]
+    fn the_logic_observables_of_a_fixed_seed_are_pinned() {
+        let params = unrewarded(&logic_params());
+        let mut control = stepped_world(with_logic_solvers(&params, 42), 50);
+        assert_eq!(logic_digest(&control.metrics()), PINNED_LOGIC);
+        let mut planted = logic_world(&[(0..8, LOGIC_XOR), (8..12, LOGIC_OR), (12..13, LOGIC_EQU)]);
+        assert_eq!(logic_digest(&planted.metrics()), PINNED_PLANTED_LOGIC);
+    }
+
+    /// The logic observables only read: a logic run with no reward samples them beside
+    /// every other reading and is still the run with tasks off — the same bytes, the same
+    /// stocks, and the same value of every reading the two share, sample for sample —
+    /// under either payer. A rewarded logic run reads them too.
+    #[test]
+    fn reading_the_logic_ladder_moves_no_byte_and_no_other_observable() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            let params = Params {
+                energy_payer: payer,
+                ..unrewarded(&logic_params())
+            };
+            let mut control = with_logic_solvers(&params, 42);
+            let mut off = with_logic_solvers(&without_tasks(&params), 42);
+            for _ in 0..6 {
+                let (read, unread) = (control.metrics(), off.metrics());
+                assert!(read.logic_share_not.is_some());
+                assert_eq!(logic_digest(&unread), UNREAD_LOGIC);
+                assert_eq!(without_logic_readings(&read), unread, "{payer:?}");
+                for _ in 0..5 {
+                    control.step();
+                    off.step();
+                }
+            }
+            assert_eq!(control.world_hash(), off.world_hash(), "{payer:?}");
+            assert_eq!(control.stock, off.stock);
+            assert_eq!(control.snapshot(), off.snapshot());
+        }
+        let mut rewarded = stepped_world(with_logic_solvers(&logic_params(), 42), 8);
+        assert_eq!(rewarded.metrics().logic_capability, Some(2));
+    }
+
+    /// Reading a sample twice reads it the same, and the logic readings draw on streams
+    /// no other reading, and not the payment, draws on.
+    #[test]
+    fn the_logic_observables_draw_on_streams_of_their_own() {
+        let params = unrewarded(&logic_params());
+        let mut world = stepped_world(with_logic_solvers(&params, 42), 20);
+        let first = world.metrics();
+        assert_eq!(logic_digest(&world.metrics()), logic_digest(&first));
+        let mut restored =
+            World::from_snapshot(world.params(), world.seed(), &world.snapshot()).unwrap();
+        assert_eq!(logic_digest(&restored.metrics()), logic_digest(&first));
+
+        let taken = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+            STREAM_TASK_SHARE,
+            STREAM_TASK_DOMINANT,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        for stream in [STREAM_LOGIC_SHARE, STREAM_LOGIC_DOMINANT] {
+            assert!(!taken.contains(&stream) && !draws.contains(&stream));
+        }
+        assert_ne!(STREAM_LOGIC_SHARE, STREAM_LOGIC_DOMINANT);
+    }
+
+    /// `task_world` on the logic ladder.
+    fn logic_world(plantings: &[(std::ops::Range<u32>, &[u8])]) -> World {
+        let mut world = task_world(plantings);
+        world.params.tasks = Tasks::Logic;
+        world
+    }
+
+    /// Solvers of the logic assay's own tests, each credited with its rung alone.
+    const LOGIC_AND: &[u8] = b"<<{~{~!";
+    const LOGIC_OR: &[u8] = b"<{~<{~}~!";
+    const LOGIC_XOR: &[u8] = XOR_SOLVER;
+    const LOGIC_EQU: &[u8] = b"<<<{,{~>>{~<~}}~{~!";
+
+    /// A quarter of the cells solving XOR, a quarter OR, one row EQU and the rest zeros:
+    /// XOR and OR are capabilities, EQU, at a sixteenth of the cells, is not, and of the
+    /// deep rungs only XOR is.
+    #[test]
+    fn the_logic_capability_counts_the_rungs_a_tenth_of_the_cells_solve() {
+        let mut world = logic_world(&[(0..4, LOGIC_XOR), (4..8, LOGIC_OR), (8..9, LOGIC_EQU)]);
+        let measured = world.metrics();
+
+        for share in [measured.logic_share_xor, measured.logic_share_or] {
+            let share = share.expect("logic is on");
+            assert!((0.15..0.35).contains(&share), "{share}");
+        }
+        let equ = measured.logic_share_equ.expect("logic is on");
+        assert!(equ > 0.0 && equ < 0.1, "{equ}");
+        for share in [
+            measured.logic_share_echo,
+            measured.logic_share_not,
+            measured.logic_share_nand,
+            measured.logic_share_and,
+            measured.logic_share_orn,
+            measured.logic_share_andn,
+            measured.logic_share_nor,
+        ] {
+            assert_eq!(share, Some(0.0));
+        }
+        assert_eq!(measured.logic_capability, Some(2));
+        assert_eq!(measured.logic_capability_deep, Some(1));
+    }
+
+    /// The deep count reads XOR and EQU only: a world of NOT and AND solvers is capable of
+    /// two rungs and of no deep one, and a world of XOR and EQU solvers of two deep ones.
+    #[test]
+    fn the_deep_capability_reads_xor_and_equ_alone() {
+        let mut shallow = logic_world(&[(0..8, NOT_SOLVER), (8..16, LOGIC_AND)]);
+        let measured = shallow.metrics();
+        assert_eq!(measured.logic_capability, Some(2));
+        assert_eq!(measured.logic_capability_deep, Some(0));
+
+        let mut deep = logic_world(&[(0..8, LOGIC_XOR), (8..16, LOGIC_EQU)]);
+        let measured = deep.metrics();
+        assert_eq!(measured.logic_capability, Some(2));
+        assert_eq!(measured.logic_capability_deep, Some(2));
+    }
+
+    /// The dominant tape's credit, as a bitmask in `logic::LOGIC_TASKS` order: XOR is bit 8
+    /// and EQU bit 9. Where the most common tape solves nothing, it reads 0, not null.
+    #[test]
+    fn the_dominant_tape_reads_its_logic_rungs_as_a_bitmask() {
+        for (solver, bits) in [(LOGIC_XOR, 1 << 8), (LOGIC_EQU, 1 << 9), (NOT_SOLVER, 0b10)] {
+            let mut solved = logic_world(&[(0..12, solver)]);
+            let measured = solved.metrics();
+            assert_eq!(measured.dominant_logic_tasks, Some(bits));
+            assert_eq!(measured.dominant_logic_task_count, Some(1));
+            assert_eq!(measured.dominant_tasks, None);
+        }
+
+        let mut unsolved = logic_world(&[(0..4, LOGIC_XOR)]);
+        let measured = unsolved.metrics();
+        assert_eq!(measured.dominant_logic_tasks, Some(0));
+        assert_eq!(measured.dominant_logic_task_count, Some(0));
     }
 }

@@ -32,6 +32,10 @@ RSpec.describe Lab::Schema do
     expect(described_class.task_names).to eq(%w[echo inc dec add sub not double mul])
   end
 
+  it "reads the logic ladder in the engine's order, the bit order of dominant_logic_tasks" do
+    expect(described_class.logic_task_names).to eq(%w[echo not nand and orn or andn nor xor equ])
+  end
+
   it "has no values for a numeric parameter" do
     expect(described_class.values_for("width")).to eq([])
   end
