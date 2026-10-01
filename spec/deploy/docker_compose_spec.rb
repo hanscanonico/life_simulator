@@ -3,8 +3,13 @@
 require "rails_helper"
 
 RSpec.describe "deploy/docker-compose.yml" do
-  let(:services) do
-    YAML.safe_load(Rails.root.join("deploy/docker-compose.yml").read, aliases: true).fetch("services")
+  let(:compose) { YAML.safe_load(Rails.root.join("deploy/docker-compose.yml").read, aliases: true) }
+  let(:services) { compose.fetch("services") }
+
+  # deploy/lib.sh reads this `name:` as the project label the deploy's image prune
+  # filters on; without it the prune is skipped.
+  it "names its project explicitly" do
+    expect(compose["name"]).to eq("life-simulator")
   end
 
   describe "the images the stack builds" do
