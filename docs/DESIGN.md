@@ -93,6 +93,28 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   the byte is a no-op like any other non-instruction byte, nothing is settled and the soup is
   exactly the substrate above; an amount without an `energy_influx` behind it is refused,
   since there would be no stock to take from.
+- **Tasks and the emit op** (`tasks`, default `off`; `task_every`, default `8`;
+  `task_reward`, default `0`; docs/design_record.md 2026-10-01, the task assay): at
+  `tasks = arith` with a reward set, every `task_every` epochs, before the epoch's influx,
+  each cell's tape is **assayed** alone. Its live bytes T (length L) are followed by L zeros,
+  a fixed buffer of 2L that never grows and over which both heads wrap; the inputs sit at
+  `B[2L−1] = x` and `B[2L−2] = y`. The run executes the run's own `ops`, the steal byte is a
+  no-op, and the byte `!` (0x21) **emits** the byte under head0 to an output list. It stops
+  at the end of the buffer, on an unmatched bracket, after 4 096 steps or at the fourth
+  emit. Three cases are drawn per assay epoch, x and y uniform in 0..15, on their own
+  stream at (seed, epoch) and shared by every cell, and redrawn until they **separate the
+  tasks**: within each task the three expected outputs differ; no two tasks expect the
+  same three; the three x values differ, as do the three y values, and none is 0; and no
+  task's outputs sit a constant offset from x, or from y, unless the task is that offset of
+  that input everywhere. A task is credited when one output slot holds its value in all three cases.
+  The ladder, mod 256, is ECHO x, INC x+1, DEC x−1, ADD x+y, SUB x−y, NOT 255−x, DOUBLE 2x
+  and MUL x·y, worth 1, 2, 2, 4, 4, 8, 8 and 16 units; a cell is paid `task_reward` per
+  credited unit into its stock, capped at `energy_stock_cap`. A tape holding no `!` byte is
+  credited nothing and never run. `!` is an instruction **only inside the assay**: in the
+  soup it is a no-op like any other non-instruction byte, and like `$` it is not one of the
+  ten ops. A reward of `0` runs no assay at all, so the run is byte-identical to the same run
+  with `tasks = off`. A reward needs `tasks` on and an `energy_influx`, and `tasks` is
+  refused on life. The parameters are dynamics, not structure: a descendant may set them.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The
@@ -139,7 +161,9 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   which starts from a finished parent run's stored world instead of an initial state, is
   fully determined by `(parent run's world at parent_epoch, params, seed)`, its epoch count
   continuing the parent's; it may change the parent's dynamics but not the world's shape
-  (`docs/design_record.md`, 2026-09-25, "Runs that start from an emerged world").
+  (`docs/design_record.md`, 2026-09-25, "Runs that start from an emerged world"). Its
+  params are validated as a new run's are, and refused at descent; a resumed run is not
+  re-validated, so it keeps resuming however validation has tightened since it started.
 
 The ordinary Game of Life (`B3/S23`) is also shipped, as the `Life` substrate, because it
 is what visitors recognise. It shares the viewer and the run pipeline but no research

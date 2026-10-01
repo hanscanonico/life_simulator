@@ -2686,3 +2686,122 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   unstocked parent mints full stocks under it as under `pair`. A run stored before the
   parameter existed carries no `energy_payer` key, and `Lab::CanonicalParams` fills in the
   engine default, `pair`, so stored runs keep their identity. Nothing is relocked.
+- 2026-10-01 — **The task assay, the emit op `!` and the task reward: `tasks`, `task_every`
+  and `task_reward`, off by default.** This is slice 2 of the "Metabolism" substrate, option
+  4 of the 2026-09-24 entry, whose first slice was `energy_payer` above. It adds the task a
+  cell can earn energy by and the reward that pays it. The observables come in the next
+  slice; the `metabolism` sweep, the substrate's label on the site and its pre-registration
+  come in a later one, in their own entry, before any of its runs is seeded.
+
+  **The assay** (DESIGN §1.1, "Tasks and the emit op"). A cell's tape runs alone, on a
+  buffer of its live bytes T (length L) followed by L zeros: a fixed 2L that never grows,
+  both heads wrapping over all of it. The inputs sit on the last two bytes, `B[2L−1] = x`
+  and `B[2L−2] = y`, where head0 reaches them with `<` and `<<` and head1 with `{`, the
+  move every emerged copier already makes. The run executes the run's own `ops`, with the
+  steal byte a no-op and the byte `!` (0x21) as an emit op: it appends the byte under head0
+  to an output list, as `.` writes it to head1. The run stops at the end of the buffer, on
+  an unmatched bracket, after `TASK_STEPS` = 4 096 steps (the budget MUL's minimal program
+  needs) or at the `TASK_MAX_OUTPUTS` = 4th emit. There are `TASK_CASES` = 3 cases, x and y
+  uniform in 0..15, drawn once per assay epoch on a new stream, `STREAM_TASK`, at
+  (seed, epoch), and shared by every cell. Task t is credited when some output slot j < 4
+  holds t's value in all three cases. A tape holding no `!` byte is credited nothing and is
+  never run, and a case that emits nothing ends the assay. The second is exact; the first
+  is a rule, not a shortcut, because a tape can increment a byte to `!` where its pointer
+  will reach it, and the emit a tape is paid for must be one it carries. The verdict is a
+  pure function of (tape, seed, epoch), so each distinct tape is assayed once per assay
+  epoch and cell order cannot matter.
+
+  **The separating rule.** The cases are redrawn until five things hold. Within each task
+  the three expected outputs are pairwise distinct, so no constant can pass. No two tasks
+  expect the same three outputs, so one output slot matches at most one task. The three x
+  values are pairwise distinct, and so are the three y values. No task's outputs sit a
+  constant offset from x, or from y, unless the task is that offset of that input
+  everywhere, as ECHO, INC and DEC are of x. And no input is 0. The rule exists because the
+  input domain is small: in the design study's pilot, without its first two clauses, tapes
+  that only echo x were credited ADD and SUB on draws whose y was 0 in all three cases, and
+  MUL on draws whose y was 1, five false credits in run 1007's world alone; with them there
+  were none outside genuine computation in six emerged worlds of 16 384 cells.
+
+  The last three clauses were added in review, before any run used the assay. The study's
+  two clauses rule out only one ladder task passing for another, not a cheap function
+  outside the ladder passing for a task. Review found `<+++!`, which emits x+3, credited
+  ADD on any draw whose y is 3 in all three cases, about one draw in 2 500; distinct inputs
+  close it, since no input can then be held constant for another task to absorb. A search
+  of every program of up to 5 bytes, and 120 000 sampled programs of 6 and 7, against
+  thousands of draws then found two cheap classes the distinct inputs leave open. The
+  first is an input plus a constant matching a task through a relation between the inputs:
+  `<<+!`, which emits y+1, was credited DOUBLE wherever y = 2x−1, and y±1 credited SUB
+  wherever x−2y was constant. The offset clause closes it: an input plus a constant, the
+  cheapest thing a tape can emit, earns only the task it is. The second is a zero test,
+  BFF's only branch, telling one case apart: `[<]>!` scans left to the first zero byte and
+  emits x where y is 0 and y elsewhere, credited SUB wherever x = 2y in the other two
+  cases. Refusing an input of 0 closes it. With all five clauses the same search found no
+  credit to a slot that does not compute its task on at least half of the 256 inputs. A
+  zero test can still split cases on another value after decrements (`-[`), but that
+  costs a byte per unit tested, and none surfaced up to 7 bytes.
+
+  About 68% of draws are redrawn (5 434 392 of the 16^6 triples separate); the draw is
+  bounded at `TASK_CASE_DRAWS` = 1 024 and then falls back to a fixed separating set,
+  (3, 5), (7, 2), (12, 9), so it is total and deterministic. Tests hold every clause over
+  10^5 draws, and hold `<+++!`, the other x±c and y±c, and the scan `[<]>!` to the credit
+  they compute over 10^5 draws. The rewarded run's pin below did not move with the tighter
+  rule: its solvers echo x, which every separating draw credits alike.
+
+  **The ladder.** ECHO x, INC x+1, DEC x−1, ADD x+y, SUB x−y, NOT 255−x, DOUBLE 2x and MUL
+  x·y, mod 256, worth 1, 2, 2, 4, 4, 8, 8 and 16 units, doubling with difficulty as Avida's
+  merits do; 45 units in all. Arithmetic rather than bitwise, because BFF's only data ops
+  are ±1, copies and a zero test, and bit extraction would need programs of a hundred ops.
+  Each minimal program of the study (`<!>`, `<+!>`, … the 32-op MUL) computes its task on
+  its first output slot for all 256 inputs, through the assay itself, and is credited with
+  its own task alone on separating cases; pure copiers, copiers with a junk emit, constant
+  emitters and sprayers such as `[!+]` are credited nothing.
+
+  **The reward.** At every epoch that is a multiple of `task_every` (≥ 1, default 8), before
+  that epoch's influx, every cell is paid `task_reward × Σ units` over its credited tasks
+  into its stock, capped at `energy_stock_cap`. A lump per assay rather than an income per
+  epoch needs no new world state. The assay draws only from `STREAM_TASK` and writes only
+  stocks, so the stocks are the one place a reward can act, through the economy. A reward
+  needs `tasks = arith` (a reward with nothing to earn it by would be silently inert) and
+  an `energy_influx` (there is no stock to pay into without one); `tasks` is refused on
+  life. The reward does **not** require `energy_payer = initiator`: the study found a
+  reward useless under `pair`, but a `pair` reward arm is a legitimate control for that
+  very finding, and refusing it would make the claim untestable.
+
+  **The emit op in the interpreter.** Emit lives inside `bff::execute`, behind a
+  compile-time switch that every soup interaction leaves off, so the byte is not in the
+  table the soup's loop reads. An emit is an acting step to both skips of 2026-09-25: it
+  marks the buffer changed, so no cycle is skipped across it, and a lap that reaches one is
+  not replayed, so every emit the plain loop makes is made. Copy loops that hold no emit
+  are still skipped inside the assay. The equivalence tests hold an emitting run, skipping
+  or not, to a stepper written by the book on random assay buffers dense in emits and
+  loops, and hold it to the soup's own interpreter on pairs that carry no `!`.
+
+  **What it costs.** On restored emerged worlds (128×128) one full assay epoch took 1.5 to
+  22 ms memoised with the skips, 3.6 to 42 ms without the memo, 9.5 to 108 ms with the memo
+  and every step run, and 43 to 272 ms with neither, against a soup epoch of 11 to 15 ms
+  under the metabolism economy. At an assay every 8 epochs the control arm pays nothing,
+  and a rewarded arm pays 0.2 to 2.8 ms an epoch for the assay: about 1% of a soup epoch
+  in the world with the fewest emitting tapes and about 20% in the one with the most,
+  before the reward's own effect on the dynamics.
+
+  **The invariant.** Nothing moves at the defaults, `tasks = off` and `task_reward = 0`,
+  and every pinned hash and observable digest stays as it was. `!` is never an instruction
+  in the soup. A reward of 0 runs no assay at all, so a run with `tasks = arith` and
+  `task_reward = 0` is byte for byte, stock for stock, the run with `tasks = off`, and the
+  control arm can carry the next slice's readings. The rewarded run has its own pin: 32×32,
+  seed 42, `initiator` at influx 1 024 and cap 65 536, `tasks = arith` every 8 epochs at a
+  reward of 2 048, a quarter of the cells given `<!>` at the front of their tape, 50 epochs,
+  `0xace9_3173_c4dd_563f`. No snapshot version is needed, since the reward lives in the
+  existing stock. The parameters are dynamics, not structure: a descendant may set them,
+  and `Lab::CanonicalParams::STRUCTURAL_KEYS` does not name them. A run stored before they
+  existed carries none of the keys, and `Lab::CanonicalParams` fills in the engine defaults,
+  `off`, 8 and 0, so stored runs keep their identity. `runner schema` exports the assay's
+  constants and the ladder under `tasks`, beside `self_replication`.
+
+  **Descent validates.** `World::descend` never called `Params::validate`, so a descendant
+  could carry a combination validation refuses (a reward with no influx, or the initiator
+  with no stock, which #273 made inert rather than a panic). A descendant is a new run, so
+  it is now refused such params at descent, and the runner fails it cleanly as it fails
+  any descent error. `World::from_snapshot` still does not validate: it resumes a run
+  already under way, which must keep resuming however validation has tightened since.
+  Nothing is relocked.

@@ -25,7 +25,7 @@
 //! read by the one set of payload offsets.
 
 use crate::metrics::{self, PendingSample, RelativeState, TransitionState};
-use crate::params::{Params, Substrate};
+use crate::params::{ParamError, Params, Substrate};
 use flate2::read::ZlibDecoder;
 use std::fmt;
 use std::io::Read;
@@ -76,6 +76,9 @@ pub enum SnapshotError {
     InsideBaselineWindow {
         epoch: u64,
     },
+    /// A descendant's params that validation refuses. A new run is refused them at
+    /// `World::new`; a descendant is refused them here, at `World::descend`.
+    InvalidParams(ParamError),
 }
 
 impl fmt::Display for SnapshotError {
@@ -91,6 +94,7 @@ impl fmt::Display for SnapshotError {
                 "a world at epoch {epoch} is inside the transition baseline window and \
                  cannot be descended from"
             ),
+            Self::InvalidParams(e) => write!(f, "a descendant's params are refused: {e}"),
         }
     }
 }

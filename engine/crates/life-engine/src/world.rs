@@ -11,6 +11,7 @@ use crate::render;
 use crate::replicator;
 use crate::rng::{self, Rng};
 use crate::snapshot::{self, SnapshotError};
+use crate::task;
 
 const STREAM_INIT: u64 = 0;
 const STREAM_STEP: u64 = 1;
@@ -35,6 +36,10 @@ const STREAM_SELF_REP_DOMINANT: u64 = STREAM_SELF_REP | 1;
 /// every id above, so the latency moves no draw the run, the census or the detector makes
 /// (`docs/design_record.md`, 2026-09-25).
 const STREAM_COPY_LATENCY: u64 = 0x4c41_5445_0000_0000;
+/// The stream the task assay draws its cases on, once per assay epoch — its own, far from
+/// every id above, so paying for tasks moves no draw the run or any observable makes
+/// (`docs/design_record.md`, 2026-10-01, the task assay).
+const STREAM_TASK: u64 = 0x5441_534b_0000_0000;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -290,7 +295,12 @@ impl World {
     ///
     /// Under the parent's own params and seed the descendant is the parent continued,
     /// byte for byte: the RNG is keyed by seed, stream and epoch and holds no state.
+    ///
+    /// A descendant is a new run, so its params are validated as `World::new` validates
+    /// them. `from_snapshot` does not validate: it resumes a run already under way, which
+    /// must keep resuming however validation has tightened since it started.
     pub fn descend(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
+        params.validate().map_err(SnapshotError::InvalidParams)?;
         let restored = snapshot::decode_for_descent(params, bytes)?;
         let epoch = restored.header.epoch;
         if epoch <= metrics::TRANSITION_BASELINE_EPOCHS {
@@ -350,6 +360,9 @@ impl World {
         let hosted = self.params.interaction == Interaction::Host;
         let theft = Theft::of(&self.params);
         let counting = self.counts_copies();
+        if self.assays_tasks() {
+            self.pay_tasks();
+        }
         let mut energy = Energy::recharged(&self.params, std::mem::take(&mut self.stock));
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
@@ -433,6 +446,30 @@ impl World {
             self.copy_rate = share(copies);
             self.steal_rate = share(thefts);
             self.reverse_copy_rate = share(reversed_copies);
+        }
+    }
+
+    /// Whether this epoch opens with a task assay: a run that pays for tasks, at a multiple
+    /// of its `task_every`. A run with no reward never assays, which is what keeps it the
+    /// same run, byte for byte, as one with tasks off.
+    fn assays_tasks(&self) -> bool {
+        self.params.rewards_tasks() && self.epoch.is_multiple_of(u64::from(self.params.task_every))
+    }
+
+    /// Pays every cell `task_reward` per unit of the tasks its tape is credited with, into
+    /// its stock and never past the cap, before the epoch's influx. The cases are drawn
+    /// once, on `STREAM_TASK` at this epoch, and shared by every cell, so a verdict is a
+    /// function of the tape alone and each distinct tape is assayed once. It reads the
+    /// tapes and writes the stocks, and nothing else.
+    fn pay_tasks(&mut self) {
+        let mut rng = rng::seeded(self.seed, STREAM_TASK, self.epoch);
+        let mut memo = task::Memo::new(task::Cases::draw(&mut rng), self.params.op_set());
+        let units: Vec<u32> = (0..self.params.cell_count())
+            .map(|cell| memo.credit(self.tape(cell)).units())
+            .collect();
+        let (reward, cap) = (self.params.task_reward, self.params.energy_stock_cap);
+        for (held, units) in self.stock.iter_mut().zip(units) {
+            *held = held.saturating_add(reward.saturating_mul(units)).min(cap);
         }
     }
 
@@ -1135,7 +1172,7 @@ fn draw_cell_byte(rng: &mut Rng, substrate: Substrate) -> u8 {
 mod tests {
     use super::*;
     use crate::metrics::TransitionState;
-    use crate::params::{Interaction, Structure};
+    use crate::params::{Interaction, Structure, Tasks};
     use std::collections::BTreeSet;
 
     /// Pinned so a change in the rules, the RNG or the visiting order cannot pass unseen:
@@ -4972,20 +5009,240 @@ mod tests {
         );
     }
 
-    /// `World::descend` does not validate, so a child may name the initiator with no influx
-    /// behind it. Like the steal op, the rule is then inert rather than a read past an
-    /// empty stock: the child runs the plain soup.
+    /// `World::from_snapshot` does not validate, so a resumed run may name the initiator
+    /// with no influx behind it. Like the steal op, the rule is then inert rather than a
+    /// read past an empty stock: the run is the plain soup.
     #[test]
-    fn an_initiator_child_with_no_stock_runs_the_plain_soup() {
+    fn an_initiator_run_with_no_stock_resumes_as_the_plain_soup() {
         let plain = unstocked(&descent_params());
         let blob = stepped(&plain, 11, DESCENT_EPOCH).snapshot();
-        let mut child = World::descend(&initiator(plain.clone()), 11, &blob).unwrap();
-        let mut twin = World::descend(&plain, 11, &blob).unwrap();
+        let mut child = World::from_snapshot(&initiator(plain.clone()), 11, &blob).unwrap();
+        let mut twin = World::from_snapshot(&plain, 11, &blob).unwrap();
 
         for _ in 0..5 {
             child.step();
             twin.step();
         }
         assert_eq!(child.world_hash(), twin.world_hash());
+    }
+
+    /// The economy of the metabolism design at 32×32: the initiator pays `max_steps`, the
+    /// influx is an eighth of it, the cap eight prices, and the arithmetic ladder is
+    /// assayed every 8 epochs at a quarter of an influx per epoch per unit.
+    fn rewarded_params() -> Params {
+        Params {
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 1024,
+            energy_stock_cap: 65_536,
+            tasks: Tasks::Arith,
+            task_every: 8,
+            task_reward: 2048,
+            ..soup(32, 32)
+        }
+    }
+
+    fn unrewarded(params: &Params) -> Params {
+        Params {
+            task_reward: 0,
+            ..params.clone()
+        }
+    }
+
+    fn without_tasks(params: &Params) -> Params {
+        Params {
+            tasks: Tasks::Off,
+            task_reward: 0,
+            ..params.clone()
+        }
+    }
+
+    /// A random soup with its top quarter given an ECHO solver, `<!>` in front of the
+    /// cell's own bytes, so an assay has tapes to pay.
+    fn with_solvers(params: &Params, seed: u64) -> World {
+        let mut world = World::new(params, seed).unwrap();
+        for y in 0..params.height / 4 {
+            for x in 0..params.width {
+                let mut tape = world.cell(x, y).to_vec();
+                tape[..3].copy_from_slice(b"<!>");
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world
+    }
+
+    fn stepped_world(mut world: World, epochs: u64) -> World {
+        for _ in 0..epochs {
+            world.step();
+        }
+        world
+    }
+
+    /// The rewarded run's own pin: `rewarded_params` with a quarter of the cells solving
+    /// ECHO, seed 42, after 50 epochs.
+    const PINNED_TASK_REWARD_HASH: u64 = 0xace9_3173_c4dd_563f;
+
+    #[test]
+    fn the_task_reward_is_pinned() {
+        let params = rewarded_params();
+        let rewarded = stepped_world(with_solvers(&params, 42), 50);
+        assert_eq!(rewarded.world_hash(), PINNED_TASK_REWARD_HASH);
+        let twin = stepped_world(with_solvers(&unrewarded(&params), 42), 50);
+        assert_ne!(rewarded.world_hash(), twin.world_hash());
+    }
+
+    /// A reward of 0 runs no assay, so the control arm is the run with tasks off, byte for
+    /// byte and stock for stock, under either payer, assayed every epoch or every eighth.
+    #[test]
+    fn a_task_reward_of_zero_is_the_run_with_tasks_off() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            for task_every in [1, 8] {
+                let params = Params {
+                    energy_payer: payer,
+                    task_every,
+                    ..unrewarded(&rewarded_params())
+                };
+                let control = stepped_world(with_solvers(&params, 42), 30);
+                let off = stepped_world(with_solvers(&without_tasks(&params), 42), 30);
+                assert_eq!(control.world_hash(), off.world_hash(), "{payer:?}");
+                assert_eq!(control.stock, off.stock);
+            }
+        }
+    }
+
+    #[test]
+    fn determinism_holds_under_a_task_reward() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            for seed in [1, 2] {
+                assert_deterministic(
+                    &Params {
+                        max_steps: 64,
+                        energy_payer: payer,
+                        energy_influx: 8,
+                        energy_stock_cap: 256,
+                        tasks: Tasks::Arith,
+                        task_every: 3,
+                        task_reward: 4,
+                        ..soup(16, 16)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// Four tapes far enough apart that no two are ever paired, in a still soup of zero
+    /// tapes under `host`, where a zero initiator runs no code and a planted one writes
+    /// only into its zero partner: an ECHO solver, a solver of ECHO and INC on two slots,
+    /// a copier that never emits and a sprayer. The influx is the price, so every cell
+    /// initiates every epoch and pays it back, and a stock holds exactly what the assays
+    /// paid it.
+    fn paid_world(task_reward: u32) -> World {
+        let params = Params {
+            tape_len: 8,
+            mutation_rate: 0.0,
+            init: Init::Zero,
+            interaction: Interaction::Host,
+            max_steps: 64,
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 64,
+            energy_stock_cap: 400,
+            tasks: Tasks::Arith,
+            task_every: 8,
+            task_reward,
+            ..soup(8, 8)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        for (x, y, program) in [
+            (1, 1, &b"<!>"[..]),
+            (5, 1, b"<!+!>"),
+            (1, 5, b"{[.<>>{]"),
+            (5, 5, b"[!+]"),
+        ] {
+            let mut tape = program.to_vec();
+            tape.resize(8, 0);
+            world.set_cell(x, y, &tape);
+        }
+        world.stock.fill(0);
+        world
+    }
+
+    fn stock_at(world: &World, x: u32, y: u32) -> u32 {
+        world.stock[world.index(x, y)]
+    }
+
+    /// Epoch 0 pays each solver its units, ECHO 1 and ECHO with INC 3, at 100 a unit, and
+    /// nothing else; epochs 1 to 7 pay nothing; epoch 8 pays again, and the solver of two
+    /// tasks reaches the cap of 400, which the influx cannot then lift it past.
+    #[test]
+    fn a_solver_is_paid_its_units_at_each_assay_and_never_past_the_cap() {
+        let mut world = paid_world(100);
+        let read = |world: &mut World, epochs: u64| {
+            for _ in 0..epochs {
+                world.step();
+            }
+            [(1, 1), (5, 1), (1, 5), (5, 5)].map(|(x, y)| stock_at(world, x, y))
+        };
+        assert_eq!(read(&mut world, 1), [100, 300, 0, 0]);
+        assert_eq!(read(&mut world, 7), [100, 300, 0, 0]);
+        assert_eq!(read(&mut world, 1), [200, 400 - 64, 0, 0]);
+        assert!(world.stock.iter().all(|held| *held <= 400));
+        let others: u32 = world.stock.iter().sum::<u32>() - 200 - 336;
+        assert_eq!(others, 0, "a cell that solves nothing was paid");
+
+        let mut twin = paid_world(0);
+        assert_eq!(read(&mut twin, 9), [0, 0, 0, 0]);
+    }
+
+    /// The assay draws on its own stream and touches only the stocks: a rewarded world
+    /// whose stocks never gate an interaction holds the bytes its unrewarded twin holds.
+    #[test]
+    fn paying_for_tasks_moves_no_byte_by_itself() {
+        let paid = stepped_world(paid_world(100), 20);
+        let unpaid = stepped_world(paid_world(0), 20);
+        assert_eq!(paid.cells, unpaid.cells);
+        assert_ne!(paid.stock, unpaid.stock);
+    }
+
+    /// A descendant is a new run and is refused what a new run is refused: a reward with
+    /// no stock to pay into, the initiator with no stock to pay from.
+    #[test]
+    fn a_descendant_is_refused_params_validation_refuses() {
+        let plain = unstocked(&descent_params());
+        let blob = stepped(&plain, 11, DESCENT_EPOCH).snapshot();
+        let unpaid = Params {
+            tasks: Tasks::Arith,
+            task_reward: 64,
+            ..plain.clone()
+        };
+        for refused in [unpaid, initiator(plain.clone())] {
+            let error = World::descend(&refused, 11, &blob).unwrap_err();
+            assert!(
+                matches!(error, SnapshotError::InvalidParams(_)),
+                "{refused:?} descended: {error}"
+            );
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "a descendant's params are refused: {}",
+                    refused.validate().unwrap_err()
+                )
+            );
+        }
+        assert!(World::descend(&plain, 11, &blob).is_ok());
+    }
+
+    /// Resuming is not descending: a run already under way resumes whatever validation
+    /// would now say of its params.
+    #[test]
+    fn a_resumed_run_is_not_held_to_validation() {
+        let plain = unstocked(&descent_params());
+        let blob = stepped(&plain, 11, DESCENT_EPOCH).snapshot();
+        let refused = Params {
+            tasks: Tasks::Arith,
+            task_reward: 64,
+            ..plain
+        };
+        assert!(refused.validate().is_err());
+        assert!(World::from_snapshot(&refused, 11, &blob).is_ok());
     }
 }
