@@ -62,6 +62,11 @@ module Runs
       "logic_share_equ" => "Share of cells solving EQU"
     }.freeze
 
+    # The readings of one task ladder are null at every sample of a run not assayed on it
+    # (DESIGN §1.2), so a ladder's charts are drawn only for a run that has a reading of it,
+    # rather than as a block of empty charts on every other run.
+    LADDERS = [METRICS.keys.grep(/\A(dominant_)?task_/), METRICS.keys.grep(/\A(dominant_)?logic_/)].freeze
+
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
     TURNOVER_TITLE = "Dominant tape turnover (1 = a different tape than the sample before)"
     # The y title is drawn rotated inside a gutter the height of the plot (240 user units,
@@ -87,7 +92,7 @@ module Runs
     attr_reader :run
 
     def charts
-      @charts ||= METRICS.map { |metric, title| chart_of(series_of(metric), title) } +
+      @charts ||= drawn_metrics.map { |metric| chart_of(series_of(metric), METRICS.fetch(metric)) } +
                   [chart_of(compressibility_points, COMPRESSIBILITY_TITLE, axis: COMPRESSIBILITY_AXIS),
                    chart_of(turnover_points, TURNOVER_TITLE, axis: TURNOVER_AXIS)]
     end
@@ -241,7 +246,14 @@ module Runs
       tasks.empty? ? "no task" : tasks.map(&:upcase).to_sentence
     end
 
-    def series_of(metric) = MetricSeriesService.call(run: run, metric: metric, samples: dominant_readings)
+    def drawn_metrics
+      unread = LADDERS.reject { |ladder| ladder.any? { |metric| series_of(metric).any? } }
+      METRICS.keys - unread.flatten
+    end
+
+    def series_of(metric)
+      (@series ||= {})[metric] ||= MetricSeriesService.call(run: run, metric: metric, samples: dominant_readings)
+    end
 
     def chart_of(points, title, axis: title)
       Charts::LineChart.new(points: points, title: title, x_label: "Epoch", y_label: axis,

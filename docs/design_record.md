@@ -3244,8 +3244,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   `STREAM_TASK | 3` at `(seed, epoch)`; each distinct tape in the sample is assayed once
   (`logic::Memo`). The cases are drawn fresh at every sample, keyed by `(seed, epoch)`,
   as slice 1's deep-rung check asks, so a partial solver's chance credit does not repeat
-  from one sample to the next. A rung is a capability at a share of at least 1/10, compared in integers
-  (26 of 256), and `logic_capability_deep` counts XOR and EQU only
+  from one sample to the next. A rung is a capability at a share of at least 1/10,
+  compared in integers (26 of 256), and `logic_capability_deep` counts XOR and EQU only
   (`logic::FIRST_DEEP_TASK..`), the count H-deep reads. `dominant_logic_tasks` is the
   census's dominant tape's credit as a `u32` bitmask in `logic::LOGIC_TASKS` order, on
   cases drawn on `STREAM_TASK | 4`, 0 rather than null where that tape solves nothing.
@@ -3256,7 +3256,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   arithmetic readings stay null under `logic`, as slice 1 left them. Live-only: neither
   `oriented_census/1` nor `/2` reads them. Rails stores them in `Sample::OBSERVABLES`,
   `dominant_logic_tasks` as a flag the run page names from the logic ladder `runner schema`
-  exports; a missing key draws no point and is never read as 0.
+  exports; a missing key draws no point and is never read as 0. The run page draws a
+  ladder's charts, arithmetic or logic, only for a run with a reading of that ladder, so a
+  run on neither carries no block of empty charts.
 
   **The invariant, pinned.** Nothing else draws on the two streams, and the readings write
   nothing. A test steps `tasks = logic, task_reward = 0` beside `tasks = off` under both
