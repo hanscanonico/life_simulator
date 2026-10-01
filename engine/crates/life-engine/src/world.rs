@@ -828,7 +828,8 @@ thread_local! {
 struct Energy {
     allowance: Vec<u32>,
     stock: Vec<u32>,
-    /// The price one interaction costs its initiator, `None` under the pair rule.
+    /// The price one interaction costs its initiator; `None` under the pair rule, and with
+    /// no stock to pay it from, where the initiator rule is inert as the steal op is.
     price: Option<u32>,
 }
 
@@ -847,7 +848,8 @@ impl Energy {
                 budget => vec![budget; params.cell_count()],
             },
             stock,
-            price: (params.energy_payer == EnergyPayer::Initiator).then_some(params.max_steps),
+            price: (params.stocked() && params.energy_payer == EnergyPayer::Initiator)
+                .then_some(params.max_steps),
         }
     }
 
@@ -4785,13 +4787,14 @@ mod tests {
 
     #[test]
     fn determinism_holds_under_the_initiator_rule() {
-        for (energy_influx, energy_stock_cap) in [(8, 64), (32, 256)] {
+        for (energy_influx, energy_stock_cap, steal_amount) in [(8, 64, 0), (32, 256, 16)] {
             for seed in [1, 2, 3] {
                 assert_deterministic(
                     &initiator(Params {
                         max_steps: 64,
                         energy_influx,
                         energy_stock_cap,
+                        steal_amount,
                         ..soup(16, 16)
                     }),
                     seed,
@@ -4967,5 +4970,22 @@ mod tests {
             child.stock,
             vec![child_params.energy_stock_cap; child_params.cell_count()]
         );
+    }
+
+    /// `World::descend` does not validate, so a child may name the initiator with no influx
+    /// behind it. Like the steal op, the rule is then inert rather than a read past an
+    /// empty stock: the child runs the plain soup.
+    #[test]
+    fn an_initiator_child_with_no_stock_runs_the_plain_soup() {
+        let plain = unstocked(&descent_params());
+        let blob = stepped(&plain, 11, DESCENT_EPOCH).snapshot();
+        let mut child = World::descend(&initiator(plain.clone()), 11, &blob).unwrap();
+        let mut twin = World::descend(&plain, 11, &blob).unwrap();
+
+        for _ in 0..5 {
+            child.step();
+            twin.step();
+        }
+        assert_eq!(child.world_hash(), twin.world_hash());
     }
 }
