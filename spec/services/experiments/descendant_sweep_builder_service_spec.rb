@@ -192,6 +192,46 @@ RSpec.describe Experiments::DescendantSweepBuilderService do
     end
   end
 
+  describe "the metabolism sweep" do
+    let(:definition) { Lab::SWEEPS.fetch("metabolism") }
+    let(:experiment) do
+      create(:experiment, slug: "metabolism", **definition.slice(:parents, :param_grid, :seeds, :epochs, :priority))
+    end
+    # Sweep 9's eighteen qualifying economy-off controls, eleven at cap 128 and seven at 256,
+    # beside a control that reads below half replicators.
+    let!(:parents) do
+      Array.new(11) { parent(share: 0.9) } +
+        Array.new(7) { parent(share: 0.9, params: control_params.merge("max_tape_len" => 256)) }
+    end
+
+    before { parent(share: 0.3) }
+
+    it "creates 108 children: eighteen parents, two arms, three seeds" do
+      expect(build_sweep).to have_attributes(parents: parents, created: 108)
+      expect(experiment.runs.pluck(:parent_run_id, :seed).tally)
+        .to eq(parents.map(&:id).product([2001, 2002, 2003]).index_with(2))
+    end
+
+    it "merges the rewarded and the unpaid bundle over each parent's params" do
+      build_sweep
+
+      expect(experiment.runs.where(parent_run: parents.last, seed: 2002).order(:id).pluck(:params))
+        .to eq(definition[:param_grid].fetch("treatment").map { |bundle| parents.last.params.merge(bundle) })
+    end
+
+    it "runs every child forty thousand epochs past its parent at priority 40" do
+      build_sweep
+
+      expect(experiment.runs.distinct.pluck(:parent_epoch, :epochs, :priority)).to eq([[1_000, 41_000, 40]])
+    end
+
+    it "adds nothing once built" do
+      build_sweep
+
+      expect { described_class.call(experiment.reload) }.not_to change(Run, :count)
+    end
+  end
+
   context "with no source experiment seeded" do
     it "builds nothing" do
       expect(build_sweep).to have_attributes(parents: [], created: 0, skipped: {})

@@ -148,9 +148,11 @@ module Experiments
 
     # The from-emerged sweep's pre-registered reading, on a sweep with a parent rule only.
     # Whether it is final also turns on the parent pool, whose runs belong to another
-    # experiment and so are not in this key: the settled service keys it on that pool.
+    # experiment and so are not in this key: the settled service keys it on that pool. The
+    # metabolism sweep has a parent rule but its own reading (`lab:metabolism_report`): this
+    # one would pair its arms against a continuation it does not have.
     def descendant_reading
-      return nil if experiment.parents.blank?
+      return nil if experiment.parents.blank? || MetabolismReadingService.applies_to?(experiment)
 
       @descendant_reading ||= cached("descendant_reading") { FromEmergedReadingService.call(experiment: experiment) }
                               .with(final: DescendantSweepSettledService.call(experiment))

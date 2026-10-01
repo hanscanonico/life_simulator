@@ -23,6 +23,12 @@ module Lab
         @transition ||= document.fetch("transition").freeze
       end
 
+      # The task assay's constants and its ladder, each task's name and units in the
+      # engine's order.
+      def tasks
+        @tasks ||= document.fetch("tasks").freeze
+      end
+
       # The task ladder's names in the engine's order, which is the bit order of the
       # `dominant_tasks` bitmask.
       def task_names

@@ -2844,3 +2844,206 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
 
   **Live-only.** They are not added to `oriented_census/1` or `/2`, since an instrument
   version never changes once readings exist under it. Nothing is relocked.
+- 2026-10-01 — **Metabolism: a second, labelled substrate that imports an objective. The
+  `metabolism` sweep, pre-registered.** This is §1.3 item 15 and it opens DESIGN §1.4. The
+  experiment is `metabolism` (sweep key `metabolism`), and its numbers live in
+  `Lab::MetabolismReading`. It is the fourth slice of the substrate whose economy and assay
+  the energy-payer and task-assay entries added; the observables it reads (`task_share_echo` …
+  `task_share_mul`, `task_capability`, `task_capability_loop`, `dominant_tasks`,
+  `dominant_task_count`) come in their own slice, and **the sweep is seeded only once the
+  runner that records them is deployed**: a child sampled by a runner without them is
+  unmeasured on every task reading, by construction.
+
+  **The choice.** It is the orchestrator's: option 4 of the 2026-09-24 entry ("Where the
+  programme stands after sweeps 9 and 10"), a second, labelled substrate with an exogenous
+  task, taken after the user's instruction "continue, don't stop until life exists". It
+  tests the record's 2026-09-16 explanation of the plateau, a drift–selection balance in
+  which "a byte off the copy path costs nothing and buys nothing". Here a byte off the copy
+  path can buy something: the energy to copy. If complexity rises when computation is paid,
+  and does not in the unpaid twin under the same economy, the plateau was "nothing pays",
+  not "BFF cannot express more". If nothing rises, the instruction set or the mutation
+  operator binds first.
+
+  **The label.** In the engine the substrate stays `soup`: a descendant may not change
+  `substrate`, which is structural, and the world's shape is Soup's. The label lives in the
+  record, the sweep and the registry, and it is locked here:
+  - every run with `task_reward > 0` is a **Metabolism** run (`Lab::MetabolismReading.
+    metabolism_run?`);
+  - its runs are **never pooled** with fitness-free arms. The no-reward arm below is
+    fitness-free — at a reward of 0 nothing pays a task and its world runs byte for byte as
+    with `tasks` off; only its samples assay the soup, on streams of their own, to measure
+    it — and is not a Metabolism run; it enters this reading only as the paired twin, which
+    is a comparison, not a pool;
+  - **rung 4 on Soup stays "not shown"** whatever this sweep reads. A shown result here is
+    a result about a substrate that imports an objective;
+  - its findings carry an **"imports an objective"** badge. The badge is built in the
+    finding slice, once a reading is final; this entry only locks that it is carried.
+
+  **What was seen before writing**, all of it the design study's pilot, on a throwaway copy
+  of the engine with the assay and the payer rule added — not the merged engine, and not
+  findings:
+  - *Chance credit.* The assay run once on every cell of six stored worlds (16 384 cells
+    each) found genuine ECHO, INC and DEC solvers, unrewarded, in up to 8% of cells, and no
+    credit above DEC; without the separating rule it found five false credits in run 1007's
+    world.
+  - *Planted solvers.* Under `pair` every planted solver died out within 500 epochs (17 of
+    17 runs) and its sham outlasted it in all 5 matched runs; under `initiator` every
+    planted solver held 69–97% of the world 1 500 epochs after planting (11 of 11).
+  - *De novo.* Descendants under `initiator` at influx 1 024, the assay every 8 epochs, with
+    the reward on or off: the one-substitution rungs climbed in **9 of 9** rewarded pilot
+    worlds, ECHO first, then INC, DEC or both; the four read to 20 000 epochs ended solving
+    all three, and every unrewarded twin ended at zero tasks above 10%. The reward world
+    ended above its twin in 8 of 8 pilot pairs. **No loop rung** (ADD, SUB, NOT, DOUBLE,
+    MUL) appeared in any pilot world: at most 3 cells, ever. In the four worlds with
+    crude early and late medians, the reward children's dominant tape rose by 28–47% in 3
+    and both arms fell in the fourth (2862).
+  - The pilot's worlds are **four of this sweep's parents**: the mini-sweep ran 1007, 2577,
+    1029 and 2862 at seed 1, and the first runs 1007 and 2577 again, with 3151, a
+    from-emerged child. Its seeds were not 2001–2003 and its reward scales were ⅛ and
+    ½ of an influx per unit, not this sweep's ¼, so no child of this sweep has been run;
+    but the reading is **not held out** from those four parents. Its per-parent agreement
+    shows how much of any result they carry, and every test is re-read without them (the
+    sensitivity reading below).
+
+  **The sweep.** A descendant sweep under the from-emerged sweep's own parent rule, shared
+  as data (`Lab::FROM_EMERGED_PARENTS`, read by `Experiments::DescendantParentsService`),
+  not a list of ids: sweep 9's economy-off controls at caps 128 and 256 whose terminal
+  `oriented_census/1` reading holds `replicator_share ≥ 0.5`. Sweep 9 is terminal and every
+  terminal world has been read, so the rule qualifies the same **18 parents** the
+  from-emerged sweep read: 944, 950, 967, 991, 1007, 2568, 2577, 2590, 2654, 2676 and 2700
+  at cap 128, and 1029, 1087, 1089, 1103, 2771, 2802 and 2862 at cap 256 (a SELECT on the
+  lab database, 2026-10-01). Each child starts from its parent's last stored world, epoch
+  20 000. Two bundles, each merged over the parent's params:
+  - **reward**: `{energy_payer: initiator, energy_influx: 1024, energy_stock_cap: 65536,
+    steal_amount: 0, tasks: arith, task_every: 8, task_reward: 2048}`;
+  - **no reward**: the same with `task_reward: 0`.
+
+  The influx is `max_steps`/8, the cap 8 prices, theft off, and a reward of 2 048 makes one
+  unit a quarter of an influx per epoch (`influx · task_every / 4`, design study §3.2). Both
+  bundles pass `Params::validate` merged over a parent's params: `initiator` has an influx,
+  a cap of at least `max_steps` and no `energy_per_epoch`; the reward has `tasks` on and an
+  influx; and `tasks = arith` at a reward of 0 is accepted, since the task-assay entry
+  refuses a reward with tasks off, not tasks without a reward. Descent now validates
+  (task-assay entry), so a bundle that failed would fail its children cleanly at descent.
+  The parents carry `energy_stock_cap` 32 768 and `steal_loss` 0.5; the bundle overrides
+  the cap, and the loss is inert with theft off. Seeds **2001, 2002 and 2003**, none a
+  parent's own (1–270) nor a from-emerged child's (1001–1003); **40 000 epochs** past the
+  parent, so a child runs 20 000 → 60 000; priority **40**, after the from-emerged
+  children (50) and ahead of the reach sweeps (30), so it runs ahead of whatever of
+  `reach-cap128` is still pending. 18 × 2 × 3 = **108 children**. Stocks are minted full at
+  descent, as for every priced descendant, so the first few epochs burst; both arms share
+  it and the readings skip it.
+
+  **The assay the children run** is the task-assay entry's, under its separating rule as
+  that entry states it when this sweep is seeded: the study's two clauses (each task's
+  three expected outputs pairwise distinct, no two tasks expecting the same three) and the
+  clauses #274's review added before any run used the assay, which keep a cheap function
+  outside the ladder from passing for a task — distinct x and distinct y across the three
+  cases, so `<+++!` (x + 3) is not credited ADD on a draw whose y is 3 throughout, no task
+  a constant offset from an input unless it is that offset, and no input of 0. That entry,
+  not this one, is the rule's record. The pilot's chance-credit counts above were taken
+  under the study's two clauses alone.
+
+  **The readings, per child**, over its own samples at epochs above `parent_epoch` +
+  **1 000**, #263's settling window (`SETTLING_WINDOW`):
+  - **Deciles** are cut as clarification 1 of the from-emerged reading cuts them, over
+    these settled samples: the first and last `ceil(n / 10)` of all `n` settled samples in
+    epoch order, unfiltered, and inside a decile the samples that carry the key as a number.
+    A median is `Findings::Median`'s lower middle. Every decile of this reading is cut from
+    the settled samples, extinction's and the complexity rule's included: #263 cut
+    extinction's last decile from all own samples, which for a 40 000-epoch child differs
+    by the last decile's first ten samples, and the from-emerged complexity rule cut both
+    deciles from all own samples, which here would read the descent burst as the "first"
+    replicator.
+  - **Extinct** where the last-decile median `replicator_share` is below **0.1**; a
+    **settled relapse** where the share sits below **0.1** for **3** consecutive settled
+    samples (#263, `Lab::FromEmergedHeldout::Child`). A child that never sampled a share is
+    read by neither rule and is measured on nothing.
+  - **Capability**: the last-decile median of `task_capability`, and of
+    `task_capability_loop`. A child with fewer than **10** numbers in its last decile
+    (`MIN_DECILE_SAMPLES`) is unmeasured on that key. Both are integers and compared as
+    such.
+  - **Complexity**: the from-emerged rule, unchanged but for the deciles above —
+    `dominant_instruction_count` over the samples whose `dominant_self_replicates` is true,
+    **rises** at a last-decile median at least **1.2 ×** the first, unmeasured with fewer
+    than 10 such samples in either decile (`Lab::DescendantReading::Child`).
+
+  **Pairs and the tests.** A pair is the reward child and the no-reward child of the same
+  (parent, seed). A pair where either child is extinct, or unread, is excluded from every
+  test. Each test is a **one-sided sign test** over the discordant pairs
+  (`Stats::SignTest`): **shown** at p < **0.05**; **refuted** where the pairs favouring the
+  no-reward twin are at least as many as those favouring the reward, which includes a test
+  with measured pairs that all tie; **not shown** otherwise; **no measured pairs** where no
+  pair is measured on both sides. Every test carries the from-emerged reading's per-parent
+  agreement (clarification 4: ties counted among measured pairs, unmeasured pairs in their
+  own column) and its leave-one-or-two-parents-out rule (clarification 5: read on a shown
+  test only; every minimal set of one or two parents whose pairs, left out, bring p to 0.05
+  or above, or leave no discordant pair, is listed as carrying it). There is no "relapses
+  more" clause: as in #263, the settled-relapse and extinction counts per arm are reported
+  beside the tests, descriptively, and that is where "the reward kills replicators" shows.
+  - **H-capability.** A pair favours the reward when the reward child's last-decile median
+    `task_capability` exceeds its twin's, the twin when the reverse holds; equal medians
+    tie. Relapsed children stay in, as #263's H3-latency kept them. The pilot predicts it
+    shown, carried by the one-substitution rungs; ECHO is nearly free (it drifted to 14% in
+    one pilot control), so the rung-4 claim does not ride on it.
+  - **H-ladder**, the rung-4 question: the same test on `task_capability_loop`, the count of
+    ADD, SUB, NOT, DOUBLE and MUL at a share of at least a tenth.
+    - *If refuted*: when computation pays, BFF copiers take the one-substitution rungs and
+      stop. The drift–selection plateau then holds for every feature that needs several
+      coordinated mutations, and the suspects become option 5 of the 2026-09-24 entry, the
+      instruction set, and the substitution-only mutation operator. Pairs that all tie,
+      no loop rung at a tenth in either arm, read the same way, as strongly as the power
+      below allows.
+    - *If shown*: paid computation climbs past one-substitution rungs.
+    - *If not shown*: neither; the rate of loop climbing is below what 54 pairs resolve.
+    - *Power*, from the study: the pilot saw 0 loop rungs in 9 rewarded worlds over 10 000–
+      20 000 epochs, a two-sided 95% upper bound of 0.34 on the rate per child. With the
+      twins at zero, the test needs **5** discordant pairs (p = 1/32); over 54 measured
+      pairs its power is **0.64** at a rate of 0.1 per child and **0.92** at 0.15.
+  - **H-complexity**: the from-emerged complexity rule, read only on pairs where both
+    children are measured and **neither relapsed** past the window (nor is extinct). A pair
+    favours the reward when its child rises and its twin does not, the twin in the reverse
+    case. Mirroring and stacked one-substitution rungs add 6–14 ops, so this can be shown
+    without H-ladder; it then reads **"paid complexity rises"**, not "open-ended".
+
+  **The piloted parents, a sensitivity reading.** Each of the three tests is also read, by
+  the same rules, over the pairs of the 14 parents no pilot ran — all but 1007, 2577, 1029
+  and 2862 (`PILOT_PARENTS`) — and printed beside the tests. It decides no outcome. A
+  finding reports it beside each test, and a test shown over the 18 parents but not over
+  the 14 is reported as resting in part on the piloted parents.
+
+  **Descriptive only**, printed per child and per arm, tested nowhere:
+  - the **first own epoch** at which each task's share reaches **0.1** (`task_share_<task>
+    ≥ 0.1`, which over 256 draws is `task_capability`'s line of 26 cells), read over every
+    own sample, the settling window included, and so the **ladder order**;
+  - **Lenski's stepping stones**: whether a child whose world reached a loop rung had INC
+    or DEC at 0.1 at or before the first sample at which a loop rung did. The samples read
+    world shares, not lineages, so "a lineage holding INC or DEC" is read as the world
+    holding it first;
+  - `dominant_tasks` (the commonest mask of the last decile, the smaller on a tie; 0, a
+    dominant tape that solves nothing, is a mask like any other),
+    `dominant_task_count`, `copy_latency` and `replicator_share` (last-decile medians).
+    `copy_latency` is descriptive only now: the fixed price removes the latency selection
+    #263 read;
+  - the **share of income from tasks**, estimated from the last-decile median shares as
+    `task_reward · Σ units · share / task_every` against `energy_influx`, with each task's
+    units from `runner schema`'s ladder. It ignores the stock cap a lump can hit, so it is
+    an estimate, not a measurement.
+
+  **When it is read.** The reading is **final** when every child of every qualifying parent
+  has finished (`Experiments::DescendantSweepSettledService`, clarification 6: a failed
+  child keeps it interim until re-run). Before that, `lab:metabolism_report` labels it
+  **interim**, and nothing is claimed from it. **Cost**: about 10 hours of the mini-pc,
+  115 run-hours (design study §3.7: about 2 700 and 4 200 s a no-reward and a reward child
+  at cap 128, 3 500 and 5 400 s at cap 256); the first finished children's
+  `compute_seconds` replace the estimate.
+
+  **What is not claimed.** The substrate **imports an objective**: whatever rises here was
+  paid for by a task the programme chose, and says nothing about fitness-free emergence or
+  about Soup's rung 4. The **input domain is small** (x and y in 0..15, three cases), which
+  keeps loops bounded and is why the separating rule is load-bearing. The ladder is
+  **arithmetic** because BFF has no bitwise ops: AND, OR, XOR and EQU would need programs
+  of about a hundred ops, so "complexity" here is a ladder of arithmetic, not of logic. It
+  is **one substrate**, one budget, three correlated children per parent, and four of its
+  parents were piloted. The design study numbered this item 14 and DESIGN §1.3 gave 14 to
+  the reach-cap128 sweep first, so it is item 15.
