@@ -232,6 +232,60 @@ RSpec.describe Experiments::DescendantSweepBuilderService do
     end
   end
 
+  describe "the logic sweep" do
+    let(:definition) { Lab::SWEEPS.fetch("logic") }
+    let(:experiment) do
+      create(:experiment, slug: "logic", **definition.slice(:parents, :param_grid, :seeds, :epochs, :priority))
+    end
+    let(:metabolism) do
+      create(:experiment, slug: "metabolism",
+                          **Lab::SWEEPS.fetch("metabolism").slice(:parents, :param_grid, :seeds, :epochs, :priority))
+    end
+    let!(:parents) do
+      Array.new(11) { parent(share: 0.9) } +
+        Array.new(7) { parent(share: 0.9, params: control_params.merge("max_tape_len" => 256)) }
+    end
+
+    before do
+      parent(share: 0.3)
+      described_class.call(metabolism)
+    end
+
+    it "creates 162 children: eighteen parents, three arms, three seeds" do
+      expect(build_sweep).to have_attributes(parents: parents, created: 162)
+      expect(experiment.runs.pluck(:parent_run_id, :seed).tally)
+        .to eq(parents.map(&:id).product([2001, 2002, 2003]).index_with(3))
+    end
+
+    it "merges the full, the deep-only and the unpaid bundle over each parent's params" do
+      build_sweep
+
+      expect(experiment.runs.where(parent_run: parents.last, seed: 2002).order(:id).pluck(:params))
+        .to eq(definition[:param_grid].fetch("treatment").map { |bundle| parents.last.params.merge(bundle) })
+    end
+
+    it "runs every child forty thousand epochs past its parent at priority 40" do
+      build_sweep
+
+      expect(experiment.runs.distinct.pluck(:parent_epoch, :epochs, :priority)).to eq([[1_000, 41_000, 40]])
+    end
+
+    it "adds nothing once built" do
+      build_sweep
+
+      expect { described_class.call(experiment.reload) }.not_to change(Run, :count)
+    end
+
+    it "leaves the metabolism sweep's 108 children as they were" do
+      before = metabolism.runs.order(:id).pluck(:id, :params, :seed, :status)
+
+      build_sweep
+
+      expect(metabolism.runs.order(:id).pluck(:id, :params, :seed, :status)).to eq(before)
+      expect(before.size).to eq(108)
+    end
+  end
+
   context "with no source experiment seeded" do
     it "builds nothing" do
       expect(build_sweep).to have_attributes(parents: [], created: 0, skipped: {})

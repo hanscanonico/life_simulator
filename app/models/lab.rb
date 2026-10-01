@@ -426,6 +426,26 @@ module Lab
       # After the from-emerged children (50), ahead of the reach sweeps (30).
       priority: 40
     },
+    "logic" => {
+      name: "Logic",
+      description: "Does a soup assemble features beyond its one-step rungs when the parts are " \
+                   "paid? Each run starts from an emerged world under the Metabolism economy, " \
+                   "with one assay-only NAND byte and a ladder of nine logic tasks. One arm is " \
+                   "paid for every rung, one for XOR and EQU alone, and one for nothing. A " \
+                   "labelled substrate: it imports an objective and a primitive.",
+      # §1.3 item 16 and §1.4, pre-registered on 2026-10-01, "Logic: does a soup assemble
+      # features beyond its one-step rungs when the parts are paid?", whose numbers live in
+      # `Lab::LogicReading`. Seeded only once the Metabolism reading is final. The parents and
+      # seeds are Metabolism's, so the none arm repeats that sweep's no-reward children world
+      # for world.
+      parents: FROM_EMERGED_PARENTS,
+      param_grid: {
+        "treatment" => [LogicReading::FULL_BUNDLE, LogicReading::DEEP_ONLY_BUNDLE, LogicReading::NONE_BUNDLE]
+      },
+      seeds: [2001, 2002, 2003],
+      epochs: 40_000,
+      priority: 40
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

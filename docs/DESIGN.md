@@ -721,6 +721,21 @@ sample.
     registered in `docs/design_record.md`, 2026-10-01, "Metabolism: a second, labelled
     substrate that imports an objective", whose numbers live in `Lab::MetabolismReading`;
     `lab:metabolism_report` reads it.
+16. **Logic** — does a soup assemble features beyond its one-step rungs when the parts are
+    paid? The Logic variant of §1.4, a descendant sweep from the same 18 parents under the
+    same rule, seeded only once the Metabolism reading is final. Three arms merged over each
+    parent's params, sharing Metabolism's economy and the logic assay every 8 epochs:
+    **full** (`tasks: logic`, `task_reward` 2 048), **deep-only** (the same at `task_floor:
+    xor`, Lenski's control) and **none** (`task_reward` 0, Metabolism's no-reward worlds
+    byte for byte). Seeds 2001–2003, 40 000 epochs past the parent, priority 40, 162
+    children. Read as Metabolism is, pairs with an extinct child left out; four one-sided
+    sign tests at p < 0.05: H-capability-L (full against none, last-decile median
+    `logic_capability`), H-deep (the same on `logic_capability_deep`, XOR and EQU, the
+    rung-4 question), H-stones (H-deep's key, full against deep-only) and H-complexity (the
+    from-emerged rise rule), each also read with the extinct pairs kept and without the four
+    piloted parents. Pre-registered in `docs/design_record.md`, 2026-10-01, "Logic: does a
+    soup assemble features beyond its one-step rungs when the parts are paid?", whose
+    numbers live in `Lab::LogicReading`; `lab:logic_report` reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -750,6 +765,15 @@ twin under the same economy, the plateau was "nothing pays". Chosen 2026-10-01 a
 of the 2026-09-24 entry; its sweep is §1.3 item 15, pre-registered in
 `docs/design_record.md`, 2026-10-01, "Metabolism: a second, labelled substrate that imports
 an objective".
+
+**Logic** is a variant of Metabolism that imports a **primitive** as well as an objective:
+one assay-only NAND byte, `~`, and Avida's logic tasks as the ladder (`tasks = logic`,
+§1.1), so every rung is a composition of one op and the lower rungs are parts of the higher.
+It answers the design study's diagnosis that BFF's instruction set, not its variation
+operator, holds Metabolism's ladder at one substitution. It carries Metabolism's label and
+pooling rule unchanged, and rung 4 on Soup stays "not shown" whatever it reads. Its sweep is
+§1.3 item 16, pre-registered in `docs/design_record.md`, 2026-10-01, "Logic: does a soup
+assemble features beyond its one-step rungs when the parts are paid?".
 
 ## 2. Architecture
 

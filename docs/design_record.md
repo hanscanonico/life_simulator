@@ -3274,3 +3274,238 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   the eight stored Metabolism-study worlds (128×128, 3 300 to 16 400 cells holding a `!`,
   a loaded Mac): 0.08 to 0.73 ms a sample, one reading of 3.5 ms, which is 0.02% to 0.3% of
   a sample interval at `sample_every` 10. Relocks nothing.
+
+- 2026-10-01 — **Logic: does a soup assemble features beyond its one-step rungs when the
+  parts are paid? The `logic` sweep, pre-registered.** This is §1.3 item 16 and it adds a
+  paragraph to DESIGN §1.4. The experiment is `logic` (sweep key `logic`), and its numbers
+  live in `Lab::LogicReading`. It is the third slice of Logic: the assay, the NAND byte and
+  `task_floor` (slice 1) and the logic observables (slice 2) are the two entries above, and
+  the three deploy together, as one runner restart, once the Metabolism sweep is final.
+
+  **The choice.** It is the orchestrator's, following the next-substrate design study of
+  2026-10-01 (§3.6 of the Metabolism study: if the ladder stalls, the instruction set or the
+  variation operator binds first) and the user's instruction "continue, don't stop until
+  life exists". The study's diagnosis is that **the instruction set binds, not the variation
+  operator**: BFF has no data op that takes two inputs, so every two-input task needs a
+  counted loop, and the only loop a copier owns is its copy loop. Its landscape numbers, on
+  twelve focal tapes of six rewarded Metabolism children (*measurements*, on stored worlds,
+  with the real assay and detector):
+  - no loop solver that still copies within **2 edits of any kind** (substitution,
+    insertion, deletion, tandem duplication and their pairs: **143 M** mutants);
+  - nor within **3 substitutions** in the executed code window (**112 M** mutants; the 94
+    loop solvers there all spend the copy loop and none copies);
+  - the nearest loop solver that copies is **5–7 substitutions** away, and **6–9** under
+    length-keeping insertions, with no intermediate that computes anything new;
+  - *pilot A*: indels at half of all mutation events on the Metabolism ladder gave **0 loop
+    rungs in 4 of 4 worlds** over 20 000 epochs.
+
+  Logic therefore changes the instruction set, minimally: one assay-only NAND byte and a
+  ladder whose every rung is a composition of it, so the lower rungs are parts of the higher
+  ones and stepping stones exist by construction (Lenski et al. 2003).
+
+  **Metabolism's reading, final** (`lab:metabolism_report`, 2026-10-01 22:05Z: all 108
+  children finished, none extinct, no settled relapse, all 54 pairs measured).
+  - **H-capability: shown.** 54 pairs favour the reward, 0 the control, 0 ties
+    (p = 5.6 × 10⁻¹⁷). Every one of the 18 parents splits 3–0.
+  - **H-ladder: refuted.** 0 favour the reward and 0 the control, so all 54 pairs tie at zero,
+    which the Metabolism entry reads as refuted. Across all 432 000 samples of the 108
+    children, `task_capability_loop` never leaves 0. The only nonzero loop-task share is one
+    `task_share_double` sample at 1/256.
+  - **H-complexity: shown.** 18 pairs favour the reward and 1 the control, with 35 ties
+    (p = 3.8 × 10⁻⁵). 10 parents lean to the reward, none to the control.
+  - **Unpiloted parents.** The re-reading without them gives the same three outcomes: 42–0,
+    0–0 with 42 ties, and 11–1 (p = 0.003).
+
+  Paid computation climbed ECHO, INC and DEC in nearly every rewarded child (54, 52 and 50
+  of 54). Tasks gave about half the income (0.35–0.55). Nothing climbed past the
+  one-substitution rungs: exactly the stall the landscape measurements predict.
+
+  **Two rules on seeding, locked here.**
+  - The Logic sweep is **seeded only after the Metabolism reading is final**
+    (`lab:metabolism_report` reads "final"), and after the runner carrying slices 1 and 2 is
+    deployed: a child sampled without the logic observables is unmeasured on every test.
+  - **If Metabolism's H-ladder reads shown or not shown rather than refuted**, loop rungs
+    were reached despite the 5–7-substitution gap the study measured. Logic is then **not
+    seeded until those loop-rung children have been read with the study's landscape tools**:
+    the depth each crossed, and whether through a neutral path (study §5.3, last paragraph).
+    Only then is Logic built on, or its premise revised in an entry of its own. The diagnosis
+    predicts refuted, or every pair tied at zero, which the Metabolism entry reads as refuted.
+
+  **The label.** Logic **imports an objective and a primitive**: the tasks are the
+  programme's, and so is the NAND byte, which no Soup world holds as an instruction. It
+  carries Metabolism's label and pooling rule unchanged: every run with `task_reward > 0` is a
+  Metabolism run (`Run.metabolism`, `Lab::MetabolismReading.metabolism_run?`), so the full
+  and deep-only arms are, and the none arm is fitness-free and enters this reading only as
+  the paired twin. Its runs are never pooled with fitness-free arms, the sweep's page carries
+  the "imports an objective" badge, and any finding resting on it carries the badge too (the
+  registry spec holds both sweeps to it). **Rung 4 on Soup stays "not shown"** whatever this
+  sweep reads.
+
+  **The sweep.** A descendant sweep under the from-emerged parent rule
+  (`Lab::FROM_EMERGED_PARENTS`), the rule Metabolism uses, so the same **18 parents**. Three
+  bundles, each merged over the parent's params:
+  - **full**: `{energy_payer: initiator, energy_influx: 1024, energy_stock_cap: 65536,
+    steal_amount: 0, tasks: logic, task_every: 8, task_reward: 2048}`, Metabolism's reward
+    bundle with `tasks: logic`;
+  - **deep-only**: the same with `task_floor: xor`, Lenski's control: every rung below XOR is
+    assayed and pays nothing;
+  - **none**: the same with `task_reward: 0`.
+
+  Seeds **2001, 2002 and 2003**, **40 000 epochs** past the parent, priority **40**:
+  18 × 3 × 3 = **162 children**. Every bundle passes the engine's `Params::validate` over a
+  cap-128 and a cap-256 parent. **The none arm repeats Metabolism's no-reward arm**: its
+  params differ from that bundle in `tasks` alone, a reward of 0 runs no assay, and the
+  engine holds `tasks = logic` at reward 0 to the run with tasks off, so for each (parent,
+  seed) its world is that sweep's no-reward child's, byte for byte. It is run anyway, as the
+  study planned: it is simpler than a readings pass over stored worlds, it carries the logic
+  observables on every sample, and it checks the identity.
+
+  **The readings, per child**, are Metabolism's, over its own samples at epochs above
+  `parent_epoch` + **1 000**: deciles over the settled samples, lower-middle medians,
+  **extinct** where the last-decile median `replicator_share` is below **0.1**, a **settled
+  relapse** where it sits below 0.1 for 3 consecutive settled samples, and a key unmeasured
+  with fewer than **10** numbers in its last decile. `Lab::FromEmergedHeldout` and
+  `Lab::DescendantReading` are reused exactly as the Metabolism reading uses them.
+
+  **Pairs and the tests.** A pair is a full child and a control child of the same (parent,
+  seed). A pair with an extinct or unread child is excluded. Each test is a **one-sided sign
+  test** over the discordant pairs: **shown** at p < **0.05**; **refuted** where the pairs
+  favouring the control are at least as many as those favouring the full arm, ties
+  included; **not shown** otherwise; **no measured pairs** where none is measured on both
+  sides. Each carries the per-parent agreement and the leave-one-or-two-parents-out rule, as
+  Metabolism's tests do, and the per-arm extinction and settled-relapse counts are printed
+  beside them.
+  - **H-capability-L** (full against none): the last-decile median `logic_capability`, the
+    rungs, ECHO to EQU, at a share of at least 1/10. Relapsed children stay in, as in
+    Metabolism's H-capability. ECHO is nearly free, so the rung-4 claim does not ride on it.
+  - **H-deep**, the rung-4 question (full against none): the same test on
+    `logic_capability_deep`, the count of XOR and EQU at a share of at least 1/10. With the
+    none arm at zero the test needs **5** discordant pairs (p = 1/32); over 54 measured pairs
+    its power is **0.64** at a rate of 0.1 per child and **0.92** at 0.15, Metabolism's
+    H-ladder arithmetic. *Pilot*: 0 of 4 full worlds reached XOR or EQU in 20 000 epochs, an
+    upper rate bound of 0.6, so the power at the true rate is unknown.
+  - **H-stones**, Lenski's (full against deep-only): the same key. It separates "deep
+    features are built on paid parts" from "deep features are directly reachable".
+  - **H-complexity** (full against none): the from-emerged rise rule on
+    `dominant_instruction_count`, as Metabolism reads it: pairs where both children are
+    measured and neither relapsed past the window nor is extinct. It reads **"paid
+    complexity rises"**, never "open-ended".
+
+  **What each outcome means** (study §5.3):
+  - **H-deep shown and H-stones shown.** A BFF soup assembles features several coordinated
+    substitutions beyond any solver it holds (at least 4 in the measured window), and only
+    when the parts are paid: Lenski's mechanism, in a soup. Read beside a refuted Metabolism
+    H-ladder, the arithmetic plateau was the missing stepping stones of BFF's instruction
+    set, not an inability to accumulate.
+  - **H-deep shown, H-stones refuted.** The deep rungs are directly reachable, so the depth
+    the study measured overstates the barrier. Complexity rises when paid, with or without
+    parts.
+  - **H-deep shown, H-stones not shown.** A soup assembles the deep rungs when the ladder is
+    paid; whether it needs the paid parts is below what the pairs resolve, and nothing is
+    claimed about stepping stones.
+  - **H-deep refuted.** With a composable primitive and every lower rung paid, the soup
+    still stops short of a feature four or more substitutions deep. The binding constraint
+    is then the copier and its population, not the instruction set: the code must run before
+    a copy loop that never exits, the reverse copier's mirror halves selection on a new
+    feature, and a specific byte arrives at 4.8 × 10⁻⁷ per epoch. The next suspects are
+    mutational supply (a rate arm) and a code region apart from the copied tape; the
+    "ladder of compositions" route is closed.
+  - **H-deep not shown.** The rate of deep climbing is below what 54 pairs resolve, and
+    Metabolism's power arithmetic applies.
+
+  **Two sensitivity readings**, printed beside each test, deciding no outcome:
+  - **Extinct kept** (study §5.6, partial copiers read as extinct): *pilot*, 944's full
+    world ended with 81% of its cells credited and its commonest solvers passing the
+    detector, yet only 9% of 400 sampled cells passed, because most of its interactions are
+    short in-register overwrites of kin. The extinction rule would drop such a pair. Each
+    test is also read by the same rules with the replicator-share rules dropped: extinct
+    children are kept, and for H-complexity relapsed children too, since a settled relapse
+    is the same 0.1 line read over three samples and would drop the same pair. **The
+    pre-registered reading is the one with them excluded.**
+  - **Unpiloted parents**: each test re-read without the pairs of the four parents the
+    study's pilots ran, **1007, 944, 2577 and 2700** (`PILOT_PARENTS`), as Metabolism re-reads
+    its own. A test shown over the 18 parents and not over the 14 is reported as resting in
+    part on the piloted parents.
+
+  **Descriptive only**, printed per child and per arm, tested nowhere:
+  - **the first own epoch each rung reaches 1/10**, and so the ladder order, read over every
+    own sample, the settling window included, under a **persistence rule**: a rung reaches
+    1/10 at the first sample of a run of **k = 5** consecutive own samples at a share of at
+    least 1/10 (`PERSISTENCE_RUN`); a sample that does not carry the share breaks the run.
+    *Why 5.* #283's review showed that a tape computing a rung on a share p of inputs is
+    credited on about p³ of the draws, and the logic observables draw fresh cases at every
+    sample, so samples trip independently. The commonest masked XOR circuit it found
+    (p = 0.425, so p³ ≈ 0.077; 7.2% of draws measured) trips a sample with q ≈ 0.077
+    wherever it holds a tenth of the world, since every cell of a sample is read on that
+    sample's one case set. A child has about 4 000 own samples (40 000 epochs at the
+    default `sample_every` of 10), so the expected number of chance runs of k samples is
+    about n·qᵏ: **1.8** at k = 3, **0.14** at k = 4, **0.011** at k = 5. k = 3 would make a
+    false "reach" likely in any world dominated by such a circuit; 5 brings it to about 1 in
+    90 such worlds. A genuine rung is still dated at the first sample of its run; the rule
+    misses only one that never holds 1/10 over five samples running (40 epochs), where the
+    pilot's rungs arrived 500 epochs or more apart.
+    The last-decile medians the tests read need no such rule: a rung credited on more than
+    half of a decile's samples needs p above 0.79, at most one masked bit;
+  - **Lenski's stepping stones**: whether a child whose world reached a deep rung had OR,
+    ANDN or NOR at 1/10, under the same persistence rule, at or before the first sample at
+    which a deep rung did; per arm, the deep children and those through a stepping stone, so
+    "only in worlds already holding OR, ANDN or NOR" reads as the two counts being equal;
+  - `dominant_logic_tasks` (the commonest mask of the last decile, the smaller on a tie),
+    `dominant_logic_task_count`, `replicator_share` and `copy_latency` (last-decile medians);
+  - **the share of income from tasks**, estimated as Metabolism estimates it, over the paid
+    rungs alone, those at or above the child's `task_floor`, with each rung's units from
+    `runner schema`'s logic ladder; an estimate, since it ignores the stock cap;
+  - **per child, the substitution distance** from its parent's commonest copier to its
+    deepest solver, measured later with the study's landscape tool on the stored end worlds.
+    It is descriptive and not part of the reading's code.
+
+  **What was seen before writing**, all of it the design study's *pilot* on a throwaway copy
+  of the engine (`c0cb7ba` with the NAND byte and the logic ladder added; seed 1, 20 000
+  epochs from each parent's epoch-20 000 world, the Metabolism economy) — not the merged
+  engine, and not findings:
+  - *Pilot B's climbs.* **1007** reached NOT and NAND (2 000 epochs), then ORN (7 500), OR
+    (8 500) and NOR (9 500); **944** reached NOT (3 000), ORN (14 500), NAND (15 000), AND
+    (15 500) and ANDN (16 500); **2577 and 2700 climbed nothing** (at most 2 and 9 cells).
+    The credits are genuine: each world's commonest credited tape computes its rung on
+    98.8–100% of 4 000 random inputs and is credited on 194–200 of 200 fresh case sets.
+  - **XOR and EQU appeared in 0 of 4 worlds.**
+  - *The controls.* The deep-only arm (floor at OR in the pilot) on 1007 and 944 and the
+    no-reward arm on 1007 **climbed nothing**: at most 241 cells credited NOT and 38 NAND in
+    1007's deep-only world, 8 and 1 in 944's, 248 and 51 in 1007's no-reward world, and 2 or
+    fewer with anything else.
+  - *The depth of each rung* (study §5.1, exhaustive over the 13 values plus `~`, 6 case
+    sets, the detector for "replicating"): from evolved ORN solvers OR, NOR and ANDN are one
+    substitution away (10–14 replicating single mutants), and from an evolved NAND solver AND
+    is (58); XOR and EQU are reached by **no** single or double substitution of any evolved
+    solver measured (≈ 6 M double mutants) and by no triple in the first 56 bytes (71.2 M
+    mutants of 1007's NOR solver, 48 credited on one case set and 0 on all six; 72.3 M of
+    944's ANDN solver, 0). Within that window XOR and EQU are at least four substitutions
+    beyond the solvers measured, which is why the deep rungs are XOR and EQU alone and NOT
+    through NOR are capability.
+  - *#283's false-credit check* (on the merged assay): no program of up to 6 bytes is
+    credited XOR or EQU on any of 4 000 separating draws; no single or double substitution of
+    the hand-written AND to NOR solvers is ever credited XOR, and two are credited EQU on 1
+    draw in 4 000; in the pilot's seven end worlds three tapes, each one cell, are credited
+    XOR on at most 7.2% of draws, masked circuits exact on five bits. Partial bitwise
+    computation is credited at a fraction of the task's pay and cannot lift a last-decile
+    median; the persistence rule above is what keeps it from lifting a first epoch.
+  - The pilot's worlds are **four of this sweep's parents**, so the reading is not held out
+    from them; hence the unpiloted re-reading.
+
+  **When it is read.** The reading is **final** when every child of every qualifying parent
+  has finished (`Experiments::DescendantSweepSettledService`); before that,
+  `lab:logic_report` and the sweep's page label it **interim**, and nothing is claimed from
+  it. **Cost** (study §5.5), from Metabolism's finished children at cap 128: about 2 000 s a
+  full child (1 650–2 520) and 1 420 s a none child (1 230–1 740), about 1 660 s a deep-only
+  child (1.17 × none, the assay without the pay), and 1.3 × each at cap 256: 3 × (11 × 5 080 + 7 × 6 600) ≈ 306 000 run-seconds, about 85 run-hours or **about
+  7 hours** of the mini-pc's 12 slots. It is interim until the first finished children's
+  `compute_seconds` replace it.
+
+  **What is not claimed.** The substrate **imports an objective and a primitive**: whatever
+  rises was paid for by tasks the programme chose, computed with a byte the programme added,
+  and says nothing about fitness-free emergence or about Soup's rung 4. The **ladder is
+  finite**: EQU is its top, so "complexity" here is at most five NANDs deep. It is **one
+  substrate**, one budget, three correlated children per parent, and four of its parents
+  were piloted. A shown result is **a mechanism** — paid parts let a soup assemble a deeper
+  feature — **not open-endedness**. The design study's §5.4 numbered this sweep's slices; it
+  is item 16 of DESIGN §1.3, after Metabolism's 15.
