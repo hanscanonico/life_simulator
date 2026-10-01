@@ -634,6 +634,19 @@ sample.
     share is at least 0.5 is an eligible parent, and no later parent rule is locked.
     Pre-registered in `docs/design_record.md`, 2026-10-01, "Does the reach effect carry to
     growable tapes?", whose numbers live in `Lab::ReachCap128Reading`.
+15. **Metabolism** — does complexity rise once computing pays? The substrate of §1.4, a
+    descendant sweep from the from-emerged sweep's 18 parents under its own parent rule. Two
+    arms merged over each parent's params, sharing the `initiator` economy (influx 1 024,
+    cap 65 536, no theft) and the arithmetic assay every 8 epochs: **reward** at a
+    `task_reward` of 2 048 and **no reward** at 0. Seeds 2001–2003, 40 000 epochs past the
+    parent, priority 40, 108 children. Each reward child is paired with its twin of the same
+    (parent, seed) and read past #263's 1 000-epoch settling window, pairs with an extinct
+    child left out; three one-sided sign tests at p < 0.05: H-capability (last-decile median
+    `task_capability`), H-ladder (the same on `task_capability_loop`, the rung-4 question)
+    and H-complexity (the from-emerged rise rule on pairs that neither relapsed). Pre-
+    registered in `docs/design_record.md`, 2026-10-01, "Metabolism: a second, labelled
+    substrate that imports an objective", whose numbers live in `Lab::MetabolismReading`;
+    `lab:metabolism_report` reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -646,6 +659,23 @@ and the seed of every run.
 Emergence is the first rung, not the whole programme. The ladder above it — persistence,
 heredity with variation, adaptation, open-ended evolution — with the observable and the
 refutable sweep for each, is the "evolution programme" entry in `docs/design_record.md`.
+
+### 1.4 Metabolism: a second, labelled substrate that imports an objective
+
+Everything above keeps fitness out: a tape is selected only for getting itself copied.
+**Metabolism** is the one place an objective is imported. In the engine it is Soup plus
+opt-in parameters — the `initiator` payer, under which a cell's income is the rate at which
+it can initiate, and the task assay, which pays a cell energy for computing arithmetic on
+inputs the environment gives it (§1.1) — and the engine-side `substrate` stays `soup`. In
+the record and on the site it is a second substrate: every run with `task_reward > 0` is a
+Metabolism run, its runs are never pooled with fitness-free arms, its findings carry an
+"imports an objective" badge, and rung 4 on Soup stays "not shown" whatever it reads. It is
+read as a test of the record's explanation of the plateau (2026-09-16), "a byte off the copy
+path costs nothing and buys nothing": if complexity rises when paid and not in the unpaid
+twin under the same economy, the plateau was "nothing pays". Chosen 2026-10-01 as option 4
+of the 2026-09-24 entry; its sweep is §1.3 item 15, pre-registered in
+`docs/design_record.md`, 2026-10-01, "Metabolism: a second, labelled substrate that imports
+an objective".
 
 ## 2. Architecture
 

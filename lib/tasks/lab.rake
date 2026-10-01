@@ -3,7 +3,7 @@
 namespace :lab do
   desc "Build a sweep experiment from DESIGN.md 1.3 " \
        "(mutation_rate, world_size, radius, max_steps, ops, energy_per_epoch, " \
-       "environmental_structure, max_tape_len, host_parasite, asymmetric_execution, from_emerged)"
+       "environmental_structure, max_tape_len, host_parasite, asymmetric_execution, from_emerged, metabolism)"
   task :sweep, [:sweep] => :environment do |_task, args|
     definition = Lab::SWEEPS[args[:sweep]]
     raise "Unknown sweep #{args[:sweep].inspect}. Known sweeps: #{Lab::SWEEPS.keys.join(', ')}" if definition.nil?
@@ -286,6 +286,17 @@ namespace :lab do
     heldout = report.heldout
 
     print ENV.fetch("FORMAT", nil) == "csv" ? heldout.to_csv(final: report.final) : heldout.to_text(final: report.final)
+  end
+
+  desc "Read the metabolism sweep as pre-registered: every child, every arm, H-capability, H-ladder and " \
+       "H-complexity (FORMAT=csv for CSV); labelled interim until every child of every qualifying parent is terminal"
+  task metabolism_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("metabolism"))
+    raise "The metabolism sweep is not seeded." if experiment.nil?
+
+    report = Experiments::MetabolismReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
   desc "Read the lineage-diversity sweep as pre-registered: every run, every arm, the hypothesis " \

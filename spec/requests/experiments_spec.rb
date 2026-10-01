@@ -532,6 +532,22 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the metabolism sweep seeded" do
+      let(:experiment) { metabolism_experiment }
+
+      before do
+        metabolism_parent
+        Experiments::SweepBuilderService.call(experiment)
+      end
+
+      it "lists its children without the from-emerged sweep's reading, which has no continuation to pair" do
+        get experiment_path(experiment)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.at_css("#descendant-reading, #heldout-reading")).to be_nil
+      end
+    end
+
     context "with a descendant sweep seeded from an emerged world" do
       let(:experiment) do
         create(:experiment, name: "From an emerged world", slug: "from-emerged",

@@ -15,6 +15,21 @@ module Lab
   # form. One helper so the task, the presenter and the findings agree on the spelling.
   def self.slug_for(key) = key.tr("_", "-")
 
+  # The from-emerged sweep's parent rule (`docs/design_record.md`, 2026-09-25, "Runs that
+  # start from an emerged world"), read by Experiments::DescendantParentsService: sweep 9's
+  # two economy-off controls, each at its last stored world, qualified on the
+  # orientation-aware census of that world. The metabolism sweep starts from the same pool.
+  FROM_EMERGED_PARENTS = {
+    "experiment" => slug_for("host_parasite"),
+    "arms" => [
+      { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128 },
+      { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 256 }
+    ],
+    "instrument" => DescendantReading::INSTRUMENT,
+    "share_key" => DescendantReading::SHARE_KEY,
+    "min_share" => DescendantReading::QUALIFYING_SHARE
+  }.freeze
+
   # The sweeps of DESIGN.md §1.3, as data: `rake lab:sweep[mutation_rate]` turns one entry
   # into an Experiment and its runs.
   SWEEPS = {
@@ -282,16 +297,7 @@ module Lab
       # always keeps — qualified on the orientation-aware census of that world, since the
       # engine's census cannot see the reverse copiers emerged worlds are made of (#245).
       # A parent with no such reading yet is skipped until the readings pass reaches it.
-      parents: {
-        "experiment" => slug_for("host_parasite"),
-        "arms" => [
-          { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 128 },
-          { "energy_influx" => 0, "steal_amount" => 0, "max_tape_len" => 256 }
-        ],
-        "instrument" => DescendantReading::INSTRUMENT,
-        "share_key" => DescendantReading::SHARE_KEY,
-        "min_share" => DescendantReading::QUALIFYING_SHARE
-      },
+      parents: FROM_EMERGED_PARENTS,
       # Each bundle is merged over its parent's params, so the empty one is the exact
       # continuation and the control every treatment is paired against. The priced bundles
       # restate sweep 9's hoard ceiling and loss, which the parents already carry.
@@ -397,6 +403,28 @@ module Lab
       seeds: (1..270).to_a,
       epochs: 20_000,
       priority: 30
+    },
+    "metabolism" => {
+      name: "Metabolism",
+      description: "Does complexity rise once computing pays? Each run starts from an emerged " \
+                   "world under an economy where only the cell that initiates pays, and a " \
+                   "cell earns energy by computing arithmetic on inputs the environment " \
+                   "gives it. One arm is paid for its tasks and its twin is not, so the " \
+                   "comparison isolates the reward. A second, labelled substrate: it imports " \
+                   "an objective.",
+      # §1.3 item 15 and §1.4, pre-registered on 2026-10-01, "Metabolism: a second, labelled
+      # substrate that imports an objective", whose numbers live in `Lab::MetabolismReading`.
+      # The parents are the from-emerged sweep's, under its own rule: the rule is the data,
+      # and with sweep 9 terminal and read it qualifies the same 18 worlds.
+      parents: FROM_EMERGED_PARENTS,
+      param_grid: {
+        "treatment" => [MetabolismReading::REWARD_BUNDLE, MetabolismReading::NO_REWARD_BUNDLE]
+      },
+      # None a parent's own seed, nor a from-emerged child's.
+      seeds: [2001, 2002, 2003],
+      epochs: 40_000,
+      # After the from-emerged children (50), ahead of the reach sweeps (30).
+      priority: 40
     },
     "bff_control" => {
       name: "BFF positive control",

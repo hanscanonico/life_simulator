@@ -341,6 +341,67 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the metabolism sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("metabolism") }
+      let(:treatments) { definition[:param_grid].fetch("treatment") }
+
+      it "starts from the from-emerged sweep's parents under the same rule" do
+        expect(definition[:parents]).to equal(Lab::SWEEPS.fetch("from_emerged")[:parents])
+      end
+
+      it "pairs a rewarded arm with its unpaid twin under the same economy and assay" do
+        expect(treatments).to eq(
+          [{ "energy_payer" => "initiator", "energy_influx" => 1024, "energy_stock_cap" => 65_536, "steal_amount" => 0,
+             "tasks" => "arith", "task_every" => 8, "task_reward" => 2048 },
+           { "energy_payer" => "initiator", "energy_influx" => 1024, "energy_stock_cap" => 65_536, "steal_amount" => 0,
+             "tasks" => "arith", "task_every" => 8, "task_reward" => 0 }]
+        )
+      end
+
+      it "sets only parameters the engine declares, each to a value it accepts" do
+        treatments.flat_map(&:to_a).each do |name, value|
+          field = Lab::Schema.field(name)
+          if field["values"]
+            expect(field["values"]).to include(value)
+          else
+            expect(value).to be_between(field["min"], field["max"])
+          end
+        end
+      end
+
+      it "prices an interaction at the step budget and keeps eight prices of stock" do
+        max_steps = Lab::Schema.defaults.fetch("max_steps")
+
+        expect(treatments.map { |bundle| bundle.fetch("energy_stock_cap") }).to all(eq(8 * max_steps))
+        expect(treatments.map { |bundle| bundle.fetch("energy_influx") }).to all(eq(max_steps / 8))
+      end
+
+      it "labels the rewarded arm alone a Metabolism run" do
+        expect(treatments.map { |bundle| Lab::MetabolismReading.metabolism_run?(bundle) }).to eq([true, false])
+      end
+
+      it "changes no parameter that shapes the parent's world" do
+        expect(treatments.flat_map(&:keys) & Lab::CanonicalParams::STRUCTURAL_KEYS).to be_empty
+      end
+
+      it "runs three seeds no parent and no from-emerged child carries" do
+        expect(definition[:seeds]).to eq([2001, 2002, 2003])
+        expect(definition[:seeds] & Lab::SWEEPS.fetch("from_emerged")[:seeds]).to be_empty
+        expect(definition[:seeds].min).to be > Lab::SWEEPS.fetch("host_parasite")[:seeds_by_arm]
+                                                          .flat_map { |arm| arm.fetch("seeds") }.max
+      end
+
+      it "gives every child forty thousand epochs past its parent, at priority 40" do
+        expect(definition.values_at(:epochs, :priority)).to eq([40_000, 40])
+      end
+
+      it "names the ladder in the engine's order" do
+        expect(Lab::MetabolismReading::TASKS).to eq(Lab::Schema.tasks.fetch("ladder").pluck("name"))
+        expect(Lab::MetabolismReading::TASKS & Lab::MetabolismReading::LOOP_TASKS)
+          .to eq(Lab::MetabolismReading::LOOP_TASKS)
+      end
+    end
+
     describe "the lineage-diversity sweep" do
       let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
       let(:reading) { Lab::LineageDiversityReading }
