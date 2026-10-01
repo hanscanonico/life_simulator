@@ -147,6 +147,22 @@ RSpec.describe Run, type: :model do
           .to eq(Lab::MetabolismReading.metabolism_run?(run.params))
       end
     end
+
+    context "with the logic sweep's three arms" do
+      let!(:logic) do
+        Lab::SWEEPS.fetch("logic")[:param_grid].fetch("treatment").map do |bundle|
+          create(:run, params: defaults.merge(bundle))
+        end
+      end
+
+      it "reads its full and deep-only runs as Metabolism runs and its unpaid run as fitness-free" do
+        full, deep_only, none = logic
+
+        expect(described_class.metabolism).to include(full, deep_only)
+        expect(described_class.fitness_free).to include(none)
+        expect(described_class.metabolism).not_to include(none)
+      end
+    end
   end
 
   describe "a descendant in the transition surveys" do

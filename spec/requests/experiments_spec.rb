@@ -589,6 +589,66 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the logic sweep seeded" do
+      let(:experiment) { logic_experiment }
+
+      before do
+        metabolism_parent
+        Experiments::SweepBuilderService.call(experiment)
+      end
+
+      it "lists its children without the from-emerged sweep's reading, which has no continuation to pair" do
+        get experiment_path(experiment)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.at_css("#descendant-reading, #heldout-reading, #metabolism-reading")).to be_nil
+      end
+
+      it "labels the sweep as importing an objective" do
+        get experiment_path(experiment)
+
+        substrate = response.parsed_body.css("dl.facts dt").find { |term| term.text == "Substrate" }.next_element
+        expect(substrate.at_css("a.objective-badge")).to be_present
+      end
+
+      context "with no child sampled yet" do
+        it "reads the sweep as pre-registered, interim, under the badge" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#logic-reading")
+          expect(section.at_css("h2").text.squish).to eq("The pre-registered reading interim imports an objective")
+          expect(section.text.squish).to include("H-capability-L", "H-deep", "H-stones", "H-complexity",
+                                                 "no measured pairs", "imports an objective and a primitive",
+                                                 "rung 4 on Soup stays not shown")
+        end
+      end
+
+      context "with every child finished, the full arm the more capable" do
+        before do
+          logic_children(experiment, :full).each do |run|
+            logic_sample(run, capability: 3, deep: 1, task_shares: { "echo" => 0.5 })
+          end
+          logic_children(experiment, :deep_only).each { |run| logic_sample(run) }
+          logic_children(experiment, :none).each { |run| logic_sample(run) }
+        end
+
+        it "prints the arms, the tests beside their sensitivity readings, the pairs and the ladder" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#logic-reading")
+          arms = section.css("#logic-arms ~ .table-scroll tbody tr").map { |row| row.css("td").map(&:text) }
+          expect(arms).to eq([%w[full 3 3 0 0 3 0 0 3 0], %w[deep-only 3 3 0 0 3 0 0 3 0], %w[none 3 3 0 0 3 0 0 3 0]])
+          expect(section.text.squish).to include("The pre-registered reading final", "H-stones, full against deep-only",
+                                                 "3 pairs measured on both sides: 3 favour full",
+                                                 "With the extinct pairs kept", "Without the piloted parents",
+                                                 "Per-parent agreement")
+          expect(section.css("#logic-pairs tbody tr").size).to eq(3)
+          echo = section.css("#logic-ladder ~ .table-scroll tbody tr").first.css("td").map(&:text)
+          expect(echo.first(2)).to eq(%w[echo 3])
+        end
+      end
+    end
+
     context "with a descendant sweep seeded from an emerged world" do
       let(:experiment) do
         create(:experiment, name: "From an emerged world", slug: "from-emerged",

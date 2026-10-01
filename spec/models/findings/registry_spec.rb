@@ -29,15 +29,15 @@ RSpec.describe Findings::Registry do
                 replicator-complexity-plateau])
   end
 
-  it "labels every finding resting on the Metabolism sweep as importing an objective" do
-    metabolism = described_class.all.select { |finding| finding.rests_on?(Lab.slug_for("metabolism")) }
+  it "labels every finding resting on the Metabolism or the Logic sweep as importing an objective" do
+    paid = described_class.all.select { |finding| objective_sweeps.any? { |slug| finding.rests_on?(slug) } }
 
-    expect(metabolism).to all(be_imports_objective)
+    expect(paid).to all(be_imports_objective)
   end
 
   it "labels no finding on a fitness-free sweep as importing an objective" do
     expect(described_class.all.select(&:imports_objective?))
-      .to all(satisfy { |finding| finding.rests_on?(Lab.slug_for("metabolism")) })
+      .to all(satisfy { |finding| objective_sweeps.any? { |slug| finding.rests_on?(slug) } })
   end
 
   it "keeps the order of findings sharing a date fixed across calls" do
@@ -246,6 +246,9 @@ RSpec.describe Findings::Registry do
 
     ApplicationController.render(partial: finding.body_partial, assigns: { show: show })
   end
+
+  # The sweeps whose rewarded runs are Metabolism runs (DESIGN.md §1.4).
+  def objective_sweeps = %w[metabolism logic].map { |sweep| Lab.slug_for(sweep) }
 
   def finding(slug, experiment_slug, date)
     Findings::Finding.new(slug: slug, title: slug, date: date, experiment_slug: experiment_slug,

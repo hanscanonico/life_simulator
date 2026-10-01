@@ -402,6 +402,71 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the logic sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("logic") }
+      let(:treatments) { definition[:param_grid].fetch("treatment") }
+      let(:metabolism) { Lab::SWEEPS.fetch("metabolism") }
+
+      it "starts from the from-emerged sweep's parents under the same rule" do
+        expect(definition[:parents]).to equal(Lab::SWEEPS.fetch("from_emerged")[:parents])
+      end
+
+      it "runs the full ladder, the deep rungs alone and no reward under one economy and assay" do
+        full = { "energy_payer" => "initiator", "energy_influx" => 1024, "energy_stock_cap" => 65_536,
+                 "steal_amount" => 0, "tasks" => "logic", "task_every" => 8, "task_reward" => 2048 }
+
+        expect(treatments).to eq([full, full.merge("task_floor" => "xor"), full.merge("task_reward" => 0)])
+      end
+
+      it "sets only parameters the engine declares, each to a value it accepts" do
+        treatments.flat_map(&:to_a).each do |name, value|
+          field = Lab::Schema.field(name)
+          if field["values"]
+            expect(field["values"]).to include(value)
+          else
+            expect(value).to be_between(field["min"], field["max"])
+          end
+        end
+      end
+
+      it "names a deep-only floor on the logic ladder, at its first deep rung" do
+        expect(Lab::LogicReading::DEEP_FLOOR).to eq(Lab::Schema.tasks.fetch("logic").fetch("first_deep"))
+      end
+
+      it "labels the two paid arms Metabolism runs and the unpaid arm fitness-free" do
+        expect(treatments.map { |bundle| Lab::MetabolismReading.metabolism_run?(bundle) }).to eq([true, true, false])
+        expect(treatments.map { |bundle| Lab::LogicReading.treatment_key(bundle) }).to eq(%i[full deep_only none])
+      end
+
+      # The engine holds `tasks = logic` at a reward of 0 to the run with tasks off, as it
+      # holds `arith` there: the none child of a (parent, seed) is Metabolism's no-reward
+      # child of it, world for world.
+      it "repeats Metabolism's no-reward arm but for the assay its samples read" do
+        none = treatments.last
+        no_reward = metabolism[:param_grid].fetch("treatment").last
+
+        expect(none.keys).to match_array(no_reward.keys)
+        expect(none.reject { |key, value| no_reward[key] == value }).to eq("tasks" => "logic")
+        expect(none.fetch("task_reward")).to eq(0)
+        expect(definition.values_at(:parents, :seeds, :epochs)).to eq(metabolism.values_at(:parents, :seeds, :epochs))
+      end
+
+      it "changes no parameter that shapes the parent's world" do
+        expect(treatments.flat_map(&:keys) & Lab::CanonicalParams::STRUCTURAL_KEYS).to be_empty
+      end
+
+      it "gives every child forty thousand epochs past its parent from seeds 2001–2003, at priority 40" do
+        expect(definition.values_at(:seeds, :epochs, :priority)).to eq([[2001, 2002, 2003], 40_000, 40])
+      end
+
+      it "names the ladder in the engine's order" do
+        expect(Lab::LogicReading::TASKS).to eq(Lab::Schema.logic_task_names)
+        expect(Lab::LogicReading::TASKS.drop_while { |task| task != Lab::LogicReading::DEEP_FLOOR })
+          .to eq(Lab::LogicReading::DEEP_TASKS)
+        expect(Lab::LogicReading::TASKS & Lab::LogicReading::STEPPING_STONES).to eq(Lab::LogicReading::STEPPING_STONES)
+      end
+    end
+
     describe "the lineage-diversity sweep" do
       let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
       let(:reading) { Lab::LineageDiversityReading }

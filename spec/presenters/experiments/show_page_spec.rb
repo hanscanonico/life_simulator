@@ -551,6 +551,56 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  # The logic reading is held as the metabolism reading is.
+  describe "#logic_reading" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let(:experiment) { logic_experiment }
+
+    before do
+      allow(Rails).to receive(:cache).and_return(cache)
+      metabolism_parent
+      Experiments::SweepBuilderService.call(experiment)
+      (logic_children(experiment, :full) + logic_children(experiment, :deep_only)).each do |run|
+        logic_sample(run, capability: 3)
+      end
+      logic_children(experiment, :none).first(2).each { |run| logic_sample(run) }
+    end
+
+    def read_reading
+      reads = []
+      collect = ->(*, payload) { reads << payload[:sql] if payload[:sql].include?("samples") }
+      fresh = described_class.build(experiment: experiment, paginate: paginate)
+
+      [ActiveSupport::Notifications.subscribed(collect, "sql.active_record") { fresh.logic_reading }, reads]
+    end
+
+    it "reads the children's samples once, and serves the same reading after" do
+      first, first_reads = read_reading
+      again, again_reads = read_reading
+
+      expect(first_reads).not_to be_empty
+      expect(again_reads).to be_empty
+      expect(again.arms.map(&:cells)).to eq(first.arms.map(&:cells))
+    end
+
+    it "reads it afresh, and final, once the last child finishes" do
+      first, = read_reading
+      logic_sample(logic_children(experiment, :none).last)
+      last, last_reads = read_reading
+
+      expect(first).to be_interim
+      expect(last_reads).not_to be_empty
+      expect(last).not_to be_interim
+      expect(last.arms.last.cells.third).to eq(3)
+    end
+
+    it "is nil on any other sweep" do
+      other = described_class.build(experiment: metabolism_experiment, paginate: paginate)
+
+      expect(other.logic_reading).to be_nil
+    end
+  end
+
   describe "#series_cache_key" do
     let!(:run) { finished_run(radius: 1) }
 
