@@ -21,6 +21,12 @@ pub const LOOP_END: u8 = b']';
 /// ever meant anything by, and it is the one character on the keyboard that says "money".
 pub const STEAL: u8 = b'$';
 
+/// The emit op of the task assay (`docs/DESIGN.md` §1.1, "Tasks and the emit op"): writes
+/// the byte under head0 to the environment, as `.` writes it to head1. Like the steal byte
+/// it is not one of `OPS`, and it is an instruction only inside the assay, through
+/// `run_emitting`; every soup interaction reads it as the no-op it has always been.
+pub const EMIT: u8 = b'!';
+
 /// The ten instruction bytes; every other byte is a no-op.
 pub const OPS: [u8; 10] = [
     HEAD0_LEFT,
@@ -105,6 +111,8 @@ pub enum Halt {
     StepLimit,
     EnergySpent,
     UnmatchedBracket,
+    /// An emitting run wrote the most outputs it was allowed (`run_emitting`).
+    OutputsFull,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,11 +222,32 @@ pub fn run_bounded(
 /// alone (`Laps`): either way the run ends with the buffer, halt, step count and steals a
 /// run of every step ends with.
 pub fn run_stealing(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> Outcome {
+    let mut silent = Emitted::default();
     #[cfg(test)]
     if !SKIPPING.get() {
-        return execute::<false>(tape, bounds, stealing);
+        return execute::<false, false>(tape, bounds, stealing, &mut silent);
     }
-    execute::<true>(tape, bounds, stealing)
+    execute::<true, false>(tape, bounds, stealing, &mut silent)
+}
+
+/// The outputs an emitting run wrote, in order, and the most it may write before it stops.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Emitted {
+    pub bytes: Vec<u8>,
+    pub most: usize,
+}
+
+/// Executes `tape` as `run_stealing` does with the steal byte off, and with `EMIT` as an
+/// instruction: each one appends the byte under head0 to `emitted.bytes`, and the run stops
+/// with `Halt::OutputsFull` at the `emitted.most`-th. The task assay's interpreter. An emit
+/// is an acting step to both skips: no cycle is skipped across one, and no lap holding one
+/// is replayed, so every emit the plain loop makes is made here, at the same step.
+pub fn run_emitting(tape: &mut Vec<u8>, bounds: Bounds, emitted: &mut Emitted) -> Outcome {
+    #[cfg(test)]
+    if !SKIPPING.get() {
+        return execute::<false, true>(tape, bounds, Stealing::Off, emitted);
+    }
+    execute::<true, true>(tape, bounds, Stealing::Off, emitted)
 }
 
 #[cfg(test)]
@@ -233,8 +262,15 @@ thread_local! {
 }
 
 /// The interpreter loop. `SKIP` compiles both skips in or out; out, it is the plain loop
-/// that executes every step, which the tests keep as the reference.
-fn execute<const SKIP: bool>(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> Outcome {
+/// that executes every step, which the tests keep as the reference. `EMIT_ON` makes the emit
+/// byte an instruction; off, which is every soup interaction, it is not in the table the
+/// loop reads.
+fn execute<const SKIP: bool, const EMIT_ON: bool>(
+    tape: &mut Vec<u8>,
+    bounds: Bounds,
+    stealing: Stealing,
+    emitted: &mut Emitted,
+) -> Outcome {
     let Bounds {
         max_steps,
         enabled,
@@ -244,6 +280,7 @@ fn execute<const SKIP: bool>(tape: &mut Vec<u8>, bounds: Bounds, stealing: Steal
     let split = stealing.split();
     let mut enabled = enabled.table();
     enabled[STEAL as usize] = split.is_some();
+    enabled[EMIT as usize] = EMIT_ON;
     let split = split.unwrap_or(0);
     let mut steals = [0u32; 2];
     let mut len = tape.len();
@@ -315,6 +352,19 @@ fn execute<const SKIP: bool>(tape: &mut Vec<u8>, bounds: Bounds, stealing: Steal
                 tape[head0] = byte;
             }
             STEAL => steals[usize::from(ip >= split)] += 1,
+            EMIT => {
+                emitted.bytes.push(tape[head0]);
+                // The buffer is unchanged, but a cycle skipped across an emit would drop
+                // the outputs of the periods it skips.
+                changed = true;
+                if emitted.bytes.len() >= emitted.most {
+                    return Outcome {
+                        halt: Halt::OutputsFull,
+                        steps,
+                        steals,
+                    };
+                }
+            }
             LOOP_START if tape[head0] == 0 => match match_forward(tape, ip) {
                 Some(target) => ip = target,
                 None => {
@@ -530,7 +580,8 @@ struct Beat {
 /// the run itself: a bracket reading the other way, and a write that would change a byte of
 /// the code the lap runs through — the bytes from the lowest its pointer reached to the
 /// furthest, which also hold every bracket the lap matched. A lap that changed its own code as it was
-/// noted is not repeated at all. A lap is only begun whole within the budget, and only on a
+/// noted is not repeated at all, nor is one that reaches an emit, which the interpreter
+/// must make itself. A lap is only begun whole within the budget, and only on a
 /// buffer at its cap, where a head stepping off the end wraps as every other step does
 /// rather than claiming a byte.
 #[derive(Default)]
@@ -671,6 +722,7 @@ impl Laps {
                     write = Some((at.head0, tape[at.head1]));
                 }
                 STEAL => at.steals[usize::from(ip >= split)] += 1,
+                EMIT => return None,
                 LOOP_START if tape[at.head0] == 0 => {
                     self.beats.push(beat(Act::Zero));
                     next = match_forward(tape, ip)?;
@@ -1365,9 +1417,11 @@ mod tests {
     /// halt, steps and steals of the outcome.
     fn both_ways(pair: &[u8], bounds: Bounds, stealing: Stealing) -> [(Vec<u8>, Outcome); 2] {
         let mut skipped = pair.to_vec();
-        let with_skip = execute::<true>(&mut skipped, bounds, stealing);
+        let with_skip =
+            execute::<true, false>(&mut skipped, bounds, stealing, &mut Emitted::default());
         let mut stepped = pair.to_vec();
-        let every_step = execute::<false>(&mut stepped, bounds, stealing);
+        let every_step =
+            execute::<false, false>(&mut stepped, bounds, stealing, &mut Emitted::default());
         [(skipped, with_skip), (stepped, every_step)]
     }
 
@@ -1554,6 +1608,244 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The emit op by the book, one step at a time and sharing no code with `execute`: the
+    /// reference an emitting run is held to.
+    fn emitting_by_hand(
+        pair: &[u8],
+        max_steps: u32,
+        enabled: OpSet,
+        most: usize,
+    ) -> (Vec<u8>, Vec<u8>, Halt, u32) {
+        let mut buf = pair.to_vec();
+        let len = buf.len();
+        let mut outputs = Vec::new();
+        let (mut ip, mut head0, mut head1, mut steps) = (0usize, 0usize, 0usize, 0u32);
+        let matched = |buf: &[u8], from: usize, forward: bool| {
+            let mut depth = 0i64;
+            let mut at = from as i64;
+            while (0..len as i64).contains(&at) {
+                match buf[at as usize] {
+                    LOOP_START => depth += 1,
+                    LOOP_END => depth -= 1,
+                    _ => {}
+                }
+                if depth == 0 {
+                    return Some(at as usize);
+                }
+                at += if forward { 1 } else { -1 };
+            }
+            None
+        };
+        let halt = loop {
+            if ip >= len {
+                break Halt::EndOfTape;
+            }
+            if steps == max_steps {
+                break Halt::StepLimit;
+            }
+            steps += 1;
+            let op = buf[ip];
+            if op == EMIT {
+                outputs.push(buf[head0]);
+                if outputs.len() == most {
+                    break Halt::OutputsFull;
+                }
+            } else if enabled.enables(op) {
+                match op {
+                    HEAD0_LEFT => head0 = (head0 + len - 1) % len,
+                    HEAD0_RIGHT => head0 = (head0 + 1) % len,
+                    HEAD1_LEFT => head1 = (head1 + len - 1) % len,
+                    HEAD1_RIGHT => head1 = (head1 + 1) % len,
+                    INC => buf[head0] = buf[head0].wrapping_add(1),
+                    DEC => buf[head0] = buf[head0].wrapping_sub(1),
+                    COPY_TO_HEAD1 => buf[head1] = buf[head0],
+                    COPY_TO_HEAD0 => buf[head0] = buf[head1],
+                    LOOP_START if buf[head0] == 0 => match matched(&buf, ip, true) {
+                        Some(to) => ip = to,
+                        None => break Halt::UnmatchedBracket,
+                    },
+                    LOOP_END if buf[head0] != 0 => match matched(&buf, ip, false) {
+                        Some(to) => ip = to,
+                        None => break Halt::UnmatchedBracket,
+                    },
+                    _ => {}
+                }
+            }
+            ip += 1;
+        };
+        (buf, outputs, halt, steps)
+    }
+
+    fn emitting<const SKIP: bool>(
+        pair: &[u8],
+        bounds: Bounds,
+        most: usize,
+    ) -> (Vec<u8>, Vec<u8>, Halt, u32) {
+        let mut buf = pair.to_vec();
+        let mut emitted = Emitted {
+            bytes: Vec::new(),
+            most,
+        };
+        let outcome = execute::<SKIP, true>(&mut buf, bounds, Stealing::Off, &mut emitted);
+        assert_eq!(outcome.steals, [0, 0], "the assay never steals");
+        (buf, emitted.bytes, outcome.halt, outcome.steps)
+    }
+
+    /// On a pair holding no emit byte, the emitting interpreter is the soup's own, skips
+    /// and all: the same buffer, halt, steps and steals. An increment can still write an
+    /// emit byte where the pointer will reach it; that emit moves nothing but the outputs,
+    /// so the runs part only where the emitting one stops at its last output slot.
+    #[test]
+    fn an_emitting_run_without_the_emit_byte_is_the_plain_run() {
+        const ALPHABET: &[u8] = b"<>{}+-.,[][]]]$\0\x01a  \"";
+        let mut rng = crate::rng::seeded(37, 0, 0);
+        let mut draw = |bound: u64| crate::rng::below(&mut rng, bound) as usize;
+        let (mut filled, mut manufactured) = (0, 0);
+        let (_, lapped) = skipped_during(|| {
+            for _ in 0..100_000 {
+                let len = 2 + draw(63);
+                let pair: Vec<u8> = (0..len)
+                    .map(|_| ALPHABET[draw(ALPHABET.len() as u64)])
+                    .collect();
+                let bounds = Bounds {
+                    max_steps: [draw(64), draw(4_097)][draw(2)] as u32,
+                    enabled: [OpSet::ALL, OpSet::parse("<>{}.[]").expect("a legal set")][draw(2)],
+                    ..joined(0, len)
+                };
+                for skip in [true, false] {
+                    let mut plain = pair.clone();
+                    let mut emitting = pair.clone();
+                    let mut emitted = Emitted {
+                        bytes: Vec::new(),
+                        most: 4,
+                    };
+                    let (by_plain, by_emitting) = if skip {
+                        (
+                            execute::<true, false>(
+                                &mut plain,
+                                bounds,
+                                Stealing::Off,
+                                &mut Emitted::default(),
+                            ),
+                            execute::<true, true>(
+                                &mut emitting,
+                                bounds,
+                                Stealing::Off,
+                                &mut emitted,
+                            ),
+                        )
+                    } else {
+                        (
+                            execute::<false, false>(
+                                &mut plain,
+                                bounds,
+                                Stealing::Off,
+                                &mut Emitted::default(),
+                            ),
+                            execute::<false, true>(
+                                &mut emitting,
+                                bounds,
+                                Stealing::Off,
+                                &mut emitted,
+                            ),
+                        )
+                    };
+                    if by_emitting.halt == Halt::OutputsFull {
+                        filled += 1;
+                        continue;
+                    }
+                    assert_eq!(by_emitting, by_plain, "{pair:?} under {bounds:?}");
+                    assert_eq!(emitting, plain, "{pair:?} under {bounds:?}");
+                    manufactured += usize::from(!emitted.bytes.is_empty());
+                }
+            }
+        });
+        assert!(lapped > 100_000, "laps skipped only {lapped} steps");
+        assert!(filled < 1_000, "{filled} runs filled their outputs");
+        assert!(manufactured > 0, "no run wrote an emit byte and reached it");
+    }
+
+    /// With emits in the code the emitting run, skipping or not, ends where the stepper
+    /// by the book ends, with the same outputs: over random tapes laid out as the assay
+    /// lays them out, the tape then as many zeros with two small inputs at the end, dense
+    /// in loops so that laps form around and beside emits.
+    #[test]
+    fn an_emitting_run_is_the_stepper_by_the_book() {
+        const ALPHABET: &[u8] = b"<>{}+-.,[][]]]!!$\0\x01a";
+        let mut rng = crate::rng::seeded(41, 0, 0);
+        let mut draw = |bound: u64| crate::rng::below(&mut rng, bound) as usize;
+        let mut emits = 0;
+        let (recurred, lapped) = skipped_during(|| {
+            for _ in 0..100_000 {
+                let len = 1 + draw(40);
+                let mut pair: Vec<u8> = (0..len)
+                    .map(|_| ALPHABET[draw(ALPHABET.len() as u64)])
+                    .collect();
+                pair.resize(2 * len, 0);
+                pair[2 * len - 1] = draw(16) as u8;
+                if len > 1 {
+                    pair[2 * len - 2] = draw(16) as u8;
+                }
+                let max_steps = [draw(64), 4_096][draw(2)] as u32;
+                let enabled = [OpSet::ALL, OpSet::parse("<>{}.[]").expect("a legal set")][draw(2)];
+                let most = 1 + draw(4);
+                let bounds = Bounds {
+                    max_steps,
+                    enabled,
+                    ..joined(0, 2 * len)
+                };
+                let by_hand = emitting_by_hand(&pair, max_steps, enabled, most);
+                assert_eq!(emitting::<true>(&pair, bounds, most), by_hand, "{pair:?}");
+                assert_eq!(emitting::<false>(&pair, bounds, most), by_hand, "{pair:?}");
+                emits += by_hand.1.len();
+            }
+        });
+        assert!(emits > 30_000, "only {emits} emits");
+        assert!(recurred > 100_000, "cycles skipped only {recurred} steps");
+        assert!(lapped > 100_000, "laps skipped only {lapped} steps");
+    }
+
+    /// A copy loop that holds no emit is still a lap the assay skips, beside an emit made
+    /// before it; one whose body emits is run step by step, and every emit is made.
+    #[test]
+    fn a_lap_holding_an_emit_is_run_and_one_without_is_skipped() {
+        let mut copier = b"<!>{[.<>>{]".to_vec();
+        copier.resize(64, b'a');
+        copier.resize(128, 0);
+        copier[127] = 7;
+        let (_, lapped) = skipped_during(|| {
+            let by_hand = emitting_by_hand(&copier, 4_096, OpSet::ALL, 4);
+            assert_eq!(emitting::<true>(&copier, joined(4_096, 128), 4), by_hand);
+            assert_eq!(by_hand.1, vec![7]);
+        });
+        assert!(lapped > 1_000, "the copy loop's laps ran: {lapped}");
+
+        let mut spraying = b"{[.<!>>{]".to_vec();
+        spraying.resize(64, b'a');
+        spraying.resize(128, 1);
+        let (_, lapped) = skipped_during(|| {
+            let by_hand = emitting_by_hand(&spraying, 4_096, OpSet::ALL, 4);
+            assert_eq!(emitting::<true>(&spraying, joined(4_096, 128), 4), by_hand);
+            assert_eq!(by_hand.1.len(), 4);
+            assert_eq!(by_hand.2, Halt::OutputsFull);
+        });
+        assert_eq!(lapped, 0);
+    }
+
+    /// The soup never emits: `run_stealing` reads the emit byte as the no-op any other
+    /// non-instruction byte is.
+    #[test]
+    fn the_emit_byte_is_a_no_op_in_the_soup() {
+        let mut emits = vec![EMIT, b'<', EMIT, 0];
+        let outcome = run_stealing(&mut emits, joined_bounds(4), Stealing::Off);
+        let mut inert = vec![b'a', b'<', b'a', 0];
+        assert_eq!(
+            run_stealing(&mut inert, joined_bounds(4), Stealing::Off),
+            outcome
+        );
+        assert!(!is_op(EMIT));
     }
 
     /// The emerged copier's loop is tens of bytes (#245), so its heads come round in more

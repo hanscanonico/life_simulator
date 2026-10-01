@@ -28,6 +28,19 @@ RSpec.describe Lab::CanonicalParams do
       expect(described_class.for(stored)).to include("energy_payer" => "pair")
     end
 
+    it "reads a run stored before tasks existed as the run with tasks off" do
+      stored = Lab::Schema.run_defaults.except("tasks", "task_every", "task_reward")
+
+      expect(described_class.for(stored)).to eq(described_class.for(Lab::Schema.run_defaults))
+      expect(described_class.for(stored)).to include("tasks" => "off", "task_every" => 8, "task_reward" => 0)
+    end
+
+    it "keeps a rewarded arm apart from its unrewarded twin" do
+      rewarded = { "tasks" => "arith", "task_reward" => 2048 }
+
+      expect(described_class.for(rewarded)).not_to eq(described_class.for(rewarded.merge("task_reward" => 0)))
+    end
+
     it "keeps an initiator run apart from the pair one" do
       expect(described_class.for("energy_payer" => "initiator")).not_to eq(described_class.for({}))
     end
@@ -78,6 +91,12 @@ RSpec.describe Lab::CanonicalParams do
 
     it "reads the lineage rule as dynamics a descendant may change" do
       expect(described_class.structure_of({ "lineage_rule" => "oriented" }, substrate: "soup"))
+        .to eq(described_class.structure_of({}, substrate: "soup"))
+    end
+
+    it "reads the task assay as dynamics a descendant may change" do
+      expect(described_class.structure_of({ "tasks" => "arith", "task_every" => 4, "task_reward" => 512 },
+                                          substrate: "soup"))
         .to eq(described_class.structure_of({}, substrate: "soup"))
     end
 

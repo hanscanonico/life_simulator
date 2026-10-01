@@ -109,6 +109,32 @@
       "type": "float"
     },
     {
+      "default": "off",
+      "doc": "Which tasks a soup cell is assayed on. off assays nothing, which is the substrate of DESIGN 1.1. arith runs each cell's tape alone, on two small inputs at the end of a buffer twice its length, with ! emitting the byte under head0, and credits the tasks of an arithmetic ladder (echo, inc, dec, add, sub, not, double, mul) that one of its outputs computes in all three cases. Outside that assay ! is never an instruction. Refused on life.",
+      "name": "tasks",
+      "type": "enum",
+      "values": [
+        "off",
+        "arith"
+      ]
+    },
+    {
+      "default": 8,
+      "doc": "Epochs between task assays: cells are assayed at the start of every epoch that is a multiple of this. Read only once a task_reward is set.",
+      "max": 1000000,
+      "min": 1,
+      "name": "task_every",
+      "type": "integer"
+    },
+    {
+      "default": 0,
+      "doc": "Instruction energy paid into a cell's stock, before that epoch's influx and never past energy_stock_cap, per unit of the tasks its tape is credited with at an assay; the ladder's units are 1, 2, 2, 4, 4, 8, 8 and 16. 0 pays nothing and runs no assay, so the run is the same run as with tasks off. Any reward needs tasks on and an energy_influx to have a stock to pay into.",
+      "max": 1048576,
+      "min": 0,
+      "name": "task_reward",
+      "type": "integer"
+    },
+    {
       "default": "<>{}+-.,[]",
       "doc": "The BFF instructions this run executes, as a string of distinct op bytes. A byte whose op is left out is a no-op, like any non-instruction byte.",
       "name": "ops",
@@ -213,6 +239,48 @@
     "generations": 5,
     "sample_cells": 256,
     "trials": 5
+  },
+  "tasks": {
+    "case_draws": 1024,
+    "cases": 3,
+    "emit": "!",
+    "input_range": 16,
+    "ladder": [
+      {
+        "name": "echo",
+        "units": 1
+      },
+      {
+        "name": "inc",
+        "units": 2
+      },
+      {
+        "name": "dec",
+        "units": 2
+      },
+      {
+        "name": "add",
+        "units": 4
+      },
+      {
+        "name": "sub",
+        "units": 4
+      },
+      {
+        "name": "not",
+        "units": 8
+      },
+      {
+        "name": "double",
+        "units": 8
+      },
+      {
+        "name": "mul",
+        "units": 16
+      }
+    ],
+    "max_outputs": 4,
+    "steps": 4096
   },
   "transition": {
     "baseline_epochs": 500,

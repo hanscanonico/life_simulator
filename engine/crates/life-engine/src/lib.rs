@@ -12,6 +12,7 @@ pub mod render;
 pub mod replicator;
 pub mod rng;
 pub mod snapshot;
+pub mod task;
 pub mod world;
 
 pub use bff::OpSet;
