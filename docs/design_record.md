@@ -2366,3 +2366,60 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   The asymmetric-execution finding's "seed for seed" control is now scoped to sweep 9's
   seeds 1–90, as the 2026-09-25 entry said it would be. Nothing about the engine, the rules
   or any observable moves.
+- 2026-10-01 — **The locality-emergence finding states its claim: emergence peaks at an
+  intermediate reach.** Sweep 13 (`locality-emergence`, entry of 2026-09-27) finished on
+  2026-09-28, 630 of 630 runs, 90 per arm, seeds 91–180. Read under the pre-registered rule
+  (`lab:locality_emergence_report` on the lab, 2026-10-01, "final reading"), with crossings
+  and emergence re-counted by an independent SELECT on the lab database (crossed: a confirmed
+  `emergence_epoch`; emerged: crossed and `replicator_share` ≥ 0.5 at a sample at or after
+  it), which agrees arm for arm:
+
+  | arm | radius 1 | radius 2 | radius 3 | radius 4 | radius 6 | radius 8 | well-mixed |
+  |---|---|---|---|---|---|---|---|
+  | crossed / 90 | 5 | 10 | 11 | 20 | 11 | 5 | 8 |
+  | emerged / 90 | 4 | 9 | 7 | 16 | 6 | 3 | 3 |
+
+  **H-peak shown**: radius 4 16/90 against radius 1 4/90, one-sided Fisher p = 0.00385, Holm
+  0.00385; against well-mixed 3/90, p = 0.00135, Holm 0.00269. Both adjusted p are below
+  0.05. **H-shape shown**: over the six finite radii the radius² coefficient is −0.11379,
+  two-sided Wald p = 0.00407, and the fitted peak is at radius 4.10, strictly between 2 and
+  6; well-mixed, not fitted, 3/90.
+
+  **The claim**: on this world (128², fixed 64-byte tapes, 2^-13, 20 000 epochs) a replicator
+  arises most often at an intermediate reach.
+  Radius 4 emerged four times as often as radius 1 and five times as often as the well-mixed
+  world, on worlds no earlier reading had seen, and the curve over the finite radii rises from
+  radius 1, peaks near 4 and falls by radius 8. It is the exploratory pattern of sweep 12,
+  confirmed under rules fixed before any run was read.
+
+  **Registry status `published`**, finding `emergence-peaks-at-intermediate-reach`: every
+  run finished, the reading is final and both pre-registered hypotheses are shown, which is
+  what "every run finished and the claim stands on them" asks. It is the registry's first
+  `published` finding. The page renders the curve, the two hypotheses and sweep 12's arms
+  beside them at render time from `Experiments::LocalityEmergenceReadingService`, the report
+  the sweep page draws, applied to both sweeps. It carries no census note: emergence is read
+  on `replicator_share`, the orientation-aware clause (#245, #252). The radius-locality page
+  gains a line pointing to it.
+
+  **A coincidence of totals, stated so no reader suspects a copy.** At radius 1, 2, 4 and
+  well-mixed this sweep emerged 4, 9, 16 and 3 of 90, exactly sweep 12's exploratory counts.
+  They are different worlds: this sweep's seeds are 91–180 and sweep 12's 1–90; its runs are
+  ids 3673–4302 and sweep 12's 3217–3576, none shared; the confirmed crossings count 5, 10,
+  20 and 8 here against 5, 12, 25 and 7 in sweep 12; and at radius 1, where both count five,
+  the crossing seeds and epochs are different ones (seeds 96, 113, 119, 123 and 143 at epochs
+  17 990, 10 480, 13 000, 10 520 and 5 470, against seeds 1, 5, 20, 51 and 82 at 5 030, 7 000,
+  6 210, 17 250 and 9 330). The share clause then leaves the same totals by chance. The
+  confirmatory weight is on the three new arms as much as the four repeated ones: radius 3, 6
+  and 8 are what make H-shape a peak rather than a rise.
+
+  **What it means for rung 0**: the conditions under which a replicator arises include how
+  far a cell reaches, and not monotonically. The radius sweep (2026-09-11) read locality as
+  not speeding emergence on ten seeds an arm and could rule out only an enormous effect; at
+  nine times the seeds and the emergent rate the effect is there, as a best reach in the
+  middle rather than a benefit of locality as such — the tightest reach is among the worst.
+  With the lineage-diversity finding it divides the work: reach changes how often a
+  replicator arises, while after emergence one lineage held the world at every reach sweep 12
+  read. Not claimed: other world sizes, rates, growing tapes or budgets than 128²,
+  2^-13, 64 bytes and 20 000 epochs; detector crossings that the share clause does not keep;
+  any mechanism for why a reach near 4 is best; well-mixed as a point on the radius scale.
+  Nothing about the engine, the rules or any observable moves.

@@ -259,4 +259,29 @@ RSpec.describe Findings::ShowPage do
       expect(page.lineages_after_emergence).to be_nil
     end
   end
+
+  context "with the locality-emergence sweep" do
+    let(:finding) { Findings::Registry.find("emergence-peaks-at-intermediate-reach") }
+
+    before do
+      experiment = locality_emergence_experiment
+      locality_run(experiment, radius: 4, share: 0.9)
+    end
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.locality_emergence.report).to be_a(Lab::LocalityEmergenceReading::Report)
+    end
+
+    it "reads no exploratory sweep where sweep 12 is not in the lab" do
+      expect(page.locality_emergence).not_to be_exploratory
+    end
+  end
+
+  context "with the locality-emergence sweep missing" do
+    let(:finding) { Findings::Registry.find("emergence-peaks-at-intermediate-reach") }
+
+    it "has no reading" do
+      expect(page.locality_emergence).to be_nil
+    end
+  end
 end
