@@ -35,5 +35,10 @@ RSpec.describe Findings::InstrumentNotes do
     it "carries no note" do
       expect(Findings::Registry.find("lineages-after-emergence").instrument_note?).to be(false)
     end
+
+    it "carries no note on either from-emerged finding" do
+      expect(%w[copying-gets-faster-under-an-economy complexity-from-an-emerged-start]
+               .map { |slug| Findings::Registry.find(slug).instrument_note? }).to eq([false, false])
+    end
   end
 end

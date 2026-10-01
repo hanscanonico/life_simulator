@@ -260,6 +260,24 @@ RSpec.describe Findings::ShowPage do
     end
   end
 
+  context "with the from-emerged sweep" do
+    let(:finding) { Findings::Registry.find("copying-gets-faster-under-an-economy") }
+
+    before { from_emerged_experiment }
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.from_emerged.report).to be_a(Lab::DescendantReading::Report)
+    end
+  end
+
+  context "with the from-emerged sweep missing" do
+    let(:finding) { Findings::Registry.find("complexity-from-an-emerged-start") }
+
+    it "has no reading" do
+      expect(page.from_emerged).to be_nil
+    end
+  end
+
   context "with the locality-emergence sweep" do
     let(:finding) { Findings::Registry.find("emergence-peaks-at-intermediate-reach") }
 
