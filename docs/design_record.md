@@ -2867,6 +2867,14 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   descent, as for every priced descendant, so the first few epochs burst; both arms share
   it and the readings skip it.
 
+  **The assay the children run** is the task-assay entry's, under its final separating
+  rule: the three cases of an assay epoch are redrawn until x is pairwise distinct across
+  them, y is pairwise distinct across them, within each task the three expected outputs
+  are pairwise distinct, and no two tasks expect the same three outputs. The distinct-input
+  clauses came from #274's review, which found that an out-of-ladder function such as x + 3
+  was credited as ADD on any draw whose y was 3 in all three cases, about 1 draw in 4 096.
+  The pilot's chance-credit counts above were taken before that clause existed.
+
   **The readings, per child**, over its own samples at epochs above `parent_epoch` +
   **1 000**, #263's settling window (`SETTLING_WINDOW`):
   - **Deciles** are cut as clarification 1 of the from-emerged reading cuts them, over
@@ -2935,7 +2943,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     or DEC at 0.1 at or before the first sample at which a loop rung did. The samples read
     world shares, not lineages, so "a lineage holding INC or DEC" is read as the world
     holding it first;
-  - `dominant_tasks` (the commonest mask of the last decile, the smaller on a tie),
+  - `dominant_tasks` (the commonest mask of the last decile, the smaller on a tie; 0, a
+    dominant tape that solves nothing, is a mask like any other),
     `dominant_task_count`, `copy_latency` and `replicator_share` (last-decile medians).
     `copy_latency` is descriptive only now: the fixed price removes the latency selection
     #263 read;
