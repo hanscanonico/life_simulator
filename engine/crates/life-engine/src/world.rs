@@ -5,6 +5,7 @@
 
 use crate::bff;
 use crate::hash::{fnv1a64, fnv1a64_of};
+use crate::logic;
 use crate::metrics::{self, Metrics, TransitionTracker};
 use crate::params::{
     EnergyPayer, Init, Interaction, LineageRule, ParamError, Params, Substrate, Tasks,
@@ -463,17 +464,31 @@ impl World {
         self.params.rewards_tasks() && self.epoch.is_multiple_of(u64::from(self.params.task_every))
     }
 
-    /// Pays every cell `task_reward` per unit of the tasks its tape is credited with, into
-    /// its stock and never past the cap, before the epoch's influx. The cases are drawn
-    /// once, on `STREAM_TASK` at this epoch, and shared by every cell, so a verdict is a
-    /// function of the tape alone and each distinct tape is assayed once. It reads the
-    /// tapes and writes the stocks, and nothing else.
+    /// Pays every cell `task_reward` per unit of the tasks its tape is credited with, at or
+    /// above the run's `task_floor`, into its stock and never past the cap, before the
+    /// epoch's influx. The cases are drawn once, on `STREAM_TASK` at this epoch, for the
+    /// run's own ladder, and shared by every cell, so a verdict is a function of the tape
+    /// alone and each distinct tape is assayed once. It reads the tapes and writes the
+    /// stocks, and nothing else.
     fn pay_tasks(&mut self) {
         let mut rng = rng::seeded(self.seed, STREAM_TASK, self.epoch);
-        let mut memo = task::Memo::new(task::Cases::draw(&mut rng), self.params.op_set());
-        let units: Vec<u32> = (0..self.params.cell_count())
-            .map(|cell| memo.credit(self.tape(cell)).units())
-            .collect();
+        let (ops, floor) = (self.params.op_set(), self.params.task_floor_rung());
+        let cells = 0..self.params.cell_count();
+        let units: Vec<u32> = match self.params.tasks {
+            Tasks::Off => return,
+            Tasks::Arith => {
+                let mut memo = task::Memo::new(task::Cases::draw(&mut rng), ops);
+                cells
+                    .map(|cell| memo.credit(self.tape(cell)).units_from(floor))
+                    .collect()
+            }
+            Tasks::Logic => {
+                let mut memo = logic::Memo::new(logic::Cases::draw(&mut rng), ops);
+                cells
+                    .map(|cell| memo.credit(self.tape(cell)).units_from(floor))
+                    .collect()
+            }
+        };
         let (reward, cap) = (self.params.task_reward, self.params.energy_stock_cap);
         for (held, units) in self.stock.iter_mut().zip(units) {
             *held = held.saturating_add(reward.saturating_mul(units)).min(cap);
@@ -673,10 +688,11 @@ impl World {
         }
     }
 
-    /// Whether the samples read the task observables: whenever tasks are on, paid for or
-    /// not, so a control arm with no reward carries the readings its treatment does.
+    /// Whether the samples read the task observables: whenever the arithmetic ladder is
+    /// on, paid for or not, so a control arm with no reward carries the readings its
+    /// treatment does. They read that ladder alone, so a logic run leaves them null.
     fn reads_tasks(&self) -> bool {
-        self.params.substrate == Substrate::Soup && self.params.tasks != Tasks::Off
+        self.params.substrate == Substrate::Soup && self.params.tasks == Tasks::Arith
     }
 
     /// The task observables' companion of `replicator_share`: `task::TASK_SAMPLE_CELLS`
@@ -5255,6 +5271,180 @@ mod tests {
         let unpaid = stepped_world(paid_world(0), 20);
         assert_eq!(paid.cells, unpaid.cells);
         assert_ne!(paid.stock, unpaid.stock);
+    }
+
+    /// The Metabolism economy on the logic ladder.
+    fn logic_params() -> Params {
+        Params {
+            tasks: Tasks::Logic,
+            ..rewarded_params()
+        }
+    }
+
+    /// The design study's NOT solver and XOR solver, in front of a random soup's own bytes
+    /// in its top eighth and the eighth below; in the soup `~` and `!` are no-ops, so they
+    /// run only as head moves and a copy.
+    const NOT_SOLVER: &[u8] = b"<{~!";
+    const XOR_SOLVER: &[u8] = b"<<<{,{~>>{~<~}}~!";
+
+    fn with_logic_solvers(params: &Params, seed: u64) -> World {
+        let mut world = World::new(params, seed).unwrap();
+        for y in 0..params.height / 4 {
+            let solver = if y < params.height / 8 {
+                NOT_SOLVER
+            } else {
+                XOR_SOLVER
+            };
+            for x in 0..params.width {
+                let mut tape = world.cell(x, y).to_vec();
+                tape[..solver.len()].copy_from_slice(solver);
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world
+    }
+
+    /// The logic reward's own pin: `logic_params` with an eighth of the cells solving NOT
+    /// and an eighth XOR, seed 42, after 50 epochs.
+    const PINNED_LOGIC_REWARD_HASH: u64 = 0xc0af_53f9_71a4_d7b4;
+
+    #[test]
+    fn the_logic_reward_is_pinned() {
+        let params = logic_params();
+        let rewarded = stepped_world(with_logic_solvers(&params, 42), 50);
+        assert_eq!(rewarded.world_hash(), PINNED_LOGIC_REWARD_HASH);
+        let twin = stepped_world(with_logic_solvers(&unrewarded(&params), 42), 50);
+        assert_ne!(rewarded.world_hash(), twin.world_hash());
+        let arith = stepped_world(with_logic_solvers(&rewarded_params(), 42), 50);
+        assert_ne!(rewarded.world_hash(), arith.world_hash());
+    }
+
+    /// A logic reward of 0 runs no assay, so that control arm is the run with tasks off,
+    /// byte for byte and stock for stock, as the arithmetic one is.
+    #[test]
+    fn a_logic_reward_of_zero_is_the_run_with_tasks_off() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            for task_every in [1, 8] {
+                let params = Params {
+                    energy_payer: payer,
+                    task_every,
+                    ..unrewarded(&logic_params())
+                };
+                let control = stepped_world(with_logic_solvers(&params, 42), 30);
+                let off = stepped_world(with_logic_solvers(&without_tasks(&params), 42), 30);
+                assert_eq!(control.world_hash(), off.world_hash(), "{payer:?}");
+                assert_eq!(control.stock, off.stock);
+            }
+        }
+    }
+
+    #[test]
+    fn determinism_holds_under_a_logic_reward() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            for (seed, task_floor) in [(1, "echo"), (2, "nand")] {
+                assert_deterministic(
+                    &Params {
+                        max_steps: 64,
+                        energy_payer: payer,
+                        energy_influx: 8,
+                        energy_stock_cap: 256,
+                        tasks: Tasks::Logic,
+                        task_every: 3,
+                        task_reward: 4,
+                        task_floor: task_floor.to_string(),
+                        ..soup(16, 16)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// `paid_world`'s still soup on the logic ladder, with tapes of 24 bytes: an ECHO
+    /// solver, a NOT solver, an XOR solver and a sprayer.
+    fn logic_paid_world(task_reward: u32, task_floor: &str) -> World {
+        let params = Params {
+            tape_len: 24,
+            mutation_rate: 0.0,
+            init: Init::Zero,
+            interaction: Interaction::Host,
+            max_steps: 64,
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 64,
+            energy_stock_cap: 4_000,
+            tasks: Tasks::Logic,
+            task_every: 8,
+            task_reward,
+            task_floor: task_floor.to_string(),
+            ..soup(8, 8)
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        for (x, y, program) in [
+            (1, 1, &b"<!>"[..]),
+            (5, 1, NOT_SOLVER),
+            (1, 5, XOR_SOLVER),
+            (5, 5, b"[!+]"),
+        ] {
+            let mut tape = program.to_vec();
+            tape.resize(24, 0);
+            world.set_cell(x, y, &tape);
+        }
+        world.stock.fill(0);
+        world
+    }
+
+    /// The floor pays only the rungs at or above it: at ECHO each solver is paid its units,
+    /// ECHO 1, NOT 1 and XOR 8; at NOT the ECHO solver is paid nothing; at XOR, the deep-only
+    /// arm, only the XOR solver is paid. The sprayer is never paid.
+    #[test]
+    fn the_task_floor_pays_only_the_rungs_at_or_above_it() {
+        let paid = |task_floor: &str| {
+            let mut world = logic_paid_world(100, task_floor);
+            world.step();
+            let solvers = [(1, 1), (5, 1), (1, 5), (5, 5)].map(|(x, y)| stock_at(&world, x, y));
+            let total: u32 = world.stock.iter().sum();
+            assert_eq!(
+                total,
+                solvers.iter().sum::<u32>(),
+                "a cell that solves nothing was paid"
+            );
+            solvers
+        };
+        assert_eq!(paid("echo"), [100, 100, 800, 0]);
+        assert_eq!(paid("not"), [0, 100, 800, 0]);
+        assert_eq!(paid("xor"), [0, 0, 800, 0]);
+        assert_eq!(paid("equ"), [0, 0, 0, 0]);
+    }
+
+    /// The floor moves the arithmetic ladder's pay the same way: `paid_world`'s solver of
+    /// ECHO and INC is paid INC alone at a floor of INC.
+    #[test]
+    fn the_task_floor_moves_the_arithmetic_pay_the_same_way() {
+        let mut world = paid_world(100);
+        world.params.task_floor = "inc".to_string();
+        world.step();
+        let solvers = [(1, 1), (5, 1), (1, 5), (5, 5)].map(|(x, y)| stock_at(&world, x, y));
+        assert_eq!(solvers, [0, 200, 0, 0]);
+    }
+
+    /// The logic assay draws on the task stream and touches only the stocks, as the
+    /// arithmetic one does.
+    #[test]
+    fn paying_for_logic_moves_no_byte_by_itself() {
+        let paid = stepped_world(logic_paid_world(100, "echo"), 20);
+        let unpaid = stepped_world(logic_paid_world(0, "echo"), 20);
+        assert_eq!(paid.cells, unpaid.cells);
+        assert_ne!(paid.stock, unpaid.stock);
+    }
+
+    /// The task observables read the arithmetic ladder alone, so a logic run leaves them
+    /// null, paid or not.
+    #[test]
+    fn the_arithmetic_task_observables_are_null_on_a_logic_run() {
+        for params in [logic_params(), unrewarded(&logic_params())] {
+            let mut world = with_logic_solvers(&params, 42);
+            assert_eq!(task_digest(&world.metrics()), UNREAD_TASKS);
+        }
     }
 
     /// A descendant is a new run and is refused what a new run is refused: a reward with

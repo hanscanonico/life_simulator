@@ -6,6 +6,7 @@
 
 pub mod bff;
 pub mod hash;
+pub mod logic;
 pub mod metrics;
 pub mod params;
 pub mod render;

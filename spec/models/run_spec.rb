@@ -163,6 +163,12 @@ RSpec.describe Run, type: :model do
                                                     "tasks" => "arith", "task_reward" => 2**11))).to be_valid
     end
 
+    it "accepts a child that pays for the logic ladder's deep rungs alone" do
+      expect(descendant(params: parent.params.merge("energy_influx" => 2**10, "energy_stock_cap" => 2**16,
+                                                    "tasks" => "logic", "task_reward" => 2**11,
+                                                    "task_floor" => "xor"))).to be_valid
+    end
+
     it "accepts the parent's params and seed, the exact continuation" do
       expect(descendant(params: parent.params, seed: parent.seed)).to be_valid
     end

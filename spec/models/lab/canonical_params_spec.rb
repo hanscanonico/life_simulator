@@ -35,6 +35,20 @@ RSpec.describe Lab::CanonicalParams do
       expect(described_class.for(stored)).to include("tasks" => "off", "task_every" => 8, "task_reward" => 0)
     end
 
+    it "reads a run stored before the task floor existed as the run that paid every rung" do
+      stored = Lab::Schema.run_defaults.except("task_floor").merge("tasks" => "arith", "task_reward" => 2048)
+
+      expect(described_class.for(stored))
+        .to eq(described_class.for(stored.merge("task_floor" => "echo")))
+      expect(described_class.for(stored)).to include("task_floor" => "echo")
+    end
+
+    it "keeps a deep-only arm apart from its full-ladder twin" do
+      full = { "tasks" => "logic", "task_reward" => 2048 }
+
+      expect(described_class.for(full)).not_to eq(described_class.for(full.merge("task_floor" => "xor")))
+    end
+
     it "keeps a rewarded arm apart from its unrewarded twin" do
       rewarded = { "tasks" => "arith", "task_reward" => 2048 }
 
@@ -96,6 +110,12 @@ RSpec.describe Lab::CanonicalParams do
 
     it "reads the task assay as dynamics a descendant may change" do
       expect(described_class.structure_of({ "tasks" => "arith", "task_every" => 4, "task_reward" => 512 },
+                                          substrate: "soup"))
+        .to eq(described_class.structure_of({}, substrate: "soup"))
+    end
+
+    it "reads the logic ladder and its floor as dynamics a descendant may change" do
+      expect(described_class.structure_of({ "tasks" => "logic", "task_reward" => 512, "task_floor" => "xor" },
                                           substrate: "soup"))
         .to eq(described_class.structure_of({}, substrate: "soup"))
     end
