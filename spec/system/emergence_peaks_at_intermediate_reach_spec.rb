@@ -11,7 +11,9 @@ RSpec.describe "The emergence-peaks-at-intermediate-reach finding", type: :syste
       sweep_arm(experiment, 4, emerged: 8, crossed: 8, first_seed: 91)
       sweep_arm(experiment, 8, emerged: 1, crossed: 1, first_seed: 91)
       sweep_arm(experiment, 0, emerged: 0, crossed: 0, first_seed: 91)
-      sweep_arm(lineage_diversity_experiment, 0, emerged: 0, crossed: 1, first_seed: 1)
+      sweep12 = lineage_diversity_experiment
+      sweep_arm(sweep12, 1, emerged: 1, crossed: 2, first_seed: 1)
+      sweep_arm(sweep12, 0, emerged: 0, crossed: 1, first_seed: 1)
       visit finding_path("emergence-peaks-at-intermediate-reach")
     end
 
@@ -19,6 +21,7 @@ RSpec.describe "The emergence-peaks-at-intermediate-reach finding", type: :syste
       expect(page).to have_css(".finding-meta .badge", text: "published")
       expect(page).to have_text("Emergence peaks at an intermediate reach: radius 4 emerged in 8 of 10 fresh " \
                                 "worlds, against 1 of 10 at radius 1 and 0 of 10 well-mixed")
+      expect(page).to have_text("On one world: a 128×128 torus, tapes held at 64 bytes, 2-13, 20 000 epochs.")
       expect(page).to have_css(".badge", text: "H-peak shown")
       expect(page).to have_css(".badge", text: "H-shape shown")
     end
@@ -33,9 +36,12 @@ RSpec.describe "The emergence-peaks-at-intermediate-reach finding", type: :syste
 
     it "says where the totals coincide and why the worlds differ" do
       within("#locality-emergence-coincidence") do
-        expect(page).to have_text("At well-mixed this sweep emerged exactly as often as sweep 12 did: 0 of 10.")
-        expect(page).to have_text("seeds 91–100 and sweep 12's are 1–10")
-        expect(page).to have_text("0 against 1 at well-mixed")
+        expect(page).to have_text("At radius 1 and well-mixed this sweep emerged exactly as often as sweep 12 " \
+                                  "did: 1 of 10 and 0 of 10.")
+        expect(page).to have_text(/seeds 91–100, runs \d+–\d+, and sweep 12's are seeds 1–10, runs \d+–\d+: no seed and no run is shared/)
+        expect(page).to have_text("The confirmed crossings differ: 0 against 1 at well-mixed.")
+        expect(page).to have_text("At radius 1 both count 2 crossings: here seed 91 at epoch 1 000 and seed 92 " \
+                                  "at epoch 1 000; in sweep 12 seed 1 at epoch 1 000 and seed 2 at epoch 1 000.")
       end
     end
 

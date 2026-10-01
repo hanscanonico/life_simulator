@@ -53,6 +53,8 @@
     <span class="badge <%= reading.peak.badge_class %>">H-peak <%= reading.peak.outcome_label %></span>
     <span class="badge <%= reading.shape.badge_class %>">H-shape <%= reading.shape.outcome_label %></span>
     <strong><%= reading.claim_sentence %></strong>
+    On one world: a 128×128 torus, tapes held at 64 bytes,
+    <span class="mono">2<sup>-<%= rate_exponent %></sup></span>, <%= epochs %> epochs.
   </p>
   <% if reading.interim? %>
     <p>Not every run of the sweep has finished, so this reading is interim.</p>
@@ -111,11 +113,21 @@
       often as sweep 12 did:
       <%= reading.same_total_arms.map { |arm| "#{arm.emerged} of #{arm.finished}" }.to_sentence %>.
       That is a coincidence of totals, not reused data. This sweep's worlds are seeds
-      <%= reading.seed_range.first %>–<%= reading.seed_range.last %> and sweep 12's are
-      <%= reading.exploratory_seed_range.first %>–<%= reading.exploratory_seed_range.last %>,
-      so no world is shared, and every run is its own row under its own experiment. The
-      crossings say the same: <%= reading.same_total_arms.map { |arm| "#{arm.crossed} against #{arm.exploratory.crossed} at #{arm.label}" }.to_sentence %>,
-      and where a count of crossings agrees the seeds and epochs that crossed do not. H-peak and
+      <%= reading.seed_range.first %>–<%= reading.seed_range.last %>, runs
+      <%= reading.run_id_range.first %>–<%= reading.run_id_range.last %>, and sweep 12's are seeds
+      <%= reading.exploratory_seed_range.first %>–<%= reading.exploratory_seed_range.last %>, runs
+      <%= reading.exploratory_run_id_range.first %>–<%= reading.exploratory_run_id_range.last %>:
+      <%= reading.shared_seeds? ? "no run is shared" : "no seed and no run is shared" %>.
+      <% if reading.other_crossed_arms.any? %>
+        The confirmed crossings differ:
+        <%= reading.other_crossed_arms.map { |arm| "#{arm.crossed} against #{arm.exploratory.crossed} at #{arm.label}" }.to_sentence %>.
+      <% end %>
+      <% reading.same_crossed_arms.each do |arm| %>
+        At <%= arm.label %> both count <%= arm.crossed %> crossings: here
+        <%= reading.crossings_text(arm.crossings) %>; in sweep 12
+        <%= reading.crossings_text(arm.exploratory.crossings) %>.
+      <% end %>
+      H-peak and
       H-shape read this sweep's runs alone; sweep 12's only suggested the question.
     </p>
   <% end %>
@@ -136,8 +148,8 @@
   the seeds at the emergent rate and finds the effect that one could not see — not a monotone
   benefit of locality, which the tightest reach does not have, but a best reach in the middle.
   <%= link_to "After emergence, one lineage takes the world at every reach", finding_path("lineages-after-emergence") %>
-  is the other half: reach changes how often a replicator arises, not what follows it, for once
-  one has arisen a single lineage holds the world whatever the reach.
+  is the other half: reach changes how often a replicator arises, while what sweep 12 read after
+  one had arisen did not move with it — a single lineage held the world whatever the reach.
 </p>
 
 <h2>What is not claimed</h2>

@@ -8,11 +8,16 @@ module Findings
   # can show that the two are different worlds even where their totals agree.
   class LocalityEmergence
     # One arm: its finished runs, those with a confirmed crossing and those the share clause
-    # kept, with the exploratory sweep's arm at the same radius where it ran one.
-    Arm = Data.define(:radius, :label, :finished, :crossed, :emerged, :rate, :exploratory) do
+    # kept, with the exploratory sweep's arm at the same radius where it ran one. `crossings`
+    # are the finished runs' confirmed crossings as [seed, emergence_epoch], by seed.
+    Arm = Data.define(:radius, :label, :finished, :crossings, :emerged, :rate, :exploratory) do
+      def crossed = crossings.size
+
       def exploratory? = !exploratory.nil?
 
       def same_total? = exploratory? && exploratory.emerged == emerged && exploratory.finished == finished
+
+      def same_crossed? = exploratory? && exploratory.crossed == crossed
     end
 
     def self.build(report, exploratory: nil) = new(report, exploratory)
@@ -46,9 +51,26 @@ module Findings
 
     def same_total_arms = arms.select(&:same_total?)
 
+    # Where the totals agree, the arms whose confirmed crossings differ in count, and those
+    # that count the same nonzero number, whose crossings the page then lists.
+    def same_crossed_arms = same_total_arms.select { |arm| arm.same_crossed? && arm.crossed.positive? }
+
+    def other_crossed_arms = same_total_arms.reject(&:same_crossed?)
+
+    def shared_seeds? = @exploratory.present? && report.rows.map(&:seed).intersect?(@exploratory.rows.map(&:seed))
+
+    def crossings_text(crossings)
+      crossings.map { |seed, epoch| "seed #{seed} at epoch #{ActiveSupport::NumberHelper.number_to_delimited(epoch, delimiter: ' ')}" }
+               .to_sentence
+    end
+
     def seed_range = seed_range_of(report.rows)
 
     def exploratory_seed_range = @exploratory && seed_range_of(@exploratory.rows)
+
+    def run_id_range = range_of(report.rows.map(&:run_id))
+
+    def exploratory_run_id_range = @exploratory && range_of(@exploratory.rows.map(&:run_id))
 
     private
 
@@ -65,13 +87,19 @@ module Findings
     end
 
     def arm_of(arm, exploratory)
-      Arm.new(radius: arm.radius, label: arm.label, finished: arm.finished,
-              crossed: arm.rows.count { |row| row.finished? && row.emergence_epoch.present? },
+      Arm.new(radius: arm.radius, label: arm.label, finished: arm.finished, crossings: crossings_of(arm),
               emerged: arm.emerged, rate: arm.rate, exploratory: exploratory)
     end
 
-    def seed_range_of(rows)
-      low, high = rows.map(&:seed).minmax
+    def crossings_of(arm)
+      arm.rows.select { |row| row.finished? && row.emergence_epoch.present? }
+         .map { |row| [row.seed, row.emergence_epoch] }.sort
+    end
+
+    def seed_range_of(rows) = range_of(rows.map(&:seed))
+
+    def range_of(values)
+      low, high = values.minmax
       low && (low..high)
     end
   end

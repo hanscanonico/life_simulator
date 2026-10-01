@@ -66,9 +66,20 @@ RSpec.describe Findings::LocalityEmergence do
       same = reading.same_total_arms
 
       expect(same.map(&:label)).to eq(["radius 1"])
-      expect(same.first.exploratory.crossed).to eq(1)
-      expect(same.first.crossed).to eq(2)
+      expect(same.first.exploratory.crossings).to eq([[1, 1_000]])
+      expect(same.first.crossings).to eq([[91, 1_000], [92, 1_000]])
       expect([reading.seed_range, reading.exploratory_seed_range]).to eq([91..93, 1..3])
+    end
+
+    it "separates the arms whose crossings count differently from those that count the same" do
+      expect(reading.other_crossed_arms.map(&:label)).to eq(["radius 1"])
+      expect(reading.same_crossed_arms).to be_empty
+    end
+
+    it "reads the two sweeps' run ids and finds no seed shared" do
+      expect(reading.run_id_range).to eq(Run.where(experiment: sweep).minimum(:id)..Run.where(experiment: sweep).maximum(:id))
+      expect(reading.exploratory_run_id_range.first).to eq(Run.where(experiment: old_sweep).minimum(:id))
+      expect(reading).not_to be_shared_seeds
     end
   end
 end

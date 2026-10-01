@@ -2385,7 +2385,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   two-sided Wald p = 0.00407, and the fitted peak is at radius 4.10, strictly between 2 and
   6; well-mixed, not fitted, 3/90.
 
-  **The claim**: on this substrate a replicator arises most often at an intermediate reach.
+  **The claim**: on this world (128², fixed 64-byte tapes, 2^-13, 20 000 epochs) a replicator
+  arises most often at an intermediate reach.
   Radius 4 emerged four times as often as radius 1 and five times as often as the well-mixed
   world, on worlds no earlier reading had seen, and the curve over the finite radii rises from
   radius 1, peaks near 4 and falls by radius 8. It is the exploratory pattern of sweep 12,
@@ -2403,8 +2404,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   **A coincidence of totals, stated so no reader suspects a copy.** At radius 1, 2, 4 and
   well-mixed this sweep emerged 4, 9, 16 and 3 of 90, exactly sweep 12's exploratory counts.
   They are different worlds: this sweep's seeds are 91–180 and sweep 12's 1–90; its runs are
-  ids 3673–4302 and sweep 12's 3217–3576, none shared; and the crossings differ — 5, 10, 20
-  and 8 here against 5, 12, 25 and 7 in sweep 12 — and at radius 1, where both count five,
+  ids 3673–4302 and sweep 12's 3217–3576, none shared; the confirmed crossings count 5, 10,
+  20 and 8 here against 5, 12, 25 and 7 in sweep 12; and at radius 1, where both count five,
   the crossing seeds and epochs are different ones (seeds 96, 113, 119, 123 and 143 at epochs
   17 990, 10 480, 13 000, 10 520 and 5 470, against seeds 1, 5, 20, 51 and 82 at 5 030, 7 000,
   6 210, 17 250 and 9 330). The share clause then leaves the same totals by chance. The
@@ -2417,8 +2418,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   nine times the seeds and the emergent rate the effect is there, as a best reach in the
   middle rather than a benefit of locality as such — the tightest reach is among the worst.
   With the lineage-diversity finding it divides the work: reach changes how often a
-  replicator arises, not what follows, for after emergence one lineage holds the world at
-  every reach. Not claimed: other world sizes, rates, growing tapes or budgets than 128²,
+  replicator arises, while after emergence one lineage held the world at every reach sweep 12
+  read. Not claimed: other world sizes, rates, growing tapes or budgets than 128²,
   2^-13, 64 bytes and 20 000 epochs; detector crossings that the share clause does not keep;
   any mechanism for why a reach near 4 is best; well-mixed as a point on the radius scale.
   Nothing about the engine, the rules or any observable moves.
