@@ -47,6 +47,19 @@ pub enum Interaction {
     Host,
 }
 
+/// Who pays for an interaction under an energy stock (`docs/DESIGN.md` §1.1; why it is a
+/// parameter is the 2026-10-01 design-record entry). `Pair` is the default and the rule
+/// every earlier stocked run paid by: the interaction runs on the poorer cell's stock and
+/// both cells are debited what ran. `Initiator` charges the cell that opens the interaction
+/// alone a fixed price of `max_steps`, and passes a cell over as initiator until its stock
+/// can pay it, so a cell's income is the rate it initiates at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EnergyPayer {
+    Pair,
+    Initiator,
+}
+
 /// How a lineage tag follows descent (`docs/DESIGN.md` §1.2; why it is a parameter is the
 /// 2026-09-25 design-record entry). `Aligned` is the default and the rule every earlier
 /// run's tags were inherited by: a tape is compared with the two arriving tapes byte for
@@ -89,6 +102,10 @@ pub struct Params {
     /// The most instruction energy one cell's stock may hold. Read only once an influx is
     /// set, and never below it.
     pub energy_stock_cap: u32,
+    /// Who pays for an interaction out of the stock: both cells what ran (`pair`, the
+    /// default and the rule of every earlier stocked run), or the initiator alone a fixed
+    /// `max_steps` (`initiator`). Read only once an influx is set, and refused without one.
+    pub energy_payer: EnergyPayer,
     /// Instruction energy one steal op moves out of the partner cell's stock; `0` (the
     /// default) leaves the steal byte the no-op it is in the substrate of DESIGN §1.1 and
     /// nothing is ever moved (DESIGN §1.1).
@@ -134,6 +151,7 @@ impl Default for Params {
             energy_per_epoch: 0,
             energy_influx: 0,
             energy_stock_cap: 0,
+            energy_payer: EnergyPayer::Pair,
             steal_amount: 0,
             steal_loss: 0.5,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
@@ -248,8 +266,9 @@ const FIELDS: &[Field] = &[
             max: 1_048_576.0,
         },
         doc: "Instructions one cell is given per epoch, added to a stock that carries \
-              across epochs up to energy_stock_cap rather than being refilled to it. An \
-              interaction runs on what the poorer of its two cells holds, both are \
+              across epochs up to energy_stock_cap rather than being refilled to it. Under \
+              the default energy_payer an interaction runs on what the poorer of its two \
+              cells holds, both are \
               debited what ran, and a cell whose stock is empty is not executed until it \
               has recharged. 0 turns the stock off, which is the substrate of DESIGN 1.1.",
     },
@@ -263,6 +282,18 @@ const FIELDS: &[Field] = &[
               stock every cell starts the run with, so the world's total energy never \
               exceeds cell count times this. Read only once energy_influx is set, and \
               refused below it.",
+    },
+    Field {
+        name: "energy_payer",
+        kind: Kind::Choice(&["pair", "initiator"]),
+        doc: "Who pays for an interaction out of the energy stock. pair runs it on what \
+              the poorer of its two cells holds and debits both what ran, which is the \
+              economy of DESIGN 1.1 every earlier stocked run used. initiator charges the \
+              cell whose turn it is alone a fixed max_steps, whatever ran, and passes a \
+              cell over as initiator until its stock holds that price; its partner is \
+              never gated and never debited, so a cell's income is the rate it initiates \
+              at. initiator needs an energy_influx, an energy_stock_cap of at least \
+              max_steps, and no energy_per_epoch.",
     },
     Field {
         name: "steal_amount",
@@ -403,6 +434,21 @@ pub enum ParamError {
         energy_stock_cap: u32,
         energy_influx: u32,
     },
+    /// The initiator pays out of a stock: with no influx there is none, and no cell could
+    /// ever initiate.
+    InitiatorWithoutStock,
+    /// A stock capped below the price of one interaction can never pay it: no cell would
+    /// ever initiate.
+    InitiatorPriceAboveCap {
+        energy_stock_cap: u32,
+        max_steps: u32,
+    },
+    /// The per-epoch allowance bounds an interaction by both cells' purses, which is the
+    /// pair rule the initiator rule replaces; the two together would charge the partner
+    /// after all.
+    InitiatorWithAllowance {
+        energy_per_epoch: u32,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -446,6 +492,25 @@ impl fmt::Display for ParamError {
                 f,
                 "energy_stock_cap is {energy_stock_cap}, below the energy_influx of \
                  {energy_influx}: a stock must hold at least one epoch's influx"
+            ),
+            Self::InitiatorWithoutStock => write!(
+                f,
+                "energy_payer is initiator with no energy_influx: the initiator pays out of \
+                 a stock"
+            ),
+            Self::InitiatorPriceAboveCap {
+                energy_stock_cap,
+                max_steps,
+            } => write!(
+                f,
+                "energy_payer is initiator with an energy_stock_cap of {energy_stock_cap}, \
+                 below the max_steps of {max_steps}: no stock could ever pay for an \
+                 interaction"
+            ),
+            Self::InitiatorWithAllowance { energy_per_epoch } => write!(
+                f,
+                "energy_payer is initiator with an energy_per_epoch of {energy_per_epoch}: \
+                 the allowance charges both cells, which the initiator rule does not"
             ),
         }
     }
@@ -497,11 +562,32 @@ impl Params {
                 steal_amount: self.steal_amount,
             });
         }
+        if self.energy_payer == EnergyPayer::Initiator {
+            self.validate_initiator()?;
+        }
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
             return Err(ParamError::RadiusTooWide {
                 radius: self.radius,
                 width: self.width,
                 height: self.height,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_initiator(&self) -> Result<(), ParamError> {
+        if self.energy_influx == 0 {
+            return Err(ParamError::InitiatorWithoutStock);
+        }
+        if self.energy_stock_cap < self.max_steps {
+            return Err(ParamError::InitiatorPriceAboveCap {
+                energy_stock_cap: self.energy_stock_cap,
+                max_steps: self.max_steps,
+            });
+        }
+        if self.energy_per_epoch > 0 {
+            return Err(ParamError::InitiatorWithAllowance {
+                energy_per_epoch: self.energy_per_epoch,
             });
         }
         Ok(())
@@ -1035,7 +1121,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 22);
+        assert_eq!(fields.len(), 23);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -1082,6 +1168,11 @@ mod tests {
         assert_eq!(interaction["type"], "enum");
         assert_eq!(interaction["default"], "concat");
         assert_eq!(interaction["values"], serde_json::json!(["concat", "host"]));
+
+        let payer = fields.iter().find(|f| f["name"] == "energy_payer").unwrap();
+        assert_eq!(payer["type"], "enum");
+        assert_eq!(payer["default"], "pair");
+        assert_eq!(payer["values"], serde_json::json!(["pair", "initiator"]));
 
         let rule = fields.iter().find(|f| f["name"] == "lineage_rule").unwrap();
         assert_eq!(rule["type"], "enum");
@@ -1203,5 +1294,87 @@ mod tests {
             }
         );
         assert!(serde_json::from_str::<Params>(r#"{"lineage_rule": "sideways"}"#).is_err());
+    }
+
+    fn initiator_params() -> Params {
+        Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            energy_payer: EnergyPayer::Initiator,
+            ..Params::default()
+        }
+    }
+
+    /// Both cells pay unless a run asks for the initiator to.
+    #[test]
+    fn both_cells_pay_for_an_interaction_by_default() {
+        assert_eq!(Params::default().energy_payer, EnergyPayer::Pair);
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"energy_payer": "initiator"}"#).unwrap(),
+            Params {
+                energy_payer: EnergyPayer::Initiator,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"energy_payer": "partner"}"#).is_err());
+        assert_eq!(initiator_params().validate(), Ok(()));
+    }
+
+    #[test]
+    fn rejects_an_initiator_with_no_stock_to_pay_from() {
+        let params = Params {
+            energy_influx: 0,
+            ..initiator_params()
+        };
+        assert_eq!(params.validate(), Err(ParamError::InitiatorWithoutStock));
+        assert!(params
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("energy_influx"));
+    }
+
+    #[test]
+    fn rejects_an_initiator_whose_stock_can_never_hold_the_price() {
+        let params = Params {
+            energy_stock_cap: 63,
+            ..initiator_params()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::InitiatorPriceAboveCap {
+                energy_stock_cap: 63,
+                max_steps: 64
+            })
+        );
+        assert!(params.validate().unwrap_err().to_string().contains("63"));
+    }
+
+    #[test]
+    fn rejects_an_initiator_beside_the_per_epoch_allowance() {
+        let params = Params {
+            energy_per_epoch: 32,
+            ..initiator_params()
+        };
+        assert_eq!(
+            params.validate(),
+            Err(ParamError::InitiatorWithAllowance {
+                energy_per_epoch: 32
+            })
+        );
+    }
+
+    /// The refusals are the initiator's alone: the pair rule keeps every combination it
+    /// accepted before the parameter existed.
+    #[test]
+    fn the_pair_rule_accepts_what_the_initiator_refuses() {
+        let pair = Params {
+            energy_payer: EnergyPayer::Pair,
+            energy_stock_cap: 32,
+            energy_per_epoch: 32,
+            ..initiator_params()
+        };
+        assert_eq!(pair.validate(), Ok(()));
     }
 }

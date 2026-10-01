@@ -68,7 +68,7 @@
     },
     {
       "default": 0,
-      "doc": "Instructions one cell is given per epoch, added to a stock that carries across epochs up to energy_stock_cap rather than being refilled to it. An interaction runs on what the poorer of its two cells holds, both are debited what ran, and a cell whose stock is empty is not executed until it has recharged. 0 turns the stock off, which is the substrate of DESIGN 1.1.",
+      "doc": "Instructions one cell is given per epoch, added to a stock that carries across epochs up to energy_stock_cap rather than being refilled to it. Under the default energy_payer an interaction runs on what the poorer of its two cells holds, both are debited what ran, and a cell whose stock is empty is not executed until it has recharged. 0 turns the stock off, which is the substrate of DESIGN 1.1.",
       "max": 1048576,
       "min": 0,
       "name": "energy_influx",
@@ -81,6 +81,16 @@
       "min": 0,
       "name": "energy_stock_cap",
       "type": "integer"
+    },
+    {
+      "default": "pair",
+      "doc": "Who pays for an interaction out of the energy stock. pair runs it on what the poorer of its two cells holds and debits both what ran, which is the economy of DESIGN 1.1 every earlier stocked run used. initiator charges the cell whose turn it is alone a fixed max_steps, whatever ran, and passes a cell over as initiator until its stock holds that price; its partner is never gated and never debited, so a cell's income is the rate it initiates at. initiator needs an energy_influx, an energy_stock_cap of at least max_steps, and no energy_per_epoch.",
+      "name": "energy_payer",
+      "type": "enum",
+      "values": [
+        "pair",
+        "initiator"
+      ]
     },
     {
       "default": 0,

@@ -57,6 +57,18 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   allocated, no cell is gated and the soup is exactly the substrate above. Independent of
   `energy_per_epoch`: a run may carry either, both (an interaction is then bounded by
   whichever is poorer) or neither.
+- **Energy payer** (`energy_payer`, default `pair`; docs/design_record.md 2026-10-01): who
+  pays for an interaction out of the stock. `pair` is the rule just described, and every
+  run before the parameter existed paid by it. Under `initiator` a cell initiates only when
+  its stock holds at least `max_steps`, the price of one interaction; a poorer cell is
+  passed over as initiator, but its partner is still drawn, so no RNG stream moves. The
+  interaction's budget is `max_steps`, and the initiator alone is debited the **full
+  price** whatever ran, so a copier that halts early saves nothing. The partner is never
+  gated and never debited, and steals settle as they do under `pair`. A cell's income is
+  then the rate at which it initiates, which `pair` cannot make it: there the poorer cell
+  sets the budget, both pay, and every cell initiates every epoch. `initiator` is refused
+  without an `energy_influx`, with an `energy_stock_cap` below `max_steps`, and beside an
+  `energy_per_epoch`. The rule is dynamics, not structure: a descendant may switch it.
 - **Steal op** (`steal_amount`, default `0` = off; `steal_loss`): with an amount set, the
   byte `$` (0x24) becomes an eleventh instruction on a world whose cells hold an energy
   stock. Each execution moves `steal_amount` of instruction energy out of the **partner**

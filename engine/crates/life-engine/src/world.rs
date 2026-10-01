@@ -6,7 +6,7 @@
 use crate::bff;
 use crate::hash::{fnv1a64, fnv1a64_of};
 use crate::metrics::{self, Metrics, TransitionTracker};
-use crate::params::{Init, Interaction, LineageRule, ParamError, Params, Substrate};
+use crate::params::{EnergyPayer, Init, Interaction, LineageRule, ParamError, Params, Substrate};
 use crate::render;
 use crate::replicator;
 use crate::rng::{self, Rng};
@@ -363,7 +363,9 @@ impl World {
         for cell in &order {
             let a = *cell as usize;
             let b = self.pick_partner(a, rng);
-            if a == b || energy.starved(a, b) {
+            #[cfg(test)]
+            DRAWN.with_borrow_mut(|drawn| drawn.push((a, b)));
+            if a == b || energy.passed_over(a, b) {
                 continue;
             }
             let (live_a, live_b) = (self.live_len(a), self.live_len(b));
@@ -806,15 +808,28 @@ struct CensusDraw<'a> {
     dominant_replicates: bool,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Every (initiator, partner) pair the soup has drawn on this thread, passed over or
+    /// not, so a test can hold two economies to one partner sequence.
+    static DRAWN: std::cell::RefCell<Vec<(usize, usize)>> = const {
+        std::cell::RefCell::new(Vec::new())
+    };
+}
+
 /// What the epoch's cells may spend on instructions, out of the two economies the
 /// substrate offers: the allowance `energy_per_epoch` refills in full every epoch (DESIGN
 /// §1.3 sweep 6) and the stock `energy_influx` tops up and execution draws down (DESIGN
 /// §1.1). Both are opt-in and independent — a run may have either, both or neither — and
 /// an empty purse is what off means: nothing is allocated and nothing bounds an
-/// interaction but `max_steps`.
+/// interaction but `max_steps`. Who pays out of the stock is the run's `energy_payer`:
+/// both cells what ran, or — at `initiator`, which validation keeps apart from the
+/// allowance — the initiator alone the fixed `price`.
 struct Energy {
     allowance: Vec<u32>,
     stock: Vec<u32>,
+    /// The price one interaction costs its initiator, `None` under the pair rule.
+    price: Option<u32>,
 }
 
 impl Energy {
@@ -832,14 +847,19 @@ impl Energy {
                 budget => vec![budget; params.cell_count()],
             },
             stock,
+            price: (params.energy_payer == EnergyPayer::Initiator).then_some(params.max_steps),
         }
     }
 
     /// How many instructions one interaction may execute: what the poorer of the two cells
     /// has left in each economy it lives under, never more than `max_steps`. Both cells
     /// execute the one concatenated program, so neither can pay past its own energy and the
-    /// interaction halts where the poorer one runs dry.
+    /// interaction halts where the poorer one runs dry. Under the initiator rule it is the
+    /// price, which the initiator has already been checked to hold.
     fn budget(&self, a: usize, b: usize, max_steps: u32) -> u32 {
+        if let Some(price) = self.price {
+            return price;
+        }
         [&self.allowance, &self.stock]
             .into_iter()
             .filter(|purse| !purse.is_empty())
@@ -855,8 +875,25 @@ impl Energy {
         self.stock.get(a) == Some(&0) || self.stock.get(b) == Some(&0)
     }
 
-    /// Debits both cells of an interaction with the instructions it executed.
+    /// Whether the pair `a` opens is skipped this turn: under the pair rule when either
+    /// stock is empty, under the initiator rule when `a` cannot pay the price. The
+    /// initiator's partner is never gated, so a poor cell is still drawn and executed as
+    /// one.
+    fn passed_over(&self, a: usize, b: usize) -> bool {
+        match self.price {
+            Some(price) => self.stock[a] < price,
+            None => self.starved(a, b),
+        }
+    }
+
+    /// Debits an interaction: under the pair rule both cells with the instructions it
+    /// executed; under the initiator rule the initiator alone with the full price, however
+    /// few ran, so a copier that halts early saves nothing by it.
     fn spend(&mut self, a: usize, b: usize, steps: u32) {
+        if let Some(price) = self.price {
+            self.stock[a] -= price;
+            return;
+        }
         for purse in [&mut self.allowance, &mut self.stock] {
             if !purse.is_empty() {
                 purse[a] -= steps;
@@ -2569,6 +2606,7 @@ mod tests {
         Energy {
             allowance: Vec::new(),
             stock,
+            price: None,
         }
     }
 
@@ -4680,5 +4718,254 @@ mod tests {
             assert_eq!(skipped.stock, stepped.stock);
             assert_eq!(skipped_samples, stepped_samples);
         }
+    }
+
+    fn initiator(params: Params) -> Params {
+        Params {
+            energy_payer: EnergyPayer::Initiator,
+            ..params
+        }
+    }
+
+    /// Pinned on the code before `energy_payer` existed: a stocked soup with theft at
+    /// 32×32, seed 42, after 50 epochs. Naming the default must not move it.
+    const PINNED_PAIR_STOCK_HASH: u64 = 0xff36_fede_bb44_6d42;
+    /// The initiator rule's own pin: the economy of the metabolism design (influx
+    /// `max_steps`/8, a cap of eight prices) at 32×32, seed 42, after 50 epochs.
+    const PINNED_INITIATOR_HASH: u64 = 0x6009_9358_301f_03ac;
+
+    fn pair_stock_params() -> Params {
+        Params {
+            energy_influx: 2048,
+            energy_stock_cap: 8192,
+            steal_amount: 1024,
+            ..soup(32, 32)
+        }
+    }
+
+    #[test]
+    fn naming_the_pair_rule_moves_no_stocked_run() {
+        let params = Params {
+            energy_payer: EnergyPayer::Pair,
+            ..pair_stock_params()
+        };
+        assert_eq!(params, pair_stock_params());
+        assert_eq!(
+            stepped(&params, 42, 50).world_hash(),
+            PINNED_PAIR_STOCK_HASH
+        );
+        assert_eq!(
+            stepped(&soup(32, 32), 42, 50).world_hash(),
+            PINNED_SOUP_HASH
+        );
+    }
+
+    #[test]
+    fn the_initiator_rule_is_pinned() {
+        let params = initiator(Params {
+            energy_influx: 1024,
+            energy_stock_cap: 65_536,
+            ..soup(32, 32)
+        });
+        let world = stepped(&params, 42, 50);
+        assert_eq!(world.world_hash(), PINNED_INITIATOR_HASH);
+        assert_ne!(
+            world.world_hash(),
+            stepped(
+                &Params {
+                    energy_payer: EnergyPayer::Pair,
+                    ..params
+                },
+                42,
+                50
+            )
+            .world_hash()
+        );
+    }
+
+    #[test]
+    fn determinism_holds_under_the_initiator_rule() {
+        for (energy_influx, energy_stock_cap) in [(8, 64), (32, 256)] {
+            for seed in [1, 2, 3] {
+                assert_deterministic(
+                    &initiator(Params {
+                        max_steps: 64,
+                        energy_influx,
+                        energy_stock_cap,
+                        ..soup(16, 16)
+                    }),
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// The rule read off the purse: the initiator must hold the price, the partner is
+    /// never asked, and the price is what the initiator pays however few steps ran.
+    #[test]
+    fn the_initiator_alone_pays_the_full_price() {
+        let params = initiator(Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            ..soup(4, 4)
+        });
+        let mut energy = Energy::recharged(&params, vec![0, 64, 60, 64]);
+        assert_eq!(energy.stock, vec![8, 64, 64, 64]);
+        assert!(energy.passed_over(0, 1), "a cell below the price initiated");
+        assert!(
+            !energy.passed_over(1, 0),
+            "a poor partner gated a rich initiator"
+        );
+        assert_eq!(
+            energy.budget(1, 0, 64),
+            64,
+            "the poorer stock set the budget"
+        );
+
+        energy.spend(1, 0, 3);
+        assert_eq!(
+            energy.stock,
+            vec![8, 0, 64, 64],
+            "the initiator paid less than the price, or the partner paid at all"
+        );
+    }
+
+    /// Steals settle after the price as they settle after a pair's debit.
+    #[test]
+    fn steals_settle_after_the_initiators_price() {
+        let params = initiator(Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 128,
+            steal_amount: 10,
+            ..soup(4, 4)
+        });
+        let mut energy = Energy::recharged(&params, vec![100, 20, 0, 0]);
+        energy.spend(0, 1, 5);
+        energy.settle(0, 1, [1, 1], &theft(10, 0.5, 128));
+        assert_eq!(energy.stock[..2], [44 - 10 + 5, 28 - 10 + 5]);
+    }
+
+    /// And in the world: a checkerboard of rich and poor cells, every tape all `+`, so
+    /// each increment lands on the initiator's first byte. A poor cell never initiates —
+    /// its byte is unmoved and its stock is only the influx — yet it is drawn as a
+    /// partner, and a rich cell partnered with it runs its whole program, which the pair
+    /// rule's poorer stock would have cut to the influx.
+    #[test]
+    fn a_poor_cell_is_passed_over_as_initiator_yet_drawn_and_run_as_a_partner() {
+        const INFLUX: u32 = 8;
+        let params = initiator(Params {
+            max_steps: 64,
+            energy_influx: INFLUX,
+            energy_stock_cap: 64,
+            ..adding_params()
+        });
+        let mut world = adding_soup(&params);
+        let width = params.width as usize;
+        let poor = |cell: usize| (cell % width + cell / width) % 2 == 1;
+        for (cell, held) in world.stock.iter_mut().enumerate() {
+            if poor(cell) {
+                *held = 0;
+            }
+        }
+        DRAWN.take();
+        world.step();
+        let drawn = DRAWN.take();
+        let paid = increments(&world);
+
+        for (cell, (ran, held)) in paid.iter().zip(&world.stock).enumerate() {
+            if poor(cell) {
+                assert_eq!(*ran, 0, "poor cell {cell} initiated");
+                assert_eq!(*held, INFLUX, "poor cell {cell} was debited");
+            } else {
+                assert_eq!(
+                    *held, 0,
+                    "rich cell {cell} paid other than the price: it ran {ran} steps"
+                );
+            }
+        }
+        let partnered: Vec<usize> = drawn
+            .iter()
+            .filter(|(a, b)| !poor(*a) && poor(*b))
+            .map(|(a, _)| *a)
+            .collect();
+        assert!(!partnered.is_empty(), "no poor cell was drawn as a partner");
+        assert!(
+            partnered
+                .iter()
+                .all(|a| paid[*a] >= ADDING_INTERACTION_STEPS - 1),
+            "a poor partner cut its initiator's interaction short: {paid:?}"
+        );
+    }
+
+    /// The rule moves who runs and who pays, never who is drawn: the shuffle and every
+    /// partner draw are made whatever either cell holds, so both rules draw one sequence.
+    #[test]
+    fn the_initiator_rule_draws_the_partners_the_pair_rule_draws() {
+        let pair = Params {
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 64,
+            ..soup(16, 16)
+        };
+        DRAWN.take();
+        let paired = stepped(&pair, 7, 5);
+        let pair_draws = DRAWN.take();
+        let initiated = stepped(&initiator(pair), 7, 5);
+        let initiator_draws = DRAWN.take();
+
+        assert_eq!(pair_draws.len(), 5 * 256);
+        assert_eq!(initiator_draws, pair_draws);
+        assert_ne!(initiated.world_hash(), paired.world_hash());
+    }
+
+    /// A stock the initiator can always pay runs every interaction to `max_steps`, as the
+    /// soup with no stock does: the accounting itself moves no byte.
+    #[test]
+    fn an_initiator_that_can_always_pay_runs_the_soup_unchanged() {
+        let free = Params {
+            max_steps: 64,
+            ..soup(16, 16)
+        };
+        let stocked = initiator(Params {
+            energy_influx: 1_048_576,
+            energy_stock_cap: 1_048_576,
+            ..free.clone()
+        });
+        assert_eq!(
+            stepped(&stocked, 42, 20).tapes().bytes(),
+            stepped(&free, 42, 20).tapes().bytes()
+        );
+    }
+
+    /// The payer is dynamics, not structure: a child of a pair-rule parent may run the
+    /// initiator rule, carrying the parent's stocks and tags into a different economy.
+    #[test]
+    fn a_descendant_may_switch_to_the_initiator_rule() {
+        let params = descent_params();
+        let mut parent = stepped(&params, 11, DESCENT_EPOCH);
+        let mut child = World::descend(&initiator(params), 11, &parent.snapshot()).unwrap();
+        assert_eq!(child.stock, parent.stock);
+        assert_eq!(child.lineages, parent.lineages);
+
+        for _ in 0..5 {
+            parent.step();
+            child.step();
+        }
+        assert_ne!(child.world_hash(), parent.world_hash());
+    }
+
+    #[test]
+    fn an_unstocked_parent_descends_into_full_initiator_stocks() {
+        let child_params = initiator(descent_params());
+        let blob = stepped(&unstocked(&descent_params()), 11, DESCENT_EPOCH).snapshot();
+
+        let child = World::descend(&child_params, 11, &blob).unwrap();
+
+        assert_eq!(
+            child.stock,
+            vec![child_params.energy_stock_cap; child_params.cell_count()]
+        );
     }
 }
