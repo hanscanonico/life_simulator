@@ -3821,3 +3821,55 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   rate and the `isa` draw's fourteenths; determinism with a mid-run resume under both
   draws and seeds; the snapshot round trip in every payload shape, the stripping property,
   the refusals; and descent under `own_tape`, `zeros`, a carried parent and a dropped one.
+- 2026-10-02 — **The logic observables read the metabolism tape (Meta-stack, slice C).** The
+  observables slice of Meta-stack. Slice B left the logic readings on the replicating tape
+  while the assay paid the metabolism tape; this slice points them at the tape that is paid,
+  and adds three readings of the tape itself. Nothing is relocked, and every reading of a run
+  without the tape is what it was.
+
+  **What moves.** Where a run carries a metabolism tape, `logic_share_*`,
+  `logic_capability` and `logic_capability_deep` assay each sampled cell's metabolism tape
+  through `World::assayed_tape`, the one switch the payment reads, on the same stream and
+  draws (`STREAM_TASK | 3`). `dominant_logic_tasks` and its count read the most common
+  metabolism tape, not the census's dominant replicating tape: counted over the `meta_len`
+  chunks with `metrics::ranked_tapes`, so a tie goes to the lower tape in byte order, the
+  rule the census already breaks ties by, on cases of `STREAM_TASK | 4` as before. A
+  descriptive reading of the replicating tape's logic would otherwise sit under the key the
+  pre-registration reads, beside a payment that never looks at it.
+
+  **Three new keys, live-only.**
+  - `meta_inherit_rate`: inherit events over interactions, counted at the `inherit_meta`
+    call in the pass that counts `copy_rate`, so over the same interactions of the epoch
+    before the sample. The study's §5.3 lists it as descriptive.
+  - `meta_diversity`: how many distinct metabolism tapes the whole world holds, not the 256
+    sampled cells the brief allowed. A judgement call: the whole-world count comes free with
+    the ranking that names the dominant tape, draws nothing, and is `distinct_tapes`' own
+    definition on the other tape, where a 256-cell count saturates at 256 on a world as
+    diverse as the restored pilot worlds (13 000–16 300 distinct tapes of 16 384).
+  - `logic_capability_replicating`: `logic_capability` read on the replicating tapes, on
+    cells and cases of `STREAM_TASK | 5`, so the reading can see whether the woven copier
+    still computes once it is no longer paid. One more 256-cell tally per sample.
+  Null wherever the run carries no tape. None writes anything; the first two draw nothing,
+  and the third draws on a stream nothing else draws on.
+
+  **Cost**, on the restored Logic pilot end worlds of 1007 and 944 and the m6 woven world
+  (128×128, descended to a 32-byte `own_tape` tape at `isa` × 32 under the stack NAND, 210
+  epochs on, on a loaded Mac): a metabolism-tape world's sample took 1.2–4.6 ms more than the
+  tape-off world's 45–55 ms, at most 4% of a 10-epoch sample interval.
+
+  **Tests.** The three keys null without the tape on every substrate and ladder, and every
+  earlier pin and digest unmoved. On hand-built worlds under both NANDs, with each NAND's
+  own solvers planted on the metabolism tapes and NOT on the replicating ones: the shares,
+  the capabilities and the dominant bitmask read the metabolism tapes, the replicating
+  capability reads NOT, and the diversity counts the planted tapes; the stack XOR is deep
+  under `stack` and nothing under `in_place`. The dominant reading names the most common
+  metabolism tape and breaks a tie by byte order whichever rows hold which. The inherit rate
+  through a live copier colony. A new digest pin, split from the logic one, of the
+  rewarded bundle and its reward-0 arm (equal, since neither passes a tape on in 50
+  epochs). Sampling every epoch moves no byte, stock or lineage; a sample reads the same
+  twice and after a resume, but for the inherit rate, which needs an epoch.
+
+  **Rails.** `Sample::OBSERVABLES` gains the three keys; the run page charts them only for
+  a run that has a reading of them, as it gates each ladder; a sample without them draws no
+  point; the glossary defines them. They are live-only: no `oriented_census` version reads
+  them.
