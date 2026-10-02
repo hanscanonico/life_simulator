@@ -2111,6 +2111,30 @@ mod tests {
         assert_eq!(outputs, vec![!(NAND & NAND)]);
     }
 
+    /// The stack NAND marks the buffer changed by the byte it overwrites, left of head0, and
+    /// not by its operand under head0. Here `[~>]` writes 0x00 and 0xff in turn into byte 0
+    /// while the operand under head0 stays 0xff, so every lap changes the buffer; a flag read
+    /// at the operand would see every second lap idle, and the cycle skip would replay laps
+    /// that differ.
+    #[test]
+    fn a_stack_nand_marks_the_byte_it_writes_as_changed() {
+        let pair = [
+            0xff, b'}', b'>', b'{', b',', b'[', NAND, b'>', b']', b'>', 0xae,
+        ];
+        let (recurred, _) = skipped_during(|| {
+            let by_hand = emitting_by_hand(&pair, 3_947, OpSet::ALL, 8, AssayOps::EmitStackNand);
+            assert_eq!(by_hand.0[0], 0xff);
+            assert_eq!(by_hand.3, 3_947);
+            for skipped in [
+                emitting::<true, NAND_STACK>(&pair, joined(3_947, pair.len()), 8),
+                emitting::<false, NAND_STACK>(&pair, joined(3_947, pair.len()), 8),
+            ] {
+                assert_eq!(skipped, by_hand);
+            }
+        });
+        assert_eq!(recurred, 0, "no lap of the loop repeats the one before");
+    }
+
     /// The NAND byte writes `!(B[head0] & B[head1])` under head0 in the logic assay alone:
     /// the soup and the arithmetic assay read it as the no-op any other non-instruction byte
     /// is.

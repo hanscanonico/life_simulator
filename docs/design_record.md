@@ -3624,9 +3624,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   repository) tried seven semantics on a throwaway copy of the engine. Every number below is
   *pilot*, from that copy and the stored worlds of 1007's pilot, not a finding:
   - five semantics (into h0+1, into h1, an accumulator, a fixed scratch cell, into h0−1)
-    left XOR and EQU where they were. No program of ≤ 11 bytes computes either under any of
-    them, they stay ≥ 4 substitutions from every minimal and evolved lower-rung solver (0 deep
-    among 2.5–3.2 million mutants per start), and no pilot of "into h0−1" made a deep rung;
+    left XOR and EQU where they were. No program of ≤ 11 bytes (≤ 10 for the accumulator)
+    computes either under any of them, they stay ≥ 4 substitutions from every minimal and
+    evolved lower-rung solver (0 deep among 2.5–3.2 million mutants per start, as under the
+    stack NAND from the same starts), and no pilot of "into h0−1" made a deep rung;
   - the stack NAND, "into h0−1, and head0 follows", brings the shortest known XOR from 17
     bytes to 13. On a 32-byte metabolism tape seeded from each cell's own first 32 tape bytes,
     at the instruction-set mutation rate × 32, over 20 000 epochs, **2 of 3 seeds** held XOR
@@ -3688,18 +3689,20 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   inputs and is credited with it alone over 10^5 separating draws (`STACK_SOLVERS`).
   - **One solver computes three rungs.** The pilot's evolved deep solver,
     `{<<[~><~{~{!]`, is a loop that stacks three NANDs a lap while head1 trails onto what
-    earlier laps wrote, and emits ¬y, XOR, ¬y and EQU. It is credited NOT, XOR and EQU and
-    nothing else on every one of 10^5 draws, and with all three on 97% of them. A lap that leaves a zero under
-    head0 ends the loop early, so it does not reach all three on every draw. That is the
-    fan-out the stack buys: intermediates kept on the stack and read again on a later lap.
+    earlier laps wrote, and emits ¬y, XOR, ¬y and EQU on all but 5 of the 65 536 inputs, all
+    five with x the emit byte 0x21 or its complement. It is credited NOT, XOR and EQU and
+    nothing else on every one of 10^5 draws, and with all three on 97% of them. A lap that
+    leaves a zero under head0 ends the loop early (y = 0x00, y = 0xff or x = y), so it does
+    not reach all three on every draw. That is the fan-out the stack buys: intermediates kept
+    on the stack and read again on a later lap.
   - **No cheap tape is credited a deep rung**, #283's search re-run under `stack`:
     - every program of up to 6 bytes over the ten ops, `!` and `~`, in front of a zero
       tail and two random tails of 24 bytes (18 078, 20 914 and 18 273 distinct behaviours),
       is credited XOR or EQU on none of 4 000 separating draws;
     - every single and double substitution, over those 12 bytes and 0x00, 0x01, 0x55 and
       0xFF, in the code of the stack NOT, NAND, AND, ORN, OR, ANDN and NOR solvers and the
-      3 bytes after it (5 488–17 088 mutants each), is credited XOR or EQU on none of 4 000
-      draws.
+      3 bytes after it (4 830–15 030 distinct mutants each), is credited XOR or EQU on none
+      of 4 000 draws.
 
   **The invariant.** Nothing moves at the default. Every pinned hash and observable digest
   stays as it was, the logic reward's pin included. The stack has its own pin: the logic
