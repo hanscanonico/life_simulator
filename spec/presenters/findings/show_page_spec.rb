@@ -338,4 +338,20 @@ RSpec.describe Findings::ShowPage do
       expect(page.logic).to be_nil
     end
   end
+
+  describe "#sweep_seeded?" do
+    let(:finding) { Findings::Registry.find("paid-logic-climbs-only-read-once-tasks") }
+
+    it "is false before the sweep's experiment exists" do
+      expect(page.sweep_seeded?("meta_stack")).to be(false)
+    end
+
+    context "with the sweep's experiment seeded" do
+      before { create(:experiment, slug: "meta-stack") }
+
+      it "is true" do
+        expect(page.sweep_seeded?("meta_stack")).to be(true)
+      end
+    end
+  end
 end

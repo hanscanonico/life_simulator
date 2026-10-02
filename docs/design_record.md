@@ -4208,11 +4208,12 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
 
   **What the refutation points at.** The pre-registration read H-deep refuted as the copier
   and its population binding rather than the instruction set, with mutational supply and a
-  code region apart from the copied tape as the next suspects. The design study summarised in
-  the Meta-stack entry above, written before this reading, had already separated them in
-  pilots: supply does not bind (a specific substitution every 128 epochs, rate arms at × 4
-  and × 8 with no deep rung, × 16 melting the copiers), and a free metabolism tape under the
-  in-place NAND climbs the read-once rungs and stalls in the same place. Its reading is that
+  code region apart from the copied tape as the next suspects. The design study
+  `docs/studies/meta-stack.md`, summarised in the Meta-stack entry above and written before
+  this reading, had already separated them in pilots: supply does not bind (a specific
+  substitution every 128 epochs, rate arms at × 4 and × 8 with no deep rung, × 16 melting the
+  copiers), and a free metabolism tape under the in-place NAND climbs the read-once rungs and
+  stalls in the same place. Its reading is that
   the binding constraint is **fan-out in a two-head machine whose NAND writes in place**, not
   mutational supply. That is the study's pilot reading, which this sweep agrees with and does
   not itself test; Meta-stack (DESIGN §1.3 item 17), seeded right after this reading, does.
@@ -4222,5 +4223,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   leave-out, the arms' losses and the descriptive ladder at render time, through
   `Findings::Logic` over `Experiments::LogicReadingService`'s report, the reading the sweep
   page draws and caches, and includes that page's section. The numbers the page hand-types
-  are the lab's sample maxima above and the bound derived from the report. DESIGN §1.3 item
-  16 gains a result line. Nothing about the engine, the rules or any observable moves.
+  are the lab's sample maxima above and the bound derived from the report. It links both
+  studies it cites, `docs/studies/logic.md` and `docs/studies/meta-stack.md`, and links the
+  Meta-stack sweep once that experiment is in the database. DESIGN §1.3 item 16 gains a
+  result line. Nothing about the engine, the rules or any observable moves.

@@ -4,12 +4,14 @@
 <% bundle = Lab::LogicReading::FULL_BUNDLE %>
 <% constants = Lab::LogicReading %>
 <% record_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/design_record.md" %>
+<% studies_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/studies" %>
 
 <h2>Question</h2>
 <p>
   <%= link_to "Paid to compute", finding_path("paid-computation-stops-at-one-step-tasks") %>,
   BFF replicators took the arithmetic tasks one substitution of a copier computes and went no
-  further. The design study's diagnosis was the instruction set: BFF has no two-input data op,
+  further. The <%= link_to "design study", "#{studies_url}/logic.md" %>'s diagnosis was the
+  instruction set: BFF has no two-input data op,
   so every deeper task needed a counted loop, and no partial loop earns anything on the way.
   Logic, the variant of the Metabolism substrate in DESIGN §1.4, keeps that economy and that
   pay and adds the missing part: one NAND byte, run only by the assay, with Avida's logic
@@ -199,7 +201,8 @@
   So given a NAND and paid for every part, BFF copiers climb every rung that reads its inputs
   once and stop below the two that need an input twice. The pre-registration read this
   outcome as closing the "ladder of compositions" route, with mutational supply and a code
-  region apart from the copied tape as the next suspects. A design study written before this
+  region apart from the copied tape as the next suspects. A
+  <%= link_to "design study", "#{studies_url}/meta-stack.md" %> written before this
   reading, and summarised in the Meta-stack pre-registration in the
   <%= link_to "design record", record_url %> (2026-10-02, "Meta-stack: does a soup assemble the
   deep rungs from paid parts on a metabolism tape read with a stack NAND?"), separated them.
@@ -222,7 +225,8 @@
 
 <h2>What comes next</h2>
 <p>
-  <%= link_to "Meta-stack", experiment_path(Lab.slug_for("meta_stack")) %>, DESIGN §1.3 item 17,
+  <%= link_to_if @show.sweep_seeded?("meta_stack"), "Meta-stack", experiment_path(Lab.slug_for("meta_stack")) %>,
+  DESIGN §1.3 item 17,
   seeded right after this reading, asks this sweep's question on the machine the study points
   at: a second, 32-byte tape the soup never executes, read by the logic assay with the NAND
   that keeps its operands, against an arm paid for the deep rungs alone and an arm with this

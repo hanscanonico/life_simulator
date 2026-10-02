@@ -120,6 +120,10 @@ module Findings
       @logic = report && Logic.build(report)
     end
 
+    # Whether a sweep a finding names as its next step is in this database yet, so the page
+    # links it only once that link resolves.
+    def sweep_seeded?(key) = Experiment.exists?(slug: Lab.slug_for(key))
+
     def diagrams = evidence ? evidence.diagrams : []
 
     def runs_done = evidence ? evidence.finished_count : 0

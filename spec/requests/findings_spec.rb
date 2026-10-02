@@ -1577,6 +1577,32 @@ RSpec.describe "Findings", type: :request do
         end
       end
 
+      it "links both design studies it cites" do
+        get finding_path(logic)
+
+        hrefs = response.parsed_body.css("a").pluck("href")
+        expect(hrefs).to include(end_with("docs/studies/logic.md"), end_with("docs/studies/meta-stack.md"))
+      end
+
+      context "before the Meta-stack sweep is seeded" do
+        it "names it without a link that would not resolve" do
+          get finding_path(logic)
+
+          expect(response.body.squish).to include("Meta-stack, DESIGN §1.3 item 17")
+          expect(response.parsed_body.at_css("a[href='/experiments/meta-stack']")).to be_nil
+        end
+      end
+
+      context "with the Meta-stack sweep seeded" do
+        before { create(:experiment, slug: "meta-stack") }
+
+        it "links its page" do
+          get finding_path(logic)
+
+          expect(response.parsed_body.at_css("a[href='/experiments/meta-stack']").text).to eq("Meta-stack")
+        end
+      end
+
       context "with its children read" do
         before do
           experiment = logic_experiment
