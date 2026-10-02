@@ -3934,10 +3934,31 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   control, against the Logic sweep's own children.
 
   **Logic's reading.**
-  <!-- LOGIC-READING: filled in by the orchestrator before merge -->
-  *Interim, to be replaced by the final H-deep and H-stones results:* as of 2026-10-02 ~01:00Z
-  about 63 of the Logic sweep's 162 children had finished, and `logic_capability_deep` was
-  never above 0 in any settled sample of any child. Nothing is claimed from that.
+  Final (`lab:logic_report`, 2026-10-02 07:10Z). All 162 children finished. One full child is
+  extinct (4755) and six full children settled into relapse; the other arms have neither.
+  - **H-capability-L: shown.** 53 pairs favour the full arm, 0 the none arm (p = 1.1 × 10⁻¹⁶).
+    Every parent leans to the full arm.
+  - **H-deep: refuted.** All 53 pairs tie at zero. `logic_capability_deep` is 0 in every
+    sample of every child.
+    - XOR's largest share in any sample is 5/256 (run 4817, epoch 46 470).
+    - EQU's is 1/256.
+  - **H-stones: refuted.** All 53 pairs tie at zero, because no arm built a deep rung.
+  - **H-complexity: not shown.** 2 pairs favour the full arm and 1 the none arm, with 45 ties
+    (p = 0.5).
+  - **Sensitivity readings.** The extinct-kept reading and the unpiloted re-reading give the
+    same four outcomes.
+
+  **The full arm's ladder** (children reaching each rung at 1/10 under the k = 5 rule, of 54):
+
+  | rung | ECHO | NOT | NAND | ORN | ANDN | OR | AND | NOR | XOR | EQU |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | children | 54 | 52 | 37 | 44 | 32 | 23 | 14 | 19 | 0 | 0 |
+
+  The deep-only and none arms reach ECHO in 19 children each and nothing above it. Tasks gave
+  the full arm 0.59 of its income on average.
+
+  This is the stall the deep study predicted: every read-once rung up to NOR climbs, and
+  neither rung that needs an input twice comes.
 
   **Two rules on seeding, locked here.**
   - **(a)** Meta-stack is **seeded only after the Logic reading is final** (`lab:logic_report`
