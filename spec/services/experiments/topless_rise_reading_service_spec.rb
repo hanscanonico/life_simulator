@@ -137,10 +137,22 @@ RSpec.describe Experiments::ToplessRiseReadingService do
     end
   end
 
+  context "with the rise children climbing back only to the parent's depth at descent" do
+    before do
+      sample_arms(rise: { depth: ->(index) { index.zero? || index >= 190 ? 5 : 3 } }, capped: { fifth: 3 },
+                  none: { fifth: 3 })
+    end
+
+    it "reads no rise in any pair" do
+      expect(report.arms.first.cells).to eq(["rise", 3, 3, 0, 0, 3, 0, 0, 0])
+      expect(test("H-rise").comparison).to have_attributes(favouring: 0, against: 0, ties: 3)
+    end
+  end
+
   context "with a none child that held nothing at its fifth decile and ECHO at its last" do
     before { sample_arms(rise: { fifth: 9 }, capped: { fifth: 9 }, none: { fifth: -1, last: [0, -1, -1] }) }
 
-    it "reads −1 as one below ECHO, so that child rises and the other does not" do
+    it "reads −1 as one below ECHO, so that child, which held nothing at descent either, rises and the others do not" do
       expect(none.map { |run| report.children.find { |child| child.run_id == run.id }.rises? }).to eq([true, false, false])
       expect(test("H-rise").comparison).to have_attributes(favouring: 0, against: 1, ties: 2)
     end

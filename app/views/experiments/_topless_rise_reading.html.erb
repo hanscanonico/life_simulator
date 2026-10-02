@@ -24,9 +24,12 @@
     samples past a settling window of
     <%= number_with_delimiter Lab::ToplessRiseReading::SETTLING_WINDOW %> epochs. A child rises late
     where the median depth of the deepest rung held by a tenth of the world, over the last tenth of
-    those samples, is at least <%= Lab::ToplessRiseReading::RISE_STEP %> above its median over the
-    fifth tenth. A child already at depth <%= Lab::ToplessRiseReading::CEILING_DEPTH %>, the deepest a
-    reading can show, by its fifth tenth is ceilinged and read as no rise. A child is extinct where
+    those samples, is at least <%= Lab::ToplessRiseReading::RISE_STEP %> above the deepest its lineage
+    reached before the second half: its median over the fifth tenth, its parent's depth at descent,
+    and every depth it held for <%= Lab::ToplessRiseReading::PERSISTENCE_RUN %> samples running up to
+    the fifth tenth's end. Climbing back to where the parent stood is no rise. A child whose lineage
+    had already reached depth <%= Lab::ToplessRiseReading::CEILING_DEPTH %>, the deepest a reading can
+    show, before the second half is ceilinged and read as no rise. A child is extinct where
     its last-decile median share of replicators is below
     <%= percent_value Lab::ToplessRiseReading::EXTINCT_SHARE %>, and a pair with an extinct child is in
     no test. Each test is a one-sided sign test at p &lt; <%= Lab::ToplessRiseReading::SIGN_TEST_LEVEL %>,

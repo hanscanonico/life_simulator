@@ -16,7 +16,7 @@ module Lab
       # Each test beside its two other readings.
       def readings = tests.zip(kept_tests, deep_tests)
 
-      # The children already at the ceiling by their fifth decile, printed apart.
+      # The children whose lineage reached the ceiling before the second half, printed apart.
       def ceilinged = children.select(&:ceilinged?)
 
       # More than half of the rise arm's children with both deciles read are ceilinged: the

@@ -52,17 +52,19 @@ module Lab
     CLASSES_KEY = "logic_depth_classes"
     NOTHING_HELD = -1
 
-    # The rise rule: a child rises late where its last-decile median depth is at least its
-    # fifth-decile median + RISE_STEP. Deciles cut the settled samples by index, decile k the
-    # samples from floor((k − 1)·n/10) to before floor(k·n/10), so the tenth is Logic's last
-    # ceil(n/10).
+    # The rise rule: a child rises late where its last-decile median depth is at least
+    # RISE_STEP above the deepest its lineage reached before the second half — its
+    # fifth-decile median, its first own sample (the parent's depth at descent) and every
+    # depth held under the persistence rule up to the fifth decile's end. Deciles cut the
+    # settled samples by index, decile k the samples from floor((k − 1)·n/10) to before
+    # floor(k·n/10), so the tenth is Logic's last ceil(n/10).
     RISE_DECILE = 5
     DECILES = 10
     RISE_STEP = 1
     # The four-input table's "13 or more" functions are credited at 13
     # (`runner schema`, `tasks.topless.depth_floor`), so 13 is both the floor and the deepest
-    # depth a reading can show: a child already there at its fifth decile cannot rise, and is
-    # read as no rise and counted apart.
+    # depth a reading can show: a child whose lineage already reached it before the second
+    # half cannot rise, and is read as no rise and counted apart.
     CEILING_DEPTH = 13
 
     # Meta-stack's deep children (H-deep-Ms's nine, `lab:meta_stack_report` final), the
@@ -88,9 +90,9 @@ module Lab
     }.freeze
 
     CHILD_COLUMNS = %w[
-      run_id parent seed treatment status deep_parent settled_relapse_epoch extinct fifth_decile_depth
-      last_decile_depth rises ceilinged deepest_held deepest_held_epoch late_depths reached_floor
-      last_decile_classes replicator_share
+      run_id parent seed treatment status deep_parent settled_relapse_epoch extinct descent_depth
+      first_half_held fifth_decile_depth rise_bar last_decile_depth rises ceilinged deepest_held
+      deepest_held_epoch late_depths reached_floor last_decile_classes replicator_share
     ].freeze
     ARM_COLUMNS = %w[treatment children finished settled_relapses extinct measured rises ceilinged reached_floor].freeze
     # The Experiments::ToplessRiseReadingService::ChildRow predicate each count after

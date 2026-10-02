@@ -20,8 +20,47 @@ RSpec.describe Lab::ToplessRiseReading::Child do
   it "reads the fifth decile as its own tenth of the settled samples, not the first half" do
     reading = read(->(index) { index.between?(140, 149) ? 4 : 9 })
 
-    expect(reading).to have_attributes(fifth_depth: 4, last_depth: 9)
-    expect(reading).to be_rises
+    expect(reading).to have_attributes(fifth_depth: 4, last_depth: 9, first_half_held: 9, bar: 9)
+  end
+
+  describe "the bar a late rise must clear" do
+    it "does not rise back to a depth held before the second half after a dip at the fifth decile" do
+      expect(read(->(index) { index.between?(140, 149) ? 4 : 9 })).not_to be_rises
+    end
+
+    it "does not rise back to the parent's depth at descent, held for fewer samples than persistence asks" do
+      reading = read(->(index) { index.zero? || index >= 190 ? 5 : 2 })
+
+      expect(reading).to have_attributes(descent_depth: 5, first_half_held: 2, fifth_depth: 2, bar: 5)
+      expect(reading).not_to be_rises
+    end
+
+    it "rises past the parent's depth at descent" do
+      reading = read(->(index) { [5, *Array.new(189, 2), *Array.new(10, 6)][index] })
+
+      expect(reading).to be_rises
+    end
+
+    it "does not rise to a depth held five samples running in the settling window and lost" do
+      reading = read(->(index) { index.between?(3, 7) || index >= 190 ? 11 : 9 })
+
+      expect(reading).to have_attributes(first_half_held: 11, fifth_depth: 9, bar: 11)
+      expect(reading).not_to be_rises
+    end
+
+    it "rises to a depth held four samples running before the second half" do
+      reading = read(->(index) { index.between?(3, 6) || index >= 190 ? 11 : 9 })
+
+      expect(reading).to have_attributes(first_half_held: 9, bar: 9)
+      expect(reading).to be_rises
+    end
+
+    it "sets no bar by a run of five that ends past the fifth decile" do
+      reading = read(->(index) { index.between?(147, 151) || index >= 190 ? 11 : 9 })
+
+      expect(reading).to have_attributes(first_half_held: 9, bar: 9)
+      expect(reading).to be_rises
+    end
   end
 
   it "takes the lower middle of an even decile" do
@@ -36,8 +75,15 @@ RSpec.describe Lab::ToplessRiseReading::Child do
       expect(reading).not_to be_rises
     end
 
-    it "rises from nothing held to ECHO" do
-      expect(read(steps(-1, 0))).to be_rises
+    it "rises from nothing held, at descent and since, to ECHO" do
+      expect(read(steps(-1, 0))).to have_attributes(descent_depth: -1, first_half_held: nil, bar: -1, rises?: true)
+    end
+
+    it "does not rise back to ECHO where the parent held it at descent" do
+      reading = read(->(index) { index.zero? || index >= 190 ? 0 : -1 })
+
+      expect(reading).to have_attributes(descent_depth: 0, bar: 0)
+      expect(reading).not_to be_rises
     end
 
     it "holds no depth" do
@@ -58,6 +104,14 @@ RSpec.describe Lab::ToplessRiseReading::Child do
       reading = read(steps(13, 13))
 
       expect(reading).to have_attributes(ceilinged?: true, rises?: false, reached_floor: true)
+    end
+  end
+
+  context "with the 13 floor held before the second half and lost by the fifth decile" do
+    it "is ceilinged" do
+      reading = read(->(index) { index.between?(20, 24) ? 13 : 9 })
+
+      expect(reading).to have_attributes(fifth_depth: 9, bar: 13, ceilinged?: true, rises?: false)
     end
   end
 

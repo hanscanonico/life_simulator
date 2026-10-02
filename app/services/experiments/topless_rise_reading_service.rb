@@ -46,8 +46,13 @@ module Experiments
 
       def cells
         [run_id, parent_id, seed, treatment.name, status, deep_parent?, heldout.settled_relapse_epoch, heldout.extinct,
-         depth.fifth_depth, depth.last_depth, rises?, ceilinged?, depth.deepest_held, depth.deepest_held_epoch,
-         depth.late_depths.join(" ").presence, reached_floor?, depth.last_classes, share.last_share]
+         *depth_cells, share.last_share]
+      end
+
+      def depth_cells
+        [depth.descent_depth, depth.first_half_held, depth.fifth_depth, depth.bar, depth.last_depth, rises?,
+         ceilinged?, depth.deepest_held, depth.deepest_held_epoch, depth.late_depths.join(" ").presence,
+         reached_floor?, depth.last_classes]
       end
     end
 

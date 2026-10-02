@@ -4616,19 +4616,35 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     samples from ⌊(k − 1)·n/10⌋ to before ⌊k·n/10⌋, so the tenth is Logic's last ⌈n/10⌉ and
     the fifth ends the first half. Inside a decile the samples carrying `logic_depth_max` as a
     number count.
-  - **−1**, nothing held at a tenth, **enters a median as the number −1**, one below ECHO's 0
-    and below every depth. A decile of −1 and 0 in equal numbers reads −1 (the lower middle),
-    and a child going from −1 to 0 rises by the rule.
+  - **−1**, nothing held at a tenth, **enters a median and the bar below as the number −1**,
+    one below ECHO's 0 and below every depth. A decile of −1 and 0 in equal numbers reads −1
+    (the lower middle).
+  - **The bar** is the deepest the child's lineage reached before the second half: the
+    largest of (a) its **fifth-decile median**, (b) its **depth at descent**, the
+    `logic_depth_max` of its first own sample, the parent's world read on the four-input
+    ladder one sample interval past the switch, and (c) **every depth it held under the persistence
+    rule** (below) in its own samples up to the fifth decile's end, settling window included,
+    the run of 5 completed by then.
   - **The rise rule.** A child **rises late** where its last-decile median `logic_depth_max`
-    is at least its **fifth-decile median + 1**. It is **measured** where both medians are
-    read and it is not extinct.
+    is at least **the bar + 1**. It is **measured** where both medians are read and it is not
+    extinct. Why a bar and not the fifth-decile median alone, as study §3 drafted: the pilot
+    validation above saw every arm lose its parent's depth 5 within 200 epochs of the switch
+    and re-climb, and study §2.4 reads "keeps rising" as a depth the lineage had not reached
+    ("not passing 5, or reaching any single depth"). Fed by the fifth decile alone, the rule
+    would count a slow re-climb to the parent's own depth, a dip at the fifth decile and back,
+    or a lineage that lost ECHO and regained it (−1 → 0) as rising. Against the bar, only a
+    depth deeper than any the lineage held, its parent's included, counts. No fixed depth
+    (6, past EQU) is required, for the same §2.4 reason: no single depth is evidence of a
+    sustained rise. A child that held nothing at descent and nothing since still rises at
+    ECHO; a parent holding any rung at its last epoch sets its children's bar at ECHO or
+    above, so that can only be a child whose parent's world was read holding nothing.
   - **Ceilinged.** The 604 open four-input functions are credited at 13, a floor, so 13 is
     both the floor value and the deepest depth any reading can show; the table's true maximum
-    is at least 13 and unknown. A child whose **fifth-decile median is already 13** is
-    ceilinged, read as **no rise**, and printed apart. Any child reaching 13 in any sample is
-    named (`reached_floor`) and its depth reported as "13 or more". This replaces the earlier
-    entries' demand that the open functions be closed before the sweep: a child that would
-    need them is read apart rather than wrongly.
+    is at least 13 and unknown. A child whose **bar is already 13** is ceilinged, read as
+    **no rise**, and printed apart: by the rule it could not rise. Any child reaching 13 in
+    any sample is named (`reached_floor`) and its depth reported as "13 or more". This
+    replaces the earlier entries' demand that the open functions be closed before the sweep:
+    a child that would need them is read apart rather than wrongly.
   - **First epochs** under the **persistence rule, k = 5**: depth d is first held at the first
     of 5 consecutive own samples at d or deeper. Descriptive: the deepest depth so held and
     when, and the depths first held in the second half of the settled samples (from the
@@ -4641,7 +4657,11 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   rise child and the control child of the same parent; it favours the side that rises late
   alone. Each test carries the **per-parent agreement** (one pair a parent) and the
   **leave-one-or-two-parents-out** rule. With the control at no rise each needs **5**
-  discordant pairs (p = 1/32).
+  discordant pairs (p = 1/32), and **7** to survive leaving out any two parents (5 to 0 left,
+  p = 1/32). The bar makes a rise rarer in every arm alike: the none and capped children are
+  read under it too, and a drift child that never re-reaches its parent's depth reads no
+  rise, so the tests stay one-sided against a control near no rise. With 54 pairs the tests
+  can be shown if about one rise child in eight clears its bar and no control does.
   - **H-rise** (rise against none): the rise rule.
   - **H-rise-paid** (rise against capped): the rise rule.
   - **The deep subgroup**, a declared secondary: both tests re-read on the pairs of the 9 deep
@@ -4649,7 +4669,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **Extinct kept**, a sensitivity reading: both tests with the pairs of extinct children
     kept. It decides no outcome.
   - **H-rise-code (descriptive, tested nowhere).** The load-bearing bytes of the dominant
-    deepest solver, first decile against last, on every rise child that rises late and on
+    deepest solver, the fifth-decile world against the last, on every rise child that rises late and on
     its twins, measured offline on the stored worlds. The method, locked now:
     - **six fixed four-input case sets**, `topless::Cases::draw(Inputs::Four, ·)` six times in
       turn off `rng::seeded(0xdee9, 4, 0)`, frozen as constants; a tape is credited a class
@@ -4661,10 +4681,14 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     - **load-bearing bytes** (study §2.3): the positions at which at least 7 of the 13 other
       symbols of the 14-symbol alphabet leave the tape credited, on all 6 sets, no class as
       deep;
-    - **the worlds**: the earliest stored world at or past the first settled sample, and the
-      last stored world;
-    - printed: both counts and both depths. New code where the depth rose and the count rose
-      by 2 or more; co-option where the depth rose and the count did not.
+    - **the worlds**: the earliest stored world at or past the first settled sample, the
+      last stored world at or before the fifth decile's end, and the last stored world
+      (pruning keeps one every 1 000 epochs, so all three exist);
+    - printed: the three counts and depths. New code where the depth rose from the
+      fifth-decile world to the last and the count rose by 2 or more; co-option where the
+      depth rose and the count did not. The fifth-decile world, not the first, is the base, so
+      the comparison spans the half the rise rule reads and not the re-climb after the
+      switch.
     - **A tool slice comes first.** `research/landscape` reads the two-input assay only and
       has no load-bearing count; a slice adding the topless assay and that count lands before
       the sweep is read.
@@ -4685,8 +4709,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     reorganisation offers early and then plateaus, as the pilots did at 9. That is the
     open-endedness answer here, a negative one: paid parts buy a deeper feature, not a climb.
   - **Most children ceilinged** (more than half of the rise arm's children with both deciles
-    read). The ladder had a near top after all, and the question needs more inputs; the
-    tests are printed but not read as an answer.
+    read have a bar of 13). The ladder had a near top after all, and the question needs more
+    inputs; the tests are printed but not read as an answer.
 
   **What is not claimed.** The substrate imports **an objective, a primitive, a hereditary
   channel and the primitive's semantics** (Meta-stack's four), **plus an imported ladder of

@@ -893,13 +893,14 @@ sample.
     `task_reward` 512, so no single rung up to the 13 floor saturates a cell), **capped** (the
     same at `task_depth_cap: 5`) and **none** (`task_reward` 0). Seed 4001, 100 000 epochs past
     the parent, priority 40, 162 children. Read as Logic is, with a rise rule on
-    `logic_depth_max`: a child rises late where its last-decile median is at least its
-    fifth-decile median + 1 (−1, nothing held, a number below every depth), and is ceilinged,
-    read as no rise and printed apart, where its fifth-decile median is already 13. Two
-    one-sided sign tests at p < 0.05: H-rise (rise against none) and H-rise-paid (rise
-    against capped), each re-read on the deep subgroup and with the extinct pairs kept;
-    H-rise-code, the load-bearing bytes of the dominant deepest solver first and last,
-    descriptive and offline. Pre-registered in `docs/design_record.md`, 2026-10-02, "Topless
+    `logic_depth_max`: a child rises late where its last-decile median is at least one above
+    the deepest its lineage reached before the second half (its fifth-decile median, its
+    depth at descent and every depth held 5 samples running by then; −1, nothing held, a
+    number below every depth), and is ceilinged, read as no rise and printed apart, where
+    that is already 13. Two one-sided sign tests at p < 0.05: H-rise (rise against none) and
+    H-rise-paid (rise against capped), each re-read on the deep subgroup and with the extinct
+    pairs kept; H-rise-code, the load-bearing bytes of the dominant deepest solver at the
+    fifth decile and last, descriptive and offline. Pre-registered in `docs/design_record.md`, 2026-10-02, "Topless
     rise: does the deepest rung held keep rising when depth is paid?", whose numbers live in
     `Lab::ToplessRiseReading`; `lab:topless_rise_report` reads it.
 
