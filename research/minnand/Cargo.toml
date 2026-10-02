@@ -1,0 +1,21 @@
+[package]
+name = "minnand"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Exact minimal NAND circuit costs of every 2-, 3- and 4-input Boolean function"
+
+# Its own workspace: outside `engine/`, so `make verify` builds it only through `make research`.
+[workspace]
+
+[dependencies]
+varisat = "0.2.2"
+sha2 = "0.10"
+
+# The enumeration places billions of gates and the tests re-prove the three-input table.
+[profile.test]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1

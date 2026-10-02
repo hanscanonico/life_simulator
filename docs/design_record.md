@@ -4227,3 +4227,54 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   studies it cites, `docs/studies/logic.md` and `docs/studies/meta-stack.md`, and links the
   Meta-stack sweep once that experiment is in the database. DESIGN §1.3 item 16 gains a
   result line. Nothing about the engine, the rules or any observable moves.
+
+- 2026-10-02 — **The minimal-NAND tables for the topless ladder (preparation only).**
+  The topless study (`docs/studies/topless.md`, now kept beside the other three) proposes
+  the next rung-4 question if Meta-stack's H-deep-Ms reads shown: on a nested 2 → 3 →
+  4-input logic ladder, does the deepest rung held keep rising late in long runs (H-rise,
+  study §3)? A rung's depth is the exact minimal NAND count of its function, and the study
+  makes the sweep pre-registrable only on a four-input table exact past 10 gates, where it
+  left 19 045 of the 65 536 functions open. `research/minnand/` computes the tables; it
+  does not close the four-input one.
+  - **The cost** is the study's: the fewest two-input NAND gates of a circuit computing f
+    from its inputs, fan-out free, NOT a = NAND(a, a) one gate as `logic::LOGIC_TASKS`
+    counts it. Inputs are free; constants are not given, so 1 costs 2 and 0 costs 3, as in
+    the study's table. Given free, they would change only those two entries; no slot credit
+    pays a constant. Cost is invariant under input permutation, so the tables are per
+    P-class (80 on three inputs, 3 984 on four).
+  - **The tables**, committed as data: `data/minnand3.bin` (256 bytes) and
+    `data/minnand4.bin` (65 536 bytes), one cost byte a function, with their SHA-256 in the
+    crate's README, a witness circuit per class and a proof log. Three inputs: costs 0–10,
+    the top "exactly one of three" at 10. Four inputs, functions by cost 0–13: 4, 10, 31,
+    98, 293, 807, 2 067, 4 351, 8 941, 13 085, 16 804, 12 210, 5 464 and 767 (XOR4 12,
+    XNOR4 13); **604 functions (75 classes) are left at "13 or more"**, a lower-bound byte
+    0x8D, among them "exactly one of four". So the four-input table is exact past 10 gates
+    for all but those 604, and its maximum is at least 13 and not known. The exhaustion to 13
+    gates, which would decide them, was stopped at 4 CPU-hours unfinished (the slice's
+    budget); the README gives what remains and its cost.
+  - **The method**: exhaustive canonical enumeration (the study's method 1, cut by the
+    number of unread gates a minimal circuit can still absorb and by input-permutation
+    symmetry) to 12 gates, 18 CPU-minutes; above it, every exact class's witness extended by
+    one or two gates gives circuits at 13 for 78 of the 153 classes left. Lower bounds are by
+    exhaustion; SAT (varisat, a dependency of the crate only) re-proves the three-input ones
+    and samples the four-input ones in the tests, and can carry the open classes on. Every
+    claimed cost has a witness that re-evaluates.
+  - **Checked**: the three-input table equals the study's checked table on all 256
+    functions, is re-derived by exhaustion, and its every lower bound is re-proven by
+    UNSAT; every four-input cost to 10 equals the study's `minnand4` output; the four-input
+    table extends the three-input one; every witness re-evaluates; the known costs hold
+    (XOR 4, EQU 5, XOR3 8, MAJ3 6, the full adder 9 together, NAND3 3, AND3 4, OR3 6, NOR3
+    7, XOR4 12). `make minnand` runs the checks; it is outside `make verify`.
+  - **Preparation only.** No sweep is seeded, nothing is relocked, and neither the engine
+    nor any observable moves. H-rise still needs Meta-stack's H-deep-Ms to read shown, the
+    study's engine slices (three-input ladder, four-input ladder, the depth observables) and
+    its own pre-registration entry, which would lock the table as a constant. As the study
+    rules, that entry needs the four-input table exact to its maximum, so the 604 open
+    functions are closed first.
+  - **The study's pilot numbers, labelled pilot** (one start world, Meta-stack child 4845's
+    at epoch 31 900, on a throwaway engine copy; study §4): on the three-input ladder depth
+    jumped from 5 (EQU) to 9 by jumps of 3–4 NANDs, held at a tenth from 3 500 epochs in
+    seed 2001 and from 4 500 in seed 2002, and stayed at 9 to the end of both runs (40 000
+    and 10 000 epochs) without reaching the top, 10; on the four-input ladder the same world
+    re-climbed 4 → 8 → 9 and held 9 from 10 000 to 20 000 epochs. Depth jumped 5 → 9 and
+    plateaued at 9 on both ladders. Pilot numbers, not findings.

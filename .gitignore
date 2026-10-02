@@ -37,3 +37,4 @@ engine/target/
 /app/assets/wasm/*
 !/app/assets/wasm/.keep
 research/landscape/target/
+research/minnand/target/
