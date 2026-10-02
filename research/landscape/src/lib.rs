@@ -4,7 +4,10 @@
 //! here is the engine's: the assay, the NAND, the detector and the world are called, never
 //! re-implemented, but for the traced stepper, which is held to the engine's interpreter.
 
+pub mod bearing;
 pub mod census;
+pub mod depth;
+pub mod depth_census;
 pub mod paths;
 pub mod plant;
 pub mod score;
