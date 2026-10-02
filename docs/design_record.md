@@ -4688,7 +4688,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
       fifth-decile world to the last and the count rose by 2 or more; co-option where the
       depth rose and the count did not. The fifth-decile world, not the first, is the base, so
       the comparison spans the half the rise rule reads and not the re-climb after the
-      switch.
+      switch. The other cases are labelled too, descriptively: **neither** where the depth
+      rose and the count rose by exactly 1, **no rise in depth** where it did not rise, and
+      **unread** where the fifth-decile or the last world holds no class by a tenth, so has
+      no dominant deepest solver to count.
     - **A tool slice comes first.** `research/landscape` reads the two-input assay only and
       has no load-bearing count; a slice adding the topless assay and that count lands before
       the sweep is read.
