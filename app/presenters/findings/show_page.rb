@@ -111,6 +111,15 @@ module Findings
       @metabolism = report && Metabolism.build(report)
     end
 
+    # Sweep 16 read under its own pre-registered rule, from the report its sweep page draws.
+    # Nil where the sweep is not in the lab.
+    def logic
+      return @logic if defined?(@logic)
+
+      report = evidence&.logic_reading
+      @logic = report && Logic.build(report)
+    end
+
     def diagrams = evidence ? evidence.diagrams : []
 
     def runs_done = evidence ? evidence.finished_count : 0

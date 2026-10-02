@@ -4134,3 +4134,83 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   children per parent, and four of its parents were piloted. A shown result is **a mechanism**
   — paid parts let a soup assemble a deeper feature on an imported tape — **not
   open-endedness**. Every constant above lives in `Lab::MetaStackReading`.
+
+- 2026-10-02 — **The Logic finding states its claim: given a NAND, paid replicators climb
+  every logic task that reads its inputs once, and none that needs one twice.** Sweep 16
+  (`logic`, entry of 2026-10-01, "Logic: does a soup assemble features beyond its one-step
+  rungs when the parts are paid?") is final: all 162 children of its 18 parents finished. It
+  is read here as registered, on the lab (`lab:logic_report`, 2026-10-02 07:10Z, "logic
+  reading, final (Logic: imports an objective and a primitive)"). The Meta-stack entry above
+  summarises the same reading; this entry states the claim.
+
+  | arm | children | finished | settled relapses | extinct | capability measured | reached a deep rung | stepping stone | complexity survivors | rises |
+  |---|---|---|---|---|---|---|---|---|---|
+  | full | 54 | 54 | 6 | 1 | 53 | 0 | 0 | 48 | 2 |
+  | deep-only | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 1 |
+  | none | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 1 |
+
+  | hypothesis | pairs | favour full | favour control | ties | p | outcome | extinct kept | without the piloted parents |
+  |---|---|---|---|---|---|---|---|---|
+  | H-capability-L (against none) | 53 | 53 | 0 | 0 | 1.11e-16 | shown | 54 to 0, p = 5.55e-17, shown | 41 to 0, p = 4.55e-13, shown |
+  | H-deep (against none) | 53 | 0 | 0 | 53 | — | refuted | 54 ties, refuted | 41 ties, refuted |
+  | H-stones (against deep-only) | 53 | 0 | 0 | 53 | — | refuted | 54 ties, refuted | 41 ties, refuted |
+  | H-complexity (against none) | 48 | 2 | 1 | 45 | 0.5 | not shown | 2 to 1, 51 ties, not shown | 2 to 0, 35 ties, p = 0.25, not shown |
+
+  The one extinct child is run 4755 (parent 1103, seed 2003), which leaves its pairs out of
+  every test; the six settled relapses (4700, 4755, 4807, 4825, 4826 and 4827) leave theirs out
+  of H-complexity. **Per parent**: H-capability-L goes 3 to 0 at every parent but 1103, 2 to 0
+  with its extinct pair unmeasured. H-deep and H-stones tie throughout at every parent.
+  H-complexity's two favouring pairs are both parent 1029's and its one pair against is
+  944's. **The leave-out**: the report's `carried_by` is "—" for the one shown test, so no one
+  or two parents carry it.
+
+  **Descriptive**, the report's per-child first epochs under the k = 5 persistence rule,
+  counted by the reading service's own ladder (`Lab::LogicReading::Arm#ladder`):
+
+  | arm | ECHO | NOT | NAND | AND | ORN | OR | ANDN | NOR | XOR | EQU |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | full | 54 | 52 | 37 | 14 | 44 | 23 | 32 | 19 | 0 | 0 |
+  | deep-only | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  | none | 19 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+  It matches the table in the Meta-stack entry above, which lists the rungs in another order.
+  Read-only SELECTs over every stored sample of the 162 children found
+  `logic_capability_deep` at 0 throughout, XOR's largest share 5/256 (run 4817, epoch
+  46 470) and EQU's 1/256, against the 26 cells of 256 a tenth needs. Child for child, the
+  deep-only children read exactly as the none children in every column of the report: no
+  XOR or EQU was ever credited, so their pay was never collected. The estimated share of a
+  full cell's income from tasks averages 0.589 (0.177 to 0.781).
+
+  **The claim**, finding `paid-logic-climbs-only-read-once-tasks`, "Given a NAND, paid
+  replicators climb every logic task that reads its inputs once, and none that needs one
+  twice": paid for every rung of Avida's logic ladder with an assay-only NAND byte, BFF
+  copiers reach every read-once rung, NOT to NOR, and neither XOR nor EQU, the two rungs no
+  NAND circuit computes without reading an input or an intermediate twice. H-deep needed 5
+  discordant pairs; 0 deep children in 54 full children puts a two-sided 95% upper bound of
+  0.066 on the rate per child over this budget.
+
+  **Registry status `negative`**, as for the Metabolism finding: the sweep was registered to
+  answer one rung-4 question, H-deep, and it finished without the effect. H-capability-L,
+  the shown test, is the manipulation check that pay buys the read-once rungs, and stays in
+  this finding, named in its title's first half. It carries `imports_objective: true`, with
+  the badge and the note that rung 4 on Soup is unaffected; the page adds that Logic imports
+  a primitive besides.
+
+  **What the refutation points at.** The pre-registration read H-deep refuted as the copier
+  and its population binding rather than the instruction set, with mutational supply and a
+  code region apart from the copied tape as the next suspects. The design study summarised in
+  the Meta-stack entry above, written before this reading, had already separated them in
+  pilots: supply does not bind (a specific substitution every 128 epochs, rate arms at × 4
+  and × 8 with no deep rung, × 16 melting the copiers), and a free metabolism tape under the
+  in-place NAND climbs the read-once rungs and stalls in the same place. Its reading is that
+  the binding constraint is **fan-out in a two-head machine whose NAND writes in place**, not
+  mutational supply. That is the study's pilot reading, which this sweep agrees with and does
+  not itself test; Meta-stack (DESIGN §1.3 item 17), seeded right after this reading, does.
+  Rung 4 on Soup stays "not shown".
+
+  **The page** renders the tests, their parent leanings, both sensitivity readings, the
+  leave-out, the arms' losses and the descriptive ladder at render time, through
+  `Findings::Logic` over `Experiments::LogicReadingService`'s report, the reading the sweep
+  page draws and caches, and includes that page's section. The numbers the page hand-types
+  are the lab's sample maxima above and the bound derived from the report. DESIGN §1.3 item
+  16 gains a result line. Nothing about the engine, the rules or any observable moves.

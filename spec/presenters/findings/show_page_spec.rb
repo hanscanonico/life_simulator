@@ -320,4 +320,22 @@ RSpec.describe Findings::ShowPage do
       expect(page.metabolism).to be_nil
     end
   end
+
+  context "with the logic sweep" do
+    let(:finding) { Findings::Registry.find("paid-logic-climbs-only-read-once-tasks") }
+
+    before { logic_experiment }
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.logic.report).to be_a(Lab::LogicReading::Report)
+    end
+  end
+
+  context "with the logic sweep missing" do
+    let(:finding) { Findings::Registry.find("paid-logic-climbs-only-read-once-tasks") }
+
+    it "has no reading" do
+      expect(page.logic).to be_nil
+    end
+  end
 end
