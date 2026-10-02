@@ -101,6 +101,13 @@ impl Tasks {
 /// Every name `task_floor` may take, the arithmetic ladder's rungs then the logic ladder's
 /// not already named; which of them a run may choose is set by its `tasks`. Both ladders
 /// begin at ECHO, the default.
+/// `meta_rate`'s default, the design study's 32 × the replicating tape's 1/8192 of the
+/// Logic sweep (`docs/design_record.md`, 2026-10-02, Meta-stack slice B).
+const META_RATE_DEFAULT: f64 = 32.0 / 8192.0;
+/// The longest metabolism tape a run may carry, which also bounds what a snapshot may
+/// claim to hold.
+pub const META_LEN_MAX: u32 = 1024;
+
 const TASK_FLOORS: &[&str] = &[
     "echo", "inc", "dec", "add", "sub", "not", "double", "mul", "nand", "and", "orn", "or", "andn",
     "nor", "xor", "equ",
@@ -116,6 +123,29 @@ const TASK_FLOORS: &[&str] = &[
 pub enum LineageRule {
     Aligned,
     Oriented,
+}
+
+/// What a metabolism-tape byte is replaced by when it mutates (`docs/DESIGN.md` §1.1, "The
+/// metabolism tape"). `Uniform` draws any byte, as `mutation_rate` does on a tape. `Isa`
+/// draws one of 14 values at 1/14 each: the ten ops, `!`, `~`, 0, or one byte drawn
+/// uniformly from the 243 no-ops that are none of those, so the logic assay's instructions
+/// arrive as often as a no-op does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MetaDraw {
+    Uniform,
+    Isa,
+}
+
+/// What a cell's metabolism tape holds when the tape is switched on: at epoch 0 of a
+/// founding run, or at descent from a parent that carried none. `Zeros` is an empty tape;
+/// `OwnTape` is the first `meta_len` bytes of the cell's own replicating tape at that
+/// moment, zero-padded past a shorter tape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MetaSeed {
+    Zeros,
+    OwnTape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -191,6 +221,18 @@ pub struct Params {
     /// How a lineage tag follows descent: byte for byte (`aligned`, the default and the
     /// rule of every earlier run), or either way round (`oriented`). Moves no byte.
     pub lineage_rule: LineageRule,
+    /// Bytes of each soup cell's metabolism tape: a second tape the soup never executes,
+    /// which the logic assay reads instead of the replicating tape. `0` (the default)
+    /// allocates none, and the run is the run it always was.
+    pub meta_len: u32,
+    /// Probability a metabolism-tape byte mutates, per byte per epoch, on the tape's own
+    /// stream. Read only once `meta_len` is set.
+    pub meta_rate: f64,
+    /// What a mutated metabolism-tape byte becomes. Read only once `meta_len` is set.
+    pub meta_draw: MetaDraw,
+    /// What a metabolism tape holds when it is switched on. Read only once `meta_len` is
+    /// set.
+    pub meta_seed: MetaSeed,
     pub init: Init,
     pub sample_every: u32,
     pub top_k: u32,
@@ -223,6 +265,10 @@ impl Default for Params {
             structure_amplitude: 0.5,
             interaction: Interaction::Concat,
             lineage_rule: LineageRule::Aligned,
+            meta_len: 0,
+            meta_rate: META_RATE_DEFAULT,
+            meta_draw: MetaDraw::Uniform,
+            meta_seed: MetaSeed::Zeros,
             init: Init::Random,
             sample_every: 10,
             top_k: 16,
@@ -472,6 +518,40 @@ const FIELDS: &[Field] = &[
               made of them.",
     },
     Field {
+        name: "meta_len",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: META_LEN_MAX as f64,
+        },
+        doc: "Bytes of each soup cell's metabolism tape: a second tape the soup never \
+              executes, which the logic assay reads instead of the replicating tape. It is \
+              copied whole from the initiator onto its partner whenever an interaction \
+              leaves the partner's tape a near copy of the initiator's, at least 90% of its \
+              bytes in either orientation, and mutates on its own at meta_rate. 0 turns it \
+              off, which is the substrate of DESIGN 1.1; any length needs tasks logic.",
+    },
+    Field {
+        name: "meta_rate",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "Probability a metabolism-tape byte mutates, per byte per epoch, on a random \
+              stream of its own. Read only once meta_len is set.",
+    },
+    Field {
+        name: "meta_draw",
+        kind: Kind::Choice(&["uniform", "isa"]),
+        doc: "What a mutated metabolism-tape byte becomes: uniform draws any byte; isa \
+              draws each of the ten ops, the emit byte !, the NAND byte ~, 0 and one random \
+              no-op at 1/14. Read only once meta_len is set.",
+    },
+    Field {
+        name: "meta_seed",
+        kind: Kind::Choice(&["zeros", "own_tape"]),
+        doc: "What each cell's metabolism tape holds when the tape is switched on, at \
+              epoch 0 or at descent from a parent that carried none: zeros, or the first \
+              meta_len bytes of the cell's own replicating tape. Read only once meta_len \
+              is set.",
+    },
+    Field {
         name: "init",
         kind: Kind::Choice(&["random", "zero"]),
         doc: "Initial world state: uniformly random bytes, or all zero (the control).",
@@ -573,6 +653,16 @@ pub enum ParamError {
     TaskRewardWithoutStock {
         task_reward: u32,
     },
+    /// The metabolism tape is what the logic assay reads: on any other ladder, or none, it
+    /// would be state nothing ever reads.
+    MetaWithoutLogic {
+        meta_len: u32,
+        tasks: Tasks,
+    },
+    /// A metabolism-tape setting with no tape to apply it to is silently inert.
+    MetaParamWithoutTape {
+        field: &'static str,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -667,6 +757,16 @@ impl fmt::Display for ParamError {
                 "task_reward is {task_reward} with no energy_influx: the reward is paid \
                  into a stock"
             ),
+            Self::MetaWithoutLogic { meta_len, tasks } => write!(
+                f,
+                "meta_len is {meta_len} with tasks {}: the metabolism tape is read by the \
+                 logic assay alone, so it needs tasks logic",
+                tasks.name()
+            ),
+            Self::MetaParamWithoutTape { field } => write!(
+                f,
+                "{field} is set with meta_len 0: there is no metabolism tape to apply it to"
+            ),
         }
     }
 }
@@ -721,6 +821,7 @@ impl Params {
             self.validate_initiator()?;
         }
         self.validate_tasks()?;
+        self.validate_meta()?;
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
             return Err(ParamError::RadiusTooWide {
                 radius: self.radius,
@@ -771,6 +872,28 @@ impl Params {
             });
         }
         Ok(())
+    }
+
+    fn validate_meta(&self) -> Result<(), ParamError> {
+        if self.meta_len > 0 {
+            if self.tasks != Tasks::Logic {
+                return Err(ParamError::MetaWithoutLogic {
+                    meta_len: self.meta_len,
+                    tasks: self.tasks,
+                });
+            }
+            return Ok(());
+        }
+        let defaults = Params::default();
+        let stray = [
+            ("meta_rate", self.meta_rate != defaults.meta_rate),
+            ("meta_draw", self.meta_draw != defaults.meta_draw),
+            ("meta_seed", self.meta_seed != defaults.meta_seed),
+        ];
+        match stray.into_iter().find(|(_, set)| *set) {
+            Some((field, _)) => Err(ParamError::MetaParamWithoutTape { field }),
+            None => Ok(()),
+        }
     }
 
     /// A JSON description of every parameter — name, type, default, range and doc — for
@@ -912,6 +1035,12 @@ impl Params {
     /// runs, so a run with tasks on and no reward is byte for byte the run with tasks off.
     pub fn rewards_tasks(&self) -> bool {
         self.stocked() && self.tasks != Tasks::Off && self.task_reward > 0
+    }
+
+    /// Whether this run's cells carry a metabolism tape at all. The length is the switch:
+    /// at 0 none is allocated, drawn, inherited or snapshotted.
+    pub fn carries_meta(&self) -> bool {
+        self.substrate == Substrate::Soup && self.meta_len > 0
     }
 
     /// The index, on this run's ladder, of the lowest rung it pays: `task_floor`'s rung,
@@ -1342,7 +1471,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 27);
+        assert_eq!(fields.len(), 31);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -1861,5 +1990,123 @@ mod tests {
             "task_floor is xor with tasks off: there is no ladder to pay from it"
         );
         assert_eq!(Params::default().validate(), Ok(()));
+    }
+
+    fn meta_params() -> Params {
+        Params {
+            tasks: Tasks::Logic,
+            meta_len: 32,
+            meta_draw: MetaDraw::Isa,
+            meta_seed: MetaSeed::OwnTape,
+            ..rewarded_params()
+        }
+    }
+
+    /// The metabolism tape is off by default, and every setting of it is read by name.
+    #[test]
+    fn the_metabolism_tape_is_off_by_default() {
+        let params = Params::default();
+        assert_eq!(params.meta_len, 0);
+        assert!(!params.carries_meta());
+        assert_eq!(
+            (params.meta_rate, params.meta_draw, params.meta_seed),
+            (32.0 / 8192.0, MetaDraw::Uniform, MetaSeed::Zeros)
+        );
+        assert_eq!(
+            serde_json::from_str::<Params>(
+                r#"{"tasks": "logic", "meta_len": 32, "meta_draw": "isa", "meta_seed": "own_tape"}"#
+            )
+            .unwrap(),
+            Params {
+                tasks: Tasks::Logic,
+                meta_len: 32,
+                meta_draw: MetaDraw::Isa,
+                meta_seed: MetaSeed::OwnTape,
+                ..Params::default()
+            }
+        );
+        assert!(serde_json::from_str::<Params>(r#"{"meta_seed": "ownTape"}"#).is_err());
+        assert_eq!(meta_params().validate(), Ok(()));
+        assert!(meta_params().carries_meta());
+    }
+
+    /// Only the logic assay reads the tape, so it needs that ladder, paid or not.
+    #[test]
+    fn rejects_a_metabolism_tape_off_the_logic_ladder() {
+        for tasks in [Tasks::Off, Tasks::Arith] {
+            let params = Params {
+                tasks,
+                task_reward: 0,
+                ..meta_params()
+            };
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::MetaWithoutLogic {
+                    meta_len: 32,
+                    tasks
+                })
+            );
+        }
+        let unpaid = Params {
+            task_reward: 0,
+            energy_influx: 0,
+            energy_stock_cap: 0,
+            ..meta_params()
+        };
+        assert_eq!(unpaid.validate(), Ok(()));
+    }
+
+    /// With no tape, any of its settings away from the default would be silently inert.
+    #[test]
+    fn rejects_a_metabolism_setting_without_a_tape() {
+        let off = |params: Params| Params {
+            meta_len: 0,
+            ..params
+        };
+        for (params, field) in [
+            (
+                off(Params {
+                    meta_rate: 0.5,
+                    ..meta_params()
+                }),
+                "meta_rate",
+            ),
+            (off(meta_params()), "meta_draw"),
+            (
+                off(Params {
+                    meta_draw: MetaDraw::Uniform,
+                    ..meta_params()
+                }),
+                "meta_seed",
+            ),
+        ] {
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::MetaParamWithoutTape { field })
+            );
+        }
+        assert_eq!(
+            off(meta_params()).validate().unwrap_err().to_string(),
+            "meta_draw is set with meta_len 0: there is no metabolism tape to apply it to"
+        );
+    }
+
+    #[test]
+    fn schema_carries_the_metabolism_tape() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        let fields = schema["fields"].as_array().unwrap();
+        let field = |name: &str| fields.iter().find(|f| f["name"] == name).unwrap().clone();
+        assert_eq!(field("meta_len")["default"], 0);
+        assert_eq!(field("meta_len")["max"], META_LEN_MAX);
+        assert_eq!(field("meta_rate")["default"], 0.00390625);
+        assert_eq!(
+            field("meta_draw")["values"],
+            serde_json::json!(["uniform", "isa"])
+        );
+        assert_eq!(
+            field("meta_seed")["values"],
+            serde_json::json!(["zeros", "own_tape"])
+        );
+        assert_eq!(field("meta_seed")["default"], "zeros");
     }
 }

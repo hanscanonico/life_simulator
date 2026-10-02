@@ -135,6 +135,29 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   default pays every rung. A reward of `0` runs no assay, so `tasks = logic` at a reward
   of 0 is byte-identical to `tasks = off`. The task observables above read the arithmetic
   ladder only and are null under `logic`.
+- **The metabolism tape** (`meta_len`, default `0` = off; `meta_rate`, default 32/8192;
+  `meta_draw`, default `uniform`; `meta_seed`, default `zeros`; docs/design_record.md
+  2026-10-02, Meta-stack slice B): with a length set, every soup cell carries a second tape
+  of `meta_len` bytes beside its replicating tape. The soup **never executes** it; the logic
+  assay reads it **instead of** the replicating tape, so the cell is paid for what its
+  metabolism tape computes. It is **inherited** whole: when an interaction leaves the
+  partner's tape changed and a near copy of the tape the initiator arrived with — at least 9
+  in 10 of the positions the two share hold the initiator's byte, read forward or reversed —
+  the initiator's metabolism tape is copied onto the partner's. It **mutates** after every
+  epoch, each byte offered one draw at `meta_rate` on a stream of its own: `uniform`
+  redraws any byte, and `isa` draws each of the ten ops, `!`, `~`, 0 and one of the 243
+  other bytes at 1/14 each. It is **switched on** at epoch 0 of a founding run, or at
+  descent from a parent that carried none, holding zeros (`zeros`) or the first `meta_len`
+  bytes of the cell's own replicating tape (`own_tape`); a parent that carried tapes of the
+  child's length hands them on. A length needs `tasks = logic`, any other `meta_*` value
+  away from its default needs a length, and the parameters are dynamics: a descendant may
+  set them. The tapes are state — hashed after the stocks, and carried in the snapshot
+  container's versions 9–11 — so a resume restores them and refuses a blob whose tapes do
+  not match. At a reward of `0` the tapes still mutate and are still inherited but are
+  never read, and every byte, stock and lineage of the world is the run's without them. At
+  `0` length nothing is allocated, drawn or stored, and the soup is exactly the substrate
+  above. The world, not the program, copies the metabolism tape: it imports a hereditary
+  channel.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The

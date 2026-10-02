@@ -225,6 +225,42 @@
       ]
     },
     {
+      "default": 0,
+      "doc": "Bytes of each soup cell's metabolism tape: a second tape the soup never executes, which the logic assay reads instead of the replicating tape. It is copied whole from the initiator onto its partner whenever an interaction leaves the partner's tape a near copy of the initiator's, at least 90% of its bytes in either orientation, and mutates on its own at meta_rate. 0 turns it off, which is the substrate of DESIGN 1.1; any length needs tasks logic.",
+      "max": 1024,
+      "min": 0,
+      "name": "meta_len",
+      "type": "integer"
+    },
+    {
+      "default": 0.00390625,
+      "doc": "Probability a metabolism-tape byte mutates, per byte per epoch, on a random stream of its own. Read only once meta_len is set.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "meta_rate",
+      "type": "float"
+    },
+    {
+      "default": "uniform",
+      "doc": "What a mutated metabolism-tape byte becomes: uniform draws any byte; isa draws each of the ten ops, the emit byte !, the NAND byte ~, 0 and one random no-op at 1/14. Read only once meta_len is set.",
+      "name": "meta_draw",
+      "type": "enum",
+      "values": [
+        "uniform",
+        "isa"
+      ]
+    },
+    {
+      "default": "zeros",
+      "doc": "What each cell's metabolism tape holds when the tape is switched on, at epoch 0 or at descent from a parent that carried none: zeros, or the first meta_len bytes of the cell's own replicating tape. Read only once meta_len is set.",
+      "name": "meta_seed",
+      "type": "enum",
+      "values": [
+        "zeros",
+        "own_tape"
+      ]
+    },
+    {
       "default": "random",
       "doc": "Initial world state: uniformly random bytes, or all zero (the control).",
       "name": "init",

@@ -55,6 +55,23 @@ RSpec.describe Lab::CanonicalParams do
       expect(described_class.for(rewarded)).not_to eq(described_class.for(rewarded.merge("task_reward" => 0)))
     end
 
+    it "reads a run stored before the metabolism tape existed as the run without one" do
+      meta_keys = %w[meta_len meta_rate meta_draw meta_seed]
+      stored = Lab::Schema.run_defaults.except(*meta_keys).merge("tasks" => "logic", "task_reward" => 2048)
+
+      expect(described_class.for(stored)).to eq(described_class.for(stored.merge(Lab::Schema.run_defaults.slice(*meta_keys))))
+      expect(described_class.for(stored))
+        .to include("meta_len" => 0, "meta_rate" => Rational(1, 256), "meta_draw" => "uniform", "meta_seed" => "zeros")
+    end
+
+    it "keeps a metabolism-tape arm apart from its woven twin" do
+      woven = { "tasks" => "logic", "task_reward" => 2048 }
+      meta = woven.merge("meta_len" => 32, "meta_rate" => 0.00390625, "meta_draw" => "isa", "meta_seed" => "own_tape")
+
+      expect(described_class.for(meta)).not_to eq(described_class.for(woven))
+      expect(described_class.for(meta)).not_to eq(described_class.for(meta.merge("meta_seed" => "zeros")))
+    end
+
     it "keeps an initiator run apart from the pair one" do
       expect(described_class.for("energy_payer" => "initiator")).not_to eq(described_class.for({}))
     end
