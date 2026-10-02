@@ -197,12 +197,12 @@ impl Cases {
     }
 }
 
-fn distinct(values: &[u8; TASK_CASES]) -> bool {
+pub(crate) fn distinct(values: &[u8; TASK_CASES]) -> bool {
     (1..TASK_CASES).all(|j| !values[..j].contains(&values[j]))
 }
 
 /// Whether `outputs` sit one constant offset, mod 256, from `input` in every case.
-fn offset_of(outputs: &[u8; TASK_CASES], input: &[u8; TASK_CASES]) -> bool {
+pub(crate) fn offset_of(outputs: &[u8; TASK_CASES], input: &[u8; TASK_CASES]) -> bool {
     let offsets: [u8; TASK_CASES] =
         std::array::from_fn(|case| outputs[case].wrapping_sub(input[case]));
     offsets.iter().all(|offset| *offset == offsets[0])
@@ -213,6 +213,12 @@ fn offset_of(outputs: &[u8; TASK_CASES], input: &[u8; TASK_CASES]) -> bool {
 pub struct Credit(u16);
 
 impl Credit {
+    /// The credit whose bits are `bits`, in `LOGIC_TASKS` order: how the topless ladder
+    /// names the two-input rungs it credits (`topless::Credit::two_input`).
+    pub(crate) fn from_bits(bits: u16) -> Self {
+        Self(bits)
+    }
+
     pub fn bits(self) -> u16 {
         self.0
     }

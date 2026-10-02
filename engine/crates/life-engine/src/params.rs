@@ -14,6 +14,7 @@ use crate::replicator::{
 use crate::task::{
     TASKS, TASK_CASES, TASK_CASE_DRAWS, TASK_INPUT_RANGE, TASK_MAX_OUTPUTS, TASK_STEPS,
 };
+use crate::topless::{Inputs, DEPTH_CASE_DRAWS, DEPTH_FLOOR, DEPTH_UNITS};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -69,13 +70,17 @@ pub enum EnergyPayer {
 /// soup every earlier run lived in. `Arith` assays every cell on the arithmetic ladder of
 /// `task::TASKS` every `task_every` epochs and pays `task_reward` per unit it earns into
 /// the cell's stock. `Logic` does the same on the logic ladder of `logic::LOGIC_TASKS`,
-/// with `bff::NAND` an instruction inside its assay.
+/// with `bff::NAND` an instruction inside its assay. `Logic3` and `Logic4` are the topless
+/// ladder of `topless`: the logic assay on three or four inputs, crediting every
+/// non-constant function of them and paying each by its minimal NAND count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Tasks {
     Off,
     Arith,
     Logic,
+    Logic3,
+    Logic4,
 }
 
 impl Tasks {
@@ -85,15 +90,34 @@ impl Tasks {
             Self::Off => "off",
             Self::Arith => "arith",
             Self::Logic => "logic",
+            Self::Logic3 => "logic3",
+            Self::Logic4 => "logic4",
         }
     }
 
-    /// The names of this ladder's rungs, lowest first: none with tasks off.
+    /// The names of this ladder's rungs `task_floor` may name, lowest first: none with tasks
+    /// off, and on the topless ladders ECHO alone, since a floor there pays every rung.
     pub fn rungs(self) -> Vec<&'static str> {
         match self {
             Self::Off => Vec::new(),
             Self::Arith => TASKS.iter().map(|task| task.name).collect(),
             Self::Logic => LOGIC_TASKS.iter().map(|task| task.name).collect(),
+            Self::Logic3 | Self::Logic4 => vec![LOGIC_TASKS[0].name],
+        }
+    }
+
+    /// Whether this ladder runs the logic assay's machine, `~` an instruction in it: the
+    /// two-input logic ladder or a topless one.
+    pub fn is_logic(self) -> bool {
+        matches!(self, Self::Logic | Self::Logic3 | Self::Logic4)
+    }
+
+    /// How many inputs the topless ladder reads, `None` on every other.
+    pub fn depth_inputs(self) -> Option<Inputs> {
+        match self {
+            Self::Logic3 => Some(Inputs::Three),
+            Self::Logic4 => Some(Inputs::Four),
+            Self::Off | Self::Arith | Self::Logic => None,
         }
     }
 }
@@ -225,8 +249,12 @@ pub struct Params {
     /// is paid.
     pub task_floor: String,
     /// What `~` writes in the logic assay: in place under head0 (`in_place`, the default),
-    /// or left of head0 with head0 following (`stack`). Refused away from `tasks = logic`.
+    /// or left of head0 with head0 following (`stack`). Refused away from the logic ladders.
     pub logic_nand: LogicNand,
+    /// The deepest rung the topless ladder pays as deep as it is: a rung deeper than this
+    /// is paid as a rung of this depth. `0` (the default) caps nothing. Refused away from
+    /// `tasks = logic3` and `logic4`.
+    pub task_depth_cap: u32,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -285,6 +313,7 @@ impl Default for Params {
             task_reward: 0,
             task_floor: TASK_FLOORS[0].to_string(),
             logic_nand: LogicNand::InPlace,
+            task_depth_cap: 0,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
@@ -452,7 +481,7 @@ const FIELDS: &[Field] = &[
     },
     Field {
         name: "tasks",
-        kind: Kind::Choice(&["off", "arith", "logic"]),
+        kind: Kind::Choice(&["off", "arith", "logic", "logic3", "logic4"]),
         doc: "Which tasks a soup cell is assayed on. off assays nothing, which is the \
               substrate of DESIGN 1.1. arith runs each cell's tape alone, on two small \
               inputs at the end of a buffer twice its length, with ! emitting the byte \
@@ -461,8 +490,13 @@ const FIELDS: &[Field] = &[
               cases. logic runs the same assay on two whole-byte inputs, with ~ also \
               writing the NAND of the bytes under the two heads under head0, and credits \
               the tasks of a logic ladder (echo, not, nand, and, orn, or, andn, nor, xor, \
-              equ). Outside the assay ! and ~ are never instructions, and ~ is never one \
-              under arith. Refused on life.",
+              equ). logic3 and logic4 run the logic assay with a third input z one byte \
+              left of y, and a fourth w one byte left of z under logic4, and credit every \
+              non-constant function of the inputs that an output computes on all 24 bit \
+              columns of the three cases, each class of functions equal up to a \
+              permutation of the inputs a rung of its own, worth its minimal NAND count. \
+              Outside the assay ! and ~ are never instructions, and ~ is never one under \
+              arith. Refused on life.",
     },
     Field {
         name: "task_every",
@@ -482,7 +516,10 @@ const FIELDS: &[Field] = &[
         doc: "Instruction energy paid into a cell's stock, before that epoch's influx and \
               never past energy_stock_cap, per unit of the tasks its tape is credited \
               with at an assay, at or above task_floor; the arith ladder's units are 1, 2, \
-              2, 4, 4, 8, 8 and 16, the logic ladder's 1, 1, 1, 2, 2, 4, 4, 8, 8 and 16. 0 pays \
+              2, 4, 4, 8, 8 and 16, the logic ladder's 1, 1, 1, 2, 2, 4, 4, 8, 8 and 16, and \
+              a logic3 or logic4 rung of minimal NAND count d is worth the square root of \
+              2^d rounded, 1, 1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64 and 91 for d = 0 to \
+              13, once per distinct rung. 0 pays \
               nothing and runs no assay, so the run is the same run as with tasks off. \
               Any reward needs tasks on and an energy_influx to have a stock to pay into.",
     },
@@ -493,8 +530,8 @@ const FIELDS: &[Field] = &[
               assayed, but those below this one earn nothing. It must name a rung of the \
               ladder tasks chooses: echo, inc, dec, add, sub, not, double or mul under \
               arith; echo, not, nand, and, orn, or, andn, nor, xor or equ under logic. \
-              echo is the first rung of both, so it pays every rung; with tasks off \
-              nothing else is accepted.",
+              echo is the first rung of both, so it pays every rung; with tasks off, \
+              logic3 or logic4 nothing else is accepted.",
     },
     Field {
         name: "logic_nand",
@@ -503,8 +540,18 @@ const FIELDS: &[Field] = &[
               the two heads under head0, the NAND every earlier logic run assayed with. \
               stack writes it one byte left of head0, wrapping as < does, and moves head0 \
               onto it, so both operands are kept and a chain of NANDs stacks its results \
-              leftward. Outside the logic assay ~ is a no-op either way. Only tasks = logic \
-              accepts anything but in_place.",
+              leftward. Outside the logic assay ~ is a no-op either way. Only tasks logic, \
+              logic3 and logic4 accept anything but in_place.",
+    },
+    Field {
+        name: "task_depth_cap",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: DEPTH_FLOOR as f64,
+        },
+        doc: "The deepest rung logic3 and logic4 pay as deep as it is: a rung whose minimal \
+              NAND count is above this is paid as a rung of this count. 0 caps nothing. \
+              Only tasks logic3 and logic4 accept anything but 0.",
     },
     Field {
         name: "ops",
@@ -564,7 +611,8 @@ const FIELDS: &[Field] = &[
               copied whole from the initiator onto its partner whenever an interaction \
               leaves the partner's tape a near copy of the initiator's, at least 90% of its \
               bytes in either orientation, and mutates on its own at meta_rate. 0 turns it \
-              off, which is the substrate of DESIGN 1.1; any length needs tasks logic.",
+              off, which is the substrate of DESIGN 1.1; any length needs tasks logic, \
+              logic3 or logic4.",
     },
     Field {
         name: "meta_rate",
@@ -703,6 +751,11 @@ pub enum ParamError {
     MetaParamWithoutTape {
         field: &'static str,
     },
+    /// A depth cap where no rung has a depth is silently inert.
+    DepthCapWithoutDepth {
+        task_depth_cap: u32,
+        tasks: Tasks,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -806,12 +859,21 @@ impl fmt::Display for ParamError {
             Self::MetaWithoutLogic { meta_len, tasks } => write!(
                 f,
                 "meta_len is {meta_len} with tasks {}: the metabolism tape is read by the \
-                 logic assay alone, so it needs tasks logic",
+                 logic assay alone, so it needs tasks logic, logic3 or logic4",
                 tasks.name()
             ),
             Self::MetaParamWithoutTape { field } => write!(
                 f,
                 "{field} is set with meta_len 0: there is no metabolism tape to apply it to"
+            ),
+            Self::DepthCapWithoutDepth {
+                task_depth_cap,
+                tasks,
+            } => write!(
+                f,
+                "task_depth_cap is {task_depth_cap} with tasks {}: only the logic3 and logic4 \
+                 rungs are paid by depth",
+                tasks.name()
             ),
         }
     }
@@ -917,15 +979,21 @@ impl Params {
                 tasks: self.tasks,
             });
         }
-        if self.logic_nand != LogicNand::InPlace && self.tasks != Tasks::Logic {
+        if self.logic_nand != LogicNand::InPlace && !self.tasks.is_logic() {
             return Err(ParamError::LogicNandWithoutLogic { tasks: self.tasks });
+        }
+        if self.task_depth_cap > 0 && self.tasks.depth_inputs().is_none() {
+            return Err(ParamError::DepthCapWithoutDepth {
+                task_depth_cap: self.task_depth_cap,
+                tasks: self.tasks,
+            });
         }
         Ok(())
     }
 
     fn validate_meta(&self) -> Result<(), ParamError> {
         if self.meta_len > 0 {
-            if self.tasks != Tasks::Logic {
+            if !self.tasks.is_logic() {
                 return Err(ParamError::MetaWithoutLogic {
                     meta_len: self.meta_len,
                     tasks: self.tasks,
@@ -1022,6 +1090,11 @@ impl Params {
                         }))
                         .collect::<Vec<_>>(),
                 },
+                "topless": {
+                    "case_draws": DEPTH_CASE_DRAWS,
+                    "depth_units": DEPTH_UNITS,
+                    "depth_floor": DEPTH_FLOOR,
+                },
             },
         }))
         .expect("schema always serialises")
@@ -1090,6 +1163,11 @@ impl Params {
     /// at 0 none is allocated, drawn, inherited or snapshotted.
     pub fn carries_meta(&self) -> bool {
         self.substrate == Substrate::Soup && self.meta_len > 0
+    }
+
+    /// The depth the topless ladder pays a deeper rung as, `None` where it caps nothing.
+    pub fn depth_cap(&self) -> Option<u32> {
+        (self.task_depth_cap > 0).then_some(self.task_depth_cap)
     }
 
     /// The index, on this run's ladder, of the lowest rung it pays: `task_floor`'s rung,
@@ -1520,7 +1598,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 32);
+        assert_eq!(fields.len(), 33);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -1578,7 +1656,7 @@ mod tests {
         assert_eq!(tasks["default"], "off");
         assert_eq!(
             tasks["values"],
-            serde_json::json!(["off", "arith", "logic"])
+            serde_json::json!(["off", "arith", "logic", "logic3", "logic4"])
         );
         let floor = fields.iter().find(|f| f["name"] == "task_floor").unwrap();
         assert_eq!(floor["type"], "enum");
@@ -1841,6 +1919,11 @@ mod tests {
                         {"name": "xor", "units": 8, "nands": 4},
                         {"name": "equ", "units": 16, "nands": 5},
                     ],
+                },
+                "topless": {
+                    "case_draws": 1024,
+                    "depth_units": [1, 1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 91],
+                    "depth_floor": 13,
                 },
             })
         );
@@ -2218,5 +2301,72 @@ mod tests {
             };
             assert_eq!(params.validate(), Ok(()), "{tasks:?}");
         }
+    }
+
+    /// The topless ladders accept what the logic ladder accepts, the stack NAND and the
+    /// metabolism tape, and a depth cap only they read; a floor other than ECHO is refused,
+    /// since they pay every rung.
+    #[test]
+    fn the_topless_ladders_take_the_logic_ladders_settings_and_a_depth_cap() {
+        for tasks in [Tasks::Logic3, Tasks::Logic4] {
+            let params = Params {
+                tasks,
+                logic_nand: LogicNand::Stack,
+                meta_len: 32,
+                task_depth_cap: 5,
+                ..rewarded_params()
+            };
+            assert_eq!(params.validate(), Ok(()), "{tasks:?}");
+            assert_eq!(params.depth_cap(), Some(5));
+            assert!(tasks.is_logic());
+            assert_eq!(tasks.rungs(), ["echo"]);
+            let floored = Params {
+                task_floor: "xor".to_string(),
+                ..params.clone()
+            };
+            assert_eq!(
+                floored.validate(),
+                Err(ParamError::TaskFloorNotARung {
+                    task_floor: "xor".to_string(),
+                    tasks
+                })
+            );
+            let uncapped = Params {
+                task_depth_cap: 0,
+                ..params
+            };
+            assert_eq!(uncapped.depth_cap(), None);
+            assert!(Params {
+                task_depth_cap: DEPTH_FLOOR + 1,
+                ..uncapped
+            }
+            .validate()
+            .is_err());
+        }
+        assert_eq!(Tasks::Logic3.depth_inputs(), Some(Inputs::Three));
+        assert_eq!(Tasks::Logic4.depth_inputs(), Some(Inputs::Four));
+        for tasks in [Tasks::Off, Tasks::Arith, Tasks::Logic] {
+            assert_eq!(tasks.depth_inputs(), None);
+            let capped = Params {
+                tasks,
+                task_reward: 0,
+                task_depth_cap: 5,
+                ..rewarded_params()
+            };
+            assert_eq!(
+                capped.validate(),
+                Err(ParamError::DepthCapWithoutDepth {
+                    task_depth_cap: 5,
+                    tasks
+                })
+            );
+        }
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"tasks": "logic4"}"#)
+                .unwrap()
+                .task_depth_cap,
+            0
+        );
+        assert_eq!(Params::default().task_depth_cap, 0);
     }
 }

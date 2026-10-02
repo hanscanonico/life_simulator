@@ -4281,3 +4281,92 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     and 10 000 epochs) without reaching the top, 10; on the four-input ladder the same world
     re-climbed 4 → 8 → 9 and held 9 from 10 000 to 20 000 epochs. Depth jumped 5 → 9 and
     plateaued at 9 on both ladders. Pilot numbers, not findings.
+- 2026-10-02 — **The topless ladder, engine slice: `tasks = logic3 | logic4`, depth-scaled
+  pay and `task_depth_cap`, and the depth readings.** Slices 1–3 of the topless study's
+  §1.5 (`docs/studies/topless.md`), built together because a sweep needs all three. No sweep
+  is seeded and nothing is relocked; H-rise and its pre-registration come after the
+  Meta-stack offline readings, and still need the 604 open four-input functions closed.
+  - **Inputs.** `logic3` puts z on `B[2L−3]`, `logic4` also w on `B[2L−4]`
+    (`task::run_case_with`; a buffer shorter than the inputs holds none, as before). Buffer,
+    emit, `TASK_CASES`, `TASK_MAX_OUTPUTS`, both `logic_nand` modes and the metabolism tape
+    are the logic ladder's.
+  - **Case draws**, on `STREAM_TASK` at (seed, epoch), at most `DEPTH_CASE_DRAWS` = 1 024,
+    then a fixed set a test holds to the rule. Three inputs: x, y, z whole random bytes per
+    case, redrawn until each input's three values are distinct, all 8 rows appear among the
+    24 bit columns, and no non-constant function expects three equal outputs or sits a
+    constant offset from an input it is not the projection of. Four inputs, the designed
+    draw: a random bijection (a Fisher–Yates shuffle) puts each of the 16 rows on exactly one
+    of the 16 columns of cases 0 and 1, case 2 is x, y, z, w random bytes, redrawn until each
+    input's values are distinct. Each rule is read off the inputs directly over 10^5 draws.
+  - **Credit.** One pass per slot over the 24 columns gives its truth table (bit k is the
+    row whose input values are k's bits, x then y then z, w the top bit on four, as
+    `research/minnand` numbers them). A slot credits nothing where two columns disagree on
+    a row, a row is unread, the function is constant, its three output bytes are equal, or
+    they are an input plus one constant and the function is not that input. On three inputs
+    the draw already refuses the last two; on four they are refused at the slot, whatever
+    function matches (study §1.2). Otherwise the slot credits its function's
+    input-permutation class, the least truth table among its permutations (a 64 K table
+    built once per process). **Rungs** are those classes: 78 on three inputs (ECHO = the
+    projections, then Avida's 77), 3 982 on four; input copies and constants are no rungs
+    but ECHO. A tape is credited at most four, each once.
+  - **Depth** is the exact minimal NAND count, `include_bytes!` of copies of
+    `research/minnand/data/minnand{3,4}.bin` under `engine/crates/life-engine/data/`, held by
+    a test to the SHA-256 in that README (the engine computes the hash itself; no dependency
+    on the research crate). The 604 four-input "13 or more" functions are credited at 13
+    (`topless::DEPTH_FLOOR`), **a lower bound**: any reading whose depth reaches 13 must be
+    reported as "13 or more", and a child reaching it named.
+  - **Pay**, per cell per assay: `task_reward × Σ DEPTH_UNITS[min(d, cap)]` over the
+    **distinct rungs** the tape is credited (the study's "summed over the distinct classes"),
+    saturating, never past `energy_stock_cap`. `DEPTH_UNITS[d]` = √(2^d) rounded to the
+    nearest integer, computed exactly as n = ⌊√(2^d)⌋ plus one where 2^d > n² + n: 1, 1, 2,
+    3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 91 for d = 0–13. Both ladders use ×√2; the study's
+    ×1.25 for four inputs is not adopted, so the reward that spreads the ×8 economy over the
+    four-input ladder is the pre-registration's to choose (at 1 024 a lone depth-12 rung
+    already saturates at `task_every` 8).
+  - **`task_depth_cap`** (integer 0–13, default 0 = none): a rung deeper than the cap is paid
+    as a rung of the cap's depth, the study's capped-control arm (§3, cap 5). Refused unless
+    `tasks` is `logic3` or `logic4`.
+  - **`task_floor`** accepts only `echo` on these ladders: a floor by rung name does not map
+    onto 78 or 3 982 classes, and no H-rise arm needs one. A depth floor, if a design ever
+    needs it, is a new parameter.
+  - **The depth readings**, `logic_depth_max` (an integer, −1 where nothing is held) and
+    `logic_depth_classes`, on `STREAM_TASK | 6`: 256 cells drawn with replacement on fresh
+    cases, each distinct assayed tape once; a rung is held at 26 of 256. Under `logic3` and
+    `logic4` the Logic keys (`logic_share_*`, `logic_capability`, `logic_capability_deep`,
+    `dominant_logic_tasks`, `logic_capability_replicating`) keep their keys, streams and
+    meaning — the share of cells credited each two-input rung — read as the class of that
+    rung's two-input form, so AND is x∧y, x∧z or y∧z alike. Under `logic` they are
+    unchanged. The depth readings are null on every other ladder, on life, and on every
+    earlier sample; live-only; pinned in a digest split from the others.
+  - **Invariants.** Every existing pin and digest is unmoved. Either ladder at a reward of
+    0 is the run with tasks off, byte for byte and stock for stock, under both payers and
+    `task_every` 1 and 8, and its readings leave every shared reading the same sample for
+    sample. Reward pins: `with_logic_solvers` at reward 1 024, seed 42, 50 epochs,
+    `0x7eb5_a1ec_92c0_2518` (`logic3`) and `0xfd5a_37ca_d8eb_6e95` (`logic4`).
+  - **Solvers.** Straight-line tapes compiled from `research/minnand`'s witness circuits —
+    XOR3 (8), MAJ3 (6), NOR3 (7), the three-input top 0x16 (10), the four-input NOR (10),
+    XOR4 (12), a 13-gate class 0x0168 and a 7-gate four-input one — compute their function
+    on 4 096 random input sets and are credited exactly their rung on 20 000 draws each
+    under both NANDs (on four inputs, nothing on a draw that refuses the function at the
+    slot, and only there). Copiers, junk emitters, sprayers and inputs plus a constant are
+    credited nothing, echoers ECHO alone.
+  - **False deep credit** (`the_false_deep_credit_search`, on demand): every program of up
+    to 5 bytes over the ten ops, `!` and `~` in front of a zero tail, on 200 draws, the
+    worst re-read on 10 000. **Three inputs:** nothing at depth ≥ 8 under either NAND; the
+    worst are ≥ 5 on 0.22% (`[-<~!`), ≥ 6 on 0.64% and ≥ 7 on 0.08%. **Four inputs:** the
+    designed draw sees most rows on one column only, so masked NANDs of a code byte read as
+    deep functions far more often: ≥ 5 on 27% (`[<~!]`), ≥ 7 on 15%, ≥ 8 on 8.5%, **≥ 9 on
+    4.1%** (`~<~~!`) and ≥ 10 on 0.3% of draws. So no cheap program reaches a tenth of draws
+    at depth ≥ 9 (a test holds that over every program of up to 4 bytes), and none could be
+    a decile median or hold 5 samples running there; but a four-input `logic_depth_max` of
+    8 or below in a single sample can be a partial solver, and the H-rise reading must use
+    persistence and medians, never one sample.
+  - **Cost** (a loaded Mac, load 20–27): on a Meta-stack-like 128×128 world, 32-byte stack
+    metabolism tapes all mutants of the evolved loop (16 366 distinct), one assay epoch
+    costs 17.0 ms under `logic`, 20.0 under `logic3` and 24.1 under `logic4` (the first
+    including the one-time 64 K class table); a sample's logic and depth readings 0.2 ms
+    under `logic` and 0.5–0.6 ms under the topless ladders.
+  - `tasks`, `task_depth_cap` are dynamics: a descendant may set them. A run stored before
+    `task_depth_cap` existed carries no key, and `Lab::CanonicalParams` fills in 0, the
+    uncapped run it was. `runner schema` exports the ladder's units, floor and draw bound
+    under `tasks.topless`.

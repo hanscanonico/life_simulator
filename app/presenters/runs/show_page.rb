@@ -62,18 +62,27 @@ module Runs
       "logic_share_equ" => "Share of cells solving EQU",
       "meta_inherit_rate" => "Metabolism tapes passed on per interaction",
       "meta_diversity" => "Distinct metabolism tapes",
-      "logic_capability_replicating" => "Logic rungs a tenth of the replicating tapes solve"
+      "logic_capability_replicating" => "Logic rungs a tenth of the replicating tapes solve",
+      "logic_depth_max" => "NANDs in the deepest topless rung a tenth of the cells solve",
+      "logic_depth_classes" => "Topless rungs a tenth of the cells solve"
     }.freeze
 
     # The readings of a run that carries a metabolism tape (DESIGN §1.2): null at every
     # sample of any other run.
     METABOLISM = %w[meta_inherit_rate meta_diversity logic_capability_replicating].freeze
 
+    # The readings of the topless ladder (tasks logic3 or logic4): null at every sample of
+    # any other run, the two-input logic ladder's included.
+    DEPTH = %w[logic_depth_max logic_depth_classes].freeze
+
     # The readings of one task ladder are null at every sample of a run not assayed on it
     # (DESIGN §1.2), so a ladder's charts are drawn only for a run that has a reading of it,
     # rather than as a block of empty charts on every other run. The metabolism readings are
-    # drawn by the same rule.
-    LADDERS = [METRICS.keys.grep(/\A(dominant_)?task_/), METRICS.keys.grep(/\A(dominant_)?logic_/) - METABOLISM].freeze
+    # and depth readings are drawn by the same rule.
+    LADDERS = [
+      METRICS.keys.grep(/\A(dominant_)?task_/),
+      METRICS.keys.grep(/\A(dominant_)?logic_/) - METABOLISM - DEPTH
+    ].freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
     TURNOVER_TITLE = "Dominant tape turnover (1 = a different tape than the sample before)"
@@ -255,7 +264,7 @@ module Runs
     end
 
     def drawn_metrics
-      unread = (LADDERS + [METABOLISM]).reject { |group| group.any? { |metric| series_of(metric).any? } }
+      unread = (LADDERS + [METABOLISM, DEPTH]).reject { |group| group.any? { |metric| series_of(metric).any? } }
       METRICS.keys - unread.flatten
     end
 

@@ -143,6 +143,32 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   holding it is never replayed. `in_place` is the NAND above, so every earlier run is
   unchanged. Only `tasks = logic` accepts `stack`. It is dynamics, not structure: a
   descendant may set it.
+- **The topless ladder** (`tasks = logic3` or `logic4`; `task_depth_cap`, default `0` =
+  none; docs/design_record.md 2026-10-02, the topless ladder, engine slice;
+  `docs/studies/topless.md`): the logic assay with a third input z on `B[2L−3]`, and under
+  `logic4` a fourth w on `B[2L−4]`; buffer, emit, budget, slots, both `logic_nand` modes and
+  the metabolism tape are the logic ladder's. A slot's truth table is read off the 24 bit
+  columns of the three cases in one pass; a slot is credited the function it computes,
+  unless two columns disagree on a row, a row is unread, the function is constant, its
+  three output bytes are equal, or they sit a constant offset from an input it is not. The
+  **rungs** are the input-permutation classes of non-constant functions: 78 on three inputs
+  (ECHO, the inputs themselves, then Avida's 77), 3 982 on four; AND of any two inputs is
+  one rung. Three-input cases are whole random bytes redrawn until each input's values are
+  distinct, every one of the 8 rows appears among the 24 columns, and no non-constant
+  function expects equal outputs or sits an offset from an input it is not (about two
+  draws in three pass). Four-input cases are designed: a random bijection puts each of the
+  16 rows on one of the 16 columns of cases 0 and 1, case 2 is random bytes, redrawn until
+  each input's values are distinct; the constant and offset clauses are read at the slot.
+  Both draw on the task stream, at most 1 024 times, then a fixed set. A rung's **depth**
+  is its exact minimal NAND count, from `research/minnand`'s tables embedded in the engine
+  (`engine/crates/life-engine/data/`); the 604 four-input functions known only to need 13
+  or more are credited at 13, a floor. A cell is paid `task_reward × Σ units(min(depth,
+  cap))` over the **distinct** rungs its slots compute, units = √(2^depth) rounded (1, 1, 2,
+  3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 91 for 0–13), capped at `energy_stock_cap`.
+  `task_depth_cap` (1–13) pays a deeper rung as one of the cap's depth, the capped-control
+  arm; only these ladders accept it. `task_floor` accepts only `echo` on them: every rung is
+  paid. A reward of `0` runs no assay, so either ladder at a reward of 0 is byte-identical to
+  `tasks = off`.
 - **The metabolism tape** (`meta_len`, default `0` = off; `meta_rate`, default 32/8192;
   `meta_draw`, default `uniform`; `meta_seed`, default `zeros`; docs/design_record.md
   2026-10-02, Meta-stack slice B): with a length set, every soup cell carries a second tape
@@ -512,6 +538,19 @@ claim rests on it.
   substrate, and on every sample recorded before they existed. They are **live-only**:
   neither `oriented_census/1` nor `/2` reads them. The run page draws them only for a run
   that has a reading of them.
+- `logic_depth_max` / `logic_depth_classes`: the **depth readings** of the topless ladder
+  (docs/design_record.md 2026-10-02, the topless ladder). 256 cells drawn uniformly with
+  replacement on cases and cells of `STREAM_TASK | 6` at `(seed, epoch)`, each distinct
+  assayed tape (the metabolism tape where the run carries one) assayed once.
+  `logic_depth_max` is the minimal NAND count of the deepest rung credited to at least 26
+  of them, −1 where none is (ECHO alone is 0); 13 is a floor, the four-input functions
+  only known to need 13 or more, and a reading that reaches it must say so.
+  `logic_depth_classes` is how many rungs are held at that tenth. Whenever `tasks` is
+  `logic3` or `logic4`, paid or not; there the logic readings above keep their keys and
+  streams and read the ladder's two-input rungs, each the class of its two-input form
+  (AND is x∧y, x∧z or y∧z alike). They only read, so they move no byte, stock or other
+  reading. Null on every other run, on the life substrate and on every earlier sample;
+  **live-only**. The run page draws them only for a run that has a reading of them.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard
