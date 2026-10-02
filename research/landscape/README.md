@@ -28,7 +28,8 @@ cargo clean                    # afterwards: the target dir is about 500 MB
 | `paths START --params P [--k 3] [--window N] [--rungs xor,equ]` | (b) every set of 1 to k substitutions over the 14-symbol alphabet inside the window, exhaustive as the study searched (`deeppaths`, §2.4 and §7.3): the mutants credited a target rung on all 6 sets, by k, with their orders; the shortest and the shortest credited k |
 | `plant --snapshot END --params P --deep T --rung R [--source W \| --replicating T]` | (c) heritability by planting with its unplanted control, the entry's rule exactly |
 | `loadbearing T --params P [--depth D]` | the topless ladder's load-bearing bytes of a tape against a depth, its own by default (H-rise-code below) |
-| `loadbearing --snapshot W --params P [--last W2]` | the same for a stored world's dominant deepest solver against its deepest solid rung; with `--last`, both worlds and the H-rise-code label |
+| `loadbearing --snapshot W --params P` | the same for a stored world's dominant deepest solver against its deepest solid rung |
+| `loadbearing --first W1 --fifth W5 --last W10 --params P` | a topless-rise child's three worlds, each as above, and the H-rise-code label from the fifth-decile world to the last |
 | `trace T --params P --rung R [--lines 60]` | (d) the traced stepper on x = 0x5a, y = 0x33 and the 6 fixed sets: the circuit behind the rung's output and what it fans out, descriptive |
 
 A tape is `hex:` and two digits a byte (what `census` prints), or its shown form (ops, `!`,
@@ -136,37 +137,49 @@ locks the method; this tool applies it exactly:
   symbols of the 14-symbol alphabet (`src/tape.rs`) leave the tape credited, on all 6 sets, no
   rung as deep as the world's deepest solid rung. A byte outside the alphabet is read as the
   generic no-op it stands for, so it too has 13 others;
-- **the worlds**: the earliest stored world at or past the first settled sample (the first
-  sample above `parent_epoch` + 1 000), and the last stored world;
-- **printed**: both depths and both counts, and the label: **new code** where the depth rose
-  and the count rose by 2 or more, **co-option** where the depth rose and the count did not,
-  "neither" where the count rose by 1, "no rise in depth" otherwise.
+- **the worlds**: the earliest stored world at or past the first settled sample (the
+  settled samples are the child's samples above `parent_epoch` + 1 000), the last stored
+  world at or before the fifth decile's end, and the last stored world. Deciles cut the n
+  settled samples by index, decile k from ⌊(k − 1)·n/10⌋ to before ⌊k·n/10⌋, so the fifth
+  ends at the ⌊n/2⌋-th settled sample;
+- **printed**: the three worlds' depths and counts, and the label, judged from the
+  fifth-decile world to the last: **new code** where the depth rose and the count rose by 2
+  or more, **co-option** where the depth rose and the count did not, **neither** where the
+  depth rose and the count rose by exactly 1, **no rise in depth** where the depth did not
+  rise, and **unread** where the fifth-decile or the last world holds no rung by a tenth.
 
 SELECTs only. For a child run `$RUN`:
 
 ```sh
 psql "$LAB_DATABASE_URL" -At -c "SELECT params FROM runs WHERE id = $RUN" > child.json
-# the two worlds: FIRST, the earliest stored at or past the first settled sample; LAST
-read FIRST LAST < <(psql "$LAB_DATABASE_URL" -At -F ' ' -c "
-  SELECT MIN(sn.epoch) FILTER (WHERE sn.epoch >= (
-           SELECT MIN(s.epoch) FROM samples s WHERE s.run_id = r.id
-             AND s.epoch > r.parent_epoch + 1000)),
-         MAX(sn.epoch)
-  FROM runs r JOIN snapshots sn ON sn.run_id = r.id AND sn.blob IS NOT NULL
-  WHERE r.id = $RUN GROUP BY r.id")
-for EPOCH in $FIRST $LAST; do
+# the three worlds: FIRST, the earliest stored at or past the first settled sample; FIFTH,
+# the last stored at or before the fifth decile's end; LAST, the last stored
+read FIRST FIFTH LAST < <(psql "$LAB_DATABASE_URL" -At -F ' ' -c "
+  WITH r AS (SELECT id, parent_epoch FROM runs WHERE id = $RUN),
+  settled AS (
+    SELECT s.epoch, ROW_NUMBER() OVER (ORDER BY s.epoch) AS i, COUNT(*) OVER () AS n
+    FROM samples s JOIN r ON s.run_id = r.id WHERE s.epoch > r.parent_epoch + 1000),
+  bounds AS (
+    SELECT MIN(epoch) AS first_settled, MAX(epoch) FILTER (WHERE i <= 5 * n / 10) AS fifth_end
+    FROM settled),
+  stored AS (
+    SELECT sn.epoch FROM snapshots sn JOIN r ON sn.run_id = r.id WHERE sn.blob IS NOT NULL)
+  SELECT (SELECT MIN(epoch) FROM stored, bounds WHERE epoch >= first_settled),
+         (SELECT MAX(epoch) FROM stored, bounds WHERE epoch <= fifth_end),
+         (SELECT MAX(epoch) FROM stored)")
+for EPOCH in $FIRST $FIFTH $LAST; do
   psql "$LAB_DATABASE_URL" -At -c \
     "SELECT encode(blob, 'hex') FROM snapshots WHERE run_id = $RUN AND epoch = $EPOCH" \
     | xxd -r -p > e$EPOCH.lsnp
 done
-./target/release/landscape loadbearing --snapshot e$FIRST.lsnp --last e$LAST.lsnp \
-  --params child.json
+./target/release/landscape loadbearing --first e$FIRST.lsnp --fifth e$FIFTH.lsnp \
+  --last e$LAST.lsnp --params child.json
 ```
 
 It prints each world's deepest solid rung, its dominant solver with the positions that bear
-it and how many of the 13 substitutes lose the depth at each, and the label. `census` on
-either world shows the tally behind it. A world holding no rung by a tenth reads "unread".
-Run it on every rise child that rises late and on its twins in the other arms.
+it and how many of the 13 substitutes lose the depth at each, and the label. `census` on any
+of the three shows the tally behind it. Run it on every rise child that rises late and on
+its twins in the other arms.
 
 ## What was dropped from the pilot tools
 

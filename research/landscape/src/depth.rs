@@ -268,6 +268,27 @@ pub(crate) mod tests {
         );
     }
 
+    /// A random tape credited NOT (depth 2) on the first five four-input sets and only its
+    /// depth-1 rung on the sixth: credited depth 1, not 2, since every set must agree.
+    #[test]
+    fn a_rung_is_credited_only_where_all_six_sets_credit_it() {
+        let params = Params {
+            tasks: Tasks::Logic4,
+            logic_nand: LogicNand::Stack,
+            ..Params::default()
+        };
+        let scorer = DepthScorer::for_params(&params).unwrap();
+        let tape = crate::tape::parse("<{{![0!~.]{}[", 32).unwrap();
+        let depths: Vec<Option<u32>> = (0..6)
+            .map(|set| scorer.on_set(&tape, set).depth())
+            .collect();
+        assert_eq!(
+            depths,
+            [Some(2), Some(2), Some(2), Some(2), Some(2), Some(1)]
+        );
+        assert_eq!(scorer.solid(&tape).depth(), Some(1));
+    }
+
     #[test]
     fn rungs_and_depths_are_named_with_the_floor() {
         assert_eq!(rung_name(Inputs::Three, 0x16), "0x16@10");

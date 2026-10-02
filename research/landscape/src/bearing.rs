@@ -91,18 +91,20 @@ pub fn load_bearing(tape: &[u8], scorer: &DepthScorer, depth: u32) -> Bearing {
     }
 }
 
-/// The topless-rise entry's label for a child's first and last world, each its deepest solid
-/// rung's depth and its dominant solver's load-bearing count: new code where the depth rose
-/// and the count rose by 2 or more, co-option where the depth rose and the count did not.
-pub fn rise_code(first: Option<(u32, usize)>, last: Option<(u32, usize)>) -> &'static str {
-    let (Some((first_depth, first_count)), Some((last_depth, last_count))) = (first, last) else {
+/// The topless-rise entry's H-rise-code label for a child's fifth-decile world against its
+/// last, each its deepest solid rung's depth and its dominant solver's load-bearing count:
+/// new code where the depth rose and the count rose by 2 or more, co-option where the depth
+/// rose and the count did not, neither where it rose by exactly 1, no rise where the depth
+/// did not rise, unread where either world holds no rung by a tenth.
+pub fn rise_code(fifth: Option<(u32, usize)>, last: Option<(u32, usize)>) -> &'static str {
+    let (Some((fifth_depth, fifth_count)), Some((last_depth, last_count))) = (fifth, last) else {
         return "unread (a world holds no rung by a tenth)";
     };
-    if last_depth <= first_depth {
+    if last_depth <= fifth_depth {
         "no rise in depth"
-    } else if last_count >= first_count + 2 {
+    } else if last_count >= fifth_count + 2 {
         "new code (depth rose, load-bearing bytes rose by 2 or more)"
-    } else if last_count <= first_count {
+    } else if last_count <= fifth_count {
         "co-option (depth rose, load-bearing bytes did not)"
     } else {
         "neither (depth rose, load-bearing bytes rose by 1)"
@@ -251,7 +253,9 @@ pub(crate) mod tests {
         assert!(rise_code(Some((5, 14)), Some((9, 12))).starts_with("co-option"));
         assert!(rise_code(Some((5, 14)), Some((9, 15))).starts_with("neither"));
         assert!(rise_code(Some((5, 14)), Some((5, 20))).starts_with("no rise"));
+        assert!(rise_code(Some((9, 14)), Some((5, 20))).starts_with("no rise"));
         assert!(rise_code(None, Some((5, 20))).starts_with("unread"));
+        assert!(rise_code(Some((5, 14)), None).starts_with("unread"));
     }
 
     #[test]

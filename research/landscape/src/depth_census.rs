@@ -253,6 +253,14 @@ mod tests {
     }
 
     #[test]
+    fn a_tenth_is_1_639_of_16_384_cells() {
+        assert!(a_tenth(1_639, 16_384));
+        assert!(!a_tenth(1_638, 16_384));
+        assert!(a_tenth(10, 100));
+        assert!(!a_tenth(9, 100));
+    }
+
+    #[test]
     fn the_census_is_deterministic_and_reads_nothing_held_on_a_blank_world() {
         let world = planted();
         let scorer = DepthScorer::for_params(&logic4_params()).unwrap();

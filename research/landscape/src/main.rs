@@ -11,7 +11,8 @@ use std::process::ExitCode;
 const USAGE: &str = "\
 landscape census   --snapshot WORLD.lsnp --params PARAMS.json [--top 8]
 landscape loadbearing TAPE --params PARAMS.json [--depth D]
-landscape loadbearing --snapshot WORLD.lsnp --params PARAMS.json [--last WORLD.lsnp]
+landscape loadbearing --snapshot WORLD.lsnp --params PARAMS.json
+landscape loadbearing --first W.lsnp --fifth W.lsnp --last W.lsnp --params PARAMS.json
 landscape distance A B --params PARAMS.json
 landscape paths    START --params PARAMS.json [--k 3] [--window LEN] [--rungs xor,equ] [--examples 4]
 landscape plant    --snapshot END.lsnp --params PARAMS.json --deep TAPE --rung xor|equ
@@ -119,35 +120,42 @@ fn depth_scorer(params: &life_engine::Params) -> Result<DepthScorer, String> {
 
 /// For a tape, its load-bearing bytes against `--depth`, its own depth by default. For a
 /// stored world, those of its dominant deepest solver against the world's deepest solid
-/// rung; with `--last`, both worlds side by side and the entry's label for the pair.
+/// rung. For a child's three worlds (`--first`, `--fifth`, `--last`), each in turn and the
+/// entry's label, judged from the fifth-decile world to the last.
 fn loadbearing(args: &Args) -> Result<String, String> {
-    if !args.flags.contains_key("snapshot") {
-        let params = read_params(&args.path("params")?)?;
-        let scorer = depth_scorer(&params)?;
-        let tape = tape::parse(args.arg(0, "the tape")?, assayed_len(&params))?;
-        let own = scorer
-            .solid(&tape)
-            .depth()
-            .ok_or("the tape is credited no rung on all 6 sets")?;
-        let depth = args.number("depth", own)?;
-        if depth > own {
-            return Err(format!(
-                "the tape is credited depth {own} on all 6 sets, short of --depth {depth}"
-            ));
+    let worlds = ["first", "fifth", "last"];
+    if worlds.iter().any(|world| args.flags.contains_key(*world)) {
+        let params = args.path("params")?;
+        let mut reports = Vec::new();
+        for world in worlds {
+            let stored = Stored::load(&args.path(world)?, &params)?;
+            reports.push(world_bearing(&stored)?);
         }
-        return Ok(load_bearing(&tape, &scorer, depth).render());
+        let label = rise_code(reports[1].0, reports[2].0);
+        return Ok(format!(
+            "first settled world\n{}\nfifth-decile world\n{}\nlast world\n{}\n\
+             H-rise-code, fifth-decile world to last: {label}\n",
+            reports[0].1, reports[1].1, reports[2].1
+        ));
     }
-    let params = args.path("params")?;
-    let first = world_bearing(&Stored::load(&args.path("snapshot")?, &params)?)?;
-    let Some(last) = args.flags.get("last") else {
-        return Ok(first.1);
-    };
-    let last = world_bearing(&Stored::load(&PathBuf::from(last), &params)?)?;
-    let label = rise_code(first.0, last.0);
-    Ok(format!(
-        "first world\n{}\nlast world\n{}\nH-rise-code: {label}\n",
-        first.1, last.1
-    ))
+    if args.flags.contains_key("snapshot") {
+        let stored = Stored::load(&args.path("snapshot")?, &args.path("params")?)?;
+        return Ok(world_bearing(&stored)?.1);
+    }
+    let params = read_params(&args.path("params")?)?;
+    let scorer = depth_scorer(&params)?;
+    let tape = tape::parse(args.arg(0, "the tape")?, assayed_len(&params))?;
+    let own = scorer
+        .solid(&tape)
+        .depth()
+        .ok_or("the tape is credited no rung on all 6 sets")?;
+    let depth = args.number("depth", own)?;
+    if depth > own {
+        return Err(format!(
+            "the tape is credited depth {own} on all 6 sets, short of --depth {depth}"
+        ));
+    }
+    Ok(load_bearing(&tape, &scorer, depth).render())
 }
 
 /// A stored world's deepest solid rung and its dominant solver's load-bearing count, if it

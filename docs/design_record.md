@@ -4400,8 +4400,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   tenth, the deepest solid rung and the dominant deepest solver as that entry defines them. A
   new `loadbearing` subcommand counts the positions where at least 7 of the 13 other symbols
   leave a tape credited no rung as deep, for a tape or a stored world's dominant solver, and
-  with `--last` prints a child's first and last world and the entry's new-code / co-option
-  label. Every shortest straight-line stack program of the logic ladder bears its depth on
+  with `--first`, `--fifth` and `--last` prints a child's three stored worlds and the entry's
+  label, judged from the fifth-decile world to the last. Every shortest straight-line stack program of the logic ladder bears its depth on
   every byte and none of its padding, on both ladders; the engine's compiled minimal-NAND
   witnesses do too but for one spare head move in each four-input compile. Nothing in the
   engine, the lab or the sweep changes.
