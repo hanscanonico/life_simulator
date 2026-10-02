@@ -4056,7 +4056,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     never climbed.
 
   **Reported with each deep child, locked now and measured after the sweep** with the study's
-  landscape tools on the stored worlds (offline, not this reading's code):
+  landscape tools on the stored worlds (offline, not this reading's code). **The 6 fixed case
+  sets** are the study's landscape draw, six `logic::Cases::draw` in turn off
+  `rng::seeded(0xdee9, 1, 0)`, frozen as constants; a tape is credited a rung "on all 6 sets"
+  where the logic assay, under the child's own instruction set and NAND, credits it on each.
   - **the substitution distance** from the child's dominant metabolism tape at the epoch the
     last lower rung to reach the line did so (its first epoch at 1/10 under k = 5, read on the
     stored world nearest at or before it) to the first deep solver (the commonest metabolism
@@ -4064,22 +4067,30 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     rung's first epoch). **A deep rung counts as a multi-step crossing only if that distance is
     ≥ 2**;
   - **heritability**, by planting that deep solver (its cell's replicating and metabolism
-    tapes) as a 4×4 block in the centre of its own end world, with every other cell credited
-    that rung given the world's commonest metabolism tape without it, under the child's params,
-    seeds 2001–2003, 2 000 epochs, beside an **unplanted control**: the same world with the
-    block given that commonest tape too, under the same seeds. **Heritable** where, in at
-    least **2 of the 3 seeds**, the planted world has at least **a tenth of the world** (1 639
-    cells) credited the rung on all 6 sets at 2 000 epochs while its control, same seed, has
-    16 cells or fewer. Where the control also reaches the tenth, the rung re-arose from the
-    reseeded tape (the stepping stones sit one substitution below the deep solvers, §7.4 of
-    the study, and at `meta_rate` 1/256 with 1/14 draws a given substitution at a given site
-    comes about every 3 600 cell-epochs), so heritability is reported **unresolved**, not
-    heritable. A paid rung that is kept should get there: once established, a rung held a
-    tenth within about 120 epochs in the study's arithmetic (§1.3), and the pilot's deep rungs
-    went from their first cells to a tenth in 1 000–1 500 epochs;
-  - **whether it reads an input twice**, by the study's traced stepper on x = 0x5a, y = 0x33
-    and the 6 fixed case sets: whether an input or an intermediate is a NAND operand more than
-    once.
+    tapes) as a 4×4 block in the centre of its own end world, with every other cell whose
+    metabolism tape is credited that rung on any one of the 6 sets given the world's commonest
+    metabolism tape credited it on none, under the child's params, seeds 2001–2003, 2 000
+    epochs, beside an **unplanted control**: the same world with the block's metabolism tapes
+    given that commonest tape too and its replicating tapes planted as before, so the two
+    differ only in the block's metabolism tapes, under the same seeds. Both resume the end
+    world as stored (`World::from_snapshot`). **Heritable** where, in at least **2 of the 3
+    seeds**, the planted world has at least **a tenth of the world** (1 639 cells) credited
+    the rung on all 6 sets at 2 000 epochs while its control, same seed, has 16 cells or
+    fewer. Where any seed's control reaches the tenth, the rung re-arose from the reseeded
+    tape (the stepping stones sit one substitution below the deep solvers, §7.4 of the study,
+    and at `meta_rate` 1/256 with 1/14 draws a given substitution at a given site comes about
+    every 3 600 cell-epochs), so heritability is reported **unresolved**, not heritable,
+    whatever the other seeds read. A paid rung that is kept should get there: once
+    established, a rung held a tenth within about 120 epochs in the study's arithmetic (§1.3),
+    and the pilot's deep rungs went from their first cells to a tenth in 1 000–1 500 epochs;
+  - **the circuit behind it**, by the study's traced stepper on x = 0x5a, y = 0x33 and the 6
+    fixed case sets, **printed descriptively and tested nowhere**: the NANDs behind the
+    credited output, and which values (x, y or an intermediate) two of them read. It is no
+    test of depth. XOR and EQU are not read-once functions, so every NAND circuit computing
+    either reads some input or intermediate in two NANDs; a read-once rung can be built by a
+    circuit that does too (the stack ORN `<<{~~!` is NAND(NAND(y, x), x)); and no per-input
+    rule separates them, since an XOR may fan out NOT x instead of x. What makes a deep child
+    deep is its credit.
 
   **Descriptive only**, printed per child and per arm, tested nowhere: the first own epoch
   each rung reaches 1/10 and so the ladder order, and the stepping-stone counts, as Logic
