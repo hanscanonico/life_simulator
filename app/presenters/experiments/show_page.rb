@@ -149,14 +149,25 @@ module Experiments
     # The from-emerged sweep's pre-registered reading, on a sweep with a parent rule only.
     # Whether it is final also turns on the parent pool, whose runs belong to another
     # experiment and so are not in this key: the settled service keys it on that pool. The
-    # metabolism and logic sweeps have a parent rule but their own readings
-    # (`lab:metabolism_report`, `lab:logic_report`): this one would pair their arms against a
-    # continuation they do not have.
+    # metabolism, logic and meta-stack sweeps have a parent rule but their own readings
+    # (`lab:metabolism_report`, `lab:logic_report`, `lab:meta_stack_report`): this one would
+    # pair their arms against a continuation they do not have.
     def descendant_reading
       return nil if experiment.parents.blank? || own_descendant_reading?
 
       @descendant_reading ||= cached("descendant_reading") { FromEmergedReadingService.call(experiment: experiment) }
                               .with(final: DescendantSweepSettledService.call(experiment))
+    end
+
+    # The meta-stack sweep's pre-registered reading, on that sweep only, cached as the logic
+    # reading is. Its twins are the logic sweep's runs, which are not in this page's key, so
+    # their version is; and it is final once both sweeps have settled.
+    def meta_stack_reading
+      return nil unless MetaStackReadingService.applies_to?(experiment)
+
+      @meta_stack_reading ||= cached("meta_stack_reading", twins_version) do
+        MetaStackReadingService.call(experiment: experiment)
+      end.with(final: MetaStackReadingService.final?(experiment))
     end
 
     # The lineage-diversity sweep's pre-registered reading, on that sweep only. The service
@@ -216,12 +227,18 @@ module Experiments
     private
 
     def own_descendant_reading?
-      [MetabolismReadingService, LogicReadingService].any? { |reading| reading.applies_to?(experiment) }
+      [MetabolismReadingService, LogicReadingService, MetaStackReadingService]
+        .any? { |reading| reading.applies_to?(experiment) }
     end
 
     def own_emergence_rule?
       [LineageDiversityReadingService, LocalityEmergenceReadingService, ReachCap128ReadingService]
         .any? { |rule| rule.applies_to?(experiment) }
+    end
+
+    def twins_version
+      twins = MetaStackReadingService.twin_experiment
+      twins && RowsVersion.of(twins.runs)
     end
 
     def arm_means

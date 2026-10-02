@@ -773,6 +773,27 @@ sample.
     piloted parents. Pre-registered in `docs/design_record.md`, 2026-10-01, "Logic: does a
     soup assemble features beyond its one-step rungs when the parts are paid?", whose
     numbers live in `Lab::LogicReading`; `lab:logic_report` reads it.
+17. **Meta-stack** — does a soup assemble XOR and EQU from paid parts once its computing runs
+    off the copier, on a NAND that keeps its operands? The Meta-stack variant of §1.4, a
+    descendant sweep from the same 18 parents under the same rule, seeded only once the Logic
+    reading is final, the runner carrying the metabolism tape, the stack NAND and their
+    observables is deployed, and Logic's H-deep has not read shown. Three arms merged over each
+    parent's params, on Logic's full bundle and a 32-byte metabolism tape (`meta_rate`
+    32/8192, `isa` draws, seeded from the cell's own tape): **meta-stack** (`logic_nand:
+    stack`), **meta-stack-deep-only** (the same at `task_floor: xor`) and **meta-inplace**
+    (`logic_nand: in_place`). Seeds 2001–2003, 40 000 epochs past the parent, priority 40, 162
+    children, each paired by (parent, seed) with the Logic sweep's none child (the no-reward
+    twin) and full child (the woven twin). Read as Logic is; six one-sided sign tests at
+    p < 0.05 on last-decile medians: H-deep-Ms (meta-stack against Logic none, on
+    `logic_capability_deep`, the rung-4 question), H-stones-Ms (against meta-stack-deep-only),
+    H-stack (against meta-inplace), H-deep-M (meta-inplace against Logic none), H-decouple
+    (meta-inplace against Logic full) and H-capability-M (meta-stack against Logic none, on
+    `logic_capability`), each also read with the extinct pairs kept and without the four
+    piloted parents. A deep rung counts as a multi-step crossing only where its substitution
+    distance, measured afterwards, is at least 2. Pre-registered in `docs/design_record.md`,
+    2026-10-02, "Meta-stack: does a soup assemble the deep rungs from paid parts on a
+    metabolism tape read with a stack NAND?", whose numbers live in `Lab::MetaStackReading`;
+    `lab:meta_stack_report` reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -811,6 +832,17 @@ operator, holds Metabolism's ladder at one substitution. It carries Metabolism's
 pooling rule unchanged, and rung 4 on Soup stays "not shown" whatever it reads. Its sweep is
 §1.3 item 16, pre-registered in `docs/design_record.md`, 2026-10-01, "Logic: does a soup
 assemble features beyond its one-step rungs when the parts are paid?".
+
+**Meta-stack** is a variant of Logic that moves what the assay reads off the replicating tape
+onto a **metabolism tape** the soup never executes and the world hands on with each near copy
+(§1.1), read with the **stack NAND** (`logic_nand: stack`, §1.1). It answers a design study's
+diagnosis that Logic's deep rungs sit behind a valley, not a shortage of mutations: fan-out in
+a two-head machine whose NAND writes in place, where only the copy loop stores a value twice.
+So it imports an objective, a primitive, a hereditary channel, and a choice of the primitive's
+semantics made because it lets the deep rungs come. It carries Metabolism's label and pooling
+rule unchanged, and rung 4 on Soup stays "not shown" whatever it reads. Its sweep is §1.3
+item 17, pre-registered in `docs/design_record.md`, 2026-10-02, "Meta-stack: does a soup
+assemble the deep rungs from paid parts on a metabolism tape read with a stack NAND?".
 
 ## 2. Architecture
 

@@ -3,7 +3,8 @@
 namespace :lab do
   desc "Build a sweep experiment from DESIGN.md 1.3 " \
        "(mutation_rate, world_size, radius, max_steps, ops, energy_per_epoch, " \
-       "environmental_structure, max_tape_len, host_parasite, asymmetric_execution, from_emerged, metabolism, logic)"
+       "environmental_structure, max_tape_len, host_parasite, asymmetric_execution, from_emerged, metabolism, logic, " \
+       "meta_stack)"
   task :sweep, [:sweep] => :environment do |_task, args|
     definition = Lab::SWEEPS[args[:sweep]]
     raise "Unknown sweep #{args[:sweep].inspect}. Known sweeps: #{Lab::SWEEPS.keys.join(', ')}" if definition.nil?
@@ -307,6 +308,18 @@ namespace :lab do
     raise "The logic sweep is not seeded." if experiment.nil?
 
     report = Experiments::LogicReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
+  desc "Read the meta-stack sweep as pre-registered, paired with the logic sweep's none and full children: every " \
+       "child, every arm, H-deep-Ms, H-stones-Ms, H-stack, H-deep-M, H-decouple and H-capability-M with their " \
+       "sensitivity readings (FORMAT=csv for CSV); labelled interim until both sweeps are terminal"
+  task meta_stack_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("meta_stack"))
+    raise "The meta-stack sweep is not seeded." if experiment.nil?
+
+    report = Experiments::MetaStackReadingService.call(experiment: experiment)
 
     print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end

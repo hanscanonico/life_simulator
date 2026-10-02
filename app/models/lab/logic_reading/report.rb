@@ -34,7 +34,7 @@ module Lab
       end
 
       def to_text
-        [heading, *(any? ? tables.map { |columns, rows| table(columns, rows) } : [])].join("\n")
+        [heading, *(any? ? tables.map { |columns, rows| TextTable.render(columns, rows) } : [])].join("\n")
       end
 
       def to_csv
@@ -56,21 +56,6 @@ module Lab
         [[CHILD_COLUMNS, children.map(&:cells)], [ARM_COLUMNS, arms.map(&:cells)],
          [TEST_COLUMNS, tests.map(&:cells)], [TEST_COLUMNS, kept_tests.map(&:cells)],
          [TEST_COLUMNS, unpiloted_tests.map(&:cells)], [AGREEMENT_COLUMNS, tests.flat_map(&:agreement_cells)]]
-      end
-
-      def table(columns, rows)
-        lines = [columns, *rows.map { |row| row.map { |cell| format_cell(cell) } }]
-        widths = lines.transpose.map { |column| column.map(&:length).max }
-
-        lines.map { |line| "#{line.each_with_index.map { |cell, index| cell.rjust(widths[index]) }.join('  ')}\n" }
-             .join
-      end
-
-      def format_cell(cell)
-        return "—" if cell.nil?
-        return Charts.format_value(cell) if cell.is_a?(Float)
-
-        cell.to_s.tr("_", " ")
       end
     end
   end

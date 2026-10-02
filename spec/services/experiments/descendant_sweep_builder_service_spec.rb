@@ -286,6 +286,72 @@ RSpec.describe Experiments::DescendantSweepBuilderService do
     end
   end
 
+  describe "the meta-stack sweep" do
+    let(:definition) { Lab::SWEEPS.fetch("meta_stack") }
+    let(:experiment) do
+      create(:experiment, slug: "meta-stack", **definition.slice(:parents, :param_grid, :seeds, :epochs, :priority))
+    end
+    let(:earlier) do
+      %w[metabolism logic].map do |key|
+        create(:experiment, slug: Lab.slug_for(key),
+                            **Lab::SWEEPS.fetch(key).slice(:parents, :param_grid, :seeds, :epochs, :priority))
+      end
+    end
+    let!(:parents) do
+      Array.new(11) { parent(share: 0.9) } +
+        Array.new(7) { parent(share: 0.9, params: control_params.merge("max_tape_len" => 256)) }
+    end
+
+    before do
+      parent(share: 0.3)
+      earlier.each { |sweep| described_class.call(sweep) }
+    end
+
+    it "creates 162 children: eighteen parents, three arms, three seeds" do
+      expect(build_sweep).to have_attributes(parents: parents, created: 162)
+      expect(experiment.runs.pluck(:parent_run_id, :seed).tally)
+        .to eq(parents.map(&:id).product([2001, 2002, 2003]).index_with(3))
+    end
+
+    it "merges the stack, the deep-only stack and the in-place bundle over each parent's params" do
+      build_sweep
+
+      expect(experiment.runs.where(parent_run: parents.last, seed: 2002).order(:id).pluck(:params))
+        .to eq(definition[:param_grid].fetch("treatment").map { |bundle| parents.last.params.merge(bundle) })
+    end
+
+    it "runs every child forty thousand epochs past its parent at priority 40" do
+      build_sweep
+
+      expect(experiment.runs.distinct.pluck(:parent_epoch, :epochs, :priority)).to eq([[1_000, 41_000, 40]])
+    end
+
+    it "adds nothing once built" do
+      build_sweep
+
+      expect { described_class.call(experiment.reload) }.not_to change(Run, :count)
+    end
+
+    it "leaves the metabolism sweep's 108 children and the logic sweep's 162 as they were" do
+      before = earlier.map { |sweep| sweep.runs.order(:id).pluck(:id, :params, :seed, :status) }
+
+      build_sweep
+
+      expect(earlier.map { |sweep| sweep.runs.order(:id).pluck(:id, :params, :seed, :status) }).to eq(before)
+      expect(before.map(&:size)).to eq([108, 162])
+    end
+
+    it "gives no child the canonical params of another child of the same parent and seed, in any of the three sweeps" do
+      build_sweep
+
+      keys = Run.where.not(parent_run_id: nil).map do |run|
+        [Lab::CanonicalParams.for(run.params), run.seed, run.parent_run_id]
+      end
+      expect(keys.size).to eq(108 + 162 + 162)
+      expect(keys.uniq).to eq(keys)
+    end
+  end
+
   context "with no source experiment seeded" do
     it "builds nothing" do
       expect(build_sweep).to have_attributes(parents: [], created: 0, skipped: {})

@@ -649,6 +649,60 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the meta-stack sweep seeded beside the logic sweep" do
+      let(:experiment) { meta_stack_experiment }
+      let(:logic) { logic_experiment }
+
+      before do
+        metabolism_parent
+        Experiments::SweepBuilderService.call(logic)
+        Experiments::SweepBuilderService.call(experiment)
+      end
+
+      it "lists its children without the from-emerged or the logic sweep's reading" do
+        get experiment_path(experiment)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.at_css("#descendant-reading, #heldout-reading, #logic-reading")).to be_nil
+      end
+
+      context "with no child sampled yet" do
+        it "reads the sweep as pre-registered, interim, under the badge" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#meta-stack-reading")
+          expect(section.at_css("h2").text.squish).to eq("The pre-registered reading interim imports an objective")
+          expect(section.text.squish).to include("H-deep-Ms", "H-stones-Ms", "H-stack", "H-deep-M", "H-decouple",
+                                                 "H-capability-M", "no measured pairs", "assembled from paid parts",
+                                                 "a choice of the primitive's semantics made because it lets the " \
+                                                 "deep rungs come", "rung 4 on Soup stays not shown")
+        end
+      end
+
+      context "with every child of both sweeps finished, the stack the deepest" do
+        before do
+          meta_stack_children(experiment, :meta_stack).each { |run| meta_stack_sample(run, capability: 3, deep: 1) }
+          (experiment.runs + logic.runs).each { |run| meta_stack_sample(run) if run.samples.none? }
+        end
+
+        it "prints the arms, the tests beside their sensitivity readings and the pairs across both sweeps" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#meta-stack-reading")
+          arms = section.css("#meta-stack-arms ~ .table-scroll tbody tr").map { |row| row.css("td").first(4).map(&:text) }
+          expect(arms).to eq([%w[meta-stack 3 3 0], %w[meta-stack-deep-only 3 3 0], %w[meta-inplace 3 3 0],
+                              %w[logic-none 3 3 0], %w[logic-full 3 3 0]])
+          expect(section.text.squish).to include("The pre-registered reading final",
+                                                 "H-stack, meta-stack against meta-inplace",
+                                                 "3 pairs measured on both sides: 3 favour meta-stack",
+                                                 "With the extinct pairs kept", "Without the piloted parents",
+                                                 "Per-parent agreement")
+          expect(section.css("#meta-stack-pairs tbody tr").size).to eq(3)
+          expect(section.css("#meta-stack-pairs tbody tr").first.css("td a").size).to eq(6)
+        end
+      end
+    end
+
     context "with a descendant sweep seeded from an emerged world" do
       let(:experiment) do
         create(:experiment, name: "From an emerged world", slug: "from-emerged",
