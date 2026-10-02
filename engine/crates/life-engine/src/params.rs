@@ -98,9 +98,6 @@ impl Tasks {
     }
 }
 
-/// Every name `task_floor` may take, the arithmetic ladder's rungs then the logic ladder's
-/// not already named; which of them a run may choose is set by its `tasks`. Both ladders
-/// begin at ECHO, the default.
 /// `meta_rate`'s default, the design study's 32 × the replicating tape's 1/8192 of the
 /// Logic sweep (`docs/design_record.md`, 2026-10-02, Meta-stack slice B).
 const META_RATE_DEFAULT: f64 = 32.0 / 8192.0;
@@ -108,6 +105,9 @@ const META_RATE_DEFAULT: f64 = 32.0 / 8192.0;
 /// claim to hold.
 pub const META_LEN_MAX: u32 = 1024;
 
+/// Every name `task_floor` may take, the arithmetic ladder's rungs then the logic ladder's
+/// not already named; which of them a run may choose is set by its `tasks`. Both ladders
+/// begin at ECHO, the default.
 const TASK_FLOORS: &[&str] = &[
     "echo", "inc", "dec", "add", "sub", "not", "double", "mul", "nand", "and", "orn", "or", "andn",
     "nor", "xor", "equ",

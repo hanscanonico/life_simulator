@@ -426,7 +426,7 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
     let trailer_len = relative_len
         .checked_add(meta_payload_len)
         .ok_or(SnapshotError::Truncated)?;
-    if bytes.len() < header_len + trailer_len {
+    if bytes.len() - header_len < trailer_len {
         return Err(SnapshotError::Truncated);
     }
     let payloads_end = bytes.len() - trailer_len;
@@ -1327,11 +1327,15 @@ mod tests {
             ));
         }
 
-        let mut overlong = write(&tapes(&params, 8));
-        overlong[fields..fields + 8].copy_from_slice(&u64::MAX.to_le_bytes());
-        assert!(matches!(
-            decode(&params, &overlong),
-            Err(SnapshotError::Truncated)
-        ));
+        // The first overflows the two trailer lengths' sum, the second only that sum plus
+        // the header's.
+        for claimed in [u64::MAX, u64::MAX - RELATIVE_LEN as u64] {
+            let mut overlong = write(&tapes(&params, 8));
+            overlong[fields..fields + 8].copy_from_slice(&claimed.to_le_bytes());
+            assert!(matches!(
+                decode(&params, &overlong),
+                Err(SnapshotError::Truncated)
+            ));
+        }
     }
 }
