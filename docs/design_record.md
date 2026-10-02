@@ -4622,9 +4622,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **The bar** is the deepest the child's lineage reached before the second half: the
     largest of (a) its **fifth-decile median**, (b) its **depth at descent**, the
     `logic_depth_max` of its first own sample, the parent's world read on the four-input
-    ladder one sample interval past the switch, and (c) **every depth it held under the persistence
-    rule** (below) in its own samples up to the fifth decile's end, settling window included,
-    the run of 5 completed by then.
+    ladder one sample interval past the switch, and (c) **every depth it held under the
+    persistence rule** (below) in its own samples up to the fifth decile's end, settling
+    window included, the run of 5 completed by then.
   - **The rise rule.** A child **rises late** where its last-decile median `logic_depth_max`
     is at least **the bar + 1**. It is **measured** where both medians are read and it is not
     extinct. Why a bar and not the fifth-decile median alone, as study §3 drafted: the pilot
