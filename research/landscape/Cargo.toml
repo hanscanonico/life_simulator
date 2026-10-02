@@ -1,0 +1,21 @@
+[package]
+name = "landscape"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Offline landscape readings on stored worlds: the Meta-stack sweep's locked post-sweep methods"
+
+# Its own workspace: outside `engine/`, so `make verify` builds it only through `make landscape`.
+[workspace]
+
+[dependencies]
+life-engine = { path = "../../engine/crates/life-engine" }
+serde_json = "1.0"
+
+# The searches and the planting runs execute billions of interpreter steps.
+[profile.test]
+opt-level = 2
+
+[profile.dev]
+opt-level = 1

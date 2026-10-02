@@ -4135,6 +4135,16 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   — paid parts let a soup assemble a deeper feature on an imported tape — **not
   open-endedness**. Every constant above lives in `Lab::MetaStackReading`.
 
+- 2026-10-02 — **The three design studies are kept in the repository, in `docs/studies/`.**
+  The record cited them by summary while they lived in a session scratchpad. They are dated
+  research notes, kept as written but for their scratchpad paths; every number in them is
+  pilot unless an entry above says otherwise. Nothing is relocked.
+  - The Metabolism entry (2026-10-01) follows `docs/studies/metabolism.md`.
+  - The Logic entry (2026-10-01) follows `docs/studies/logic.md`.
+  - The Meta-stack entry (2026-10-02) follows `docs/studies/meta-stack.md`; its offline
+    readings (the substitution distance, heritability by planting, the circuit behind a deep
+    solver) run on `research/landscape/`, the study's tools ported to the merged engine.
+
 - 2026-10-02 — **The Logic finding states its claim: given a NAND, paid replicators climb
   every logic task that reads its inputs once, and none that needs one twice.** Sweep 16
   (`logic`, entry of 2026-10-01, "Logic: does a soup assemble features beyond its one-step
