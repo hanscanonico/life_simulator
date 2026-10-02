@@ -3609,3 +3609,106 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   bound derived from it.
   DESIGN §1.3 item 15 gains a result line. Nothing about the engine, the rules or any
   observable moves.
+- 2026-10-02 — **The stack NAND: `logic_nand`, `in_place` or `stack` (Meta-stack, slice A).**
+  "Meta-stack" is the next bet after Logic: the metabolism tape of the next-substrate design
+  study, read by the logic assay with a NAND that keeps its operands. This is its first
+  engine slice, the NAND alone. The metabolism tape is a sibling slice, and the observables
+  follow. Nothing here deploys until the Logic sweep reads and the sibling slices land. The
+  sweep and its pre-registration come after the Logic reading, in their own entry, before
+  any of its runs is seeded. Nothing is relocked.
+
+  **What is imported, named honestly.** Logic imports an objective and a primitive. This
+  slice adds a **choice of the primitive's semantics, made because it lets the deep rungs
+  come in the pilot**. `~` is assay-only and was new in Logic, so what it writes was ours to
+  choose. A follow-up to the design study (2026-10-02, §7, a scratch study outside the
+  repository) tried seven semantics on a throwaway copy of the engine. Every number below is
+  *pilot*, from that copy and the stored worlds of 1007's pilot, not a finding:
+  - five semantics (into h0+1, into h1, an accumulator, a fixed scratch cell, into h0−1)
+    left XOR and EQU where they were. No program of ≤ 11 bytes computes either under any of
+    them, they stay ≥ 4 substitutions from every minimal and evolved lower-rung solver (0 deep
+    among 2.5–3.2 million mutants per start), and no pilot of "into h0−1" made a deep rung;
+  - the stack NAND, "into h0−1, and head0 follows", brings the shortest known XOR from 17
+    bytes to 13. On a 32-byte metabolism tape seeded from each cell's own first 32 tape bytes,
+    at the instruction-set mutation rate × 32, over 20 000 epochs, **2 of 3 seeds** held XOR
+    and/or EQU at a tenth of the world: seed 2001 both from epoch 4 000, at up to 8 078
+    deep cells; seed 2003 EQU from 14 500, at up to 8 434;
+  - the same start under today's in-place NAND made no deep rung, nor did any of 8
+    metabolism-tape arms with it; with the rungs below XOR unpaid (`task_floor: xor`) the
+    stack climbed nothing past ECHO; and on the woven tape, with no metabolism tape, it
+    re-climbed to NOR and made no deep rung.
+
+  The stack NAND meets the study's ask by moving the depth, not by keeping it. From the
+  forms the soup holds before a deep rung, XOR and EQU are still ≥ 3–4 substitutions away,
+  through credit losses. The soup then evolves loop-shaped ORN, ANDN and OR solvers, each
+  **one** substitution below XOR or EQU, and takes that step: the deep rungs are assembled
+  from paid parts, Lenski's mechanism. A deep rung under `stack` is therefore not by itself
+  a multi-step crossing, and the Meta-stack pre-registration must read it with the
+  per-child substitution distance and the deep-only control, as the study's §7.6 lays out.
+
+  **The semantics** (DESIGN §1.1, "The stack NAND"). At `stack`, `~` in the logic assay
+  computes `¬(B[head0] ∧ B[head1])`, writes it to `B[head0 − 1]` (wrapping from byte 0 to
+  the last byte of the assay buffer, as `<` does), and moves head0 onto it. Both operands
+  are kept, and a chain of NANDs stacks its results leftward into the zero half of the
+  buffer, which is what lets a later NAND read an earlier one's result without a copy.
+  `in_place`, the default, is the NAND of the logic assay entry, so every earlier run and
+  every pin is unchanged.
+  - **Only `tasks = logic` accepts `stack`** (`ParamError::LogicNandWithoutLogic`):
+    elsewhere `~` is never an instruction, and a parameter must never be silently inert.
+    The default is accepted everywhere. An unpaid logic run may set it, since its
+    observables read the ladder.
+  - **It is dynamics, not structure**: it moves no byte of a world, so a descendant may
+    set it. A run stored before it existed carries no key, and `Lab::CanonicalParams` fills
+    in `in_place`, the NAND it ran, so stored runs keep their identity.
+  - **The soup and the arithmetic assay are untouched.** `~` stays a no-op there.
+  - **The observables read the run's own NAND.** `pay_tasks`, the logic shares and the
+    dominant tape's logic credit all assay with `logic_nand`, through `logic::assay_on` and
+    `logic::Memo`, so a stack run's readings are read on the machine it was paid on.
+
+  **The dispatch: a mode on `AssayOps`, compiled in.** `AssayOps` gains `EmitStackNand`
+  beside `Emit` and `EmitNand`, and `LogicNand::assay_ops` maps the parameter onto it.
+  `bff::execute`'s third compile-time switch widens from the bool `NAND_ON` to a `u8`
+  `NAND_MODE`: off, in place or stack. A `u8`, because a const generic cannot yet be an
+  enum. `AssayOps` is already what `run_emitting` takes to choose the assay's machine, so
+  the mode rides it and no caller's signature grows. A compile-time switch, not a runtime
+  flag, so the soup's and the arithmetic assay's loops compile without any test of it, as
+  they did; the stack's only cost is one head move inside the NAND arm.
+  - **The cycle skip stays exact.** The write marks the buffer changed only where it
+    changes a byte. The head move changes none, and needs no mark: the recurrence compares
+    the heads at every jump back.
+  - **A lap holding `~` is never replayed**, under either NAND: a lap's beats record no
+    NAND, so `Laps::note` stops at one, as it stops at an emit.
+
+  **The ladder, re-proved under `stack`.** An exhaustive search of every program of up to
+  9 bytes over `<>{},~!`, on 6 separating draws, gives the shortest program of each rung
+  below XOR: NOT `<{~!` (4 bytes), NAND `<<{~!` (5), AND `{{<~~!` (6), ORN `<<{~~!` (6), OR
+  `{,~<~~!` (7), ANDN `{,~{~~!` (7) and NOR `{,~{~>~~!` (9). The same lengths as the study's
+  search, which padded to 16 bytes. No XOR or EQU program is that short. XOR is the
+  study's 13-byte `<<{~~{{>>~{~!`, the four-NAND circuit, and EQU the same with one more
+  NAND, `<<{~~{{>>~{~~!`. With ECHO `<!`, each computes its task over 4 096 random byte
+  inputs and is credited with it alone over 10^5 separating draws (`STACK_SOLVERS`).
+  - **One solver computes three rungs.** The pilot's evolved deep solver,
+    `{<<[~><~{~{!]`, is a loop that stacks three NANDs a lap while head1 trails onto what
+    earlier laps wrote, and emits ¬y, XOR, ¬y and EQU. It is credited NOT, XOR and EQU and
+    nothing else on every one of 10^5 draws, and with all three on 97% of them. A lap that leaves a zero under
+    head0 ends the loop early, so it does not reach all three on every draw. That is the
+    fan-out the stack buys: intermediates kept on the stack and read again on a later lap.
+  - **No cheap tape is credited a deep rung**, #283's search re-run under `stack`:
+    - every program of up to 6 bytes over the ten ops, `!` and `~`, in front of a zero
+      tail and two random tails of 24 bytes (18 078, 20 914 and 18 273 distinct behaviours),
+      is credited XOR or EQU on none of 4 000 separating draws;
+    - every single and double substitution, over those 12 bytes and 0x00, 0x01, 0x55 and
+      0xFF, in the code of the stack NOT, NAND, AND, ORN, OR, ANDN and NOR solvers and the
+      3 bytes after it (5 488–17 088 mutants each), is credited XOR or EQU on none of 4 000
+      draws.
+
+  **The invariant.** Nothing moves at the default. Every pinned hash and observable digest
+  stays as it was, the logic reward's pin included. The stack has its own pin: the logic
+  reward pin's params at `logic_nand = stack`, its layout planted with the stack NOT and XOR
+  solvers, seed 42, 50 epochs, `0x5fe2_0698_d6b1_b3af`. The same tapes under the in-place
+  NAND end elsewhere, at a reward of 0 the stack run is the run with tasks off, and a run
+  under the stack reward is deterministic under both payers. Each
+  NAND pays its own XOR solver 8 units at `task_floor: xor` and the other's nothing. The
+  interpreter's equivalence tests hold the stack run, skipping or not, to a stepper written
+  by the book over 10^5 random assay buffers dense in `~`, `!` and loops, with
+  whole-byte inputs, beside the in-place run's own. Pairs that carry neither byte still run
+  as the soup's interpreter runs them under all three assay machines.

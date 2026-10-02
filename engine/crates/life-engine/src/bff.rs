@@ -28,10 +28,11 @@ pub const STEAL: u8 = b'$';
 pub const EMIT: u8 = b'!';
 
 /// The NAND op of the logic assay (`docs/DESIGN.md` §1.1, "Tasks and the emit op"): writes
-/// `!(B[head0] & B[head1])` under head0, the one two-input data op BFF lacks. Like the emit
-/// byte it is not one of `OPS`, and it is an instruction only inside the logic assay, through
-/// `run_emitting` at `AssayOps::EmitNand`; the arithmetic assay and every soup interaction
-/// read it as the no-op it has always been.
+/// `!(B[head0] & B[head1])` under head0, the one two-input data op BFF lacks; or, at
+/// `AssayOps::EmitStackNand`, one byte left of head0, and head0 follows it there. Like the
+/// emit byte it is not one of `OPS`, and it is an instruction only inside the logic assay,
+/// through `run_emitting` at either; the arithmetic assay and every soup interaction read it
+/// as the no-op it has always been.
 pub const NAND: u8 = b'~';
 
 /// The ten instruction bytes; every other byte is a no-op.
@@ -232,9 +233,9 @@ pub fn run_stealing(tape: &mut Vec<u8>, bounds: Bounds, stealing: Stealing) -> O
     let mut silent = Emitted::default();
     #[cfg(test)]
     if !SKIPPING.get() {
-        return execute::<false, false, false>(tape, bounds, stealing, &mut silent);
+        return execute::<false, false, NAND_OFF>(tape, bounds, stealing, &mut silent);
     }
-    execute::<true, false, false>(tape, bounds, stealing, &mut silent)
+    execute::<true, false, NAND_OFF>(tape, bounds, stealing, &mut silent)
 }
 
 /// The outputs an emitting run wrote, in order, and the most it may write before it stops.
@@ -245,19 +246,32 @@ pub struct Emitted {
 }
 
 /// The assay-only instructions an emitting run executes: the emit byte alone, which is the
-/// arithmetic assay's machine, or the emit byte and the NAND byte, the logic assay's.
+/// arithmetic assay's machine, or the emit byte and the NAND byte, the logic assay's, with
+/// the NAND writing in place (`EmitNand`) or onto a stack (`EmitStackNand`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssayOps {
     Emit,
     EmitNand,
+    /// The NAND as `logic_nand = stack` reads it: `!(B[head0] & B[head1])` written to
+    /// `B[head0 - 1]`, wrapping as `<` does, and head0 moved onto it, so both operands are
+    /// kept and a chain of NANDs stacks its results leftward.
+    EmitStackNand,
 }
+
+/// What the NAND byte is in one execution, the interpreter's third compile-time switch: a
+/// no-op, the in-place NAND, or the stack NAND. A `u8` because a const generic cannot yet be
+/// an enum; the switch is compiled in so the soup's loop carries no test of it.
+const NAND_OFF: u8 = 0;
+const NAND_IN_PLACE: u8 = 1;
+const NAND_STACK: u8 = 2;
 
 /// Executes `tape` as `run_stealing` does with the steal byte off, and with `EMIT` as an
 /// instruction: each one appends the byte under head0 to `emitted.bytes`, and the run stops
-/// with `Halt::OutputsFull` at the `emitted.most`-th. At `AssayOps::EmitNand`, `NAND` is an
-/// instruction too. The task assay's interpreter. An emit and a NAND are acting steps to
-/// both skips: no cycle is skipped across an emit, and no lap holding either is replayed,
-/// so every emit the plain loop makes is made here, at the same step.
+/// with `Halt::OutputsFull` at the `emitted.most`-th. At `AssayOps::EmitNand` and
+/// `AssayOps::EmitStackNand`, `NAND` is an instruction too. The task assay's interpreter.
+/// An emit and a NAND are acting steps to both skips: no cycle is skipped across an emit,
+/// and no lap holding either is replayed, so every emit the plain loop makes is made here,
+/// at the same step.
 pub fn run_emitting(
     tape: &mut Vec<u8>,
     bounds: Bounds,
@@ -267,15 +281,25 @@ pub fn run_emitting(
     #[cfg(test)]
     if !SKIPPING.get() {
         return match assay_ops {
-            AssayOps::Emit => execute::<false, true, false>(tape, bounds, Stealing::Off, emitted),
+            AssayOps::Emit => {
+                execute::<false, true, NAND_OFF>(tape, bounds, Stealing::Off, emitted)
+            }
             AssayOps::EmitNand => {
-                execute::<false, true, true>(tape, bounds, Stealing::Off, emitted)
+                execute::<false, true, NAND_IN_PLACE>(tape, bounds, Stealing::Off, emitted)
+            }
+            AssayOps::EmitStackNand => {
+                execute::<false, true, NAND_STACK>(tape, bounds, Stealing::Off, emitted)
             }
         };
     }
     match assay_ops {
-        AssayOps::Emit => execute::<true, true, false>(tape, bounds, Stealing::Off, emitted),
-        AssayOps::EmitNand => execute::<true, true, true>(tape, bounds, Stealing::Off, emitted),
+        AssayOps::Emit => execute::<true, true, NAND_OFF>(tape, bounds, Stealing::Off, emitted),
+        AssayOps::EmitNand => {
+            execute::<true, true, NAND_IN_PLACE>(tape, bounds, Stealing::Off, emitted)
+        }
+        AssayOps::EmitStackNand => {
+            execute::<true, true, NAND_STACK>(tape, bounds, Stealing::Off, emitted)
+        }
     }
 }
 
@@ -295,9 +319,9 @@ thread_local! {
 
 /// The interpreter loop. `SKIP` compiles both skips in or out; out, it is the plain loop
 /// that executes every step, which the tests keep as the reference. `EMIT_ON` makes the emit
-/// byte an instruction, and `NAND_ON` the NAND byte; off, which is every soup interaction,
-/// neither is in the table the loop reads.
-fn execute<const SKIP: bool, const EMIT_ON: bool, const NAND_ON: bool>(
+/// byte an instruction, and `NAND_MODE` the NAND byte, in place or onto the stack; off, which is
+/// every soup interaction, neither is in the table the loop reads.
+fn execute<const SKIP: bool, const EMIT_ON: bool, const NAND_MODE: u8>(
     tape: &mut Vec<u8>,
     bounds: Bounds,
     stealing: Stealing,
@@ -313,7 +337,7 @@ fn execute<const SKIP: bool, const EMIT_ON: bool, const NAND_ON: bool>(
     let mut enabled = enabled.table();
     enabled[STEAL as usize] = split.is_some();
     enabled[EMIT as usize] = EMIT_ON;
-    enabled[NAND as usize] = NAND_ON;
+    enabled[NAND as usize] = NAND_MODE != NAND_OFF;
     let split = split.unwrap_or(0);
     let mut steals = [0u32; 2];
     let mut len = tape.len();
@@ -389,6 +413,9 @@ fn execute<const SKIP: bool, const EMIT_ON: bool, const NAND_ON: bool>(
                 #[cfg(test)]
                 NANDS.set(NANDS.get() + 1);
                 let byte = !(tape[head0] & tape[head1]);
+                if NAND_MODE == NAND_STACK {
+                    head0 = (head0 + len - 1) % len;
+                }
                 changed |= tape[head0] != byte;
                 tape[head0] = byte;
             }
@@ -1457,11 +1484,19 @@ mod tests {
     /// halt, steps and steals of the outcome.
     fn both_ways(pair: &[u8], bounds: Bounds, stealing: Stealing) -> [(Vec<u8>, Outcome); 2] {
         let mut skipped = pair.to_vec();
-        let with_skip =
-            execute::<true, false, false>(&mut skipped, bounds, stealing, &mut Emitted::default());
+        let with_skip = execute::<true, false, NAND_OFF>(
+            &mut skipped,
+            bounds,
+            stealing,
+            &mut Emitted::default(),
+        );
         let mut stepped = pair.to_vec();
-        let every_step =
-            execute::<false, false, false>(&mut stepped, bounds, stealing, &mut Emitted::default());
+        let every_step = execute::<false, false, NAND_OFF>(
+            &mut stepped,
+            bounds,
+            stealing,
+            &mut Emitted::default(),
+        );
         [(skipped, with_skip), (stepped, every_step)]
     }
 
@@ -1650,14 +1685,15 @@ mod tests {
         }
     }
 
-    /// The emit op, and the NAND op where `nand` says so, by the book, one step at a time and
-    /// sharing no code with `execute`: the reference an emitting run is held to.
+    /// The emit op, and the NAND op where `assay_ops` says so, in place or onto the stack, by
+    /// the book, one step at a time and sharing no code with `execute`: the reference an
+    /// emitting run is held to.
     fn emitting_by_hand(
         pair: &[u8],
         max_steps: u32,
         enabled: OpSet,
         most: usize,
-        nand: bool,
+        assay_ops: AssayOps,
     ) -> (Vec<u8>, Vec<u8>, Halt, u32) {
         let mut buf = pair.to_vec();
         let len = buf.len();
@@ -1693,8 +1729,12 @@ mod tests {
                 if outputs.len() == most {
                     break Halt::OutputsFull;
                 }
-            } else if nand && op == NAND {
+            } else if op == NAND && assay_ops == AssayOps::EmitNand {
                 buf[head0] = !(buf[head0] & buf[head1]);
+            } else if op == NAND && assay_ops == AssayOps::EmitStackNand {
+                let below = if head0 == 0 { len - 1 } else { head0 - 1 };
+                buf[below] = !(buf[head0] & buf[head1]);
+                head0 = below;
             } else if enabled.enables(op) {
                 match op {
                     HEAD0_LEFT => head0 = (head0 + len - 1) % len,
@@ -1721,7 +1761,7 @@ mod tests {
         (buf, outputs, halt, steps)
     }
 
-    fn emitting<const SKIP: bool, const NAND_ON: bool>(
+    fn emitting<const SKIP: bool, const NAND_MODE: u8>(
         pair: &[u8],
         bounds: Bounds,
         most: usize,
@@ -1731,7 +1771,8 @@ mod tests {
             bytes: Vec::new(),
             most,
         };
-        let outcome = execute::<SKIP, true, NAND_ON>(&mut buf, bounds, Stealing::Off, &mut emitted);
+        let outcome =
+            execute::<SKIP, true, NAND_MODE>(&mut buf, bounds, Stealing::Off, &mut emitted);
         assert_eq!(outcome.steals, [0, 0], "the assay never steals");
         (buf, emitted.bytes, outcome.halt, outcome.steps)
     }
@@ -1751,19 +1792,25 @@ mod tests {
         };
         let (off, run) = (Stealing::Off, &mut emitted);
         let outcome = match (skip, assay_ops) {
-            (true, None) => execute::<true, false, false>(&mut buf, bounds, off, run),
-            (false, None) => execute::<false, false, false>(&mut buf, bounds, off, run),
+            (true, None) => execute::<true, false, NAND_OFF>(&mut buf, bounds, off, run),
+            (false, None) => execute::<false, false, NAND_OFF>(&mut buf, bounds, off, run),
             (true, Some(AssayOps::Emit)) => {
-                execute::<true, true, false>(&mut buf, bounds, off, run)
+                execute::<true, true, NAND_OFF>(&mut buf, bounds, off, run)
             }
             (false, Some(AssayOps::Emit)) => {
-                execute::<false, true, false>(&mut buf, bounds, off, run)
+                execute::<false, true, NAND_OFF>(&mut buf, bounds, off, run)
             }
             (true, Some(AssayOps::EmitNand)) => {
-                execute::<true, true, true>(&mut buf, bounds, off, run)
+                execute::<true, true, NAND_IN_PLACE>(&mut buf, bounds, off, run)
             }
             (false, Some(AssayOps::EmitNand)) => {
-                execute::<false, true, true>(&mut buf, bounds, off, run)
+                execute::<false, true, NAND_IN_PLACE>(&mut buf, bounds, off, run)
+            }
+            (true, Some(AssayOps::EmitStackNand)) => {
+                execute::<true, true, NAND_STACK>(&mut buf, bounds, off, run)
+            }
+            (false, Some(AssayOps::EmitStackNand)) => {
+                execute::<false, true, NAND_STACK>(&mut buf, bounds, off, run)
             }
         };
         (buf, outcome, emitted.bytes)
@@ -1794,7 +1841,7 @@ mod tests {
                 };
                 for skip in [true, false] {
                     let (plain, by_plain, _) = executed(&pair, bounds, skip, None);
-                    for assay_ops in [AssayOps::Emit, AssayOps::EmitNand] {
+                    for assay_ops in [AssayOps::Emit, AssayOps::EmitNand, AssayOps::EmitStackNand] {
                         let before = NANDS.get();
                         let (assayed, by_assay, outputs) =
                             executed(&pair, bounds, skip, Some(assay_ops));
@@ -1854,14 +1901,14 @@ mod tests {
                     enabled,
                     ..joined(0, 2 * len)
                 };
-                let by_hand = emitting_by_hand(&pair, max_steps, enabled, most, false);
+                let by_hand = emitting_by_hand(&pair, max_steps, enabled, most, AssayOps::Emit);
                 assert_eq!(
-                    emitting::<true, false>(&pair, bounds, most),
+                    emitting::<true, NAND_OFF>(&pair, bounds, most),
                     by_hand,
                     "{pair:?}"
                 );
                 assert_eq!(
-                    emitting::<false, false>(&pair, bounds, most),
+                    emitting::<false, NAND_OFF>(&pair, bounds, most),
                     by_hand,
                     "{pair:?}"
                 );
@@ -1882,9 +1929,9 @@ mod tests {
         copier.resize(128, 0);
         copier[127] = 7;
         let (_, lapped) = skipped_during(|| {
-            let by_hand = emitting_by_hand(&copier, 4_096, OpSet::ALL, 4, false);
+            let by_hand = emitting_by_hand(&copier, 4_096, OpSet::ALL, 4, AssayOps::Emit);
             assert_eq!(
-                emitting::<true, false>(&copier, joined(4_096, 128), 4),
+                emitting::<true, NAND_OFF>(&copier, joined(4_096, 128), 4),
                 by_hand
             );
             assert_eq!(by_hand.1, vec![7]);
@@ -1895,9 +1942,9 @@ mod tests {
         spraying.resize(64, b'a');
         spraying.resize(128, 1);
         let (_, lapped) = skipped_during(|| {
-            let by_hand = emitting_by_hand(&spraying, 4_096, OpSet::ALL, 4, false);
+            let by_hand = emitting_by_hand(&spraying, 4_096, OpSet::ALL, 4, AssayOps::Emit);
             assert_eq!(
-                emitting::<true, false>(&spraying, joined(4_096, 128), 4),
+                emitting::<true, NAND_OFF>(&spraying, joined(4_096, 128), 4),
                 by_hand
             );
             assert_eq!(by_hand.1.len(), 4);
@@ -1926,8 +1973,18 @@ mod tests {
     /// laps form around and beside both.
     #[test]
     fn an_emitting_nand_run_is_the_stepper_by_the_book() {
+        nand_runs_are_the_stepper_by_the_book::<NAND_IN_PLACE>(43, AssayOps::EmitNand);
+    }
+
+    /// The same under the stack NAND, whose head move changes no byte and whose write may.
+    #[test]
+    fn an_emitting_stack_nand_run_is_the_stepper_by_the_book() {
+        nand_runs_are_the_stepper_by_the_book::<NAND_STACK>(47, AssayOps::EmitStackNand);
+    }
+
+    fn nand_runs_are_the_stepper_by_the_book<const NAND_MODE: u8>(seed: u64, assay_ops: AssayOps) {
         const ALPHABET: &[u8] = b"<>{}+-.,[][]]]!!~~$\0\x01a";
-        let mut rng = crate::rng::seeded(43, 0, 0);
+        let mut rng = crate::rng::seeded(seed, 0, 0);
         let mut draw = |bound: u64| crate::rng::below(&mut rng, bound) as usize;
         let (mut emits, before) = (0, NANDS.get());
         let (recurred, lapped) = skipped_during(|| {
@@ -1949,14 +2006,14 @@ mod tests {
                     enabled,
                     ..joined(0, 2 * len)
                 };
-                let by_hand = emitting_by_hand(&pair, max_steps, enabled, most, true);
+                let by_hand = emitting_by_hand(&pair, max_steps, enabled, most, assay_ops);
                 assert_eq!(
-                    emitting::<true, true>(&pair, bounds, most),
+                    emitting::<true, NAND_MODE>(&pair, bounds, most),
                     by_hand,
                     "{pair:?}"
                 );
                 assert_eq!(
-                    emitting::<false, true>(&pair, bounds, most),
+                    emitting::<false, NAND_MODE>(&pair, bounds, most),
                     by_hand,
                     "{pair:?}"
                 );
@@ -1974,28 +2031,38 @@ mod tests {
     /// holds a NAND is run step by step, every NAND made.
     #[test]
     fn a_lap_holding_a_nand_is_run_and_one_without_is_skipped() {
+        laps_holding_a_nand_are_run::<NAND_IN_PLACE>(AssayOps::EmitNand, b"<<<<[~<]");
+    }
+
+    /// The same under the stack NAND, whose loop needs no `<`: the NAND moves head0 itself.
+    #[test]
+    fn a_lap_holding_a_stack_nand_is_run_and_one_without_is_skipped() {
+        laps_holding_a_nand_are_run::<NAND_STACK>(AssayOps::EmitStackNand, b"<<<<[~]");
+    }
+
+    fn laps_holding_a_nand_are_run<const NAND_MODE: u8>(assay_ops: AssayOps, nand_loop: &[u8]) {
         let mut copier = b"<{~!>}{[.<>>{]".to_vec();
         copier.resize(64, b'a');
         copier.resize(128, 0);
         copier[127] = 7;
         let (_, lapped) = skipped_during(|| {
-            let by_hand = emitting_by_hand(&copier, 4_096, OpSet::ALL, 4, true);
+            let by_hand = emitting_by_hand(&copier, 4_096, OpSet::ALL, 4, assay_ops);
             assert_eq!(
-                emitting::<true, true>(&copier, joined(4_096, 128), 4),
+                emitting::<true, NAND_MODE>(&copier, joined(4_096, 128), 4),
                 by_hand
             );
             assert_eq!(by_hand.1, vec![!7]);
         });
         assert!(lapped > 1_000, "the copy loop's laps ran: {lapped}");
 
-        let mut nanding = b"<<<<[~<]".to_vec();
+        let mut nanding = nand_loop.to_vec();
         nanding.resize(64, b'a');
         nanding.resize(128, 1);
         let before = NANDS.get();
         let (_, lapped) = skipped_during(|| {
-            let by_hand = emitting_by_hand(&nanding, 4_096, OpSet::ALL, 4, true);
+            let by_hand = emitting_by_hand(&nanding, 4_096, OpSet::ALL, 4, assay_ops);
             assert_eq!(
-                emitting::<true, true>(&nanding, joined(4_096, 128), 4),
+                emitting::<true, NAND_MODE>(&nanding, joined(4_096, 128), 4),
                 by_hand
             );
         });
@@ -2005,6 +2072,43 @@ mod tests {
             "only {} NANDs",
             NANDS.get() - before
         );
+    }
+
+    /// The stack NAND keeps both operands: it writes `!(B[head0] & B[head1])` one byte left
+    /// of head0, wrapping from byte 0 to the last as `<` does, and head0 follows it there, so
+    /// a second NAND reads the first's result.
+    #[test]
+    fn the_stack_nand_writes_left_of_head0_and_head0_follows() {
+        let assay = |mut tape: Vec<u8>, assay_ops| {
+            let mut emitted = Emitted {
+                bytes: Vec::new(),
+                most: 4,
+            };
+            let len = tape.len();
+            run_emitting(&mut tape, joined_bounds(len), &mut emitted, assay_ops);
+            (tape, emitted.bytes)
+        };
+        let (x, y) = (0b1100_1010u8, 0b1010_0110u8);
+        let (stacked, outputs) = assay(
+            vec![b'<', b'<', b'{', NAND, EMIT, NAND, EMIT, 0, 0, y, x],
+            AssayOps::EmitStackNand,
+        );
+        let first = !(y & x);
+        let second = !(first & x);
+        assert_eq!(&stacked[7..], &[second, first, y, x]);
+        assert_eq!(outputs, vec![first, second]);
+
+        let (in_place, outputs) = assay(
+            vec![b'<', b'<', b'{', NAND, EMIT, NAND, EMIT, 0, 0, y, x],
+            AssayOps::EmitNand,
+        );
+        assert_eq!(&in_place[7..], &[0, 0, second, x]);
+        assert_eq!(outputs, vec![first, second]);
+
+        let (wrapped, outputs) = assay(vec![NAND, EMIT, 0, 0b0101], AssayOps::EmitStackNand);
+        assert_eq!(wrapped[3], !(NAND & NAND));
+        assert_eq!(wrapped[0], NAND);
+        assert_eq!(outputs, vec![!(NAND & NAND)]);
     }
 
     /// The NAND byte writes `!(B[head0] & B[head1])` under head0 in the logic assay alone:
