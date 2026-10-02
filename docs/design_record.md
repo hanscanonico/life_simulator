@@ -4281,6 +4281,110 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     and 10 000 epochs) without reaching the top, 10; on the four-input ladder the same world
     re-climbed 4 → 8 → 9 and held 9 from 10 000 to 20 000 epochs. Depth jumped 5 → 9 and
     plateaued at 9 on both ladders. Pilot numbers, not findings.
+
+- 2026-10-02 — **The Meta-stack finding states its claim: with a stack NAND on a metabolism
+  tape, paid parts assemble the logic rungs that need an input twice, in a sixth of the
+  worlds.** Sweep 17 (`meta-stack`, entry of 2026-10-02 above, "Meta-stack: does a soup
+  assemble the deep rungs from paid parts on a metabolism tape read with a stack NAND?") is
+  final: every child of its 18 parents finished, here and in the Logic sweep whose children
+  are its twins. It is read here as registered, on the lab (`lab:meta_stack_report`,
+  2026-10-02 18:25Z, "meta-stack reading, final").
+
+  | arm | children | finished | settled relapses | extinct | capability measured | reached a deep rung | stepping stone | complexity survivors | rises |
+  |---|---|---|---|---|---|---|---|---|---|
+  | meta-stack | 54 | 54 | 0 | 0 | 54 | 9 | 9 | 54 | 3 |
+  | meta-stack-deep-only | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 2 |
+  | meta-inplace | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 3 |
+  | logic-none | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 1 |
+  | logic-full | 54 | 54 | 6 | 1 | 53 | 0 | 0 | 48 | 2 |
+
+  | hypothesis | pairs | favour treated | favour control | ties | p | outcome | extinct kept | without the piloted parents |
+  |---|---|---|---|---|---|---|---|---|
+  | H-deep-Ms (meta-stack against logic-none) | 54 | 9 | 0 | 45 | 0.00195 | shown | the same | 8 to 0, 34 ties, p = 0.00391, shown, carried by 967 + 2771 |
+  | H-stones-Ms (against meta-stack-deep-only) | 54 | 9 | 0 | 45 | 0.00195 | shown | the same | 8 to 0, 34 ties, p = 0.00391, shown, carried by 967 + 2771 |
+  | H-stack (against meta-inplace) | 54 | 9 | 0 | 45 | 0.00195 | shown | the same | 8 to 0, 34 ties, p = 0.00391, shown, carried by 967 + 2771 |
+  | H-deep-M (meta-inplace against logic-none) | 54 | 0 | 0 | 54 | — | refuted | the same | 42 ties, refuted |
+  | H-decouple (meta-inplace against logic-full) | 53 | 0 | 0 | 53 | — | refuted | 54 ties, refuted | 41 ties, refuted |
+  | H-capability-M (meta-stack against logic-none) | 54 | 54 | 0 | 0 | 5.55e-17 | shown | the same | 42 to 0, p = 2.27e-13, shown |
+
+  **Per parent**: the 9 deep children are 4845, 4862, 4863, 4871, 4890, 4952, 4961, 4979 and
+  4980, from 7 parents: 967 and 2771 gave two each, and 944, 991, 1029, 2654 and 2676 one.
+  H-capability-M goes 3 to 0 at every parent. **The leave-out**: the report's `carried_by` is
+  "—" for every shown test, so no one or two of the 18 parents carry one; leaving out 967 and
+  2771 together leaves 5 to 0, p = 0.03125. **Without the piloted parents** (944's child 4845
+  goes), the three deep tests read 8 to 0 and that re-reading is carried by 967 + 2771:
+  without both, 4 to 0, p = 0.0625. By the entry, the re-readings decide no outcome; the page
+  states this one plainly.
+
+  **Descriptive**, from the report's per-child columns: the meta-stack arm reached ECHO, NOT,
+  NAND, AND, ORN, OR, ANDN and NOR in 54, 54, 43, 17, 54, 51, 49 and 51 children, XOR in 7 and
+  EQU in 9; 4979 and 4980 hold EQU alone. Meta-inplace reached every read-once rung but AND
+  and no deep one; the deep-only arm reached ECHO alone. The deep children's last-decile
+  median XOR and EQU shares, read from the samples, are 0.46 to 0.57 for the six at
+  `max_tape_len` 128; at 256, 4890 reads 0.28 and 0.41, 4980 EQU 0.47 and 4979 EQU 0.15.
+
+  **The locked offline readings** ("Reported with each deep child"), made on 2026-10-02 with
+  `research/landscape/` at `3cd9abb` on the stored worlds, read through SELECTs. Their summary
+  is kept in `docs/readings/meta-stack/` (`summary.txt`, and `summary.csv`, one row per
+  planting), with the scripts as run and the descriptive helper's source in `method/`; the
+  14 MB of worlds are not.
+  - **Substitution distance**: 9 of 9 read d ≥ 2 (17 to 31), so "multi-step" by the locked
+    rule, which is **uninformative here**. Each world holds 9 634 to 14 375 distinct
+    metabolism tapes and its dominant tape sits on 9 to 21 cells; drift puts it a median 22
+    to 30 of 32 bytes from a cell of its own world, so the d ≥ 2 test can only fail where the
+    dominant tape is the deep solver itself. Descriptive, not locked, every mutant within 3
+    substitutions of the dominant tape: no credited path in any child; the nearest deep
+    mutant at 2 (4845, 4871), at 3 (4863, 4952, 4980), none within 3 (4862, 4961); in 4890
+    and 4979 the dominant tape was already an EQU solver at the pre-deep line.
+  - **Heritability**: 0 heritable, 8 unresolved, 1 not heritable (4979). In 14 of the 15
+    locked plantings every seed's unplanted control re-grew the rung to a tenth by e + 500
+    (5 889 to 10 043 cells), level with the planted world; in 4979 neither reached a tenth.
+    In 10 of 16 plantings (a labelled extension for 4890's XOR included) the filler is one
+    substitution from the rung. Read plainly: in these worlds the deep rung is a property of
+    the population, re-derived within hundreds of epochs, often from abundant lower-rung tapes
+    one substitution below it, not a single lineage's invention — the study's §7.6, "The soup
+    then evolves loop-shaped ORN/ANDN/OR solvers that sit one substitution below XOR/EQU, and
+    takes that step."
+  - **Circuits**: every deep solver is a loop that stacks NANDs leftward and reads earlier
+    laps' results, credited on 18 of 18 traced cases, and each fans out an input. XOR takes
+    4 to 6 NANDs, but 12 in 4863, a chain ending in a double negation; EQU 5 to 12.
+
+  **The claim**, finding `paid-parts-assemble-deep-logic-on-a-stack-nand`, "With a stack
+  NAND on a metabolism tape, paid parts assemble the logic rungs that need an input twice, in
+  a sixth of the worlds": H-deep-Ms and H-stones-Ms shown, which the entry reads as "assembles
+  XOR and EQU from paid parts", Lenski's mechanism in a soup under the four imports named.
+  H-stack shown and H-deep-M refuted make the semantics decide it: the binding constraint
+  under the in-place NAND was fan-out in a two-head machine whose NAND writes in place, now
+  as a finding rather than a pilot. H-decouple ties throughout because neither of its arms
+  built a deep rung: under the in-place NAND, moving the computing off the copier was not
+  enough. No crossing is called multi-step on the distance.
+
+  **Registry status `published`.** The registry reads `published` as "every run finished and
+  the claim stands on them" and `partial` as "a reading is stated, but it cannot yet be read
+  as final". The reading is final, and the claim is the pre-registered one, made on the two
+  tests that ground it, both shown on the primary reading with no one or two parents carrying
+  either. `partial` was used where the supporting reading itself stood on too few runs to be
+  final (`complexity-under-contest`, 2026-09-24), which is not the case here. The two
+  weaknesses are stated, not hidden: the unpiloted re-reading is carried by two parents, and
+  the entry locks that re-readings decide no outcome; heritability is unresolved, which
+  bounds what the claim says (a population property, not a lineage's invention) and is not a
+  test of it. The title keeps the claim's size, a sixth of the worlds. It carries
+  `imports_objective: true`, and the page names the four imports.
+
+  **What it does not say.** Not open-endedness: the ladder tops out at EQU. Rung 4 on Soup
+  stays "not shown". The depth is what the loop's later laps compute (the topless study,
+  `docs/studies/topless.md` §2.3–2.4), not a count of accumulated steps. The next question,
+  whether depth keeps rising on a ladder without a near top, is the topless study's; its
+  engine slice is in review, and it needs a pre-registration of its own.
+
+  **The page** renders the six tests, their parent leanings, both re-readings with the
+  parents that carry them, the leave-out, the deep children and the arms' losses at render
+  time, through `Findings::MetaStack` over `Experiments::MetaStackReadingService`'s report,
+  the reading the sweep page draws and caches, and includes that page's section. The offline
+  readings are hand-typed from `docs/readings/meta-stack/summary.csv`, which it links, and
+  checked against it. DESIGN §1.3 item 17 gains a result line. Nothing about the engine, the
+  rules or any observable moves.
+
 - 2026-10-02 — **The topless ladder, engine slice: `tasks = logic3 | logic4`, depth-scaled
   pay and `task_depth_cap`, and the depth readings.** Slices 1–3 of the topless study's
   §1.5 (`docs/studies/topless.md`), built together because a sweep needs all three. No sweep
@@ -4389,6 +4493,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     `task_depth_cap` existed carries no key, and `Lab::CanonicalParams` fills in 0, the
     uncapped run it was. `runner schema` exports the ladder's units, floor and draw bound
     under `tasks.topless`, with the reads per row and each ladder's case count.
+
 - 2026-10-02 — **Topless rise: does the deepest rung held keep rising when depth is paid?
   The `topless_rise` sweep, pre-registered.** This is §1.3 item 18 and it adds a paragraph to
   DESIGN §1.4. The experiment is `topless-rise` (sweep key `topless_rise`), and its numbers
@@ -4402,7 +4507,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     deep children over 7 parents: runs **4845, 4862, 4863, 4871, 4890, 4952, 4961, 4979 and
     4980**. Each holds XOR, EQU or both by a tenth of the world, every one through a loop that
     stacks NANDs leftward and reads an earlier lap's result.
-  - **Meta-stack's locked offline readings** (2026-10-02, `research/landscape` at `3cd9abb`):
+  - **Meta-stack's locked offline readings** (2026-10-02, `research/landscape` at `3cd9abb`;
+    `docs/readings/meta-stack/`):
     multi-step crossings by the locked rule d ≥ 2 in **9 of 9** (d = 17–31); heritability by
     planting **0 heritable, 8 unresolved, 1 not heritable** (4979); no credited order in any
     child, a neutral-or-better one in 3. Two of those rules taught what this entry must not

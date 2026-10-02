@@ -120,6 +120,15 @@ module Findings
       @logic = report && Logic.build(report)
     end
 
+    # Sweep 17 read under its own pre-registered rule, from the report its sweep page draws
+    # and caches. Nil where the sweep is not in the lab.
+    def meta_stack
+      return @meta_stack if defined?(@meta_stack)
+
+      report = evidence&.meta_stack_reading
+      @meta_stack = report && MetaStack.build(report)
+    end
+
     # Whether a sweep a finding names as its next step is in this database yet, so the page
     # links it only once that link resolves.
     def sweep_seeded?(key) = Experiment.exists?(slug: Lab.slug_for(key))

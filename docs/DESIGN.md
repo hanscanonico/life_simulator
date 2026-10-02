@@ -873,6 +873,16 @@ sample.
     2026-10-02, "Meta-stack: does a soup assemble the deep rungs from paid parts on a
     metabolism tape read with a stack NAND?", whose numbers live in `Lab::MetaStackReading`;
     `lab:meta_stack_report` reads it.
+    **Result** (2026-10-02, final): all 162 children finished, none extinct; 9 meta-stack
+    children of 54, from 7 parents, held XOR or EQU at a tenth, and no child of any other arm.
+    H-deep-Ms, H-stones-Ms and H-stack shown, 9 to 0 with 45 ties (p = 0.00195), no one or two
+    parents carrying them; H-deep-M and H-decouple refuted, all ties; H-capability-M shown, 54
+    to 0 (p = 5.55e-17). The extinct-kept re-reading agrees; without the piloted parents the
+    deep tests read 8 to 0 (p = 0.00391), carried by parents 967 and 2771. Offline, all 9 read
+    d ≥ 2, a rule drift makes uninformative here; heritability 0 heritable, 8 unresolved, 1 not
+    heritable, the rung re-grown by the population. Finding
+    `paid-parts-assemble-deep-logic-on-a-stack-nand`, `published`, imports an objective, a
+    primitive, a hereditary channel and the primitive's semantics.
 18. **Topless rise** — does the deepest rung held keep rising when depth is paid? The Topless
     variant of §1.4, a descendant sweep from **all 54 meta-stack-arm children** of item 17
     (H-deep-Ms shown on 9 children over 7 parents, fewer than about ten, so the topless

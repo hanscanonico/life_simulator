@@ -7,6 +7,31 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "paid-parts-assemble-deep-logic-on-a-stack-nand",
+        title: "With a stack NAND on a metabolism tape, paid parts assemble the logic rungs that need " \
+               "an input twice, in a sixth of the worlds",
+        date: Date.new(2026, 10, 2),
+        experiment_slug: "meta-stack",
+        related_finding_slugs: %w[paid-logic-climbs-only-read-once-tasks paid-computation-stops-at-one-step-tasks],
+        status: :published,
+        imports_objective: true,
+        summary: "DESIGN §1.3 sweep 17 moved the Logic sweep's computing off the copier: a second, " \
+                 "32-byte tape the soup never runs, handed on with each copy and read by the assay " \
+                 "with a NAND that keeps its operands. The 18 emerged worlds ran another 40 000 " \
+                 "epochs, three seeds a parent, paired with the Logic sweep's children. All 162 " \
+                 "children finished and none died out. 9 children of 54, from 7 parents, held XOR " \
+                 "or EQU at a tenth of their world, against none in any other arm, so the rung-4 " \
+                 "question is shown, 9 pairs to 0 with 45 ties (p = 0.00195). The stepping-stone " \
+                 "test against the arm paid for XOR and EQU alone is shown too, 9 to 0: the deep " \
+                 "rungs were assembled from paid parts, Lenski's mechanism in a soup. The same tape " \
+                 "read by the NAND that writes in place built none. Without the four piloted " \
+                 "parents the deep tests read 8 to 0 and rest on two parents. In 14 of 15 plantings a " \
+                 "world the deep rung was wiped from re-grew it within 500 epochs: a property of " \
+                 "the population more than of a lineage. The ladder tops out at EQU, and the substrate " \
+                 "imports an objective, a primitive, a hereditary channel and the semantics that " \
+                 "let the deep rungs come, so rung 4 on Soup stays not shown."
+      ),
+      Finding.new(
         slug: "paid-computation-stops-at-one-step-tasks",
         title: "Paid to compute, replicators take the one-step tasks and stop there",
         date: Date.new(2026, 10, 2),

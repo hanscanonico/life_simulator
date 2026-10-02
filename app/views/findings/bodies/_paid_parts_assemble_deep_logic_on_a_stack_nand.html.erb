@@ -1,0 +1,391 @@
+<% sweep = Lab::SWEEPS.fetch("meta_stack") %>
+<% seeds = sweep.fetch(:seeds) %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% tape = Lab::MetaStackReading::META_BUNDLE %>
+<% constants = Lab::MetaStackReading %>
+<% repo_url = "https://github.com/hanscanonico/life_simulator/blob/main" %>
+<% record_url = "#{repo_url}/docs/design_record.md" %>
+<% studies_url = "#{repo_url}/docs/studies" %>
+<% readings_url = "#{repo_url}/docs/readings/meta-stack" %>
+
+<h2>Question</h2>
+<p>
+  <%= link_to "Given a NAND", finding_path("paid-logic-climbs-only-read-once-tasks") %>, paid
+  replicators climbed every logic rung that reads its inputs once and stopped below XOR and EQU,
+  the two that need an input twice. The
+  <%= link_to "design study", "#{studies_url}/meta-stack.md" %> behind this sweep read the stall
+  as <strong>fan-out in a two-head machine whose NAND writes in place</strong>: a value used
+  twice needs a stored copy and re-aligned heads, and in a tape that must also copy itself only
+  the copy loop supplies them. Meta-stack, the variant of the Metabolism substrate in DESIGN
+  §1.4, moves the computing off the copier and changes what the NAND writes. <strong>On a tape
+  the soup never runs, read with a NAND that keeps its operands, does a soup assemble XOR and
+  EQU from paid parts?</strong>
+</p>
+
+<h2>Method</h2>
+<p>
+  The parents and seeds are the Logic sweep's: the emerged worlds the
+  <%= link_to "from-emerged sweep", experiment_path("from-emerged") %> continued, each run
+  another <%= epochs %> epochs, seeds <%= seeds.first %>–<%= seeds.last %>, under Logic's
+  economy and paid ladder. Every child carries a second, <%= tape.fetch("meta_len") %>-byte
+  <strong>metabolism tape</strong>, seeded from its cell's own tape. The soup never executes
+  it; the logic assay reads it, and the world hands it on with each copy, mutating it at
+  <%= tape.fetch("meta_rate") %> a byte. Three arms:
+</p>
+<ul>
+  <li><strong>meta-stack</strong>: every rung paid, the tape read with the stack NAND, which
+    writes its result one cell to the left, moves its head there and leaves its operands
+    intact.</li>
+  <li><strong>meta-stack-deep-only</strong>: the same with only XOR and EQU paid, Lenski's
+    control. It separates "the deep rungs are built on paid parts" from "the deep rungs are
+    directly reachable".</li>
+  <li><strong>meta-inplace</strong>: the tape read with Logic's NAND, which writes in place, the
+    control on the NAND's semantics.</li>
+</ul>
+<p>
+  Each child is paired with the child of the same parent and seed in another arm. Two arms come
+  from the <%= link_to "Logic sweep", experiment_path("logic") %>, no new run needed:
+  <strong>logic-none</strong>, its unpaid child, and <strong>logic-full</strong>, its paid child
+  computing on the copied tape itself.
+</p>
+<p>
+  The reading is <strong>pre-registered</strong>, with every number fixed before a child was
+  seeded: <%= link_to "docs/design_record.md", record_url %>, 2026-10-02, "Meta-stack: does a
+  soup assemble the deep rungs from paid parts on a metabolism tape read with a stack NAND?",
+  DESIGN §1.3 item 17. The rules are Logic's: a settling window of
+  <%= number_with_delimiter constants::SETTLING_WINDOW, delimiter: " " %> epochs, last-decile
+  medians, and no pair with an extinct child in a test. There are six one-sided sign tests at
+  p &lt; <%= constants::SIGN_TEST_LEVEL %>:
+</p>
+<ul>
+  <li>
+    <strong>H-deep-Ms</strong>, the rung-4 question (meta-stack against logic-none):
+    <span class="mono">logic_capability_deep</span>, the number of XOR and EQU held by a tenth
+    of the world.
+  </li>
+  <li><strong>H-stones-Ms</strong> (meta-stack against meta-stack-deep-only): the same count.</li>
+  <li><strong>H-stack</strong> (meta-stack against meta-inplace): the same count. Does the
+    NAND's semantics decide it?</li>
+  <li><strong>H-deep-M</strong> (meta-inplace against logic-none): the same count, the tape
+    under the in-place NAND.</li>
+  <li><strong>H-decouple</strong> (meta-inplace against logic-full): the same count, the tape
+    against the copied tape under the same NAND.</li>
+  <li><strong>H-capability-M</strong> (meta-stack against logic-none):
+    <span class="mono">logic_capability</span>, every rung from ECHO to EQU.</li>
+</ul>
+<p>
+  Each test is also read with the extinct pairs kept and without the four parents the design
+  study piloted (runs <%= constants::PILOT_PARENTS.to_sentence %>). Those two re-readings
+  decide no outcome. A shown test lists any one or two parents whose pairs it cannot do
+  without. The entry also locks three measurements made after the sweep on each deep child's
+  stored worlds: a substitution distance, heritability by planting, and the circuit behind
+  the deep solver.
+</p>
+
+<% reading = @show.meta_stack %>
+<h2>Result</h2>
+<% if reading&.any? %>
+  <p>
+    <% reading.tests.each do |test| %>
+      <span class="badge <%= test.badge_class %>"><%= test.hypothesis %> <%= test.outcome_label %></span>
+    <% end %>
+    <% if reading.assembled? %>
+      <strong>With a stack NAND on a metabolism tape, paid parts assembled the logic rungs that
+      need an input twice.</strong>
+    <% else %>
+      <strong>The deep rungs did not read as assembled from paid parts: see the tests
+      below.</strong>
+    <% end %>
+    <% if reading.interim? %>
+      Not every child of this sweep and of the Logic sweep has finished, so this reading is
+      interim.
+    <% end %>
+  </p>
+  <ul id="meta-stack-finding-tests">
+    <% reading.tests.each do |test| %>
+      <% comparison = test.comparison %>
+      <% leaning = reading.leaning(test) %>
+      <% treatment = test.treatment.name %>
+      <% control = test.control.name %>
+      <li class="mb-3">
+        <strong><%= test.hypothesis %></strong>, <%= treatment %> against <%= control %>:
+        <%= comparison.favouring %> pairs favour <%= treatment %>, <%= comparison.against %>
+        <%= control %> and <%= comparison.ties %> tie, of <%= comparison.measured_count %>
+        measured<% if comparison.p_value %>, p = <%= p_value_text(comparison.p_value) %><% end %>,
+        <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>.
+        <% if reading.unanimous?(test) %>
+          Every pair of all <%= reading.parent_count %> parents favours <%= treatment %>.
+        <% else %>
+          By parent, <%= leaning.treated %> lean to <%= treatment %>, <%= leaning.tied %> tie
+          throughout and <%= leaning.control %> lean to <%= control %>.
+        <% end %>
+        <% [["With the extinct pairs kept", reading.kept(test.hypothesis)],
+            ["Without the piloted parents", reading.unpiloted(test.hypothesis)]].each do |label, sensitivity| %>
+          <%= label %>: <%= sensitivity.comparison.favouring %> to
+          <%= sensitivity.comparison.against %> with <%= sensitivity.comparison.ties %> ties<% if sensitivity.comparison.p_value %>,
+          p = <%= p_value_text(sensitivity.comparison.p_value) %><% end %>,
+          <span class="badge <%= sensitivity.badge_class %>"><%= sensitivity.outcome_label %></span>.
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+  <% if reading.shown_tests.any? %>
+    <p id="meta-stack-finding-leave-out">
+      <% if reading.carried_tests.empty? %>
+        No one or two parents carry a shown test: whichever one or two are left out, the rest
+        still read p &lt; <%= constants::SIGN_TEST_LEVEL %>.
+      <% else %>
+        <% reading.carried_tests.each do |test| %>
+          <%= test.hypothesis %> rests on parents
+          <%= test.comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>.
+        <% end %>
+      <% end %>
+      <% reading.carried_sensitivities.each do |test| %>
+        Re-read as <%= test.hypothesis %>, it rests on parents
+        <%= test.comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>:
+        without their pairs it falls to p ≥ <%= constants::SIGN_TEST_LEVEL %>.
+      <% end %>
+    </p>
+  <% end %>
+  <% deep = reading.deep_children %>
+  <p id="meta-stack-finding-deep">
+    <%= pluralize(deep.size, "meta-stack child", plural: "meta-stack children") %> of
+    <%= reading.stack_arm.children.size %>, from <%= pluralize(reading.deep_parent_count, "parent") %>,
+    held XOR or EQU at a tenth of the world for <%= constants::PERSISTENCE_RUN %> samples
+    running. Every other arm reached a deep rung in
+    <%= reading.arms.reject { |arm| arm == reading.stack_arm }.map { |arm| "#{reading.deep_count(arm)} #{arm.name}" }.to_sentence %>
+    children. The arms lost
+    <%= reading.arms.map { |arm| "#{reading.extinct_count(arm)} #{arm.name}" }.to_sentence %>
+    children to extinction.
+  </p>
+  <% if deep.any? %>
+    <figure class="table-figure mt-4">
+      <figcaption class="table-caption text-sm text-muted" id="meta-stack-finding-deep-children">
+        The deep children, read from their stored samples at render time: the first epoch each
+        deep rung held a tenth of the world under the persistence rule.
+      </figcaption>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="meta-stack-finding-deep-children">
+        <table class="data-table" aria-labelledby="meta-stack-finding-deep-children">
+          <thead>
+            <tr>
+              <th>Child</th>
+              <th>Parent</th>
+              <th class="numeric">Seed</th>
+              <% Lab::LogicReading::DEEP_TASKS.each do |task| %>
+                <th class="numeric">First <%= task.upcase %></th>
+              <% end %>
+            </tr>
+          </thead>
+          <tbody>
+            <% deep.each do |child| %>
+              <tr>
+                <td><%= link_to "run #{child.run_id}", run_path(child.run_id) %></td>
+                <td><%= link_to "run #{child.parent_id}", run_path(child.parent_id) %></td>
+                <td class="numeric"><%= child.seed %></td>
+                <% Lab::LogicReading::DEEP_TASKS.each do |task| %>
+                  <% epoch = child.logic.first_epochs[task] %>
+                  <td class="numeric"><%= epoch ? number_with_delimiter(epoch, delimiter: " ") : "—" %></td>
+                <% end %>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </figure>
+  <% end %>
+  <p class="text-sm text-muted">
+    Every count above is read from the two sweeps' stored samples at render time, through the
+    same reading <%= link_to "the sweep page", experiment_path("meta-stack", anchor: "meta-stack-reading") %>
+    draws.
+  </p>
+
+  <%= render "experiments/meta_stack_reading", reading: reading.report %>
+<% else %>
+  <p class="text-muted">
+    No child of <%= link_to "the sweep", experiment_path("meta-stack") %> is in this database, so
+    there is nothing to read here. This page reads the children at render time and states the
+    claim from them.
+  </p>
+<% end %>
+
+<h2>The deep children, measured offline</h2>
+<p>
+  The pre-registration locks three readings for each deep child, made after the sweep on its
+  stored worlds with the study's landscape tools, <span class="mono">research/landscape/</span>.
+  They were made on 2026-10-02 at main <span class="mono">3cd9abb</span> from the lab's stored
+  worlds, read through SELECTs only. They are offline measurements, not this page's code, so
+  the table below is typed from their
+  <%= link_to "summary", "#{readings_url}/summary.txt" %>
+  (<%= link_to "one row per planting", "#{readings_url}/summary.csv" %>), whose
+  <%= link_to "README", "#{readings_url}/README.md" %> gives the scripts as run. The first
+  epochs in it equal the live table's above.
+</p>
+<figure class="table-figure mt-4">
+  <figcaption class="table-caption text-sm text-muted" id="meta-stack-finding-offline">
+    Per deep child: its tape cap (<span class="mono">max_tape_len</span>), its first deep rung,
+    the locked substitution distance d, the nearest deep mutant of its dominant tape (not
+    locked), heritability by planting, and the circuit behind its first deep solver, traced on
+    x = 0x5a, y = 0x33.
+  </figcaption>
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="meta-stack-finding-offline">
+    <table class="data-table" aria-labelledby="meta-stack-finding-offline">
+      <thead>
+        <tr>
+          <th>Child</th>
+          <th>Parent, seed</th>
+          <th class="numeric">Cap</th>
+          <th>First deep rung</th>
+          <th class="numeric">d</th>
+          <th>Nearest deep mutant</th>
+          <th>Heritability</th>
+          <th>Circuit</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>4845</td><td>944, 2003</td><td class="numeric">128</td><td>XOR 21&nbsp;870 (EQU 21&nbsp;940)</td>
+          <td class="numeric">25</td><td>2</td><td>unresolved</td>
+          <td>2 NANDs a lap; XOR in 4 NANDs, EQU a lap later in 6; fans out x, y, t1</td>
+        </tr>
+        <tr>
+          <td>4862</td><td>967, 2002</td><td class="numeric">128</td><td>EQU 21&nbsp;700 (XOR 21&nbsp;760)</td>
+          <td class="numeric">31</td><td>none within 3</td><td>unresolved</td>
+          <td>4 NANDs a lap; XOR in 6, EQU in 8; fans out x, y, t1, t2</td>
+        </tr>
+        <tr>
+          <td>4863</td><td>967, 2003</td><td class="numeric">128</td><td>EQU 22&nbsp;690 (XOR 33&nbsp;530)</td>
+          <td class="numeric">25</td><td>3</td><td>unresolved</td>
+          <td>3 NANDs a lap; EQU in 6; XOR only later, a 12-NAND chain ending in a double negation; fans out x, y, t2, t3</td>
+        </tr>
+        <tr>
+          <td>4871</td><td>991, 2002</td><td class="numeric">128</td><td>XOR 23&nbsp;180 (EQU 23&nbsp;220)</td>
+          <td class="numeric">22</td><td>2</td><td>unresolved</td>
+          <td>4 NANDs a lap; XOR in 6, EQU in 12; fans out x, y, t1, t3</td>
+        </tr>
+        <tr>
+          <td>4890</td><td>1029, 2003</td><td class="numeric">256</td><td>EQU 22&nbsp;880 (XOR 28&nbsp;290)</td>
+          <td class="numeric">17</td><td>already an EQU solver</td><td>unresolved</td>
+          <td>2 NANDs a lap after a copy prologue; EQU in 7, one a NOT; fans out x, y, t2, t3. Its later XOR solver: 1 NAND a lap, XOR in 5</td>
+        </tr>
+        <tr>
+          <td>4952</td><td>2654, 2002</td><td class="numeric">128</td><td>EQU 28&nbsp;220 (XOR 28&nbsp;790)</td>
+          <td class="numeric">30</td><td>3</td><td>unresolved</td>
+          <td>4845's circuit: 2 NANDs a lap, XOR in 4, EQU in 6</td>
+        </tr>
+        <tr>
+          <td>4961</td><td>2676, 2002</td><td class="numeric">128</td><td>XOR 21&nbsp;630 (EQU 21&nbsp;700)</td>
+          <td class="numeric">26</td><td>none within 3</td><td>unresolved</td>
+          <td>a prologue that emits x, then 2 NANDs a lap; XOR in 4, EQU in 6; fans out x, y, t3</td>
+        </tr>
+        <tr>
+          <td>4979</td><td>2771, 2002</td><td class="numeric">256</td><td>EQU 41&nbsp;480 (no XOR)</td>
+          <td class="numeric">20</td><td>already an EQU solver</td><td>not heritable</td>
+          <td>1 NAND a lap after a 2-NAND prologue; EQU in 5, built on NOT x; fans out y, NOT x, t2</td>
+        </tr>
+        <tr>
+          <td>4980</td><td>2771, 2003</td><td class="numeric">256</td><td>EQU 22&nbsp;720 (no XOR)</td>
+          <td class="numeric">24</td><td>3</td><td>unresolved</td>
+          <td>1 NAND a lap; EQU in 5; fans out x, y, t1, t2</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</figure>
+<p>
+  <strong>The substitution distance says nothing here.</strong> The entry counts a deep rung as
+  a multi-step crossing where d, the distance from the world's dominant metabolism tape when
+  the last lower rung reached the line to the first deep solver after it, is at least 2. All 9
+  read d ≥ 2, from 17 to 31, so all 9 are "multi-step" by the locked rule. The rule cannot tell
+  here. The worlds hold 9 634 to 14 375 distinct metabolism tapes among 16 384 cells, and the
+  dominant one sits on only 9 to 21 cells. Drift puts it a median 22 to 30 of 32 bytes from a
+  cell of its own world. So the test could only fail where the dominant tape is the deep solver
+  itself. Read with the study's own tool instead, every mutant within 3 substitutions of the
+  dominant tape (not locked):
+</p>
+<ul>
+  <li>no child has a credited path within 3, one that gains a paid unit at every step;</li>
+  <li>the nearest deep mutant is 2 substitutions away in 4845 and 4871, 3 in 4863, 4952 and
+    4980, and beyond 3 in 4862 and 4961;</li>
+  <li>in 4890 and 4979 the dominant tape was already an EQU solver at the line, below a tenth
+    of the world, so no rung was crossed between the two tapes the distance compares.</li>
+</ul>
+<p>
+  <strong>Heritability: 0 heritable, 8 unresolved, 1 not heritable (4979).</strong> Each first
+  deep solver was planted back into its own end world, every other carrier of the rung wiped,
+  beside a control with the same wipe and no planting. In 14 of the 15 locked plantings, every
+  seed's control re-grew the deep rung to a tenth of the world within 500 epochs, level with the
+  planted world, which the entry reads as unresolved. In 4979 neither world reached a tenth. In
+  10 of the 16 plantings, a labelled extension for 4890's XOR included, the tape the wipe put
+  in place, the world's commonest tape not credited the rung, is one substitution from it. So
+  in these worlds the deep rung is a property of the population: re-derived within hundreds of
+  epochs, often from abundant lower-rung tapes one substitution below it, not a single
+  lineage's invention. That is what the design study's §7.6 describes: "The soup then evolves
+  loop-shaped ORN/ANDN/OR solvers that sit one substitution below XOR/EQU, and takes that
+  step."
+</p>
+<p>
+  <strong>The circuits.</strong> Every deep solver is a loop that stacks NANDs leftward, lap
+  after lap, and reads earlier laps' results. Each is credited its rung on all 18 traced cases
+  and fans out an input. They compute XOR in 4 to 6 NANDs, but for 4863's, a 12-NAND chain
+  ending in a double negation, and EQU in 5 to 12.
+</p>
+
+<h2>What it means</h2>
+<p>
+  Given a tape apart from the copier, read by a NAND that keeps its operands, and paid for every
+  rung, a soup derived from emerged BFF worlds assembled XOR and EQU in a sixth of its worlds.
+  Paid for those two alone it built nothing deep, and with the NAND that writes in place it
+  built nothing deep either. That is Lenski et al.'s 2003 stepping-stone mechanism, complex
+  features from rewarded simpler ones, in a population that began as a soup. It also turns the
+  design study's pilot reading of the Logic stall into a measurement: with the copier out of
+  the path, the in-place NAND still built no deep rung (H-deep-M refuted), and the stack NAND
+  did (H-stack shown).
+</p>
+<p>
+  It holds on a machine built for it. The substrate imports four things: <strong>an
+  objective</strong>, the paid tasks; <strong>a primitive</strong>, the NAND byte;
+  <strong>a hereditary channel</strong>, since the world, not the program, copies the
+  metabolism tape; and <strong>the primitive's semantics</strong>, the stack NAND, chosen among
+  seven because it was the one under which the pilot's deep rungs came.
+</p>
+
+<h2>What is not claimed</h2>
+<ul>
+  <li>
+    <strong>Nothing about rung 4 on Soup.</strong> Whatever rose here was paid for by tasks the
+    programme chose, computed by a byte and a tape the programme added. It is never pooled
+    with the fitness-free runs, and rung 4 on Soup stays "not shown".
+  </li>
+  <li>
+    <strong>Not open-ended.</strong> The ladder tops out at EQU. A child that holds it has
+    nowhere further to be paid for.
+  </li>
+  <li>
+    <strong>Depth is what the loop's later laps compute.</strong> As the
+    <%= link_to "topless study", "#{studies_url}/topless.md" %> puts it (§2.3–2.4), it is "the
+    circuit complexity of the function the soup's lap structure happens to compute", a real
+    computation, not a count of accumulated steps.
+  </li>
+  <li>
+    <strong>Not a lineage's invention.</strong> No deep rung read heritable, and the
+    substitution distance does not separate a crossing from drift in these worlds.
+  </li>
+  <li>
+    <strong>Two parents, under one re-reading.</strong> The deep tests hold whichever one or two
+    parents are left out of all 18. Without the piloted parents they read 8 to 0, and that
+    re-reading rests on parents 967 and 2771, which gave 4 of the 9 deep children.
+  </li>
+  <li>
+    <strong>Children are correlated.</strong> Three children share each parent's world, four
+    parents were piloted, and two arms are the Logic sweep's own children.
+  </li>
+</ul>
+
+<h2>What comes next</h2>
+<p>
+  The ladder here has a near top. The <%= link_to "topless study", "#{studies_url}/topless.md" %>
+  asks whether depth keeps rising when it has none: nested three- and four-input logic ladders,
+  each rung paid by its exact minimal NAND count, read for whether the deepest rung held keeps
+  rising late in long runs. Its minimal-NAND tables are computed; the engine slice that adds the
+  ladders is in review. A pre-registration of its own comes after.
+</p>

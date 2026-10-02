@@ -57,8 +57,8 @@ RSpec.describe "The Metabolism finding", type: :system do
   context "on the findings index" do
     before { visit findings_path }
 
-    it "lists the finding first, negative and importing an objective" do
-      card = first(".finding-card")
+    it "lists the finding, negative and importing an objective" do
+      card = find(".finding-card", text: "Paid to compute, replicators take the one-step tasks")
 
       expect(card).to have_text("Paid to compute, replicators take the one-step tasks and stop there")
       expect(card).to have_css(".badge", text: "negative")
