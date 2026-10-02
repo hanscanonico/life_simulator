@@ -1,0 +1,259 @@
+<% sweep = Lab::SWEEPS.fetch("logic") %>
+<% seeds = sweep.fetch(:seeds) %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% bundle = Lab::LogicReading::FULL_BUNDLE %>
+<% constants = Lab::LogicReading %>
+<% record_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/design_record.md" %>
+<% studies_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/studies" %>
+
+<h2>Question</h2>
+<p>
+  <%= link_to "Paid to compute", finding_path("paid-computation-stops-at-one-step-tasks") %>,
+  BFF replicators took the arithmetic tasks one substitution of a copier computes and went no
+  further. The <%= link_to "design study", "#{studies_url}/logic.md" %>'s diagnosis was the
+  instruction set: BFF has no two-input data op,
+  so every deeper task needed a counted loop, and no partial loop earns anything on the way.
+  Logic, the variant of the Metabolism substrate in DESIGN §1.4, keeps that economy and that
+  pay and adds the missing part: one NAND byte, run only by the assay, with Avida's logic
+  tasks as the ladder. Every rung is a composition of NANDs and a lower rung is a part of a
+  higher one. <strong>Given the parts, and paid for each, does a soup assemble the deep rungs,
+  XOR and EQU?</strong>
+</p>
+
+<h2>Method</h2>
+<p>
+  The parents are the emerged worlds the
+  <%= link_to "from-emerged sweep", experiment_path("from-emerged") %> continued, chosen by its
+  rule, the same parents and seeds as the Metabolism sweep. Each terminal world runs another
+  <%= epochs %> epochs, seeds <%= seeds.first %>–<%= seeds.last %>, in three arms. All three run
+  the Metabolism economy (influx <%= number_with_delimiter bundle.fetch("energy_influx"), delimiter: " " %>,
+  a stock cap of <%= number_with_delimiter bundle.fetch("energy_stock_cap"), delimiter: " " %>, no theft)
+  and the logic assay every <%= bundle.fetch("task_every") %> epochs. In the
+  <strong>full</strong> arm every rung pays, at
+  <%= number_with_delimiter bundle.fetch("task_reward"), delimiter: " " %> energy a unit. In the
+  <strong>deep-only</strong> arm only XOR and EQU pay, Lenski's control: it separates "the deep
+  rungs are built on paid parts" from "the deep rungs are directly reachable". In the
+  <strong>none</strong> arm nothing pays. ECHO, NOT, NAND, AND, ORN, OR, ANDN and NOR are the
+  rungs a NAND circuit can compute reading each input once. XOR and EQU, the deep rungs, are
+  not: every NAND circuit for either reads an input or an intermediate twice.
+</p>
+<p>
+  The reading is <strong>pre-registered</strong>, with every number fixed before a child was
+  seeded: <%= link_to "docs/design_record.md", record_url %>, 2026-10-01, "Logic: does a soup
+  assemble features beyond its one-step rungs when the parts are paid?", DESIGN §1.3 item 16.
+  Each full child is paired with the child of the same parent and seed in a control arm. All
+  are read past a settling window of
+  <%= number_with_delimiter constants::SETTLING_WINDOW, delimiter: " " %> epochs, and a pair
+  with an extinct child is in no test. There are four one-sided sign tests at
+  p &lt; <%= constants::SIGN_TEST_LEVEL %>:
+</p>
+<ul>
+  <li>
+    <strong>H-capability-L</strong> (full against none): the last-decile median
+    <span class="mono">logic_capability</span>, the number of rungs held by a tenth of the
+    world.
+  </li>
+  <li>
+    <strong>H-deep</strong>, the rung-4 question (full against none): the same count over XOR
+    and EQU, <span class="mono">logic_capability_deep</span>.
+  </li>
+  <li>
+    <strong>H-stones</strong> (full against deep-only): H-deep's count, against the arm paid
+    for the deep rungs alone.
+  </li>
+  <li>
+    <strong>H-complexity</strong> (full against none): the from-emerged rule, under which the
+    dominant replicator's executed instruction count rises when its last-decile median is at
+    least 1.2 times its first. It reads only pairs in which neither child relapsed.
+  </li>
+</ul>
+<p>
+  Each test is also read with the extinct pairs kept and without the four parents the design
+  study piloted, and a shown test lists any one or two parents whose pairs it cannot do
+  without.
+</p>
+
+<% reading = @show.logic %>
+<h2>Result</h2>
+<% if reading&.any? %>
+  <p>
+    <% reading.tests.each do |test| %>
+      <span class="badge <%= test.badge_class %>"><%= test.hypothesis %> <%= test.outcome_label %></span>
+    <% end %>
+    <% if reading.deep_climbed? %>
+      <strong>Paid parts built a deep rung: see the readings below.</strong>
+    <% else %>
+      <strong>Given a NAND, paid replicators climbed the tasks that read their inputs once and
+      none that needs one twice.</strong>
+    <% end %>
+    <% if reading.interim? %>
+      Not every child of the sweep has finished, so this reading is interim.
+    <% end %>
+  </p>
+  <ul id="logic-finding-tests">
+    <% reading.tests.each do |test| %>
+      <% comparison = test.comparison %>
+      <% leaning = reading.leaning(test) %>
+      <% treatment = test.treatment.name %>
+      <% control = test.control.name %>
+      <li class="mb-3">
+        <strong><%= test.hypothesis %></strong>, <%= treatment %> against <%= control %>:
+        <%= comparison.favouring %> pairs favour <%= treatment %>, <%= comparison.against %>
+        <%= control %> and <%= comparison.ties %> tie, of <%= comparison.measured_count %>
+        measured<% if comparison.p_value %>, p = <%= p_value_text(comparison.p_value) %><% end %>,
+        <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>.
+        <% if reading.unanimous?(test) %>
+          Every pair of all <%= reading.parent_count %> parents favours <%= treatment %>.
+        <% else %>
+          By parent, <%= leaning.full %> lean to <%= treatment %>, <%= leaning.tied %> tie
+          throughout and <%= leaning.control %> lean to <%= control %>.
+        <% end %>
+        <% [["With the extinct pairs kept", reading.kept(test.hypothesis)],
+            ["Without the piloted parents", reading.unpiloted(test.hypothesis)]].each do |label, sensitivity| %>
+          <%= label %>: <%= sensitivity.comparison.favouring %> to
+          <%= sensitivity.comparison.against %> with <%= sensitivity.comparison.ties %> ties<% if sensitivity.comparison.p_value %>,
+          p = <%= p_value_text(sensitivity.comparison.p_value) %><% end %>,
+          <span class="badge <%= sensitivity.badge_class %>"><%= sensitivity.outcome_label %></span>.
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+  <% if reading.shown_tests.any? %>
+    <p id="logic-finding-leave-out">
+      <% if reading.carried_tests.empty? %>
+        No one or two parents carry a shown test: whichever one or two are left out, the rest
+        still read p &lt; <%= constants::SIGN_TEST_LEVEL %>.
+      <% else %>
+        <% reading.carried_tests.each do |test| %>
+          <%= test.hypothesis %> rests on parents
+          <%= test.comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>.
+        <% end %>
+      <% end %>
+    </p>
+  <% end %>
+  <% full = reading.full_arm %>
+  <p id="logic-finding-losses">
+    The full arm lost <%= pluralize(reading.extinct_children(full), "child") %> to extinction,
+    and <%= reading.relapsed_children(full) %> relapsed past the settling window; the deep-only
+    arm lost <%= reading.extinct_children(reading.deep_only_arm) %> and
+    <%= reading.relapsed_children(reading.deep_only_arm) %>, the none arm
+    <%= reading.extinct_children(reading.none_arm) %> and
+    <%= reading.relapsed_children(reading.none_arm) %>.
+  </p>
+  <p class="text-sm text-muted">
+    Every count on this page is read from the sweep's stored samples at render time, through
+    the same reading <%= link_to "the sweep page", experiment_path("logic", anchor: "logic-reading") %>
+    draws.
+  </p>
+
+  <h2>The ladder</h2>
+  <% income = reading.income_share %>
+  <p id="logic-finding-ladder">
+    Descriptively, counting a rung where it held a tenth of a child's world for
+    <%= constants::PERSISTENCE_RUN %> samples running: of <%= full.children.size %> full
+    children, the worlds reached
+    <%= reading.read_once_tasks.map { |task| "#{task.upcase} in #{reading.reached(full, task)}" }.to_sentence %>;
+    <%= constants::DEEP_TASKS.map { |task| "#{task.upcase} in #{reading.reached(full, task)}" }.to_sentence %>.
+    <% [reading.deep_only_arm, reading.none_arm].each do |arm| %>
+      <% held = constants::TASKS.select { |task| reading.reached(arm, task).positive? } %>
+      Of <%= arm.children.size %> <%= arm.name %> children,
+      <% if held.empty? %>
+        none reached a rung.
+      <% else %>
+        the worlds reached <%= held.map { |task| "#{task.upcase} in #{reading.reached(arm, task)}" }.to_sentence %>
+        and no other rung.
+      <% end %>
+    <% end %>
+    <%= reading.deep_children(full) %> full, <%= reading.deep_children(reading.deep_only_arm) %>
+    deep-only and <%= reading.deep_children(reading.none_arm) %> none children reached a deep
+    rung, so <%= reading.arms.sum { |arm| reading.stepping_stones(arm) } %> climbed one through
+    OR, ANDN or NOR, the stepping stones of Lenski et al. 2003.
+    <% if income %>
+      Tasks gave a full cell about <%= percent_value income.mean %> of its income, between
+      <%= percent_value income.low %> and <%= percent_value income.high %> across the children,
+      an estimate that ignores the stock cap.
+    <% end %>
+  </p>
+
+  <%= render "experiments/logic_reading", reading: reading.report %>
+<% else %>
+  <p class="text-muted">
+    No child of <%= link_to "the sweep", experiment_path("logic") %> is in this database, so
+    there is nothing to read here. This page reads the children at render time and states the
+    claim from them.
+  </p>
+<% end %>
+
+<h2>What a refuted H-deep means</h2>
+<p>
+  On the lab, read-only queries over every stored sample of the 162 children found
+  <span class="mono">logic_capability_deep</span> at 0 in every one. The assay never credited
+  XOR to more than 5 of the 256 cells it drew, in one sample of run 4817, nor EQU to more than
+  1, against the 26 a tenth of the world needs. With no deep rung in any arm the tests cannot
+  favour the full ladder, and the pre-registration reads a tie throughout as refuted. H-deep
+  needed only 5 discordant pairs, and 0 of 54 full children puts a two-sided 95% upper bound
+  of about 0.066 on the rate at which a paid child reaches a deep rung in this budget. Child
+  for child, the deep-only worlds read exactly as the unpaid ones in every column of the
+  report: with no XOR or EQU ever credited, their pay was never collected, and H-stones ties
+  as H-deep does.
+</p>
+<p>
+  So given a NAND and paid for every part, BFF copiers climb every rung that reads its inputs
+  once and stop below the two that need an input twice. The pre-registration read this
+  outcome as closing the "ladder of compositions" route, with mutational supply and a code
+  region apart from the copied tape as the next suspects. A
+  <%= link_to "design study", "#{studies_url}/meta-stack.md" %> written before this
+  reading, and summarised in the Meta-stack pre-registration in the
+  <%= link_to "design record", record_url %> (2026-10-02, "Meta-stack: does a soup assemble the
+  deep rungs from paid parts on a metabolism tape read with a stack NAND?"), separated them.
+  Its numbers are pilot numbers from a
+  scratch copy of the engine, not findings. Supply did not bind: a specific substitution
+  arrived somewhere in a world every 128 epochs, the read-once rungs came on schedule, and
+  mutation rates of 4 and 8 times the default made no deep rung, while 16 times melted the
+  copiers. Nor did the copier alone: a code region the soup never runs climbed to NOR and
+  stopped there. What binds, on the study's reading, is <strong>fan-out in a two-head machine
+  whose NAND writes in place</strong>. A deep rung needs a value twice, and a NAND that
+  overwrites its operand leaves nothing to read again without a stored copy and re-aligned
+  heads. Its follow-up tried a NAND that keeps its operands, and in the pilot that code region,
+  at a raised mutation rate, then held XOR or EQU at a tenth of the world in 2 of 3 seeds.
+</p>
+<p>
+  H-complexity not being shown sets this sweep apart from Metabolism, where paid complexity
+  rose: here pay did not make the dominant replicator execute more of its tape, 2 pairs
+  against 1.
+</p>
+
+<h2>What comes next</h2>
+<p>
+  <%= link_to_if @show.sweep_seeded?("meta_stack"), "Meta-stack", experiment_path(Lab.slug_for("meta_stack")) %>,
+  DESIGN §1.3 item 17,
+  seeded right after this reading, asks this sweep's question on the machine the study points
+  at: a second, 32-byte tape the soup never executes, read by the logic assay with the NAND
+  that keeps its operands, against an arm paid for the deep rungs alone and an arm with this
+  sweep's in-place NAND. It runs on the same parents and pairs its children with this sweep's.
+</p>
+
+<h2>What is not claimed</h2>
+<ul>
+  <li>
+    <strong>Nothing about rung 4 on Soup.</strong> This substrate imports an objective and a
+    primitive: whatever rose here was paid for by tasks the programme chose, computed with a
+    byte the programme added. It is never pooled with the fitness-free runs, and rung 4 on
+    Soup stays "not shown".
+  </li>
+  <li>
+    <strong>Not "XOR is unreachable".</strong> It is one machine and one budget, and what the
+    NAND byte writes was the programme's choice. The study's account of why it stops is pilot,
+    and Meta-stack is what tests it.
+  </li>
+  <li>
+    <strong>A finite ladder.</strong> EQU is its top, so complexity here is at most five NANDs
+    deep, and the inputs are the assay's case sets.
+  </li>
+  <li>
+    <strong>Children are correlated.</strong> Three children share each parent's world, four
+    of the parents were piloted, and the none arm repeats the Metabolism sweep's unpaid worlds.
+    That is why every test is read by parent, with the extinct pairs kept and without the
+    piloted parents.
+  </li>
+</ul>

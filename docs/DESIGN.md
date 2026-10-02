@@ -803,6 +803,13 @@ sample.
     piloted parents. Pre-registered in `docs/design_record.md`, 2026-10-01, "Logic: does a
     soup assemble features beyond its one-step rungs when the parts are paid?", whose
     numbers live in `Lab::LogicReading`; `lab:logic_report` reads it.
+    **Result** (2026-10-02, final): all 162 children finished, one full child extinct;
+    H-capability-L shown, 53 pairs to 0 (p = 1.11e-16); H-deep refuted, 0 to 0 with 53 ties,
+    no XOR or EQU at a tenth in any arm; H-stones refuted, 53 ties; H-complexity not shown,
+    2 to 1 with 45 ties (p = 0.5); the extinct-kept and unpiloted re-readings give the same
+    outcomes. The full arm climbed every read-once rung, NOT to NOR. Finding
+    `paid-logic-climbs-only-read-once-tasks`, `negative`, imports an objective and a
+    primitive.
 17. **Meta-stack** — does a soup assemble XOR and EQU from paid parts once its computing runs
     off the copier, on a NAND that keeps its operands? The Meta-stack variant of §1.4, a
     descendant sweep from the same 18 parents under the same rule, seeded only once the Logic

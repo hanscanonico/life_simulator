@@ -28,6 +28,29 @@ module Findings
                  "Soup, which stays not shown."
       ),
       Finding.new(
+        slug: "paid-logic-climbs-only-read-once-tasks",
+        title: "Given a NAND, paid replicators climb every logic task that reads its inputs once, " \
+               "and none that needs one twice",
+        date: Date.new(2026, 10, 2),
+        experiment_slug: "logic",
+        related_finding_slugs: %w[paid-computation-stops-at-one-step-tasks],
+        status: :negative,
+        imports_objective: true,
+        summary: "DESIGN §1.3 sweep 16 gave paid replicators a NAND. The 18 emerged worlds of the " \
+                 "from-emerged sweep ran another 40 000 epochs each, three seeds a parent, with an " \
+                 "assay-only NAND byte and Avida's logic tasks as the ladder, in three arms: every " \
+                 "rung paid, XOR and EQU alone paid, and nothing paid. All 162 children finished; " \
+                 "one paid child died out. Pay bought capability: all 53 measured pairs favour the " \
+                 "paid ladder (p = 1.11e-16), and the paid worlds climbed every rung from NOT to " \
+                 "NOR, the tasks a NAND circuit can compute reading each input once. None held XOR " \
+                 "or EQU, the two that need an input twice, at a tenth of its world. The rung-4 " \
+                 "question, whether a soup assembles those deep rungs from paid parts, is refuted, " \
+                 "0 to 0 with 53 ties, and so is the stepping-stone test against the arm paid for " \
+                 "XOR and EQU alone. Paid complexity did not rise, 2 pairs against 1 (p = 0.5). The " \
+                 "substrate imports an objective and a primitive, so none of this moves rung 4 on " \
+                 "Soup, which stays not shown."
+      ),
+      Finding.new(
         slug: "emergence-peaks-at-intermediate-reach",
         title: "Emergence peaks at an intermediate reach",
         date: Date.new(2026, 10, 1),

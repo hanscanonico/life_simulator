@@ -1547,6 +1547,84 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the Logic write-up" do
+      let(:logic) { Findings::Registry.find("paid-logic-climbs-only-read-once-tasks") }
+
+      it "badges it as importing an objective beside its status" do
+        get finding_path(logic)
+
+        meta = response.parsed_body.at_css(".finding-meta")
+        expect(meta.at_css(".badge").text).to eq("negative")
+        expect(meta.at_css(".objective-badge").text.squish).to eq("imports an objective")
+      end
+
+      it "cites the pre-registration, states what the refuted H-deep means and what comes next" do
+        get finding_path(logic)
+
+        expect(response.body.squish)
+          .to include("DESIGN §1.3 item 16", "a tie throughout as refuted",
+                      "fan-out in a two-head machine whose NAND writes in place</strong>",
+                      "Supply did not bind", "Its numbers are pilot numbers",
+                      "DESIGN §1.3 item 17", "imports an objective and a primitive",
+                      "rung 4 on Soup stays \"not shown\"")
+      end
+
+      context "with none of its children in this database" do
+        it "says so instead of reading" do
+          get finding_path(logic)
+
+          expect(response.parsed_body.text.squish).to include("No child of the sweep is in this database")
+        end
+      end
+
+      it "links both design studies it cites" do
+        get finding_path(logic)
+
+        hrefs = response.parsed_body.css("a").pluck("href")
+        expect(hrefs).to include(end_with("docs/studies/logic.md"), end_with("docs/studies/meta-stack.md"))
+      end
+
+      context "before the Meta-stack sweep is seeded" do
+        it "names it without a link that would not resolve" do
+          get finding_path(logic)
+
+          expect(response.body.squish).to include("Meta-stack, DESIGN §1.3 item 17")
+          expect(response.parsed_body.at_css("a[href='/experiments/meta-stack']")).to be_nil
+        end
+      end
+
+      context "with the Meta-stack sweep seeded" do
+        before { create(:experiment, slug: "meta-stack") }
+
+        it "links its page" do
+          get finding_path(logic)
+
+          expect(response.parsed_body.at_css("a[href='/experiments/meta-stack']").text).to eq("Meta-stack")
+        end
+      end
+
+      context "with its children read" do
+        before do
+          experiment = logic_experiment
+          metabolism_parent
+          Experiments::DescendantSweepBuilderService.call(experiment)
+          logic_children(experiment, :full).each { |run| logic_sample(run, capability: 3) }
+          %i[deep_only none].each { |arm| logic_children(experiment, arm).each { |run| logic_sample(run) } }
+        end
+
+        it "states each test from the sweep's reading and draws the sweep's section" do
+          get finding_path(logic)
+
+          tests = response.parsed_body.at_css("#logic-finding-tests").text.squish
+          expect(tests).to include("H-capability-L, full against none: 3 pairs favour full, 0 none and 0 tie, " \
+                                   "of 3 measured, p = 0.125, not shown.")
+          expect(tests).to include("H-stones, full against deep-only: 0 pairs favour full, 0 deep-only and 3 tie, " \
+                                   "of 3 measured, refuted.")
+          expect(response.parsed_body.at_css("#logic-reading")).to be_present
+        end
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

@@ -22,8 +22,9 @@ RSpec.describe Findings::Registry do
   it "leads a shared date with the strongest current result" do
     slugs = described_class.all.map(&:slug)
 
-    expect(slugs.first(10))
-      .to eq(%w[paid-computation-stops-at-one-step-tasks emergence-peaks-at-intermediate-reach copying-gets-faster-under-an-economy
+    expect(slugs.first(11))
+      .to eq(%w[paid-computation-stops-at-one-step-tasks paid-logic-climbs-only-read-once-tasks
+                emergence-peaks-at-intermediate-reach copying-gets-faster-under-an-economy
                 complexity-from-an-emerged-start lineages-after-emergence complexity-under-contest
                 complexity-under-asymmetry complexity-keeps-rising copy-cost-adaptation
                 replicator-complexity-plateau])
@@ -42,6 +43,15 @@ RSpec.describe Findings::Registry do
     expect(finding.summary).to include("all 54 pairs favour the reward (p = 5.55e-17)",
                                        "0 to 0 with 54 ties", "18 pairs against 1 (p = 3.81e-05)",
                                        "stays not shown")
+  end
+
+  it "reads the Logic finding as negative on its rung-4 question, labelled as importing an objective" do
+    finding = described_class.find("paid-logic-climbs-only-read-once-tasks")
+
+    expect(finding).to have_attributes(experiment_slug: "logic", status: :negative, imports_objective?: true)
+    expect(finding.summary).to include("all 53 measured pairs favour the paid ladder (p = 1.11e-16)",
+                                       "0 to 0 with 53 ties", "2 pairs against 1 (p = 0.5)",
+                                       "an objective and a primitive", "stays not shown")
   end
 
   it "labels no finding on a fitness-free sweep as importing an objective" do
