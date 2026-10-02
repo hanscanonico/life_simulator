@@ -356,23 +356,24 @@ pub(crate) fn case_outputs(
     let pairs = inputs.map(|(x, y)| [x, y]);
     case_outputs_with(
         tape,
-        pairs.each_ref().map(|pair| pair.as_slice()),
+        &pairs.each_ref().map(|pair| pair.as_slice()),
         ops,
         assay_ops,
     )
 }
 
-/// `case_outputs` with each case's inputs placed as `run_case_with` places them.
+/// `case_outputs` on any number of cases, each case's inputs placed as `run_case_with`
+/// places them.
 pub(crate) fn case_outputs_with(
     tape: &[u8],
-    inputs: [&[u8]; TASK_CASES],
+    inputs: &[&[u8]],
     ops: OpSet,
     assay_ops: AssayOps,
 ) -> Option<Vec<Vec<u8>>> {
     if !tape.contains(&bff::EMIT) {
         return None;
     }
-    let mut runs = Vec::with_capacity(TASK_CASES);
+    let mut runs = Vec::with_capacity(inputs.len());
     for case in inputs {
         let run = run_case_with(tape, case, ops, assay_ops);
         if run.outputs.is_empty() {

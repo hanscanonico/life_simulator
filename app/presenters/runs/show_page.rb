@@ -63,7 +63,7 @@ module Runs
       "meta_inherit_rate" => "Metabolism tapes passed on per interaction",
       "meta_diversity" => "Distinct metabolism tapes",
       "logic_capability_replicating" => "Logic rungs a tenth of the replicating tapes solve",
-      "logic_depth_max" => "NANDs in the deepest topless rung a tenth of the cells solve",
+      "logic_depth_max" => "NANDs in the deepest topless rung a tenth of the cells solve (−1: none)",
       "logic_depth_classes" => "Topless rungs a tenth of the cells solve"
     }.freeze
 

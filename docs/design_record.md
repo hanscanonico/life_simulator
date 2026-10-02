@@ -4288,27 +4288,45 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   Meta-stack offline readings, and still need the 604 open four-input functions closed.
   - **Inputs.** `logic3` puts z on `B[2L−3]`, `logic4` also w on `B[2L−4]`
     (`task::run_case_with`; a buffer shorter than the inputs holds none, as before). Buffer,
-    emit, `TASK_CASES`, `TASK_MAX_OUTPUTS`, both `logic_nand` modes and the metabolism tape
-    are the logic ladder's.
-  - **Case draws**, on `STREAM_TASK` at (seed, epoch), at most `DEPTH_CASE_DRAWS` = 1 024,
-    then a fixed set a test holds to the rule. Three inputs: x, y, z whole random bytes per
-    case, redrawn until each input's three values are distinct, all 8 rows appear among the
-    24 bit columns, and no non-constant function expects three equal outputs or sits a
-    constant offset from an input it is not the projection of. Four inputs, the designed
-    draw: a random bijection (a Fisher–Yates shuffle) puts each of the 16 rows on exactly one
-    of the 16 columns of cases 0 and 1, case 2 is x, y, z, w random bytes, redrawn until each
-    input's values are distinct. Each rule is read off the inputs directly over 10^5 draws.
-  - **Credit.** One pass per slot over the 24 columns gives its truth table (bit k is the
+    emit, `TASK_MAX_OUTPUTS`, both `logic_nand` modes and the metabolism tape are the logic
+    ladder's. `logic3` runs the logic ladder's three cases; `logic4` runs six
+    (`topless::Inputs::cases`), the only departure from `TASK_CASES`.
+  - **Case draws**, designed, on `STREAM_TASK` at (seed, epoch), at most
+    `DEPTH_CASE_DRAWS` = 1 024, then a fixed set a test holds to the rule. Every row
+    (combination of the inputs) is read `READS_PER_ROW` = 3 times, each at a different bit
+    position: three times over, a Fisher–Yates shuffle puts each row on exactly one bit
+    column of that read's cases (one case on three inputs, two on four), reshuffled (at most
+    1 024 times) until no row lands on a bit position an earlier read gave it. The draw is
+    redrawn until each input's values are pairwise distinct and, on three inputs only, no
+    non-constant function expects equal outputs or sits a constant offset from an input it
+    is not the projection of. About 94% of three-input draws and 82% of four-input ones
+    pass. Each rule is read off the inputs directly over 10^5 draws.
+    - **Why three reads apart.** The study's draws (three-input: random bytes covering the
+      8 rows; four-input: a bijection of the 16 rows onto cases 0 and 1, case 2 random) read
+      many rows at one bit position only. A NAND masked by a code byte computes a
+      different function at different bit positions (`~<~~!` outputs x on the mask's bits
+      and 1 elsewhere), and a row read once at one position passes that mix as a single,
+      deep function. On the study's draws the false-credit search below found `[<~!]`
+      credited depth ≥ 5 on 26% of four-input draws and ≥ 7 on 16%, `~<~~!` ≥ 9 on 4.1%,
+      and on three inputs `~<~~!` ≥ 5 on 1.4%; and the reward paid it — in the
+      `with_logic_solvers` world at reward 1 024 over 50 epochs, 383 of 45 982 four-input
+      credits (11 of 45 745 three-input) were functions of depth ≥ 5 the tape does not
+      compute, mostly on mutants holding `{~!` or `<~!` behind one junk byte. A row read
+      at three distinct positions contradicts itself unless the mask agrees at all three,
+      so the mix is refused. Two reads per row (four cases on four inputs) still left
+      `[{~!]` at ≥ 5 on 1.1%; three leave nothing above 0.05% (below).
+  - **Credit.** One pass per slot over every bit column gives its truth table (bit k is the
     row whose input values are k's bits, x then y then z, w the top bit on four, as
     `research/minnand` numbers them). A slot credits nothing where two columns disagree on
-    a row, a row is unread, the function is constant, its three output bytes are equal, or
-    they are an input plus one constant and the function is not that input. On three inputs
-    the draw already refuses the last two; on four they are refused at the slot, whatever
-    function matches (study §1.2). Otherwise the slot credits its function's
-    input-permutation class, the least truth table among its permutations (a 64 K table
-    built once per process). **Rungs** are those classes: 78 on three inputs (ECHO = the
-    projections, then Avida's 77), 3 982 on four; input copies and constants are no rungs
-    but ECHO. A tape is credited at most four, each once.
+    a row (not a bitwise function, or not the same one at every bit position), the
+    function is constant, its output bytes are all equal, or they are an input plus one
+    constant and the function is not that input. On three inputs the draw already refuses
+    the last two; on four they are refused at the slot, whatever function matches (study
+    §1.2), which six cases spring on fewer than 10 of 400 000 random functions. Otherwise
+    the slot credits its function's input-permutation class, the least truth table among
+    its permutations (a 64 K table built once per process). **Rungs** are those classes:
+    78 on three inputs (ECHO = the projections, then Avida's 77), 3 982 on four; input
+    copies and constants are no rungs but ECHO. A tape is credited at most four, each once.
   - **Depth** is the exact minimal NAND count, `include_bytes!` of copies of
     `research/minnand/data/minnand{3,4}.bin` under `engine/crates/life-engine/data/`, held by
     a test to the SHA-256 in that README (the engine computes the hash itself; no dependency
@@ -4342,7 +4360,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     0 is the run with tasks off, byte for byte and stock for stock, under both payers and
     `task_every` 1 and 8, and its readings leave every shared reading the same sample for
     sample. Reward pins: `with_logic_solvers` at reward 1 024, seed 42, 50 epochs,
-    `0x7eb5_a1ec_92c0_2518` (`logic3`) and `0xfd5a_37ca_d8eb_6e95` (`logic4`).
+    `0x2561_20e8_9636_e281` (`logic3`) and `0x7eb5_a1ec_92c0_2518` (`logic4`).
   - **Solvers.** Straight-line tapes compiled from `research/minnand`'s witness circuits —
     XOR3 (8), MAJ3 (6), NOR3 (7), the three-input top 0x16 (10), the four-input NOR (10),
     XOR4 (12), a 13-gate class 0x0168 and a 7-gate four-input one — compute their function
@@ -4351,22 +4369,23 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     slot, and only there). Copiers, junk emitters, sprayers and inputs plus a constant are
     credited nothing, echoers ECHO alone.
   - **False deep credit** (`the_false_deep_credit_search`, on demand): every program of up
-    to 5 bytes over the ten ops, `!` and `~` in front of a zero tail, on 200 draws, the
-    worst re-read on 10 000. **Three inputs:** nothing at depth ≥ 8 under either NAND; the
-    worst are ≥ 5 on 0.22% (`[-<~!`), ≥ 6 on 0.64% and ≥ 7 on 0.08%. **Four inputs:** the
-    designed draw sees most rows on one column only, so masked NANDs of a code byte read as
-    deep functions far more often: ≥ 5 on 27% (`[<~!]`), ≥ 7 on 15%, ≥ 8 on 8.5%, **≥ 9 on
-    4.1%** (`~<~~!`) and ≥ 10 on 0.3% of draws. So no cheap program reaches a tenth of draws
-    at depth ≥ 9 (a test holds that over every program of up to 4 bytes), and none could be
-    a decile median or hold 5 samples running there; but a four-input `logic_depth_max` of
-    8 or below in a single sample can be a partial solver, and the H-rise reading must use
-    persistence and medians, never one sample.
-  - **Cost** (a loaded Mac, load 20–27): on a Meta-stack-like 128×128 world, 32-byte stack
-    metabolism tapes all mutants of the evolved loop (16 366 distinct), one assay epoch
-    costs 17.0 ms under `logic`, 20.0 under `logic3` and 24.1 under `logic4` (the first
-    including the one-time 64 K class table); a sample's logic and depth readings 0.2 ms
-    under `logic` and 0.5–0.6 ms under the topless ladders.
+    to 5 bytes over the ten ops, `!` and `~` in front of a zero tail, on 400 draws, the six
+    nearest at each depth re-read on 20 000 fresh draws (and once on a 2 000-draw screen).
+    The most draws any program is credited depth ≥ 5 on: 0.04% on three inputs (`.<~~!`,
+    `}-<~!`, under either NAND), 0 on four inputs in place and 0.04% under the stack NAND
+    (`[{!~]`); ≥ 7 at most 0.02% (`<~~!+`, three inputs), nothing ≥ 8 on either ladder. A
+    test holds every program of up to 4 bytes to at most one of 200 draws at depth ≥ 5. In
+    the `with_logic_solvers` world above (a one-off check against a reference reading of
+    every row at every bit position), no credit was a deep function the tape does not
+    compute on either ladder; 10 of 45 698 three-input credits were shallow ones.
+  - **Cost** (`the_topless_assay_cost`, on demand): on a Meta-stack-like 128×128 world,
+    32-byte stack metabolism tapes all mutants of the evolved loop (16 366 distinct), one
+    assay epoch costs 10.4–11.0 ms under `logic`, 11.6–11.7 ms under `logic3` (the first
+    including the one-time 64 K class table) and 22.2 ms under `logic4`, whose six cases
+    double the runs; a sample's logic and depth readings 0.2 ms under `logic` and 0.4–0.6
+    ms under the topless ladders. The study's own draws cost 12.0 and 15.6 ms on the same
+    machine.
   - `tasks`, `task_depth_cap` are dynamics: a descendant may set them. A run stored before
     `task_depth_cap` existed carries no key, and `Lab::CanonicalParams` fills in 0, the
     uncapped run it was. `runner schema` exports the ladder's units, floor and draw bound
-    under `tasks.topless`.
+    under `tasks.topless`, with the reads per row and each ladder's case count.

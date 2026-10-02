@@ -110,7 +110,7 @@
     },
     {
       "default": "off",
-      "doc": "Which tasks a soup cell is assayed on. off assays nothing, which is the substrate of DESIGN 1.1. arith runs each cell's tape alone, on two small inputs at the end of a buffer twice its length, with ! emitting the byte under head0, and credits the tasks of an arithmetic ladder (echo, inc, dec, add, sub, not, double, mul) that one of its outputs computes in all three cases. logic runs the same assay on two whole-byte inputs, with ~ also writing the NAND of the bytes under the two heads under head0, and credits the tasks of a logic ladder (echo, not, nand, and, orn, or, andn, nor, xor, equ). logic3 and logic4 run the logic assay with a third input z one byte left of y, and a fourth w one byte left of z under logic4, and credit every non-constant function of the inputs that an output computes on all 24 bit columns of the three cases, each class of functions equal up to a permutation of the inputs a rung of its own, worth its minimal NAND count. Outside the assay ! and ~ are never instructions, and ~ is never one under arith. Refused on life.",
+      "doc": "Which tasks a soup cell is assayed on. off assays nothing, which is the substrate of DESIGN 1.1. arith runs each cell's tape alone, on two small inputs at the end of a buffer twice its length, with ! emitting the byte under head0, and credits the tasks of an arithmetic ladder (echo, inc, dec, add, sub, not, double, mul) that one of its outputs computes in all three cases. logic runs the same assay on two whole-byte inputs, with ~ also writing the NAND of the bytes under the two heads under head0, and credits the tasks of a logic ladder (echo, not, nand, and, orn, or, andn, nor, xor, equ). logic3 and logic4 run the logic assay with a third input z one byte left of y, and a fourth w one byte left of z under logic4, and credit every non-constant function of the inputs that an output computes on every bit column of its cases, three under logic3 and six under logic4, drawn so each combination of the inputs is read at three different bit positions; each class of functions equal up to a permutation of the inputs is a rung of its own, worth its minimal NAND count. Outside the assay ! and ~ are never instructions, and ~ is never one under arith. Refused on life.",
       "name": "tasks",
       "type": "enum",
       "values": [
@@ -421,6 +421,10 @@
     "steps": 4096,
     "topless": {
       "case_draws": 1024,
+      "cases": {
+        "logic3": 3,
+        "logic4": 6
+      },
       "depth_floor": 13,
       "depth_units": [
         1,
@@ -437,7 +441,8 @@
         45,
         64,
         91
-      ]
+      ],
+      "reads_per_row": 3
     }
   },
   "transition": {

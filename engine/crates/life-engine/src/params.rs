@@ -14,7 +14,7 @@ use crate::replicator::{
 use crate::task::{
     TASKS, TASK_CASES, TASK_CASE_DRAWS, TASK_INPUT_RANGE, TASK_MAX_OUTPUTS, TASK_STEPS,
 };
-use crate::topless::{Inputs, DEPTH_CASE_DRAWS, DEPTH_FLOOR, DEPTH_UNITS};
+use crate::topless::{Inputs, DEPTH_CASE_DRAWS, DEPTH_FLOOR, DEPTH_UNITS, READS_PER_ROW};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -492,9 +492,11 @@ const FIELDS: &[Field] = &[
               the tasks of a logic ladder (echo, not, nand, and, orn, or, andn, nor, xor, \
               equ). logic3 and logic4 run the logic assay with a third input z one byte \
               left of y, and a fourth w one byte left of z under logic4, and credit every \
-              non-constant function of the inputs that an output computes on all 24 bit \
-              columns of the three cases, each class of functions equal up to a \
-              permutation of the inputs a rung of its own, worth its minimal NAND count. \
+              non-constant function of the inputs that an output computes on every bit \
+              column of its cases, three under logic3 and six under logic4, drawn so each \
+              combination of the inputs is read at three different bit positions; each \
+              class of functions equal up to a permutation of the inputs is a rung of its \
+              own, worth its minimal NAND count. \
               Outside the assay ! and ~ are never instructions, and ~ is never one under \
               arith. Refused on life.",
     },
@@ -1092,6 +1094,11 @@ impl Params {
                 },
                 "topless": {
                     "case_draws": DEPTH_CASE_DRAWS,
+                    "reads_per_row": READS_PER_ROW,
+                    "cases": {
+                        "logic3": Inputs::Three.cases(),
+                        "logic4": Inputs::Four.cases(),
+                    },
                     "depth_units": DEPTH_UNITS,
                     "depth_floor": DEPTH_FLOOR,
                 },
@@ -1922,6 +1929,8 @@ mod tests {
                 },
                 "topless": {
                     "case_draws": 1024,
+                    "reads_per_row": 3,
+                    "cases": {"logic3": 3, "logic4": 6},
                     "depth_units": [1, 1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 91],
                     "depth_floor": 13,
                 },

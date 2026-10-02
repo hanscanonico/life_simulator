@@ -147,20 +147,23 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   none; docs/design_record.md 2026-10-02, the topless ladder, engine slice;
   `docs/studies/topless.md`): the logic assay with a third input z on `B[2L−3]`, and under
   `logic4` a fourth w on `B[2L−4]`; buffer, emit, budget, slots, both `logic_nand` modes and
-  the metabolism tape are the logic ladder's. A slot's truth table is read off the 24 bit
-  columns of the three cases in one pass; a slot is credited the function it computes,
-  unless two columns disagree on a row, a row is unread, the function is constant, its
-  three output bytes are equal, or they sit a constant offset from an input it is not. The
+  the metabolism tape are the logic ladder's; `logic4` runs six cases where the others run
+  three. The cases are **designed** so that every row (combination of the inputs) is read
+  three times, each time at a different bit position: three times over, a random bijection
+  puts each row on exactly one bit column of that read's cases (one case on three inputs,
+  two on four), reshuffled until no row lands on a bit position an earlier read gave it,
+  and redrawn until each input's values are distinct and, on three inputs, no non-constant
+  function expects equal outputs or sits an offset from an input it is not. A slot's truth
+  table is read off every bit column in one pass; a slot is credited the function it
+  computes, unless two columns disagree on a row, the function is constant, its output
+  bytes are equal, or they sit a constant offset from an input it is not (on four inputs
+  these last two are read at the slot, not the draw). Reading each row at three bit
+  positions is what refuses a NAND masked by a code byte: it computes a different function
+  at different bit positions, which a row read once would pass as one deep function. The
   **rungs** are the input-permutation classes of non-constant functions: 78 on three inputs
   (ECHO, the inputs themselves, then Avida's 77), 3 982 on four; AND of any two inputs is
-  one rung. Three-input cases are whole random bytes redrawn until each input's values are
-  distinct, every one of the 8 rows appears among the 24 columns, and no non-constant
-  function expects equal outputs or sits an offset from an input it is not (about two
-  draws in three pass). Four-input cases are designed: a random bijection puts each of the
-  16 rows on one of the 16 columns of cases 0 and 1, case 2 is random bytes, redrawn until
-  each input's values are distinct; the constant and offset clauses are read at the slot.
-  Both draw on the task stream, at most 1 024 times, then a fixed set. A rung's **depth**
-  is its exact minimal NAND count, from `research/minnand`'s tables embedded in the engine
+  one rung. Both draw on the task stream, at most 1 024 times, then a fixed set. A rung's
+  **depth** is its exact minimal NAND count, from `research/minnand`'s tables embedded in the engine
   (`engine/crates/life-engine/data/`); the 604 four-input functions known only to need 13
   or more are credited at 13, a floor. A cell is paid `task_reward × Σ units(min(depth,
   cap))` over the **distinct** rungs its slots compute, units = √(2^depth) rounded (1, 1, 2,

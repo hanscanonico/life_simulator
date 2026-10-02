@@ -7259,8 +7259,8 @@ mod tests {
     /// The topless rewards' own pins: `depth_params` over `with_logic_solvers`' layout, seed
     /// 42, after 50 epochs. Both two-input solvers keep their rungs: the XOR solver copies x
     /// onto the byte z holds before it reads there.
-    const PINNED_LOGIC3_REWARD_HASH: u64 = 0x7eb5_a1ec_92c0_2518;
-    const PINNED_LOGIC4_REWARD_HASH: u64 = 0xfd5a_37ca_d8eb_6e95;
+    const PINNED_LOGIC3_REWARD_HASH: u64 = 0x2561_20e8_9636_e281;
+    const PINNED_LOGIC4_REWARD_HASH: u64 = 0x7eb5_a1ec_92c0_2518;
 
     #[test]
     fn the_topless_rewards_are_pinned() {
@@ -7494,17 +7494,17 @@ mod tests {
     /// epochs, and of a planted world, pinned apart from every digest above
     /// (`docs/design_record.md`, 2026-10-02, the topless ladder).
     const PINNED_DEPTH: [&str; 2] = [
-        "logic_depth_max=Some(1) logic_depth_classes=Some(1) logic_share_echo=Some(0.01171875) \
-         logic_share_not=Some(0.1015625) logic_share_nand=Some(0.00390625) \
+        "logic_depth_max=Some(4) logic_depth_classes=Some(2) logic_share_echo=Some(0.01171875) \
+         logic_share_not=Some(0.09375) logic_share_nand=Some(0.00390625) \
          logic_share_and=Some(0.00390625) logic_share_orn=Some(0.0078125) logic_share_or=Some(0.0) \
-         logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) logic_share_xor=Some(0.06640625) \
-         logic_share_equ=Some(0.0) logic_capability=Some(1) logic_capability_deep=Some(0) \
+         logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) logic_share_xor=Some(0.05859375) \
+         logic_share_equ=Some(0.0) logic_capability=Some(0) logic_capability_deep=Some(0) \
          dominant_logic_tasks=Some(0) dominant_logic_task_count=Some(0)",
-        "logic_depth_max=Some(1) logic_depth_classes=Some(1) logic_share_echo=Some(0.01171875) \
-         logic_share_not=Some(0.10546875) logic_share_nand=Some(0.00390625) \
-         logic_share_and=Some(0.00390625) logic_share_orn=Some(0.0078125) logic_share_or=Some(0.0) \
-         logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) logic_share_xor=Some(0.07421875) \
-         logic_share_equ=Some(0.0) logic_capability=Some(1) logic_capability_deep=Some(0) \
+        "logic_depth_max=Some(4) logic_depth_classes=Some(2) logic_share_echo=Some(0.015625) \
+         logic_share_not=Some(0.078125) logic_share_nand=Some(0.0078125) \
+         logic_share_and=Some(0.00390625) logic_share_orn=Some(0.0) logic_share_or=Some(0.0) \
+         logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) logic_share_xor=Some(0.06640625) \
+         logic_share_equ=Some(0.0) logic_capability=Some(0) logic_capability_deep=Some(0) \
          dominant_logic_tasks=Some(0) dominant_logic_task_count=Some(0)",
     ];
     /// Six rows of XOR4 (12 NANDs), four of the four-input NOR (10) and one of a 13-NAND

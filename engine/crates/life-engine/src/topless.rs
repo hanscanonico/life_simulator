@@ -1,7 +1,7 @@
 //! The topless ladder (`docs/DESIGN.md` §1.1; `docs/studies/topless.md`; the 2026-10-02
 //! design-record entry on its engine slice): the logic assay on three or four whole-byte
-//! inputs, crediting every non-constant function of them, read off the bit columns of the
-//! three cases, and paying each by its exact minimal NAND count. The verdict is a pure
+//! inputs, crediting every non-constant function of them, read off the bit columns of its
+//! cases, every row at three bit positions, and paying each by its exact minimal NAND count. The verdict is a pure
 //! function of the tape, the cases, the run's instruction set and its `logic_nand`, as the
 //! two-input logic assay's is.
 //!
@@ -16,9 +16,7 @@ use crate::bff::OpSet;
 use crate::logic::{self, LOGIC_TASKS};
 use crate::params::LogicNand;
 use crate::rng::{self, Rng};
-use crate::task::{
-    self, TASK_CAPABILITY_DENOMINATOR, TASK_CASES, TASK_MAX_OUTPUTS, TASK_SAMPLE_CELLS,
-};
+use crate::task::{self, TASK_CAPABILITY_DENOMINATOR, TASK_MAX_OUTPUTS, TASK_SAMPLE_CELLS};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
@@ -39,24 +37,37 @@ pub const DEPTH_FLOOR: u32 = 13;
 /// to the nearest integer (none is a tie), the topless study's recommended scale (§1.3).
 pub const DEPTH_UNITS: [u32; DEPTH_FLOOR as usize + 1] =
     [1, 1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64, 91];
-/// The most case draws one assay epoch makes before it falls back to a fixed set. About a
-/// third of three-input draws fail to separate and a few in a thousand four-input ones, so
-/// the bound is never reached in practice; it is there so the draw is total and
-/// deterministic.
+/// How many times the cases read each row of the inputs, each time at a bit position they
+/// read it at no other time. A program that computes a different function at different
+/// bit positions, a NAND masked by a code byte, then contradicts itself on some row, where
+/// a row read once would read the mix as one deep function.
+pub const READS_PER_ROW: usize = 3;
+/// The most cases an assay epoch runs: the four-input ladder's 16 rows read three times
+/// over 8-bit columns.
+pub const DEPTH_MAX_CASES: usize = 6;
+/// The most case draws one assay epoch makes before it falls back to a fixed set, and the
+/// most shuffles one read of the rows makes before its draw fails. No bound is reached in
+/// practice; they are there so the draw is total and deterministic.
 pub const DEPTH_CASE_DRAWS: u32 = 1024;
 
 /// A set of three-input cases that separates, used only if `DEPTH_CASE_DRAWS` draws in a
-/// row all failed to: (x, y, z, unused w) per case.
-const FALLBACK3: [[u8; 4]; TASK_CASES] = [
-    [0x5a, 0x33, 0x0f, 0],
-    [0xc6, 0x9f, 0x71, 0],
-    [0x21, 0xe8, 0xb4, 0],
+/// row all failed to: (x, y, z, unused w) per case, the unused cases 0.
+const FALLBACK3: [[u8; 4]; DEPTH_MAX_CASES] = [
+    [0x99, 0xcc, 0x2d, 0],
+    [0x9a, 0x4e, 0x53, 0],
+    [0x2e, 0xa5, 0xb2, 0],
+    [0; 4],
+    [0; 4],
+    [0; 4],
 ];
 /// The same for four inputs: (x, y, z, w) per case.
-const FALLBACK4: [[u8; 4]; TASK_CASES] = [
-    [0xf0, 0xcc, 0xaa, 0x00],
-    [0x0f, 0x33, 0x55, 0xff],
-    [0x5a, 0x96, 0x3c, 0xe1],
+const FALLBACK4: [[u8; 4]; DEPTH_MAX_CASES] = [
+    [0xc6, 0x4a, 0x0f, 0x5a],
+    [0xb2, 0xce, 0x63, 0x39],
+    [0x4e, 0x87, 0x65, 0x85],
+    [0x69, 0xc3, 0x5a, 0x3d],
+    [0xbc, 0x3a, 0x30, 0x91],
+    [0xc2, 0x33, 0xfc, 0x67],
 ];
 
 /// How many inputs the ladder reads: `tasks = logic3` or `logic4`.
@@ -76,6 +87,16 @@ impl Inputs {
 
     fn rows(self) -> usize {
         1 << self.count()
+    }
+
+    /// How many cases the ladder runs: `READS_PER_ROW` reads of its rows, each over as
+    /// many cases as the rows fill bytes, three on three inputs and six on four.
+    pub fn cases(self) -> usize {
+        READS_PER_ROW * self.cases_per_read()
+    }
+
+    fn cases_per_read(self) -> usize {
+        self.rows() / 8
     }
 
     /// The truth table of the function that is 1 on every row.
@@ -179,105 +200,144 @@ impl Inputs {
     }
 }
 
-/// The inputs of one assay epoch, shared by every cell: per case, x, y, z and w, the last
-/// 0 and unread on three inputs.
+/// The inputs of one assay epoch, shared by every cell: per case, x, y, z and w, w 0 and
+/// unread on three inputs; the cases past `Inputs::cases` are 0 and never run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cases {
     inputs: Inputs,
-    values: [[u8; 4]; TASK_CASES],
+    values: [[u8; 4]; DEPTH_MAX_CASES],
+    /// The row each bit column reads: per case, per bit.
+    rows: [[u8; 8]; DEPTH_MAX_CASES],
 }
 
 impl Cases {
-    /// Draws cases from `rng` only until they separate (`separates`).
-    ///
-    /// - **Three inputs:** whole random bytes, x, y then z for each case.
-    /// - **Four inputs:** the designed draw. A random bijection puts each of the 16 rows
-    ///   on exactly one of the 16 bit columns of cases 0 and 1, and case 2 is whole random
-    ///   bytes, x, y, z then w. Random bytes cover all 16 rows in 24 columns on 0.55% of
-    ///   draws, so coverage is built in rather than redrawn for.
+    /// Draws cases from `rng` only until they separate (`separates`). The draw is
+    /// designed: `READS_PER_ROW` times over, a random bijection puts each row on exactly
+    /// one bit column of that read's cases, reshuffled until no row lands on a bit
+    /// position an earlier read put it on. Random bytes cover all 16 four-input rows in
+    /// 24 columns on 0.55% of draws, and leave a row read once at one bit position, which
+    /// a masked NAND passes as a deep function.
     pub fn draw(inputs: Inputs, rng: &mut Rng) -> Self {
         for _ in 0..DEPTH_CASE_DRAWS {
-            let values = match inputs {
-                Inputs::Three => {
-                    std::array::from_fn(|_| [rng::byte(rng), rng::byte(rng), rng::byte(rng), 0])
+            if let Some(values) = Self::designed(inputs, rng) {
+                let cases = Self::new(inputs, values);
+                if cases.separates() {
+                    return cases;
                 }
-                Inputs::Four => Self::designed(rng),
-            };
-            let cases = Self { inputs, values };
-            if cases.separates() {
-                return cases;
             }
         }
         let values = match inputs {
             Inputs::Three => FALLBACK3,
             Inputs::Four => FALLBACK4,
         };
-        Self { inputs, values }
+        Self::new(inputs, values)
     }
 
-    fn designed(rng: &mut Rng) -> [[u8; 4]; TASK_CASES] {
-        let mut rows: [usize; 16] = std::array::from_fn(|row| row);
-        rng::shuffle(&mut rows, rng);
-        let mut values = [[0u8; 4]; TASK_CASES];
-        for (column, row) in rows.into_iter().enumerate() {
-            let (case, bit) = (column / 8, column % 8);
-            for (slot, value) in values[case].iter_mut().enumerate() {
-                *value |= (((row >> Inputs::row_bit(slot)) & 1) as u8) << bit;
+    fn designed(inputs: Inputs, rng: &mut Rng) -> Option<[[u8; 4]; DEPTH_MAX_CASES]> {
+        let rows = inputs.rows();
+        let mut positions = [0u8; 16];
+        let mut values = [[0u8; 4]; DEPTH_MAX_CASES];
+        for read in 0..READS_PER_ROW {
+            let mut order: [usize; 16] = std::array::from_fn(|row| row);
+            let order = &mut order[..rows];
+            let mut placed = false;
+            for _ in 0..DEPTH_CASE_DRAWS {
+                rng::shuffle(order, rng);
+                placed = order
+                    .iter()
+                    .enumerate()
+                    .all(|(column, row)| positions[*row] & 1 << (column % 8) == 0);
+                if placed {
+                    break;
+                }
+            }
+            if !placed {
+                return None;
+            }
+            for (column, row) in order.iter().enumerate() {
+                let (case, bit) = (read * inputs.cases_per_read() + column / 8, column % 8);
+                positions[*row] |= 1 << bit;
+                for (slot, value) in values[case][..inputs.count()].iter_mut().enumerate() {
+                    *value |= (((row >> Inputs::row_bit(slot)) & 1) as u8) << bit;
+                }
             }
         }
-        values[2] = std::array::from_fn(|_| rng::byte(rng));
-        values
+        Some(values)
     }
 
-    pub fn new(inputs: Inputs, values: [[u8; 4]; TASK_CASES]) -> Self {
-        Self { inputs, values }
+    pub fn new(inputs: Inputs, values: [[u8; 4]; DEPTH_MAX_CASES]) -> Self {
+        let rows = values.map(|case| {
+            std::array::from_fn(|bit| {
+                (0..inputs.count()).fold(0, |row, slot| {
+                    row | ((case[slot] >> bit) & 1) << Inputs::row_bit(slot)
+                })
+            })
+        });
+        Self {
+            inputs,
+            values,
+            rows,
+        }
     }
 
     pub fn inputs(&self) -> Inputs {
         self.inputs
     }
 
-    /// Input `slot`'s value in each case.
-    fn input(&self, slot: usize) -> [u8; TASK_CASES] {
-        self.values.map(|case| case[slot])
+    /// The cases the ladder runs.
+    fn run(&self) -> &[[u8; 4]] {
+        &self.values[..self.inputs.cases()]
     }
 
-    /// The row each bit column reads: per case, per bit.
-    fn rows(&self) -> [[u8; 8]; TASK_CASES] {
-        self.values.map(|case| {
-            std::array::from_fn(|bit| {
-                (0..self.inputs.count()).fold(0, |row, slot| {
-                    row | ((case[slot] >> bit) & 1) << Inputs::row_bit(slot)
+    /// Input `slot`'s value in each case run.
+    fn input(&self, slot: usize) -> Vec<u8> {
+        self.run().iter().map(|case| case[slot]).collect()
+    }
+
+    /// The row each bit column reads: per case run, per bit.
+    fn rows(&self) -> &[[u8; 8]] {
+        &self.rows[..self.inputs.cases()]
+    }
+
+    /// The bytes `function` outputs in each case run.
+    fn outputs(&self, function: u16) -> Vec<u8> {
+        self.rows()
+            .iter()
+            .map(|rows| {
+                (0..8).fold(0, |byte, bit| {
+                    byte | (((function >> rows[bit]) & 1) as u8) << bit
                 })
             })
-        })
+            .collect()
     }
 
-    /// The bytes `function` outputs in each case.
-    fn outputs(&self, function: u16) -> [u8; TASK_CASES] {
-        let rows = self.rows();
-        std::array::from_fn(|case| {
-            (0..8).fold(0, |byte, bit| {
-                byte | (((function >> rows[case][bit]) & 1) as u8) << bit
-            })
-        })
-    }
-
-    /// Whether the cases separate, the topless study's rules (§1.2):
+    /// Whether the cases separate, the topless study's rules (§1.2) and the reads apart:
     ///
-    /// - each input's three values are pairwise distinct;
-    /// - every row appears on at least one of the 24 bit columns, so an output slot's truth
-    ///   table is determined and no two functions expect the same outputs;
-    /// - **three inputs only:** no non-constant function expects three equal outputs, so no
+    /// - each input's values are pairwise distinct;
+    /// - every row is read at `READS_PER_ROW` distinct bit positions or more, so an output
+    ///   slot's truth table is determined, no two functions expect the same outputs, and a
+    ///   function that differs between bit positions on a row contradicts itself there;
+    /// - **three inputs only:** no non-constant function expects equal outputs, so no
     ///   constant passes, and none sits a constant offset from an input but that input
     ///   itself, so no input plus a constant passes, ECHO included.
     ///
-    /// On four inputs the last two clauses would refuse nearly every draw, about one
-    /// function a draw expecting equal outputs and about four an offset, so they are read
-    /// at the slot instead (`Cases::read`).
+    /// On four inputs the last clause would be read over 65 534 functions a draw, so it is
+    /// read at the slot instead (`Cases::read`).
     pub fn separates(&self) -> bool {
-        let distinct = (0..self.inputs.count()).all(|slot| logic::distinct(&self.input(slot)));
-        if !distinct || self.covered() != self.inputs.mask() {
+        let distinct = (0..self.inputs.count()).all(|slot| {
+            let values = self.input(slot);
+            (1..values.len()).all(|j| !values[..j].contains(&values[j]))
+        });
+        let mut positions = [0u8; 16];
+        for rows in self.rows() {
+            for (bit, row) in rows.iter().enumerate() {
+                positions[*row as usize] |= 1 << bit;
+            }
+        }
+        let apart = positions[..self.inputs.rows()]
+            .iter()
+            .all(|read| read.count_ones() as usize >= READS_PER_ROW);
+        if !distinct || !apart {
             return false;
         }
         match self.inputs {
@@ -289,27 +349,26 @@ impl Cases {
         }
     }
 
-    fn covered(&self) -> u16 {
-        self.rows()
-            .iter()
-            .flatten()
-            .fold(0, |covered, row| covered | 1 << row)
-    }
-
     /// Whether `outputs` sit a constant offset from some input other than the one
     /// `function` is the projection of.
-    fn offset_from_another_input(&self, outputs: &[u8; TASK_CASES], function: u16) -> bool {
+    fn offset_from_another_input(&self, outputs: &[u8], function: u16) -> bool {
         (0..self.inputs.count()).any(|slot| {
-            function != self.inputs.projection(slot) && logic::offset_of(outputs, &self.input(slot))
+            let offset = outputs[0].wrapping_sub(self.values[0][slot]);
+            function != self.inputs.projection(slot)
+                && outputs
+                    .iter()
+                    .zip(self.run())
+                    .all(|(output, case)| output.wrapping_sub(case[slot]) == offset)
         })
     }
 
     /// The function one output slot computes, `None` where it computes none that is
-    /// credited: a row two columns disagree on (not a bitwise function), a row no column
-    /// reads, a constant, three equal output bytes, or outputs a constant offset from an
-    /// input the function is not. On three inputs the separating draw already refuses the
-    /// last two; on four they are refused here, whatever function the slot matches.
-    fn read(&self, outputs: &[u8; TASK_CASES]) -> Option<u16> {
+    /// credited: a row two columns disagree on (not a bitwise function, or not the same
+    /// one at every bit position), a row no column reads, a constant, equal output bytes,
+    /// or outputs a constant offset from an input the function is not. On three inputs the
+    /// separating draw already refuses the last two; on four they are refused here,
+    /// whatever function the slot matches.
+    fn read(&self, outputs: &[u8]) -> Option<u16> {
         let (mut ones, mut seen) = (0u16, 0u16);
         for (case, rows) in self.rows().iter().enumerate() {
             for (bit, row) in rows.iter().enumerate() {
@@ -331,7 +390,7 @@ impl Cases {
     }
 }
 
-fn equal(outputs: &[u8; TASK_CASES]) -> bool {
+fn equal(outputs: &[u8]) -> bool {
     outputs.iter().all(|byte| *byte == outputs[0])
 }
 
@@ -398,20 +457,22 @@ impl Credit {
 }
 
 /// The rungs `tape` is credited with on `cases`: every class an output slot computes in
-/// all three cases. A tape holding no emit byte is credited nothing and never run.
+/// every case run. A tape holding no emit byte is credited nothing and never run.
 pub fn assay(tape: &[u8], cases: &Cases, ops: OpSet, nand: LogicNand) -> Credit {
     let mut credit = Credit::none(cases.inputs);
     let count = cases.inputs.count();
     let inputs = cases.values.each_ref().map(|case| &case[..count]);
-    let Some(runs) = task::case_outputs_with(tape, inputs, ops, nand.assay_ops()) else {
+    let run = &inputs[..cases.inputs.cases()];
+    let Some(runs) = task::case_outputs_with(tape, run, ops, nand.assay_ops()) else {
         return credit;
     };
     for slot in 0..TASK_MAX_OUTPUTS {
         if runs.iter().any(|outputs| outputs.len() <= slot) {
             break;
         }
-        let outputs = std::array::from_fn(|case| runs[case][slot]);
-        if let Some(function) = cases.read(&outputs) {
+        let outputs: [u8; DEPTH_MAX_CASES] =
+            std::array::from_fn(|case| runs.get(case).map_or(0, |outputs| outputs[slot]));
+        if let Some(function) = cases.read(&outputs[..runs.len()]) {
             credit.insert(cases.inputs.class_of(function));
         }
     }
@@ -499,6 +560,15 @@ pub(crate) mod tests {
     use crate::bff::{self, AssayOps};
 
     const NANDS: [LogicNand; 2] = [LogicNand::InPlace, LogicNand::Stack];
+
+    /// Whether `outputs` sit one constant offset, mod 256, from `input` in every case.
+    fn offset_of(outputs: &[u8], input: &[u8]) -> bool {
+        let offset = outputs[0].wrapping_sub(input[0]);
+        outputs
+            .iter()
+            .zip(input)
+            .all(|(output, value)| output.wrapping_sub(*value) == offset)
+    }
 
     /// SHA-256 (FIPS 180-4), for holding the embedded tables to the hashes
     /// `research/minnand/README.md` publishes without a dependency.
@@ -865,24 +935,58 @@ pub(crate) mod tests {
         }
     }
 
-    /// The three-input rule over 10^5 draws, read off the inputs directly: each input's
-    /// values distinct, all 8 rows on the 24 columns, and every non-constant function's
-    /// outputs neither equal nor an offset of an input it is not; and the fallback holds it.
+    /// Each input's values pairwise distinct, and each read of the rows a bijection onto
+    /// its cases' columns, every row at `READS_PER_ROW` distinct bit positions: read off
+    /// the inputs directly, not through `separates`.
+    fn holds_the_reads(cases: &Cases) {
+        let inputs = cases.inputs;
+        for slot in 0..inputs.count() {
+            let values = cases.input(slot);
+            for j in 1..values.len() {
+                assert!(!values[..j].contains(&values[j]), "{cases:?}");
+            }
+        }
+        assert!(cases.values[inputs.cases()..]
+            .iter()
+            .all(|case| *case == [0; 4]));
+        let rows = cases.rows();
+        let mut positions = vec![Vec::new(); inputs.rows()];
+        for read in rows.chunks(inputs.cases_per_read()) {
+            let mut seen: Vec<u8> = read.iter().flatten().copied().collect();
+            seen.sort_unstable();
+            assert_eq!(
+                seen,
+                (0..inputs.rows() as u8).collect::<Vec<_>>(),
+                "{cases:?}"
+            );
+            for case in read {
+                for (bit, row) in case.iter().enumerate() {
+                    positions[*row as usize].push(bit);
+                }
+            }
+        }
+        for mut bits in positions {
+            bits.sort_unstable();
+            bits.dedup();
+            assert_eq!(bits.len(), READS_PER_ROW, "{cases:?}");
+        }
+    }
+
+    /// The three-input rule over 10^5 draws: the reads apart, and every non-constant
+    /// function's outputs neither equal nor an offset of an input it is not, and read back
+    /// as itself; and the fallback holds it.
     #[test]
     fn every_three_input_draw_separates_every_function() {
         let holds = |cases: &Cases| {
-            for slot in 0..3 {
-                assert!(logic::distinct(&cases.input(slot)), "{cases:?}");
-            }
-            assert_eq!(cases.covered(), 0xff, "{cases:?}");
+            holds_the_reads(cases);
             let mut seen = std::collections::HashSet::new();
             for function in 1..0xffu16 {
                 let outputs = cases.outputs(function);
-                assert!(seen.insert(outputs), "{function:#04x} on {cases:?}");
+                assert!(seen.insert(outputs.clone()), "{function:#04x} on {cases:?}");
                 assert!(!equal(&outputs), "{function:#04x} on {cases:?}");
                 for slot in 0..3 {
                     let own = function == Inputs::Three.projection(slot);
-                    assert!(own || !logic::offset_of(&outputs, &cases.input(slot)));
+                    assert!(own || !offset_of(&outputs, &cases.input(slot)));
                 }
                 assert_eq!(cases.read(&outputs), Some(function));
             }
@@ -894,28 +998,16 @@ pub(crate) mod tests {
         holds(&Cases::new(Inputs::Three, FALLBACK3));
     }
 
-    /// The four-input designed draw over 10^5 draws: each input's values distinct, cases 0
-    /// and 1 holding each of the 16 rows on exactly one of their 16 columns, so every
-    /// function reads back as itself unless the slot refuses it; and the fallback holds it.
+    /// The four-input rule over 10^5 draws: the reads apart, so every function reads back
+    /// as itself unless the slot refuses it as equal outputs or an input plus a constant,
+    /// which six cases almost never spring; and the fallback holds it.
     #[test]
-    fn every_four_input_draw_covers_every_row() {
-        let holds = |cases: &Cases, designed: bool| {
-            for slot in 0..4 {
-                assert!(logic::distinct(&cases.input(slot)), "{cases:?}");
-            }
-            let rows = cases.rows();
-            let mut first_two: Vec<u8> = rows[..2].iter().flatten().copied().collect();
-            first_two.sort_unstable();
-            if designed {
-                assert_eq!(first_two, (0..16).collect::<Vec<u8>>(), "{cases:?}");
-            }
-            assert_eq!(cases.covered(), 0xffff);
-        };
+    fn every_four_input_draw_reads_every_row_three_times_apart() {
         let mut rng = rng::seeded(13, 0, 0);
         let mut refused = 0u64;
         for _ in 0..100_000 {
             let cases = Cases::draw(Inputs::Four, &mut rng);
-            holds(&cases, true);
+            holds_the_reads(&cases);
             for _ in 0..4 {
                 let function = rng::below(&mut rng, 0xfffe) as u16 + 1;
                 let outputs = cases.outputs(function);
@@ -924,7 +1016,7 @@ pub(crate) mod tests {
                     None => {
                         let offset = (0..4).any(|slot| {
                             function != Inputs::Four.projection(slot)
-                                && logic::offset_of(&outputs, &cases.input(slot))
+                                && offset_of(&outputs, &cases.input(slot))
                         });
                         assert!(equal(&outputs) || offset, "{function:#06x} on {cases:?}");
                         refused += 1;
@@ -932,19 +1024,22 @@ pub(crate) mod tests {
                 }
             }
         }
-        assert!(refused < 100, "{refused} of 400 000 reads refused");
-        holds(&Cases::new(Inputs::Four, FALLBACK4), false);
+        assert!(refused < 10, "{refused} of 400 000 reads refused");
+        let fallback = Cases::new(Inputs::Four, FALLBACK4);
+        holds_the_reads(&fallback);
+        assert!(fallback.separates());
     }
 
-    /// The slot-side refusals on four inputs, each on cases built to spring it: three equal
+    /// The slot-side refusals on four inputs, each on cases built to spring it: equal
     /// outputs, and an input plus a constant, are credited nothing whatever function they
-    /// match; and a slot whose columns disagree on a row is no function at all.
+    /// match; a slot whose columns disagree on a row is no function at all; and a NAND
+    /// masked by a code byte, a different function at different bit positions, contradicts
+    /// itself on a row read where the mask differs.
     #[test]
     fn a_four_input_slot_refuses_constants_offsets_and_contradictions() {
         let cases = Cases::new(Inputs::Four, FALLBACK4);
-        let function = cases.read(&[0x0f, 0x0f, 0x0f]);
-        assert_eq!(function, None);
-        let x_plus_one = cases.input(0).map(|x| x.wrapping_add(1));
+        assert_eq!(cases.read(&[0x0f; 6]), None);
+        let x_plus_one: Vec<u8> = cases.input(0).iter().map(|x| x.wrapping_add(1)).collect();
         assert_eq!(cases.read(&x_plus_one), None);
         assert_eq!(
             cases.read(&cases.input(0)),
@@ -954,13 +1049,14 @@ pub(crate) mod tests {
             cases.read(&cases.input(3)),
             Some(Inputs::Four.projection(3))
         );
-        let three = Cases::new(Inputs::Three, FALLBACK3);
-        let mut contradiction = three.outputs(0x96);
-        contradiction[2] ^= 1;
-        let rows = three.rows();
-        let repeated = rows[..2].iter().flatten().any(|row| *row == rows[2][0]);
-        assert!(repeated);
-        assert_eq!(three.read(&contradiction), None);
+        let mut contradiction = cases.outputs(0x6996);
+        contradiction[5] ^= 1;
+        assert_eq!(cases.read(&contradiction), None);
+        for inputs in [Inputs::Three, Inputs::Four] {
+            let cases = Cases::draw(inputs, &mut rng::seeded(29, 0, 0));
+            let masked: Vec<u8> = cases.input(0).iter().map(|x| !(x & 0x0f)).collect();
+            assert_eq!(cases.read(&masked), None, "{cases:?}");
+        }
     }
 
     #[test]
@@ -1038,15 +1134,17 @@ pub(crate) mod tests {
     }
 
     /// Every program of up to `len` bytes over the ten ops, `!` and `~` holding an emit, in
-    /// front of a zero tail, on `draws` separating draws of `inputs` under `nand`: the most
-    /// draws on which any one is credited a rung of depth `depth` or more, and that program.
-    fn deepest_cheap_credit(
+    /// front of a zero tail, on `draws` separating draws of `inputs` under `nand`: for each
+    /// depth of `depths`, the `keep` programs credited a rung that deep or deeper on the
+    /// most draws, with how many, most first.
+    fn deepest_cheap_credits(
         len: u32,
         draws: u32,
-        depth: u32,
+        depths: std::ops::RangeInclusive<u32>,
         inputs: Inputs,
         nand: LogicNand,
-    ) -> (u32, Vec<u8>) {
+        keep: usize,
+    ) -> Vec<Vec<(u32, Vec<u8>)>> {
         let alphabet: Vec<u8> = bff::OPS
             .iter()
             .copied()
@@ -1055,7 +1153,7 @@ pub(crate) mod tests {
         let symbols = alphabet.len() as u64;
         let mut rng = rng::seeded(19, len.into(), inputs.count() as u64);
         let sets: Vec<Cases> = (0..draws).map(|_| Cases::draw(inputs, &mut rng)).collect();
-        let mut worst = (0, Vec::new());
+        let mut worst: Vec<Vec<(u32, Vec<u8>)>> = depths.clone().map(|_| Vec::new()).collect();
         for length in 1..=len {
             for code in 0..symbols.pow(length) {
                 let mut tape: Vec<u8> = (0..length)
@@ -1065,61 +1163,87 @@ pub(crate) mod tests {
                     continue;
                 }
                 tape.resize(16, 0);
-                let deep = sets
+                let credited: Vec<Option<u32>> = sets
                     .iter()
-                    .filter(|cases| assay(&tape, cases, OpSet::ALL, nand).depth() >= Some(depth))
-                    .count() as u32;
-                if deep > worst.0 {
-                    worst = (deep, tape);
+                    .map(|cases| assay(&tape, cases, OpSet::ALL, nand).depth())
+                    .collect();
+                for (nearest, depth) in worst.iter_mut().zip(depths.clone()) {
+                    let deep = credited.iter().filter(|d| **d >= Some(depth)).count() as u32;
+                    if deep > 0 {
+                        nearest.push((deep, tape.clone()));
+                        nearest.sort_by_key(|(deep, _)| std::cmp::Reverse(*deep));
+                        nearest.truncate(keep);
+                    }
                 }
             }
         }
         worst
     }
 
-    /// No program of up to four bytes is credited a rung of depth 9 or more on a tenth of
-    /// 200 draws of either ladder under either NAND, so not even a world of nothing else
-    /// would read it held in one sample in ten (the full search is
+    /// No program of up to four bytes is credited a rung of depth 5 or more on more than
+    /// one of 200 draws of either ladder under either NAND (the full search is
     /// `the_false_deep_credit_search`).
     #[test]
-    fn no_cheap_program_is_credited_a_deep_rung_on_a_tenth_of_draws() {
+    fn no_cheap_program_is_credited_a_deep_rung() {
         for inputs in [Inputs::Three, Inputs::Four] {
             for nand in NANDS {
-                let (deep, tape) = deepest_cheap_credit(4, 200, 9, inputs, nand);
-                assert!(
-                    deep < 20,
-                    "{inputs:?} {nand:?}: {deep} of 200, {:?}",
-                    String::from_utf8_lossy(&tape)
-                );
+                let worst = deepest_cheap_credits(4, 200, 5..=5, inputs, nand, 1);
+                if let Some((deep, tape)) = worst[0].first() {
+                    assert!(
+                        *deep <= 1,
+                        "{inputs:?} {nand:?}: {deep} of 200, {:?}",
+                        String::from_utf8_lossy(tape)
+                    );
+                }
             }
         }
     }
 
     /// The false-deep-credit search of the design record, on demand: every program of up
-    /// to five bytes on 200 draws, the worst of each re-read on 10 000. `cargo test -p
-    /// life-engine --release -- --ignored the_false_deep_credit_search --nocapture`.
+    /// to five bytes on 400 draws, the six nearest at each depth re-read on 20 000 fresh
+    /// ones. `cargo test -p life-engine --release -- --ignored the_false_deep_credit_search
+    /// --nocapture`.
     #[test]
     #[ignore]
     fn the_false_deep_credit_search() {
-        for inputs in [Inputs::Three, Inputs::Four] {
-            for nand in NANDS {
-                for depth in 5..=10 {
-                    let (deep, tape) = deepest_cheap_credit(5, 200, depth, inputs, nand);
-                    let mut rng = rng::seeded(23, u64::from(depth), inputs.count() as u64);
-                    let reread = (0..10_000)
-                        .filter(|_| {
-                            let cases = Cases::draw(inputs, &mut rng);
-                            !tape.is_empty()
-                                && assay(&tape, &cases, OpSet::ALL, nand).depth() >= Some(depth)
+        let searches: Vec<_> = [Inputs::Three, Inputs::Four]
+            .into_iter()
+            .flat_map(|inputs| NANDS.map(|nand| (inputs, nand)))
+            .map(|(inputs, nand)| {
+                std::thread::spawn(move || {
+                    let worst = deepest_cheap_credits(5, 400, 5..=10, inputs, nand, 6);
+                    let mut rng = rng::seeded(23, 0, inputs.count() as u64);
+                    let fresh: Vec<Cases> =
+                        (0..20_000).map(|_| Cases::draw(inputs, &mut rng)).collect();
+                    let rows: Vec<String> = worst
+                        .iter()
+                        .zip(5..=10)
+                        .map(|(nearest, depth)| {
+                            let reread = |tape: &Vec<u8>| {
+                                fresh
+                                    .iter()
+                                    .filter(|cases| {
+                                        assay(tape, cases, OpSet::ALL, nand).depth() >= Some(depth)
+                                    })
+                                    .count()
+                            };
+                            let (deep, tape) = nearest
+                                .iter()
+                                .map(|(_, tape)| (reread(tape), tape.clone()))
+                                .max_by_key(|(deep, _)| *deep)
+                                .unwrap_or_default();
+                            format!(
+                                "{inputs:?} {nand:?} depth >= {depth}: {deep} of 20000, {:?}",
+                                String::from_utf8_lossy(&tape).trim_end_matches('\0')
+                            )
                         })
-                        .count();
-                    println!(
-                        "{inputs:?} {nand:?} depth >= {depth}: {deep} of 200 draws, {reread} of \
-                         10000 re-read, {:?}",
-                        String::from_utf8_lossy(&tape).trim_end_matches('\0')
-                    );
-                }
-            }
+                        .collect();
+                    rows.join("\n")
+                })
+            })
+            .collect();
+        for search in searches {
+            println!("{}", search.join().expect("a search"));
         }
     }
 

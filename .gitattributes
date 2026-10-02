@@ -10,3 +10,6 @@ config/credentials.yml.enc diff=rails_credentials
 
 # The minimal-NAND tables are raw bytes with no NUL early on, which git would guess is text.
 research/minnand/data/*.bin binary
+
+# The topless ladder's embedded copies of the same tables.
+engine/crates/life-engine/data/*.bin binary
