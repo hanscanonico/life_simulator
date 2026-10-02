@@ -10,8 +10,8 @@
 //!
 //! **Heritable** where, in at least 2 of the 3 seeds, the planted world holds a tenth of
 //! the world credited the rung on all six sets while its control, same seed, holds 16
-//! cells or fewer. Where a control also reaches the tenth the rung re-arose from the
-//! reseeded tape, and the reading is **unresolved**.
+//! cells or fewer. Where any seed's control reaches the tenth the rung re-arose from the
+//! reseeded tape, and the reading is **unresolved** whatever the other seeds read.
 
 use crate::census::{cells, ranked};
 use crate::score::{assayed, par_map, Rungs, Scorer};
@@ -223,13 +223,13 @@ pub fn verdict(runs: &[SeedRun], world_cells: u64) -> Verdict {
             tenth(run.planted_cells(), world_cells) && run.control_cells() <= CONTROL_MOST
         })
         .count();
-    if counted >= SEEDS_NEEDED {
-        Verdict::Heritable
-    } else if runs
+    if runs
         .iter()
         .any(|run| tenth(run.control_cells(), world_cells))
     {
         Verdict::Unresolved
+    } else if counted >= SEEDS_NEEDED {
+        Verdict::Heritable
     } else {
         Verdict::NotHeritable
     }
@@ -299,7 +299,7 @@ mod tests {
         );
         assert_eq!(
             verdict(&[held.clone(), held.clone(), rearose.clone()], world),
-            Verdict::Heritable
+            Verdict::Unresolved
         );
         assert_eq!(
             verdict(&[held.clone(), lost.clone(), lost.clone()], world),

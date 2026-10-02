@@ -4120,5 +4120,5 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - The Metabolism entry (2026-10-01) follows `docs/studies/metabolism.md`.
   - The Logic entry (2026-10-01) follows `docs/studies/logic.md`.
   - The Meta-stack entry (2026-10-02) follows `docs/studies/meta-stack.md`; its offline
-    readings (the substitution distance, heritability by planting, "reads an input twice")
-    run on `research/landscape/`, the study's tools ported to the merged engine.
+    readings (the substitution distance, heritability by planting, the circuit behind a deep
+    solver) run on `research/landscape/`, the study's tools ported to the merged engine.

@@ -1,4 +1,5 @@
-//! Reading (d): whether a solver reads an input twice, by a traced stepper.
+//! Reading (d): the circuit behind a solver's credited output, by a traced stepper,
+//! printed descriptively.
 //!
 //! The stepper runs the logic assay's machine by the book — the buffer, heads, budget and
 //! emit limit of `task::run_case`, the run's instruction set and its NAND — and gives every
@@ -6,11 +7,12 @@
 //! an increment of one. A copy (`.` or `,`) moves a value without making a new one, so a
 //! stored copy of x is still x.
 //!
-//! An emitted byte is the root of a circuit. A value **is read twice** when two different
-//! NANDs of that circuit take it as an operand: an input or an intermediate fanned out. A
-//! NAND whose two operands are one value (NOT as NAND(x, x)) reads it once, as the study's
-//! read-once table counts it. The rule names the circuit, not its depth: a read-once rung
-//! can be built by a circuit that reads an input twice.
+//! An emitted byte is the root of a circuit. A value **fans out** when two different NANDs
+//! of that circuit take it as an operand: an input or an intermediate. A NAND whose two
+//! operands are one value (NOT as NAND(x, x)) reads it once, as the study's read-once table
+//! counts it. Fan-out describes the circuit and tests nothing (the Meta-stack entry,
+//! 2026-10-02): every NAND circuit computing XOR or EQU fans a value out, since neither is
+//! read-once, and a read-once rung can be built by one that fans out too.
 
 use crate::score::Scorer;
 use life_engine::bff::{self, AssayOps};
@@ -201,7 +203,7 @@ fn matching(buffer: &[u8], ip: usize, forward: bool) -> Option<usize> {
 impl Trace {
     /// The values of the circuit behind output `slot` that two different NANDs of it take
     /// as an operand, each with how many do.
-    pub fn read_twice(&self, slot: usize) -> Vec<(usize, usize)> {
+    pub fn fan_out(&self, slot: usize) -> Vec<(usize, usize)> {
         let mut readers: HashMap<usize, usize> = HashMap::new();
         let mut seen = vec![false; self.values.len()];
         let mut stack = vec![self.emitted[slot]];
@@ -221,14 +223,14 @@ impl Trace {
                 _ => {}
             }
         }
-        let mut twice: Vec<(usize, usize)> = readers
+        let mut fanned: Vec<(usize, usize)> = readers
             .into_iter()
             .filter(|(value, readers)| {
                 *readers >= 2 && !matches!(self.values[*value], Value::Constant(_))
             })
             .collect();
-        twice.sort_unstable();
-        twice
+        fanned.sort_unstable();
+        fanned
     }
 
     /// A value's short name: `x`, `y`, `c<position>` for a byte the buffer started with,
@@ -244,8 +246,8 @@ impl Trace {
     }
 
     /// Whether x or y itself is an operand of two different NANDs behind output `slot`.
-    pub fn input_read_twice(&self, slot: usize) -> bool {
-        self.read_twice(slot)
+    pub fn fans_out_an_input(&self, slot: usize) -> bool {
+        self.fan_out(slot)
             .iter()
             .any(|(value, _)| matches!(self.values[*value], Value::X | Value::Y))
     }
@@ -297,20 +299,20 @@ fn credited_slot(outputs: &[Vec<u8>], cases: &[(u8, u8)], rung: usize) -> Option
 pub struct Reading {
     pub rung: usize,
     /// Over the six sets' cases where the rung is credited: how many there are, and in how
-    /// many its circuit reads a value twice.
+    /// many its circuit fans a value out.
     pub cases: usize,
-    pub read_twice: usize,
+    pub fanned: usize,
     /// Of those, the cases where x or y itself is an operand of two different NANDs.
-    pub input_twice: usize,
+    pub input_fanned: usize,
     /// The traced case, its slot computing the rung if one does, and what that circuit
-    /// reads twice.
+    /// fans out.
     pub traced: Trace,
     pub traced_slot: Option<usize>,
 }
 
 /// The reading on `tape` for `rung`: the six fixed sets and the traced case.
 pub fn reading(tape: &[u8], scorer: &Scorer, rung: usize) -> Reading {
-    let (mut cases, mut read_twice, mut input_twice) = (0, 0, 0);
+    let (mut cases, mut fanned, mut input_fanned) = (0, 0, 0);
     for set in scorer.sets() {
         let inputs = set.inputs();
         let traces: Vec<Trace> = inputs
@@ -320,11 +322,11 @@ pub fn reading(tape: &[u8], scorer: &Scorer, rung: usize) -> Reading {
         let outputs: Vec<Vec<u8>> = traces.iter().map(|t| t.outputs.clone()).collect();
         if let Some(slot) = credited_slot(&outputs, inputs, rung) {
             cases += traces.len();
-            read_twice += traces
+            fanned += traces
                 .iter()
-                .filter(|t| !t.read_twice(slot).is_empty())
+                .filter(|t| !t.fan_out(slot).is_empty())
                 .count();
-            input_twice += traces.iter().filter(|t| t.input_read_twice(slot)).count();
+            input_fanned += traces.iter().filter(|t| t.fans_out_an_input(slot)).count();
         }
     }
     let (x, y) = crate::score::TRACE_CASE;
@@ -333,22 +335,22 @@ pub fn reading(tape: &[u8], scorer: &Scorer, rung: usize) -> Reading {
     Reading {
         rung,
         cases,
-        read_twice,
-        input_twice,
+        fanned,
+        input_fanned,
         traced,
         traced_slot,
     }
 }
 
 impl Reading {
-    /// Whether the rung's circuit reads a value twice in every case it is credited on.
-    pub fn reads_twice(&self) -> bool {
-        self.cases > 0 && self.read_twice == self.cases
+    /// Whether the rung's circuit fans a value out in every case it is credited on.
+    pub fn fans_out(&self) -> bool {
+        self.cases > 0 && self.fanned == self.cases
     }
 
-    /// Whether it reads x or y itself twice in every case it is credited on.
-    pub fn reads_an_input_twice(&self) -> bool {
-        self.cases > 0 && self.input_twice == self.cases
+    /// Whether it fans out x or y itself in every case it is credited on.
+    pub fn fans_out_an_input(&self) -> bool {
+        self.cases > 0 && self.input_fanned == self.cases
     }
 
     pub fn render(&self, lines: usize) -> String {
@@ -371,11 +373,11 @@ impl Reading {
             self.traced.outputs, self.traced.steps
         );
         for slot in 0..self.traced.outputs.len() {
-            let twice: Vec<String> = self
+            let fanned: Vec<String> = self
                 .traced
-                .read_twice(slot)
+                .fan_out(slot)
                 .iter()
-                .map(|(value, readers)| format!("{} by {readers} NANDs", self.traced.name(*value)))
+                .map(|(value, readers)| format!("{} to {readers} NANDs", self.traced.name(*value)))
                 .collect();
             let mark = if self.traced_slot == Some(slot) {
                 format!(" (computes {})", LOGIC_TASKS[self.rung].name)
@@ -386,10 +388,10 @@ impl Reading {
                 out,
                 "  slot {slot}{mark} = {}: {}",
                 self.traced.name(self.traced.emitted[slot]),
-                if twice.is_empty() {
+                if fanned.is_empty() {
                     "reads every value once".to_string()
                 } else {
-                    format!("reads twice: {}", twice.join("; "))
+                    format!("fans out {}", fanned.join("; "))
                 }
             );
             if self.traced_slot == Some(slot) {
@@ -405,14 +407,15 @@ impl Reading {
         }
         let _ = writeln!(
             out,
-            "{}: credited in {} of 18 cases on the 6 fixed sets; its circuit reads an input or an \
-             intermediate twice in {} ({}), an input itself twice in {} ({})",
+            "{}: credited in {} of 18 cases on the 6 fixed sets; its circuit fans out an input or \
+             an intermediate in {} ({}), an input itself in {} ({}). Descriptive: every NAND \
+             circuit for XOR or EQU fans a value out",
             LOGIC_TASKS[self.rung].name,
             self.cases,
-            self.read_twice,
-            verdict(self.cases, self.reads_twice()),
-            self.input_twice,
-            verdict(self.cases, self.reads_an_input_twice()),
+            self.fanned,
+            verdict(self.cases, self.fans_out()),
+            self.input_fanned,
+            verdict(self.cases, self.fans_out_an_input()),
         );
         out
     }
@@ -493,43 +496,57 @@ mod tests {
     }
 
     #[test]
-    fn the_deep_solvers_read_a_value_twice() {
+    fn the_deep_solvers_fan_out_both_inputs() {
         let stack = scorer(LogicNand::Stack);
         for rung in [8, 9] {
             let reading = reading(&stack_solver(rung), &stack, rung);
             assert_eq!(reading.cases, 18);
-            assert!(reading.reads_twice(), "{}", reading.render(0));
-            assert!(reading.reads_an_input_twice());
+            assert!(reading.fans_out(), "{}", reading.render(0));
+            assert!(reading.fans_out_an_input());
             assert_eq!(reading.traced_slot, Some(0));
         }
         let in_place = scorer(LogicNand::InPlace);
         for (solver, rung) in [(IN_PLACE_XOR, 8), (IN_PLACE_EQU, 9)] {
             let reading = reading(&parse(solver, 32).unwrap(), &in_place, rung);
-            assert!(reading.reads_twice(), "{}", reading.render(0));
+            assert!(reading.fans_out(), "{}", reading.render(0));
         }
     }
 
     /// NOT as NAND(x, x) reads x once; NAND reads each input once; ECHO computes nothing.
     #[test]
-    fn the_one_nand_rungs_read_every_value_once() {
+    fn the_one_nand_rungs_fan_nothing_out() {
         let stack = scorer(LogicNand::Stack);
         for rung in [0, 1, 2] {
             let reading = reading(&stack_solver(rung), &stack, rung);
             assert_eq!(reading.cases, 18);
-            assert_eq!(reading.read_twice, 0, "{}", reading.render(0));
+            assert_eq!(reading.fanned, 0, "{}", reading.render(0));
         }
     }
 
-    /// The stack ORN `<<{~~!` is NAND(NAND(y, x), x): a read-once rung whose circuit reads
-    /// x twice. The reading describes the circuit, not the rung.
+    /// The stack ORN `<<{~~!` is NAND(NAND(y, x), x): a read-once rung whose circuit fans
+    /// x out. The reading describes the circuit, not the rung.
     #[test]
-    fn a_read_once_rung_can_be_built_reading_an_input_twice() {
+    fn a_read_once_rung_can_be_built_fanning_out_an_input() {
         let trace = run(&stack_solver(4), 0x5a, 0x33, OpSet::ALL, LogicNand::Stack);
-        let twice = trace.read_twice(0);
-        assert_eq!(twice.len(), 1);
-        assert_eq!(trace.name(twice[0].0), "x");
-        assert_eq!(twice[0].1, 2);
-        assert!(trace.input_read_twice(0));
+        let fanned = trace.fan_out(0);
+        assert_eq!(fanned.len(), 1);
+        assert_eq!(trace.name(fanned[0].0), "x");
+        assert_eq!(fanned[0].1, 2);
+        assert!(trace.fans_out_an_input(0));
+    }
+
+    /// The stack OR and NOR, read-once rungs, fan out NOT x, an intermediate, and no input.
+    #[test]
+    fn a_read_once_rung_can_be_built_fanning_out_an_intermediate() {
+        let stack = scorer(LogicNand::Stack);
+        for rung in [5, 7] {
+            let reading = reading(&stack_solver(rung), &stack, rung);
+            assert_eq!(reading.cases, 18);
+            assert!(reading.fans_out(), "{}", reading.render(0));
+            assert_eq!(reading.input_fanned, 0);
+            let fanned = reading.traced.fan_out(0);
+            assert_eq!(reading.traced.define(fanned[0].0), "NAND(x, x)");
+        }
     }
 
     /// A stored copy of an input is still that input.
@@ -538,6 +555,6 @@ mod tests {
         let trace = run(b"<<{,~!", 0x5a, 0x33, OpSet::ALL, LogicNand::InPlace);
         assert_eq!(trace.outputs, vec![!0x5a]);
         assert_eq!(trace.define(trace.emitted[0]), "NAND(x, x)");
-        assert!(trace.read_twice(0).is_empty());
+        assert!(trace.fan_out(0).is_empty());
     }
 }

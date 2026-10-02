@@ -25,7 +25,7 @@ cargo clean                    # afterwards: the target dir is about 500 MB
 | `distance A B --params P` | (b) substitutions between two tapes (edit distance across lengths), and over every order of them whether one is credited (every step earns more paid units) or neutral or better |
 | `paths START --params P [--k 3] [--window N] [--rungs xor,equ]` | (b) every set of 1 to k substitutions over the 14-symbol alphabet inside the window, exhaustive as the study searched (`deeppaths`, §2.4 and §7.3): the mutants credited a target rung on all 6 sets, by k, with their orders; the shortest and the shortest credited k |
 | `plant --snapshot END --params P --deep T --rung R [--source W \| --replicating T]` | (c) heritability by planting with its unplanted control, the entry's rule exactly |
-| `trace T --params P --rung R [--lines 60]` | (d) the traced stepper on x = 0x5a, y = 0x33 and the 6 fixed sets: the circuit behind the rung's output and what it reads twice |
+| `trace T --params P --rung R [--lines 60]` | (d) the traced stepper on x = 0x5a, y = 0x33 and the 6 fixed sets: the circuit behind the rung's output and what it fans out, descriptive |
 
 A tape is `hex:` and two digits a byte (what `census` prints), or its shown form (ops, `!`,
 `~`, `0` for a zero, `·` or `_` for a no-op), padded with zeros to the run's assayed length.
@@ -81,10 +81,11 @@ its first cell in row order holding it (or give it with `--replicating`). The de
 the entry's: a 4×4 block in the centre, seeds 2001–2003, 2 000 epochs. The verdict is
 **Heritable** where in at least 2 of the 3 seeds the planted world has at least a tenth of
 the world (1 639 cells) credited the rung at 2 000 epochs and its control, same seed, 16 or
-fewer; **Unresolved** where a control reaches the tenth; **NotHeritable** otherwise. Each
+fewer; **Unresolved** where any seed's control reaches the tenth, whatever the other seeds
+read; **NotHeritable** otherwise. Each
 seed's readings every 500 epochs are printed.
 
-How the run is made, where the entry leaves it open:
+How the run is made (the entry locks each of these too):
 - every cell outside the block whose assayed tape is credited the rung **on any one** of
   the 6 sets is wiped, so no partial solver is left to restart it; the filler is the
   world's commonest assayed tape credited the rung on none;
@@ -94,7 +95,7 @@ How the run is made, where the entry leaves it open:
   (`World::from_snapshot`), so planting is deterministic from the stored world, the params
   and the seed.
 
-**3. Whether it reads an input twice.**
+**3. The circuit behind it (descriptive).**
 
 ```sh
 ./target/release/landscape trace $DEEP --params child.json --rung xor
@@ -102,11 +103,12 @@ How the run is made, where the entry leaves it open:
 
 The stepper gives every value a provenance (an input, a byte of the buffer, a NAND, a shift;
 a copy moves a value without making a new one) and reads the circuit behind the rung's
-output slot. A value is read twice where two different NANDs of that circuit take it as an
-operand; NAND(x, x) reads x once. It prints the traced case's circuit, then over the 6 sets'
-18 cases how many read an input or an intermediate twice (the entry's reading) and how many
-read x or y itself twice. The rule names the circuit, not the rung: the stack ORN `<<{~~!`
-is NAND(NAND(y, x), x) and reads x twice.
+output slot. A value fans out where two different NANDs of that circuit take it as an
+operand; NAND(x, x) reads x once. It prints the traced case's circuit and what it fans out,
+then over the 6 sets' 18 cases how many fan out an input or an intermediate and how many x or
+y itself. The entry prints this and tests nothing on it: every NAND circuit for XOR or EQU
+fans a value out, since neither is read-once, and read-once rungs can be built fanning out
+too — the stack ORN `<<{~~!` is NAND(NAND(y, x), x), and the stack OR and NOR fan out NOT x.
 
 ## What was dropped from the pilot tools
 
