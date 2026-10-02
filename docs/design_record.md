@@ -4440,7 +4440,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **Parents.** H-deep-Ms is shown on 9 children over 7 parents, fewer than about 10, so the
     study's rule applies: **all 54 meta-stack-arm children** of the meta-stack sweep (the
     stack NAND paid from ECHO up, no `task_floor` or the default one), each from its last
-    stored world at epoch 60 000. The rule is data (`Lab::ToplessRiseReading::PARENTS`): the
+    stored world at epoch 60 000 (SELECT, 2026-10-02: all 54 finished at 60 000; a terminal
+    world is the one snapshot pruning always keeps). The rule is data (`Lab::ToplessRiseReading::PARENTS`): the
     children of `meta-stack` in that arm, finished, that kept a world at their last epoch,
     with no reading of that world required. `Experiments::DescendantParentsService` reads a
     rule with `"descendants" => true` over the source sweep's descendant runs, and a rule with
