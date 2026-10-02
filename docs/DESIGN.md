@@ -135,6 +135,14 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   default pays every rung. A reward of `0` runs no assay, so `tasks = logic` at a reward
   of 0 is byte-identical to `tasks = off`. The task observables above read the arithmetic
   ladder only and are null under `logic`.
+- **The stack NAND** (`logic_nand`, default `in_place`; docs/design_record.md 2026-10-02,
+  the stack NAND): at `stack`, `~` in the logic assay writes `¬(B[head0] ∧ B[head1])` to
+  `B[head0 − 1]`, wrapping as `<` does, and moves head0 onto it, so both operands are kept
+  and a chain of NANDs stacks its results leftward. Everything else about the assay, the
+  ladder and the soup is as above: `~` is still a no-op outside the logic assay, and a lap
+  holding it is never replayed. `in_place` is the NAND above, so every earlier run is
+  unchanged. Only `tasks = logic` accepts `stack`. It is dynamics, not structure: a
+  descendant may set it.
 - **The metabolism tape** (`meta_len`, default `0` = off; `meta_rate`, default 32/8192;
   `meta_draw`, default `uniform`; `meta_seed`, default `zeros`; docs/design_record.md
   2026-10-02, Meta-stack slice B): with a length set, every soup cell carries a second tape

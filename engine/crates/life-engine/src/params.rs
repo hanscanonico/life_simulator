@@ -1,7 +1,7 @@
 //! Simulation parameters: names, defaults, validated ranges and the JSON schema Rails
 //! reads, all in one place (`docs/DESIGN.md` §3, "parameters are data").
 
-use crate::bff::OpSet;
+use crate::bff::{AssayOps, OpSet};
 use crate::logic::{FIRST_DEEP_TASK, LOGIC_CASE_DRAWS, LOGIC_TASKS};
 use crate::metrics::{
     TRANSITION_BASELINE_EPOCHS, TRANSITION_HOLD_SAMPLES, TRANSITION_MAX_OP_DENSITY,
@@ -105,6 +105,28 @@ const META_RATE_DEFAULT: f64 = 32.0 / 8192.0;
 /// claim to hold.
 pub const META_LEN_MAX: u32 = 1024;
 
+/// What the NAND byte `~` writes inside the logic assay (`docs/DESIGN.md` §1.1; the
+/// 2026-10-02 design-record entry on the stack NAND). `InPlace` is the default and the NAND
+/// every earlier logic run assayed with: `B[head0] = ¬(B[head0] ∧ B[head1])`, h0's operand
+/// lost. `Stack` writes the result to `B[head0 − 1]` and moves head0 onto it, so both operands
+/// are kept and a chain of NANDs stacks leftward.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogicNand {
+    InPlace,
+    Stack,
+}
+
+impl LogicNand {
+    /// The logic assay's machine under this NAND.
+    pub fn assay_ops(self) -> AssayOps {
+        match self {
+            Self::InPlace => AssayOps::EmitNand,
+            Self::Stack => AssayOps::EmitStackNand,
+        }
+    }
+}
+
 /// Every name `task_floor` may take, the arithmetic ladder's rungs then the logic ladder's
 /// not already named; which of them a run may choose is set by its `tasks`. Both ladders
 /// begin at ECHO, the default.
@@ -202,6 +224,9 @@ pub struct Params {
     /// earn nothing. `echo` (the default) is the first rung of both ladders, so every rung
     /// is paid.
     pub task_floor: String,
+    /// What `~` writes in the logic assay: in place under head0 (`in_place`, the default),
+    /// or left of head0 with head0 following (`stack`). Refused away from `tasks = logic`.
+    pub logic_nand: LogicNand,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -259,6 +284,7 @@ impl Default for Params {
             task_every: 8,
             task_reward: 0,
             task_floor: TASK_FLOORS[0].to_string(),
+            logic_nand: LogicNand::InPlace,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
@@ -471,6 +497,16 @@ const FIELDS: &[Field] = &[
               nothing else is accepted.",
     },
     Field {
+        name: "logic_nand",
+        kind: Kind::Choice(&["in_place", "stack"]),
+        doc: "What ~ writes in the logic assay. in_place writes the NAND of the bytes under \
+              the two heads under head0, the NAND every earlier logic run assayed with. \
+              stack writes it one byte left of head0, wrapping as < does, and moves head0 \
+              onto it, so both operands are kept and a chain of NANDs stacks its results \
+              leftward. Outside the logic assay ~ is a no-op either way. Only tasks = logic \
+              accepts anything but in_place.",
+    },
+    Field {
         name: "ops",
         kind: Kind::Subset(&["<", ">", "{", "}", "+", "-", ".", ",", "[", "]"]),
         doc: "The BFF instructions this run executes, as a string of distinct op bytes. \
@@ -645,6 +681,10 @@ pub enum ParamError {
         task_floor: String,
         tasks: Tasks,
     },
+    /// A NAND semantics where `~` is never an instruction is silently inert.
+    LogicNandWithoutLogic {
+        tasks: Tasks,
+    },
     /// A reward with no tasks to earn it by is silently inert.
     TaskRewardWithoutTasks {
         task_reward: u32,
@@ -748,6 +788,12 @@ impl fmt::Display for ParamError {
                     )
                 }
             }
+            Self::LogicNandWithoutLogic { tasks } => write!(
+                f,
+                "logic_nand is stack with tasks {}: ~ is an instruction only in the logic \
+                 assay",
+                tasks.name()
+            ),
             Self::TaskRewardWithoutTasks { task_reward } => write!(
                 f,
                 "task_reward is {task_reward} with tasks off: there is nothing to earn it by"
@@ -870,6 +916,9 @@ impl Params {
                 task_floor: self.task_floor.clone(),
                 tasks: self.tasks,
             });
+        }
+        if self.logic_nand != LogicNand::InPlace && self.tasks != Tasks::Logic {
+            return Err(ParamError::LogicNandWithoutLogic { tasks: self.tasks });
         }
         Ok(())
     }
@@ -1471,7 +1520,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 31);
+        assert_eq!(fields.len(), 32);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -1535,6 +1584,10 @@ mod tests {
         assert_eq!(floor["type"], "enum");
         assert_eq!(floor["default"], "echo");
         assert_eq!(floor["values"], serde_json::json!(TASK_FLOORS));
+        let nand = fields.iter().find(|f| f["name"] == "logic_nand").unwrap();
+        assert_eq!(nand["type"], "enum");
+        assert_eq!(nand["default"], "in_place");
+        assert_eq!(nand["values"], serde_json::json!(["in_place", "stack"]));
         let every = fields.iter().find(|f| f["name"] == "task_every").unwrap();
         assert_eq!(
             (every["default"].as_i64(), every["min"].as_i64()),
@@ -2108,5 +2161,62 @@ mod tests {
             serde_json::json!(["zeros", "own_tape"])
         );
         assert_eq!(field("meta_seed")["default"], "zeros");
+    }
+
+    /// The NAND writes in place unless a run asks for the stack, and a stored run that
+    /// predates the parameter reads as the in-place run it was.
+    #[test]
+    fn the_logic_nand_is_in_place_by_default() {
+        assert_eq!(Params::default().logic_nand, LogicNand::InPlace);
+        assert_eq!(
+            serde_json::from_str::<Params>(r#"{"tasks": "logic"}"#)
+                .unwrap()
+                .logic_nand,
+            LogicNand::InPlace
+        );
+        let stack = serde_json::from_str::<Params>(r#"{"logic_nand": "stack"}"#).unwrap();
+        assert_eq!(stack.logic_nand, LogicNand::Stack);
+        assert!(serde_json::from_str::<Params>(r#"{"logic_nand": "accumulator"}"#).is_err());
+        assert_eq!(LogicNand::InPlace.assay_ops(), AssayOps::EmitNand);
+        assert_eq!(LogicNand::Stack.assay_ops(), AssayOps::EmitStackNand);
+    }
+
+    /// `~` is an instruction only in the logic assay, so the stack is accepted under
+    /// `tasks = logic` alone, paid or not; the default is accepted everywhere.
+    #[test]
+    fn rejects_a_stack_nand_away_from_the_logic_ladder() {
+        let stacked = |tasks| Params {
+            tasks,
+            logic_nand: LogicNand::Stack,
+            ..rewarded_params()
+        };
+        assert_eq!(stacked(Tasks::Logic).validate(), Ok(()));
+        let unpaid = Params {
+            task_reward: 0,
+            ..stacked(Tasks::Logic)
+        };
+        assert_eq!(unpaid.validate(), Ok(()));
+        for tasks in [Tasks::Off, Tasks::Arith] {
+            let params = Params {
+                task_reward: 0,
+                ..stacked(tasks)
+            };
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::LogicNandWithoutLogic { tasks })
+            );
+        }
+        assert_eq!(
+            stacked(Tasks::Arith).validate().unwrap_err().to_string(),
+            "logic_nand is stack with tasks arith: ~ is an instruction only in the logic assay"
+        );
+        for tasks in [Tasks::Off, Tasks::Arith, Tasks::Logic] {
+            let params = Params {
+                tasks,
+                task_reward: 0,
+                ..rewarded_params()
+            };
+            assert_eq!(params.validate(), Ok(()), "{tasks:?}");
+        }
     }
 }

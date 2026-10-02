@@ -3,9 +3,11 @@
 //! with `bff::NAND` as an instruction beside the emit byte, and Avida's nine logic tasks
 //! (Lenski et al. 2003) above an ECHO rung on whole-byte inputs. Every task is a composition
 //! of NANDs, so a lower rung is a part of a higher one. The verdict is a pure function of
-//! the tape, the cases and the run's instruction set, as the arithmetic assay's is.
+//! the tape, the cases, the run's instruction set and its `logic_nand`, as the arithmetic
+//! assay's is of the first three.
 
-use crate::bff::{AssayOps, OpSet};
+use crate::bff::OpSet;
+use crate::params::LogicNand;
 use crate::rng::{self, Rng};
 use crate::task::{self, TASK_CASES};
 use std::collections::HashMap;
@@ -242,9 +244,14 @@ impl Credit {
 
 /// The logic tasks `tape` is credited with on `cases`: task t when some output slot holds
 /// one of t's forms in every case. As in the arithmetic assay, a tape holding no emit byte
-/// is credited nothing and never run.
+/// is credited nothing and never run. The NAND writes in place, as at `logic_nand`'s default.
 pub fn assay(tape: &[u8], cases: &Cases, ops: OpSet) -> Credit {
-    let Some(runs) = task::case_outputs(tape, cases.inputs(), ops, AssayOps::EmitNand) else {
+    assay_on(tape, cases, ops, LogicNand::InPlace)
+}
+
+/// `assay` with the NAND `nand` names: in place, or onto the stack.
+pub fn assay_on(tape: &[u8], cases: &Cases, ops: OpSet, nand: LogicNand) -> Credit {
+    let Some(runs) = task::case_outputs(tape, cases.inputs(), ops, nand.assay_ops()) else {
         return Credit::default();
     };
     let mut bits = 0u16;
@@ -260,14 +267,16 @@ pub fn assay(tape: &[u8], cases: &Cases, ops: OpSet) -> Credit {
 pub struct Memo<'a> {
     cases: Cases,
     ops: OpSet,
+    nand: LogicNand,
     seen: HashMap<&'a [u8], Credit>,
 }
 
 impl<'a> Memo<'a> {
-    pub fn new(cases: Cases, ops: OpSet) -> Self {
+    pub fn new(cases: Cases, ops: OpSet, nand: LogicNand) -> Self {
         Self {
             cases,
             ops,
+            nand,
             seen: HashMap::new(),
         }
     }
@@ -276,11 +285,11 @@ impl<'a> Memo<'a> {
         if !tape.contains(&crate::bff::EMIT) {
             return Credit::default();
         }
-        let (cases, ops) = (&self.cases, self.ops);
+        let (cases, ops, nand) = (&self.cases, self.ops, self.nand);
         *self
             .seen
             .entry(tape)
-            .or_insert_with(|| assay(tape, cases, ops))
+            .or_insert_with(|| assay_on(tape, cases, ops, nand))
     }
 }
 
@@ -329,7 +338,7 @@ impl LogicTally {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bff;
+    use crate::bff::{self, AssayOps};
 
     /// A solver of each rung, head0 and head1 starting on byte 0 and wrapping left onto x
     /// and y: the design study's hand-written NOT, NAND, AND, OR, XOR and EQU (§4.2), and
@@ -347,16 +356,43 @@ mod tests {
         b"<<<{,{~>>{~<~}}~{~!",
     ];
 
+    /// A solver of each rung under the stack NAND, where `~` writes left of head0 and head0
+    /// follows: the design study's 13-byte XOR (§7.2) `<<{~~{{>>~{~!` and the same circuit
+    /// with one more NAND for EQU, and the shortest program of each rung below them that an
+    /// exhaustive search over `<>{},~!` finds.
+    const STACK_SOLVERS: [&[u8]; 10] = [
+        b"<!",
+        b"<{~!",
+        b"<<{~!",
+        b"{{<~~!",
+        b"<<{~~!",
+        b"{,~<~~!",
+        b"{,~{~~!",
+        b"{,~{~>~~!",
+        b"<<{~~{{>>~{~!",
+        b"<<{~~{{>>~{~~!",
+    ];
+
     /// Each solver computes a form of its own task on its first output slot over 4 096
     /// random byte inputs, through the assay's own buffer and interpreter, and on 10^5
     /// separating draws is credited with its own task and no other.
     #[test]
     fn each_solver_computes_its_task_and_is_credited_with_it_alone() {
-        let mut rng = rng::seeded(5, 0, 0);
-        for (index, (solver, task)) in SOLVERS.iter().zip(&LOGIC_TASKS).enumerate() {
+        solvers_compute_their_tasks_alone(&SOLVERS, LogicNand::InPlace, 5);
+    }
+
+    /// The ladder re-proved under the stack NAND.
+    #[test]
+    fn each_stack_solver_computes_its_task_and_is_credited_with_it_alone() {
+        solvers_compute_their_tasks_alone(&STACK_SOLVERS, LogicNand::Stack, 23);
+    }
+
+    fn solvers_compute_their_tasks_alone(solvers: &[&[u8]; 10], nand: LogicNand, seed: u64) {
+        let mut rng = rng::seeded(seed, 0, 0);
+        for (index, (solver, task)) in solvers.iter().zip(&LOGIC_TASKS).enumerate() {
             for _ in 0..4_096 {
                 let (x, y) = (rng::byte(&mut rng), rng::byte(&mut rng));
-                let first = task::run_case_on(solver, x, y, OpSet::ALL, AssayOps::EmitNand)
+                let first = task::run_case_on(solver, x, y, OpSet::ALL, nand.assay_ops())
                     .outputs
                     .first()
                     .copied();
@@ -366,13 +402,47 @@ mod tests {
                     task.name
                 );
             }
-            let mut rng = rng::seeded(7, 0, index as u64);
+            let mut rng = rng::seeded(seed + 2, 0, index as u64);
             for _ in 0..100_000 {
                 let cases = Cases::draw(&mut rng);
-                let credit = assay(solver, &cases, OpSet::ALL);
+                let credit = assay_on(solver, &cases, OpSet::ALL, nand);
                 assert_eq!(credit, Credit(1 << index), "{} on {cases:?}", task.name);
             }
         }
+    }
+
+    /// The pilot's evolved deep solver under the stack NAND (the design study, §7.4),
+    /// `<<[~><~{~{!]` behind the `{` its tape carried: each lap stacks three NANDs leftward and
+    /// head1 trails onto what earlier laps wrote, so the laps emit ¬y, XOR, ¬y and EQU. It
+    /// computes three rungs and is credited with those and no other. A lap that leaves a zero
+    /// under head0 ends the loop early, so it is credited all three on most draws, not all.
+    #[test]
+    fn the_evolved_stack_loop_computes_not_xor_and_equ() {
+        let tape = b"{<<[~><~{~{!]";
+        let mut rng = rng::seeded(29, 0, 0);
+        let mut whole = 0;
+        for _ in 0..4_096 {
+            let (x, y) = (rng::byte(&mut rng), rng::byte(&mut rng));
+            let outputs =
+                task::run_case_on(tape, x, y, OpSet::ALL, AssayOps::EmitStackNand).outputs;
+            let laps = [!y, x ^ y, !y, !(x ^ y)];
+            assert_eq!(outputs[..], laps[..outputs.len()], "({x}, {y})");
+            whole += usize::from(outputs.len() == laps.len());
+        }
+        assert!(whole > 4_000, "only {whole} runs went four laps");
+        let (not, xor, equ) = (Credit(1 << 1), Credit(1 << 8), Credit(1 << 9));
+        let three = Credit(not.bits() | xor.bits() | equ.bits());
+        let mut credited = 0;
+        for _ in 0..100_000 {
+            let cases = Cases::draw(&mut rng);
+            let credit = assay_on(tape, &cases, OpSet::ALL, LogicNand::Stack);
+            assert_eq!(credit.bits() & !three.bits(), 0, "{cases:?}: {credit:?}");
+            credited += usize::from(credit == three);
+        }
+        assert!(
+            credited > 95_000,
+            "credited all three on only {credited} draws"
+        );
     }
 
     #[test]
@@ -550,7 +620,7 @@ mod tests {
     fn a_tape_without_the_emit_byte_is_never_run() {
         let cases = Cases::new(FALLBACK_CASES);
         assert_eq!(assay(b"<{~", &cases, OpSet::ALL), Credit::default());
-        let mut memo = Memo::new(cases, OpSet::ALL);
+        let mut memo = Memo::new(cases, OpSet::ALL, LogicNand::InPlace);
         assert_eq!(memo.credit(b"<{~"), Credit::default());
         assert!(memo.seen.is_empty());
         assert!(!b"<{~".contains(&bff::EMIT));
@@ -559,7 +629,7 @@ mod tests {
     #[test]
     fn the_memo_reads_what_the_assay_reads() {
         let cases = Cases::draw(&mut rng::seeded(17, 0, 0));
-        let mut memo = Memo::new(cases, OpSet::ALL);
+        let mut memo = Memo::new(cases, OpSet::ALL, LogicNand::InPlace);
         for solver in SOLVERS {
             assert_eq!(memo.credit(solver), assay(solver, &cases, OpSet::ALL));
             assert_eq!(memo.credit(solver), assay(solver, &cases, OpSet::ALL));

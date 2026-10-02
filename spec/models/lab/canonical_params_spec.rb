@@ -43,6 +43,20 @@ RSpec.describe Lab::CanonicalParams do
       expect(described_class.for(stored)).to include("task_floor" => "echo")
     end
 
+    it "reads a run stored before the logic NAND existed as the in-place run it was" do
+      stored = Lab::Schema.run_defaults.except("logic_nand").merge("tasks" => "logic", "task_reward" => 2048)
+
+      expect(described_class.for(stored))
+        .to eq(described_class.for(stored.merge("logic_nand" => "in_place")))
+      expect(described_class.for(stored)).to include("logic_nand" => "in_place")
+    end
+
+    it "keeps a stack-NAND arm apart from its in-place twin" do
+      full = { "tasks" => "logic", "task_reward" => 2048 }
+
+      expect(described_class.for(full)).not_to eq(described_class.for(full.merge("logic_nand" => "stack")))
+    end
+
     it "keeps a deep-only arm apart from its full-ladder twin" do
       full = { "tasks" => "logic", "task_reward" => 2048 }
 
@@ -134,6 +148,11 @@ RSpec.describe Lab::CanonicalParams do
     it "reads the logic ladder and its floor as dynamics a descendant may change" do
       expect(described_class.structure_of({ "tasks" => "logic", "task_reward" => 512, "task_floor" => "xor" },
                                           substrate: "soup"))
+        .to eq(described_class.structure_of({}, substrate: "soup"))
+    end
+
+    it "reads the logic NAND as dynamics a descendant may change" do
+      expect(described_class.structure_of({ "tasks" => "logic", "logic_nand" => "stack" }, substrate: "soup"))
         .to eq(described_class.structure_of({}, substrate: "soup"))
     end
 

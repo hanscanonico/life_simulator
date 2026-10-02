@@ -160,6 +160,16 @@
       ]
     },
     {
+      "default": "in_place",
+      "doc": "What ~ writes in the logic assay. in_place writes the NAND of the bytes under the two heads under head0, the NAND every earlier logic run assayed with. stack writes it one byte left of head0, wrapping as < does, and moves head0 onto it, so both operands are kept and a chain of NANDs stacks its results leftward. Outside the logic assay ~ is a no-op either way. Only tasks = logic accepts anything but in_place.",
+      "name": "logic_nand",
+      "type": "enum",
+      "values": [
+        "in_place",
+        "stack"
+      ]
+    },
+    {
       "default": "<>{}+-.,[]",
       "doc": "The BFF instructions this run executes, as a string of distinct op bytes. A byte whose op is left out is a no-op, like any non-instruction byte.",
       "name": "ops",

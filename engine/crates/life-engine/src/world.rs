@@ -605,7 +605,8 @@ impl World {
                     .collect()
             }
             Tasks::Logic => {
-                let mut memo = logic::Memo::new(logic::Cases::draw(&mut rng), ops);
+                let cases = logic::Cases::draw(&mut rng);
+                let mut memo = logic::Memo::new(cases, ops, self.params.logic_nand);
                 cells
                     .map(|cell| memo.credit(self.assayed_tape(cell)).units_from(floor))
                     .collect()
@@ -898,7 +899,8 @@ impl World {
             return None;
         }
         let mut rng = rng::seeded(self.seed, STREAM_LOGIC_SHARE, self.epoch);
-        let mut memo = logic::Memo::new(logic::Cases::draw(&mut rng), self.params.op_set());
+        let cases = logic::Cases::draw(&mut rng);
+        let mut memo = logic::Memo::new(cases, self.params.op_set(), self.params.logic_nand);
         let cells = self.params.cell_count() as u64;
         let mut tally = logic::LogicTally::default();
         for _ in 0..task::TASK_SAMPLE_CELLS {
@@ -1009,7 +1011,8 @@ impl World {
             }),
             dominant_logic_tasks: first.dominant.filter(|_| self.reads_logic()).map(|tape| {
                 let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DOMINANT, self.epoch);
-                logic::assay(tape, &logic::Cases::draw(&mut rng), self.params.op_set())
+                let cases = logic::Cases::draw(&mut rng);
+                logic::assay_on(tape, &cases, self.params.op_set(), self.params.logic_nand)
             }),
             counts: draws.iter().map(|draw| draw.count).collect(),
         }
@@ -1494,7 +1497,7 @@ fn draw_cell_byte(rng: &mut Rng, substrate: Substrate) -> u8 {
 mod tests {
     use super::*;
     use crate::metrics::TransitionState;
-    use crate::params::{Interaction, Structure, Tasks};
+    use crate::params::{Interaction, LogicNand, Structure, Tasks};
     use std::collections::BTreeSet;
 
     /// Pinned so a change in the rules, the RNG or the visiting order cannot pass unseen:
@@ -5612,6 +5615,99 @@ mod tests {
         }
     }
 
+    /// The logic assay's own stack solvers of NOT and XOR (`logic::tests::STACK_SOLVERS`).
+    const STACK_NOT_SOLVER: &[u8] = b"<{~!";
+    const STACK_XOR_SOLVER: &[u8] = b"<<{~~{{>>~{~!";
+
+    fn stacked(params: &Params) -> Params {
+        Params {
+            logic_nand: LogicNand::Stack,
+            ..params.clone()
+        }
+    }
+
+    /// The stack NAND's reward pin: `logic_params` at `logic_nand = stack`, with
+    /// `with_logic_solvers`' layout planted with the stack NOT and XOR solvers, seed 42, after
+    /// 50 epochs. The same tapes under the in-place NAND, where the stack XOR solver computes
+    /// no XOR, end elsewhere.
+    const PINNED_STACK_LOGIC_REWARD_HASH: u64 = 0x5fe2_0698_d6b1_b3af;
+
+    fn with_stack_solvers(params: &Params, seed: u64) -> World {
+        let mut world = World::new(params, seed).unwrap();
+        for y in 0..params.height / 4 {
+            let solver = if y < params.height / 8 {
+                STACK_NOT_SOLVER
+            } else {
+                STACK_XOR_SOLVER
+            };
+            for x in 0..params.width {
+                let mut tape = world.cell(x, y).to_vec();
+                tape[..solver.len()].copy_from_slice(solver);
+                world.set_cell(x, y, &tape);
+            }
+        }
+        world
+    }
+
+    #[test]
+    fn the_stack_logic_reward_is_pinned() {
+        let params = stacked(&logic_params());
+        let rewarded = stepped_world(with_stack_solvers(&params, 42), 50);
+        assert_eq!(rewarded.world_hash(), PINNED_STACK_LOGIC_REWARD_HASH);
+        let in_place = stepped_world(with_stack_solvers(&logic_params(), 42), 50);
+        assert_ne!(rewarded.world_hash(), in_place.world_hash());
+        let twin = stepped_world(with_stack_solvers(&unrewarded(&params), 42), 50);
+        let off = stepped_world(
+            with_stack_solvers(&without_tasks(&unrewarded(&logic_params())), 42),
+            50,
+        );
+        assert_eq!(twin.world_hash(), off.world_hash());
+        assert_eq!(twin.stock, off.stock);
+    }
+
+    #[test]
+    fn determinism_holds_under_a_stack_logic_reward() {
+        for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+            for (seed, task_floor) in [(3, "echo"), (4, "xor")] {
+                assert_deterministic(
+                    &Params {
+                        max_steps: 64,
+                        energy_payer: payer,
+                        energy_influx: 8,
+                        energy_stock_cap: 256,
+                        tasks: Tasks::Logic,
+                        task_every: 3,
+                        task_reward: 4,
+                        task_floor: task_floor.to_string(),
+                        logic_nand: LogicNand::Stack,
+                        ..soup(16, 16)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// Each NAND pays the XOR solver written for it, and not the other's: the stack XOR
+    /// solver earns XOR's 8 units under `stack` alone, and the in-place one under `in_place`
+    /// alone.
+    #[test]
+    fn the_logic_nand_decides_which_xor_solver_is_paid() {
+        let xor_pay = |logic_nand, solver: &[u8]| {
+            let mut world = logic_paid_world(100, "xor");
+            world.params.logic_nand = logic_nand;
+            let mut tape = solver.to_vec();
+            tape.resize(24, 0);
+            world.set_cell(1, 5, &tape);
+            world.step();
+            stock_at(&world, 1, 5)
+        };
+        assert_eq!(xor_pay(LogicNand::Stack, STACK_XOR_SOLVER), 800);
+        assert_eq!(xor_pay(LogicNand::InPlace, STACK_XOR_SOLVER), 0);
+        assert_eq!(xor_pay(LogicNand::InPlace, XOR_SOLVER), 800);
+        assert_eq!(xor_pay(LogicNand::Stack, XOR_SOLVER), 0);
+    }
+
     /// `paid_world`'s still soup on the logic ladder, with tapes of 24 bytes: an ECHO
     /// solver, a NOT solver, an XOR solver and a sprayer.
     fn logic_paid_world(task_reward: u32, task_floor: &str) -> World {
@@ -6610,5 +6706,26 @@ mod tests {
 
         let dropped = World::descend(&without_meta(&params), 11, &blob).unwrap();
         assert!(dropped.meta.is_empty());
+    }
+
+    /// The logic observables read the run's own NAND: a world of stack XOR solvers is
+    /// capable of XOR under `stack` and of nothing under `in_place`.
+    #[test]
+    fn the_logic_observables_read_the_runs_own_nand() {
+        let mut stack = logic_world(&[(0..16, STACK_XOR_SOLVER)]);
+        stack.params.logic_nand = LogicNand::Stack;
+        let measured = stack.metrics();
+        assert_eq!(measured.logic_share_xor, Some(1.0));
+        assert_eq!(measured.logic_capability_deep, Some(1));
+        assert_eq!(measured.dominant_logic_tasks, Some(1 << 8));
+
+        let mut in_place = logic_world(&[(0..16, STACK_XOR_SOLVER)]);
+        let measured = in_place.metrics();
+        assert_eq!(measured.logic_share_xor, Some(0.0));
+        assert_eq!(measured.logic_capability_deep, Some(0));
+        assert_eq!(
+            measured.dominant_logic_tasks.map(|bits| bits & (1 << 8)),
+            Some(0)
+        );
     }
 }
