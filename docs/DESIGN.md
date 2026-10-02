@@ -493,7 +493,12 @@ claim rests on it.
   **metabolism readings** (docs/design_record.md 2026-10-02, Meta-stack slice C).
   `meta_inherit_rate` is the share of the interactions of the epoch before the sample that
   passed a metabolism tape on (the initiator's copied onto the partner's), counted in the
-  same pass and over the same interactions as `copy_rate`. `meta_diversity` is the number of
+  same pass and over the same interactions as `copy_rate`, and null where that epoch ran no
+  interaction, or none has been counted since a resume: an energy-starved world often runs
+  none, or a handful, in the epoch before a sample (on three restored pilot worlds in the
+  300 epochs after descent, none in 70 of 90 sampled epochs and at most 60 of 16 384 cells
+  in the rest), so read it over a window. Its rule is slice B's near copy, looser than `copy_rate`'s exact one and blind to
+  orientation, so it can read far above `copy_rate`. `meta_diversity` is the number of
   distinct metabolism tapes the world's cells hold, the metabolism tape's
   `distinct_tapes`, read off the same ranking that names its dominant tape.
   `logic_capability_replicating` is `logic_capability` read on the replicating tapes

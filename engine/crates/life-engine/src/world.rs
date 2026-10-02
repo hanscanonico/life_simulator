@@ -100,8 +100,10 @@ pub struct World {
     steal_rate: f64,
     /// The `reverse_copy_rate` of that same epoch, counted in the same pass.
     reverse_copy_rate: f64,
-    /// The `meta_inherit_rate` of that same epoch, counted in the same pass.
-    meta_inherit_rate: f64,
+    /// The `meta_inherit_rate` of that same epoch, counted in the same pass: `None` until
+    /// a counted pass runs an interaction, and again after one that runs none: a share of
+    /// no interactions is no reading.
+    meta_inherit_rate: Option<f64>,
     /// One lineage id per cell, unique at init and inherited by descent in `step_soup`.
     /// Empty on the life substrate. A tag is read and written beside the tapes and never
     /// from the RNG stream, so a run's bytes are what they were before lineages existed.
@@ -135,7 +137,7 @@ impl World {
             copy_rate: 0.0,
             steal_rate: 0.0,
             reverse_copy_rate: 0.0,
-            meta_inherit_rate: 0.0,
+            meta_inherit_rate: None,
             lineages: fresh_lineages(params),
             lens: fresh_lens(params),
             stock: fresh_stock(params),
@@ -401,7 +403,7 @@ impl World {
             copy_rate: 0.0,
             steal_rate: 0.0,
             reverse_copy_rate: 0.0,
-            meta_inherit_rate: 0.0,
+            meta_inherit_rate: None,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: restored_stock(params, restored.stock)?,
@@ -447,7 +449,7 @@ impl World {
             copy_rate: 0.0,
             steal_rate: 0.0,
             reverse_copy_rate: 0.0,
-            meta_inherit_rate: 0.0,
+            meta_inherit_rate: None,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: descended_stock(params, restored.stock)?,
@@ -589,7 +591,7 @@ impl World {
             self.copy_rate = share(copies);
             self.steal_rate = share(thefts);
             self.reverse_copy_rate = share(reversed_copies);
-            self.meta_inherit_rate = share(inherits);
+            self.meta_inherit_rate = (interactions > 0).then(|| share(inherits));
         }
     }
 
@@ -881,7 +883,7 @@ impl World {
             logic_capability_deep: logic.map(|tally| tally.capability_deep()),
             dominant_logic_tasks: dominant_logic.map(|credit| u32::from(credit.bits())),
             dominant_logic_task_count: dominant_logic.map(|credit| credit.count()),
-            meta_inherit_rate: (!self.meta.is_empty()).then_some(self.meta_inherit_rate),
+            meta_inherit_rate: self.meta_inherit_rate.filter(|_| !self.meta.is_empty()),
             meta_diversity: (!self.meta.is_empty()).then_some(ranked_meta.len() as u64),
             logic_capability_replicating: self
                 .logic_tally_replicating()
@@ -6498,6 +6500,26 @@ mod tests {
         assert_eq!(world.stock.iter().sum::<u32>(), 1_000);
     }
 
+    /// The metabolism tape is assayed with the run's own NAND: the stack XOR solver on a
+    /// metabolism tape earns XOR's 8 units under `stack` alone, and the in-place one under
+    /// `in_place` alone (under `stack` it is paid one unit of a rung below).
+    #[test]
+    fn the_metabolism_tape_is_paid_under_the_runs_own_nand() {
+        let xor_pay = |logic_nand, solver: &[u8]| {
+            let mut world = meta_paid_world();
+            world.params.logic_nand = logic_nand;
+            let mut tape = solver.to_vec();
+            tape.resize(24, 0);
+            world.set_metabolism(1, 5, &tape);
+            world.step();
+            stock_at(&world, 1, 5)
+        };
+        assert_eq!(xor_pay(LogicNand::Stack, STACK_XOR_SOLVER), 800);
+        assert_eq!(xor_pay(LogicNand::InPlace, STACK_XOR_SOLVER), 0);
+        assert_eq!(xor_pay(LogicNand::InPlace, XOR_SOLVER), 800);
+        assert_eq!(xor_pay(LogicNand::Stack, XOR_SOLVER), 100);
+    }
+
     #[test]
     fn determinism_holds_under_a_metabolism_tape() {
         for (seed, draw, meta_seed) in [
@@ -6895,7 +6917,7 @@ mod tests {
             assert_eq!(measured.dominant_logic_task_count, Some(1), "{nand:?}");
             assert_eq!(measured.logic_capability_replicating, Some(1), "{nand:?}");
             assert_eq!(measured.meta_diversity, Some(3), "{nand:?}");
-            assert_eq!(measured.meta_inherit_rate, Some(0.0), "{nand:?}");
+            assert_eq!(measured.meta_inherit_rate, None, "{nand:?}");
         }
     }
 
@@ -6943,7 +6965,8 @@ mod tests {
 
     /// The inherit rate counts the interactions of the epoch before a sample that passed a
     /// metabolism tape on: in a colony of the handwritten replicator copying over a zero
-    /// soup, some do, and none does more often than an interaction runs.
+    /// soup, where every cell initiates once an epoch, it is a count over the 64 cells, and
+    /// the planted tape has spread. Before any epoch has run it is no reading at all.
     #[test]
     fn the_inherit_rate_counts_the_metabolism_tapes_passed_on() {
         let params = Params {
@@ -6956,14 +6979,41 @@ mod tests {
         for x in 0..params.width {
             world.set_metabolism(x, 0, b"carried!");
         }
-        assert_eq!(world.metrics().meta_inherit_rate, Some(0.0));
+        assert_eq!(world.metrics().meta_inherit_rate, None);
         let mut world = stepped_world(world, u64::from(params.sample_every));
         let rate = world.metrics().meta_inherit_rate.expect("the tape is on");
-        assert!(rate > 0.0 && rate <= 1.0, "{rate}");
-        assert!(
-            rate <= world.copy_rate + world.reverse_copy_rate + 1e-9,
-            "{rate}"
-        );
+        assert_eq!(rate, PINNED_COLONY_INHERITS / 64.0);
+        let carried = world
+            .meta
+            .chunks(8)
+            .filter(|tape| tape == b"carried!")
+            .count();
+        assert!(carried > params.width as usize, "{carried}");
+    }
+
+    const PINNED_COLONY_INHERITS: f64 = 33.0;
+
+    /// A counted epoch in which no cell could pay to initiate passes no tape on and reads
+    /// null, not 0, as an energy-starved world's often does; the next sample, whose epoch
+    /// runs interactions, reads a number again.
+    #[test]
+    fn the_inherit_rate_of_an_epoch_without_interactions_is_null() {
+        let params = Params {
+            meta_len: 8,
+            meta_rate: 0.0,
+            tasks: Tasks::Logic,
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 2_048,
+            energy_stock_cap: 65_536,
+            ..colony_params()
+        };
+        let mut world = colony(&params, 11);
+        world.stock.fill(0);
+        let mut world = stepped_world(world, u64::from(params.sample_every));
+        assert_eq!(world.metrics().meta_inherit_rate, None);
+        assert_eq!(world.copy_rate, 0.0);
+        let mut world = stepped_world(world, u64::from(params.sample_every));
+        assert!(world.metrics().meta_inherit_rate.is_some());
     }
 
     /// The stack OR of `logic::tests::STACK_SOLVERS`.
@@ -6984,9 +7034,12 @@ mod tests {
 
     /// The metabolism-tape bundle's readings on `meta_params` over `with_meta_solvers`,
     /// seed 42, after 50 epochs, pinned apart from every digest above
-    /// (`docs/design_record.md`, Meta-stack slice C). Its reward-0 arm reads the same: no
-    /// tape is passed on in either, so both hold the same metabolism tapes, mutated on the
-    /// one stream, and the replicating tapes the two arms differ on still read one rung.
+    /// (`docs/design_record.md`, Meta-stack slice C). Its reward-0 arm reads the same but
+    /// for the inherit rate: no tape is passed on in either, so both hold the same
+    /// metabolism tapes, mutated on the one stream, and the replicating tapes the two arms
+    /// differ on still read one rung; but no unpaid cell can afford to initiate in the
+    /// epoch before the sample, so that arm has no rate to read.
+    /// `PINNED_META_COLONY_READINGS` pins arms that pass tapes on.
     const PINNED_META_READINGS: &str = "logic_share_echo=Some(0.04296875) \
          logic_share_not=Some(0.08984375) logic_share_nand=Some(0.0078125) logic_share_and=Some(0.0) \
          logic_share_orn=Some(0.00390625) logic_share_or=Some(0.0) logic_share_andn=Some(0.00390625) \
@@ -7000,8 +7053,68 @@ mod tests {
         let mut rewarded = stepped_world(with_meta_solvers(&meta_params(), 42), 50);
         let mut unrewarded = stepped_world(with_meta_solvers(&unrewarded(&meta_params()), 42), 50);
         assert_eq!(meta_digest(&rewarded.metrics()), PINNED_META_READINGS);
-        assert_eq!(meta_digest(&unrewarded.metrics()), PINNED_META_READINGS);
+        assert_eq!(
+            meta_digest(&unrewarded.metrics()),
+            PINNED_META_READINGS.replace("meta_inherit_rate=Some(0.0)", "meta_inherit_rate=None")
+        );
         assert_ne!(rewarded.soup_hash(), unrewarded.soup_hash());
+    }
+
+    /// A colony of the handwritten replicator whose row carries the NOT solver on its
+    /// metabolism tapes, under the stack NAND, paid every epoch on an economy where a cell
+    /// earns an interaction in four epochs unpaid: the copier hands the tape on, and the
+    /// pay decides how often it can.
+    fn meta_colony(task_reward: u32) -> World {
+        let params = Params {
+            meta_len: 8,
+            meta_rate: 1.0 / 64.0,
+            tasks: Tasks::Logic,
+            logic_nand: LogicNand::Stack,
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 2_048,
+            energy_stock_cap: 65_536,
+            task_every: 1,
+            task_reward,
+            ..colony_params()
+        };
+        let mut world = colony(&params, 11);
+        for x in 0..params.width {
+            world.set_metabolism(x, 0, b"<{~!\0\0\0\0");
+        }
+        world
+    }
+
+    /// `meta_colony`'s readings after 20 epochs, paid and unpaid: the paid colony is still
+    /// passing its tapes on, and holds fewer of them, a majority solving NOT; no unpaid
+    /// cell can afford to initiate in the epoch before the sample.
+    const PINNED_META_COLONY_READINGS: [&str; 2] = [
+        "logic_share_echo=Some(0.08203125) logic_share_not=Some(0.44921875) \
+         logic_share_nand=Some(0.0) logic_share_and=Some(0.0) logic_share_orn=Some(0.0) \
+         logic_share_or=Some(0.0) logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) \
+         logic_share_xor=Some(0.0) logic_share_equ=Some(0.0) logic_capability=Some(1) \
+         logic_capability_deep=Some(0) dominant_logic_tasks=Some(2) \
+         dominant_logic_task_count=Some(1) meta_inherit_rate=Some(0.2916666666666667) \
+         meta_diversity=Some(41) logic_capability_replicating=Some(0)",
+        "logic_share_echo=Some(0.25390625) logic_share_not=Some(0.203125) \
+         logic_share_nand=Some(0.0) logic_share_and=Some(0.0) logic_share_orn=Some(0.0) \
+         logic_share_or=Some(0.0) logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) \
+         logic_share_xor=Some(0.0) logic_share_equ=Some(0.0) logic_capability=Some(2) \
+         logic_capability_deep=Some(0) dominant_logic_tasks=Some(2) \
+         dominant_logic_task_count=Some(1) meta_inherit_rate=None meta_diversity=Some(53) \
+         logic_capability_replicating=Some(0)",
+    ];
+
+    #[test]
+    fn the_metabolism_readings_of_a_copying_colony_are_pinned() {
+        let mut rewarded = stepped_world(meta_colony(8_192), 20);
+        let mut unrewarded = stepped_world(meta_colony(0), 20);
+        assert_eq!(
+            [
+                meta_digest(&rewarded.metrics()),
+                meta_digest(&unrewarded.metrics())
+            ],
+            PINNED_META_COLONY_READINGS
+        );
     }
 
     /// The readings only read: sampling a metabolism-tape run at every epoch moves no byte,

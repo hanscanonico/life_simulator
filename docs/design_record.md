@@ -3840,7 +3840,16 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   **Three new keys, live-only.**
   - `meta_inherit_rate`: inherit events over interactions, counted at the `inherit_meta`
     call in the pass that counts `copy_rate`, so over the same interactions of the epoch
-    before the sample. The study's §5.3 lists it as descriptive.
+    before the sample. The study's §5.3 lists it as descriptive. Null, not 0, where that
+    epoch ran no interaction or none has run since a resume, unlike `copy_rate`, which
+    reads 0 there: a share of nothing is no reading, and on an energy-starved world it is
+    common. On the restored 1007, 944 and m6 worlds at the study's bundle, in the 300
+    epochs after descent, 70 of 90 sampled epochs ran no interaction and the rest ran 1 to
+    60 of 16 384 cells, where the rate read up to 1.0 beside a `copy_rate` of 0. No floor
+    on the count is set: any floor is arbitrary, and a small count is a true, noisy share,
+    so the reading is meant over a window. The near copy that passes a tape on is looser
+    than `copy_rate`'s exact copy and blind to orientation, so the rate can sit far above
+    the copy rates.
   - `meta_diversity`: how many distinct metabolism tapes the whole world holds, not the 256
     sampled cells the brief allowed. A judgement call: the whole-world count comes free with
     the ranking that names the dominant tape, draws nothing, and is `distinct_tapes`' own
@@ -3865,8 +3874,11 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   under `stack` and nothing under `in_place`. The dominant reading names the most common
   metabolism tape and breaks a tie by byte order whichever rows hold which. The inherit rate
   through a live copier colony. A new digest pin, split from the logic one, of the
-  rewarded bundle and its reward-0 arm (equal, since neither passes a tape on in 50
-  epochs). Sampling every epoch moves no byte, stock or lineage; a sample reads the same
+  rewarded bundle and its reward-0 arm (equal but for the inherit rate, since neither passes
+  a tape on in 50 epochs and the reward-0 arm cannot afford to interact before the sample),
+  and of a copying colony under the stack NAND, paid and unpaid, whose readings differ. The
+  pay under the metabolism tape and the stack NAND together: the stack XOR solver on a
+  metabolism tape is paid XOR under `stack` alone. Sampling every epoch moves no byte, stock or lineage; a sample reads the same
   twice and after a resume, but for the inherit rate, which needs an epoch.
 
   **Rails.** `Sample::OBSERVABLES` gains the three keys; the run page charts them only for

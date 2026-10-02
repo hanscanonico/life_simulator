@@ -225,7 +225,8 @@ pub struct Metrics {
     pub dominant_logic_task_count: Option<u32>,
     /// The share of the interactions of the epoch before the sample that passed a
     /// metabolism tape on, the initiator's copied whole onto the partner's
-    /// (`docs/design_record.md`, 2026-10-02, Meta-stack slice C). This and the two readings
+    /// (`docs/design_record.md`, 2026-10-02, Meta-stack slice C); `None` where that epoch
+    /// ran no interaction, or none has run since a resume. This and the two readings
     /// below are `None` wherever the run carries no metabolism tape. Where it carries one,
     /// the logic readings above read the metabolism tapes, and the dominant tape they name
     /// is the most common metabolism tape.
