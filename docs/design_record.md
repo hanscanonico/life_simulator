@@ -4066,8 +4066,17 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **heritability**, by planting that deep solver (its cell's replicating and metabolism
     tapes) as a 4×4 block in the centre of its own end world, with every other cell credited
     that rung given the world's commonest metabolism tape without it, under the child's params,
-    seeds 2001–2003, 2 000 epochs: heritable where in at least one seed more than the 16
-    planted cells are credited the rung on all 6 sets at 2 000 epochs;
+    seeds 2001–2003, 2 000 epochs, beside an **unplanted control**: the same world with the
+    block given that commonest tape too, under the same seeds. **Heritable** where, in at
+    least **2 of the 3 seeds**, the planted world has at least **a tenth of the world** (1 639
+    cells) credited the rung on all 6 sets at 2 000 epochs while its control, same seed, has
+    16 cells or fewer. Where the control also reaches the tenth, the rung re-arose from the
+    reseeded tape (the stepping stones sit one substitution below the deep solvers, §7.4 of
+    the study, and at `meta_rate` 1/256 with 1/14 draws a given substitution at a given site
+    comes about every 3 600 cell-epochs), so heritability is reported **unresolved**, not
+    heritable. A paid rung that is kept should get there: once established, a rung held a
+    tenth within about 120 epochs in the study's arithmetic (§1.3), and the pilot's deep rungs
+    went from their first cells to a tenth in 1 000–1 500 epochs;
   - **whether it reads an input twice**, by the study's traced stepper on x = 0x5a, y = 0x33
     and the 6 fixed case sets: whether an input or an intermediate is a NAND operand more than
     once.
