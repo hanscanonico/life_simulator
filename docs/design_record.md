@@ -3885,3 +3885,252 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   a run that has a reading of them, as it gates each ladder; a sample without them draws no
   point; the glossary defines them. They are live-only: no `oriented_census` version reads
   them.
+- 2026-10-02 — **Meta-stack: does a soup assemble the deep rungs from paid parts on a
+  metabolism tape read with a stack NAND? The `meta_stack` sweep, pre-registered.** This is
+  §1.3 item 17 and it adds a paragraph to DESIGN §1.4. The experiment is `meta-stack` (sweep
+  key `meta_stack`), and its numbers live in `Lab::MetaStackReading`. It is the last slice of
+  Meta-stack: the stack NAND (slice A), the metabolism tape (slice B) and the observables that
+  read the tape (slice C) are the entries above, and the four deploy together, as one runner
+  restart, after the Logic sweep reads. Nothing is relocked.
+
+  **The choice.** It is the orchestrator's, under the user's instruction "continue, don't stop
+  until life exists", following a design study of 2026-10-02 (a scratch study outside the
+  repository; every number below is *pilot* or a measurement on stored pilot worlds, from a
+  throwaway copy of the engine at `dba2c96`, not a finding). Its diagnosis:
+  - **The valley binds, not supply.** A specific substitution lands somewhere in a 16 384-cell
+    world about once every **128 epochs** (u = 4.8 × 10⁻⁷ per cell per epoch), and the one-step
+    rungs came on schedule, 500–1 000 epochs apart once the rung below was common. XOR and EQU
+    are the only rungs that read an input twice, and they sit behind **≥ 3–4 coordinated
+    substitutions** through intermediates that stop copying or lose credit. On Weissman et
+    al.'s (2009) valley arithmetic the expected wait for K = 4 with intermediates costing a
+    quarter of a cell's income is **3 × 10¹⁴ epochs** or more, and **3.4 × 10⁵** even on a
+    neutral plateau with ten paths a step, 8–15 times the horizon. Bringing it to 40 000
+    epochs needs the rate × 2.8–3.7 on a neutral plateau and × 500 or more on a valley, and
+    the copier's error threshold sits between × 8 and × 16.
+  - **The landscape** (exhaustive, with the real assay and detector): in both pilot worlds
+    no byte is free, **0 of 128**: every byte the assay executes is a copy loop's byte too.
+    EQU is **3 substitutions** from 1007's NOR solver (94 triples credited on 6 case sets of
+    886 M screened, 20 of them replicating), but every one of their singles and doubles stops
+    copying, and the deep form copies with a one-byte rotation: four planted blocks were gone
+    within 500 epochs. Coordinated pairs that gain a rung pass through a neutral order in
+    0–53% of cases, and a free region removes the copier but not the depth: no XOR or EQU
+    within 3 substitutions of any short solver, nor within 4 of the hand-written OR (303 M
+    mutants).
+  - **So the binding constraint is fan-out in a two-head machine whose NAND writes in
+    place**: using a value twice needs a stored copy and re-aligned heads, which in the woven
+    tapes only the copy loop supplies.
+  - **The pilots.** *Rate arms*: × 4 and × 8 from 1007's end world made no deep rung in
+    20 000 epochs, and × 16 melted the copiers (detector share 0.05 by 2 000 epochs).
+    *Metabolism-tape arms* under today's NAND: the free tape climbed every read-once rung
+    (seeded with zeros at × 32 instruction-set draws, ECHO by 500 epochs and NOR by 2 000) and
+    no deep rung, **0 of 8** arms. *The stack NAND* on a 32-byte tape seeded from each cell's
+    own tape, at × 32 instruction-set draws: XOR and/or EQU at a tenth in **2 of 3 seeds**
+    within 20 000 epochs (seed 2001 from epoch 4 000, up to 8 078 cells; seed 2003 EQU from
+    14 500, up to 8 434). *Deep-only*, the same with every rung below XOR unpaid: **climbed
+    nothing** past ECHO. *Today's NAND on the same tape and start*: no deep rung.
+
+  So Meta-stack tests the study's revised recommendation (its §7.6): the metabolism tape with
+  the stack NAND, its deep-only control, and the tape with today's NAND as the semantics
+  control, against the Logic sweep's own children.
+
+  **Logic's reading.**
+  Final (`lab:logic_report`, 2026-10-02 07:10Z). All 162 children finished. One full child is
+  extinct (4755) and six full children settled into relapse; the other arms have neither.
+  - **H-capability-L: shown.** 53 pairs favour the full arm, 0 the none arm (p = 1.1 × 10⁻¹⁶).
+    Every parent leans to the full arm.
+  - **H-deep: refuted.** All 53 pairs tie at zero. `logic_capability_deep` is 0 in every
+    sample of every child.
+    - XOR's largest share in any sample is 5/256 (run 4817, epoch 46 470).
+    - EQU's is 1/256.
+  - **H-stones: refuted.** All 53 pairs tie at zero, because no arm built a deep rung.
+  - **H-complexity: not shown.** 2 pairs favour the full arm and 1 the none arm, with 45 ties
+    (p = 0.5).
+  - **Sensitivity readings.** The extinct-kept reading and the unpiloted re-reading give the
+    same four outcomes.
+
+  **The full arm's ladder** (children reaching each rung at 1/10 under the k = 5 rule, of 54):
+
+  | rung | ECHO | NOT | NAND | ORN | ANDN | OR | AND | NOR | XOR | EQU |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | children | 54 | 52 | 37 | 44 | 32 | 23 | 14 | 19 | 0 | 0 |
+
+  The deep-only and none arms reach ECHO in 19 children each and nothing above it. Tasks gave
+  the full arm 0.59 of its income on average.
+
+  This is the stall the deep study predicted: every read-once rung up to NOR climbs, and
+  neither rung that needs an input twice comes.
+
+  **Two rules on seeding, locked here.**
+  - **(a)** Meta-stack is **seeded only after the Logic reading is final** (`lab:logic_report`
+    reads "final") **and the runner carrying slices A, B and C is deployed**: a child sampled
+    without the tape-reading observables is unmeasured on every test.
+  - **(b)** **If Logic's H-deep reads shown**, Meta-stack is **not seeded as designed**. Deep
+    rungs came on the woven tape with today's NAND, so the question moves: the study's §5.7
+    path takes over — whether the deep solvers are heritable (planted back into their own
+    worlds), then H-stones, then a ladder with no near top (3-input logic, read with the rise
+    rule on the deepest rung held) — in an entry of its own.
+
+  **The label.** A rewarded Meta-stack run is a Metabolism run. It imports **an objective**
+  (the tasks), **a primitive** (the NAND byte), **a hereditary channel** (the world, not the
+  program, copies the metabolism tape on a near copy of the replicating tape), **and a choice
+  of the primitive's semantics made because it lets the deep rungs come** (study §7.6): the
+  stack NAND was chosen among seven semantics because it was the one under which the pilot's
+  deep rungs came. It carries Metabolism's badge and pooling rule, and rung 4 on Soup stays
+  "not shown" whatever it reads.
+
+  **The sweep.** A descendant sweep from the from-emerged sweep's 18 parents under the same
+  rule (`Lab::FROM_EMERGED_PARENTS`), seeds **2001–2003**, **40 000** epochs past the parent,
+  priority **40**. Three bundles, each merged over the parent's params, on top of the Logic
+  full bundle (`energy_payer: initiator, energy_influx: 1024, energy_stock_cap: 65536,
+  steal_amount: 0, tasks: logic, task_every: 8, task_reward: 2048`) and one tape
+  (`meta_len: 32, meta_rate: 0.00390625, meta_draw: isa, meta_seed: own_tape`, all four named):
+  - **meta-stack**: `logic_nand: stack`;
+  - **meta-stack-deep-only**: `logic_nand: stack, task_floor: xor`, Lenski's control;
+  - **meta-inplace**: `logic_nand: in_place`, the study's §5 design kept as the semantics
+    control.
+
+  **18 × 3 × 3 = 162 children.** Each bundle was run through the merged engine (`runner run`)
+  over a cap-128 and a cap-256 control's params and accepted. The builder is idempotent, adds
+  nothing to the Metabolism or Logic sweeps, and no child shares its canonical params with
+  another child of the same (parent, seed) in any of the three sweeps.
+
+  **Pairing, across two sweeps.** A pair is two children of the same (parent, seed). The
+  twins come from the Logic sweep's own children, so no new arm is run for them: **Logic's
+  none child** (reward 0, no tape) is the **no-reward twin**, since at a reward of 0 the tape
+  is never read and slice B pins the world of a reward-0 tape run to the tape-off run byte for
+  byte; **Logic's full child** (reward on, the woven tape assayed) is the **woven twin**.
+  Logic's deep-only children are in no arm here. The arms are keyed on each child's params, its
+  reward, `meta_len`, `logic_nand` and `task_floor` (`Lab::MetaStackReading.treatment_key`), not
+  on the sweep it sits in.
+
+  **The readings** are Logic's exactly, per child, over its own samples: the **settling
+  window** (epochs above `parent_epoch` + 1 000), **deciles** over the settled samples and
+  **lower-middle medians**; **extinct** where the last-decile median `replicator_share` — the
+  detector's share, which reads the **replicating** tape — is below **0.1**, and a **settled
+  relapse** where it sits below 0.1 for 3 consecutive settled samples; a key unmeasured with
+  fewer than 10 numbers in its last decile. Each test is a **one-sided sign test** over the
+  discordant pairs, measured where both children carry the key's last-decile median and
+  neither is extinct: **shown** at p < **0.05**; **refuted** where the pairs favouring the
+  control are at least as many as those favouring the treated arm, ties included; **not
+  shown** otherwise; **no measured pairs** where none is measured on both sides. Each carries
+  the **per-parent agreement** and the **leave-one-or-two-parents-out** rule, and two
+  sensitivity readings that decide no outcome: **extinct kept** (study §5.6, partial copiers)
+  and **unpiloted**, re-read without the pairs of the four parents the pilots ran, **1007,
+  944, 2577 and 2700**. First epochs are read under the **persistence rule, k = 5** consecutive
+  own samples at a share of at least 1/10. With slice C the logic readings of a tape run read
+  its metabolism tape.
+
+  **The tests.** All on last-decile medians.
+  - **H-deep-Ms**, the rung-4 question (meta-stack against Logic none):
+    `logic_capability_deep`, the count of XOR and EQU held by a tenth of the world. With the
+    none arm at zero it needs **5** discordant pairs (p = 1/32). Over 54 measured pairs its
+    power is **0.64** at a rate of 0.1 deep children per child, **0.92** at 0.15 and **0.99**
+    at 0.2. The pilot's 2 of 3 seeds, on one world, would give a power of about 1, but one
+    world bounds nothing about 18.
+  - **H-stones-Ms** (meta-stack against meta-stack-deep-only): the same key, Lenski's
+    control. *Pilot*: deep-only climbed nothing, 1 seed.
+  - **H-stack** (meta-stack against meta-inplace): the same key. Does the NAND's semantics
+    decide it? *Pilot*: 2 of 3 seeds against 0 of 1 on the same start.
+  - **H-deep-M** (meta-inplace against Logic none): the same key, the study's §5 question.
+    *Pilot*: 0 of 8 metabolism-tape arms with today's NAND.
+  - **H-decouple** (meta-inplace against Logic full): the same key. **Kept**: §5.3 asked
+    whether deep rungs come more often off the copy loop than on it, and meta-inplace is still
+    the one arm that holds the NAND fixed and moves only the code region — off the copier, at
+    the tape's rate and draw — so this is the only test of the tape itself against the paid
+    woven twin. It reads the tape and its rate together, never the copy loop alone.
+  - **H-capability-M** (meta-stack against Logic none): `logic_capability`, ECHO to EQU at a
+    tenth. Relapsed children stay in, as in Logic.
+
+  Logic's H-complexity is not a test here: its rise rule reads the dominant replicator's
+  instruction count, on the replicating tape, which this sweep no longer pays; the per-arm
+  complexity survivors and rises are printed descriptively.
+
+  **What each outcome means** (study §5.4 and §7.6, adapted to the stack arms). A deep rung
+  shown here is **"assembled from paid parts"** only with H-stones-Ms; no outcome is worded
+  "crossed a valley".
+  - **H-deep-Ms shown and H-stones-Ms shown.** On a metabolism tape read with the stack NAND,
+    a soup **assembles XOR and EQU from paid parts**: Lenski's mechanism, in a soup, under
+    the four imports named. It is a multi-step crossing only for the deep children whose
+    substitution distance (below) is at least 2. H-stack then says whether the semantics
+    decides it: shown, the result is the stack NAND's; refuted, the tape alone would have done.
+  - **H-deep-Ms shown, H-stones-Ms refuted.** The deep rungs come as often when only they are
+    paid: on this machine they are directly reachable, the paid parts are not needed, and the
+    depth the semantics moved is no barrier.
+  - **H-deep-Ms shown, H-stones-Ms not shown.** The soup assembles the deep rungs when the
+    ladder is paid; whether it needs the parts is below what the pairs resolve.
+  - **H-deep-Ms refuted.** The pilot's 2 of 3 does not carry to 18 worlds: even with the
+    copier out of the path, Avida's per-site rate and a NAND that keeps its operands, the soup
+    builds no deep rung in 40 000 epochs. Rung 4 by composition then needs a machine with
+    non-destructive storage — registers, a new-substrate decision for the user — or a question
+    this machine can answer: a ladder of read-once compositions without a top.
+  - **H-deep-Ms not shown.** The rate of deep climbing is below what 54 pairs resolve.
+  - **H-deep-M refuted** (the pilot's prediction), with H-deep-Ms shown: today's NAND climbs
+    every read-once rung and none that reads twice, even off the copier at Avida's rate, so
+    the binding constraint was **fan-out in a two-head machine whose NAND writes in place**,
+    as a finding rather than a pilot. **H-deep-M shown**: copying and supply together were the
+    constraint, and the stack NAND was not needed (H-stack then reads refuted or not shown).
+  - **H-decouple shown**: deep rungs come more often on the tape, at its rate, than on the
+    woven tape under the same NAND. **Refuted** with H-deep-M shown: the woven children reach
+    them as often, so the tape is not needed and Logic's own reading is the result.
+  - **H-capability-M shown**: the tape re-climbs the read-once ladder from its own-tape seed
+    under the stack NAND. **Refuted**: the restart failed, and the deep tests read a tape that
+    never climbed.
+
+  **Reported with each deep child, locked now and measured after the sweep** with the study's
+  landscape tools on the stored worlds (offline, not this reading's code). **The 6 fixed case
+  sets** are the study's landscape draw, six `logic::Cases::draw` in turn off
+  `rng::seeded(0xdee9, 1, 0)`, frozen as constants; a tape is credited a rung "on all 6 sets"
+  where the logic assay, under the child's own instruction set and NAND, credits it on each.
+  - **the substitution distance** from the child's dominant metabolism tape at the epoch the
+    last lower rung to reach the line did so (its first epoch at 1/10 under k = 5, read on the
+    stored world nearest at or before it) to the first deep solver (the commonest metabolism
+    tape credited XOR or EQU on all 6 fixed case sets in the first stored world after the deep
+    rung's first epoch). **A deep rung counts as a multi-step crossing only if that distance is
+    ≥ 2**;
+  - **heritability**, by planting that deep solver (its cell's replicating and metabolism
+    tapes) as a 4×4 block in the centre of its own end world, with every other cell whose
+    metabolism tape is credited that rung on any one of the 6 sets given the world's commonest
+    metabolism tape credited it on none, under the child's params, seeds 2001–2003, 2 000
+    epochs, beside an **unplanted control**: the same world with the block's metabolism tapes
+    given that commonest tape too and its replicating tapes planted as before, so the two
+    differ only in the block's metabolism tapes, under the same seeds. Both resume the end
+    world as stored (`World::from_snapshot`). **Heritable** where, in at least **2 of the 3
+    seeds**, the planted world has at least **a tenth of the world** (1 639 cells) credited
+    the rung on all 6 sets at 2 000 epochs while its control, same seed, has 16 cells or
+    fewer. Where any seed's control reaches the tenth, the rung re-arose from the reseeded
+    tape (the stepping stones sit one substitution below the deep solvers, §7.4 of the study,
+    and at `meta_rate` 1/256 with 1/14 draws a given substitution at a given site comes about
+    every 3 600 cell-epochs), so heritability is reported **unresolved**, not heritable,
+    whatever the other seeds read. A paid rung that is kept should get there: once
+    established, a rung held a tenth within about 120 epochs in the study's arithmetic (§1.3),
+    and the pilot's deep rungs went from their first cells to a tenth in 1 000–1 500 epochs;
+  - **the circuit behind it**, by the study's traced stepper on x = 0x5a, y = 0x33 and the 6
+    fixed case sets, **printed descriptively and tested nowhere**: the NANDs behind the
+    credited output, and which values (x, y or an intermediate) two of them read. It is no
+    test of depth. XOR and EQU are not read-once functions, so every NAND circuit computing
+    either reads some input or intermediate in two NANDs; a read-once rung can be built by a
+    circuit that does too (the stack ORN `<<{~~!` is NAND(NAND(y, x), x)); and no per-input
+    rule separates them, since an XOR may fan out NOT x instead of x. What makes a deep child
+    deep is its credit.
+
+  **Descriptive only**, printed per child and per arm, tested nowhere: the first own epoch
+  each rung reaches 1/10 and so the ladder order, and the stepping-stone counts, as Logic
+  reads them; `meta_inherit_rate`, `meta_diversity` and `logic_capability_replicating`
+  (last-decile medians); the replicating tape's `replicator_share` beside its Logic twins'
+  (*pilot*: under uniform draws it ended at 0.53–0.66, from 0.92); and the share of income
+  from tasks, Logic's estimate over the paid rungs, read on the metabolism tape.
+
+  **When it is read.** Final when every child of every qualifying parent has finished, **in
+  this sweep and in the Logic sweep** (`Experiments::DescendantSweepSettledService` on both);
+  until then `lab:meta_stack_report` and the sweep's page label it **interim**. **Cost**
+  (study §7.6): 162 children at the 47–77 s per 1 000 epochs upper bound, the pilot's tape
+  children running faster than woven ones, about **5–9 hours** of the mini-pc's 12 slots;
+  interim until every child has finished and its `compute_seconds` replace it.
+
+  **What is not claimed.** The substrate imports **an objective, a primitive, a hereditary
+  channel and a choice of the primitive's semantics made because it lets the deep rungs
+  come**; whatever rises says nothing about fitness-free emergence or Soup's rung 4. The
+  **ladder is finite**: EQU is its top. It is **one substrate**, one budget, three correlated
+  children per parent, and four of its parents were piloted. A shown result is **a mechanism**
+  — paid parts let a soup assemble a deeper feature on an imported tape — **not
+  open-endedness**. Every constant above lives in `Lab::MetaStackReading`.

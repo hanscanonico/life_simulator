@@ -16,6 +16,7 @@ module Experiments
   # It reads stored samples, one child at a time, and changes nothing.
   class LogicReadingService
     include Callable
+    include ReadsLogicChildren
 
     SAMPLE_KEYS = [
       Lab::DescendantReading::SHARE_KEY, Lab::DescendantReading::REPLICATING_KEY,
@@ -23,6 +24,7 @@ module Experiments
       Lab::LogicReading::DEEP_CAPABILITY_KEY, Lab::LogicReading::DOMINANT_TASKS_KEY,
       *Lab::LogicReading::DESCRIPTIVE_KEYS
     ].uniq.freeze
+    DESCRIPTIVE_KEYS = Lab::LogicReading::DESCRIPTIVE_KEYS
 
     Treatment = Data.define(:key, :name)
 
@@ -135,17 +137,8 @@ module Experiments
     end
 
     def child_row(run)
-      samples = own_samples(run)
-      settled = samples.select { |epoch, _| epoch > run.parent_epoch + Lab::LogicReading::SETTLING_WINDOW }
-      reading = Lab::DescendantReading::Child.read(settled, parent_epoch: run.parent_epoch,
-                                                            descriptive: Lab::LogicReading::DESCRIPTIVE_KEYS)
-      ChildRow.new(run_id: run.id, parent_id: run.parent_run_id, seed: run.seed,
-                   treatment: treatment_of(run),
-                   status: run.status, reading: reading,
-                   heldout: Lab::FromEmergedHeldout::Child.read(samples, parent_epoch: run.parent_epoch,
-                                                                         last_share: reading.last_share),
-                   logic: Lab::LogicReading::Child.read(samples, parent_epoch: run.parent_epoch),
-                   income_share: income_share(run.params, reading))
+      ChildRow.new(run_id: run.id, parent_id: run.parent_run_id, seed: run.seed, treatment: treatment_of(run),
+                   status: run.status, **logic_child_reading(run))
     end
 
     def treatment_of(run)
@@ -153,48 +146,6 @@ module Experiments
       TREATMENTS.find { |treatment| treatment.key == key }
     end
 
-    # Task income per cell and epoch, `task_reward × Σ units × share / task_every` over the
-    # paid rungs' last-decile median shares — those at or above the run's `task_floor` —
-    # against the influx: an estimate, since it ignores the stock cap a lump can hit. Nil
-    # where a share is missing.
-    def income_share(params, reading)
-      shares = Lab::LogicReading::TASKS.map { |task| reading.last_median(Lab::LogicReading.share_key(task)) }
-      return nil if shares.any?(&:nil?)
-
-      units = shares.zip(paid_units(params.fetch("task_floor", Lab::LogicReading::TASKS.first)))
-                    .sum { |share, unit| Rational(share.to_s) * unit }
-      income = units * params.fetch("task_reward", 0).to_i / params.fetch("task_every", 1).to_i
-      total = income + params.fetch("energy_influx", 0).to_i
-      total.zero? ? nil : (income / total).to_f
-    end
-
-    # Each rung's units, 0 below the floor.
-    def paid_units(floor)
-      floor_index = Lab::LogicReading::TASKS.index(floor) || 0
-      task_units.each_with_index.map { |units, index| index >= floor_index ? units : 0 }
-    end
-
-    def task_units
-      @task_units ||= begin
-        ladder = Lab::Schema.tasks.fetch("logic").fetch("ladder").to_h { |task| [task.fetch("name"), task.fetch("units")] }
-        Lab::LogicReading::TASKS.map { |task| ladder.fetch(task) }
-      end
-    end
-
-    def child_runs
-      @child_runs ||= @experiment.runs.where.not(parent_run_id: nil).order(:parent_run_id, :seed, :id)
-                                 .select(:id, :parent_run_id, :parent_epoch, :seed, :params, :status).to_a
-    end
-
-    def own_samples(run)
-      run.samples.where("epoch > ?", run.parent_epoch).order(:epoch).pluck(:epoch, observed_values)
-    end
-
-    def observed_values
-      @observed_values ||= Arel.sql(ActiveRecord::Base.sanitize_sql_array(
-        ["jsonb_build_object(#{(['?, samples.values -> ?'] * SAMPLE_KEYS.size).join(', ')})",
-         *SAMPLE_KEYS.flat_map { |key| [key, key] }]
-      ))
-    end
+    def child_runs = @child_runs ||= descendant_runs(@experiment)
   end
 end

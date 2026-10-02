@@ -95,6 +95,10 @@
   <%= render "experiments/logic_reading", reading: @show.logic_reading %>
 <% end %>
 
+<% if @show.meta_stack_reading %>
+  <%= render "experiments/meta_stack_reading", reading: @show.meta_stack_reading %>
+<% end %>
+
 <% if @show.lineage_diversity_reading %>
   <%= render "experiments/lineage_diversity_reading", reading: @show.lineage_diversity_reading %>
 <% end %>

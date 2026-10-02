@@ -467,6 +467,56 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the meta-stack sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("meta_stack") }
+      let(:treatments) { definition[:param_grid].fetch("treatment") }
+      let(:logic) { Lab::SWEEPS.fetch("logic") }
+      let(:full) { logic[:param_grid].fetch("treatment").first }
+      let(:meta) do
+        { "meta_len" => 32, "meta_rate" => 0.00390625, "meta_draw" => "isa", "meta_seed" => "own_tape" }
+      end
+
+      it "starts from the from-emerged sweep's parents under the same rule, with Logic's seeds and budget" do
+        expect(definition[:parents]).to equal(Lab::SWEEPS.fetch("from_emerged")[:parents])
+        expect(definition.values_at(:parents, :seeds, :epochs, :priority))
+          .to eq(logic.values_at(:parents, :seeds, :epochs, :priority))
+        expect(definition.values_at(:seeds, :epochs, :priority)).to eq([[2001, 2002, 2003], 40_000, 40])
+      end
+
+      it "runs the stack, the stack paid from XOR up and the in-place NAND over Logic's full bundle and one tape" do
+        expect(treatments).to eq([full.merge(meta, "logic_nand" => "stack"),
+                                  full.merge(meta, "logic_nand" => "stack", "task_floor" => "xor"),
+                                  full.merge(meta, "logic_nand" => "in_place")])
+      end
+
+      it "sets only parameters the engine declares, each to a value it accepts" do
+        treatments.flat_map(&:to_a).each do |name, value|
+          field = Lab::Schema.field(name)
+          if field["values"]
+            expect(field["values"]).to include(value)
+          else
+            expect(value).to be_between(field["min"], field["max"])
+          end
+        end
+      end
+
+      it "changes no parameter that shapes the parent's world" do
+        expect(treatments.flat_map(&:keys) & Lab::CanonicalParams::STRUCTURAL_KEYS).to be_empty
+      end
+
+      it "labels every arm a Metabolism run" do
+        expect(treatments.map { |bundle| Lab::MetabolismReading.metabolism_run?(bundle) }).to all(be(true))
+      end
+
+      it "keys its arms and the logic sweep's twins on the reward, the tape, the NAND and the floor" do
+        expect(treatments.map { |bundle| Lab::MetaStackReading.treatment_key(bundle) })
+          .to eq(%i[meta_stack meta_stack_deep_only meta_inplace])
+        expect(logic[:param_grid].fetch("treatment").map { |bundle| Lab::MetaStackReading.treatment_key(bundle) })
+          .to eq([:logic_full, nil, :logic_none])
+        expect(Lab::MetaStackReading.treatment_key(full.merge(meta, "task_reward" => 0))).to be_nil
+      end
+    end
+
     describe "the lineage-diversity sweep" do
       let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
       let(:reading) { Lab::LineageDiversityReading }

@@ -446,6 +446,30 @@ module Lab
       epochs: 40_000,
       priority: 40
     },
+    "meta_stack" => {
+      name: "Meta-stack",
+      description: "Does a soup assemble XOR and EQU from paid parts once its computing runs off the " \
+                   "copier? Each run starts from an emerged world under the Logic economy and ladder, " \
+                   "with the assay reading a second, never-executed tape that the world hands on with " \
+                   "each copy. One arm reads it with a NAND that keeps its operands, one pays that arm " \
+                   "for XOR and EQU alone, and one keeps the in-place NAND. A labelled substrate: it " \
+                   "imports an objective, a primitive, a hereditary channel and a choice of the " \
+                   "primitive's semantics.",
+      # §1.3 item 17 and §1.4, pre-registered on 2026-10-02, "Meta-stack: does a soup assemble
+      # the deep rungs from paid parts on a metabolism tape read with a stack NAND?", whose
+      # numbers live in `Lab::MetaStackReading`. Seeded only once the Logic reading is final
+      # and the runner carrying the metabolism tape, the stack NAND and their observables is
+      # deployed. The parents and seeds are Logic's, so every child has its unpaid and its
+      # woven twin in that sweep, world for world.
+      parents: FROM_EMERGED_PARENTS,
+      param_grid: {
+        "treatment" => [MetaStackReading::STACK_BUNDLE, MetaStackReading::STACK_DEEP_ONLY_BUNDLE,
+                        MetaStackReading::IN_PLACE_BUNDLE]
+      },
+      seeds: [2001, 2002, 2003],
+      epochs: 40_000,
+      priority: 40
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \
