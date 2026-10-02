@@ -874,6 +874,9 @@ rule unchanged, and rung 4 on Soup stays "not shown" whatever it reads. Its swee
 item 17, pre-registered in `docs/design_record.md`, 2026-10-02, "Meta-stack: does a soup
 assemble the deep rungs from paid parts on a metabolism tape read with a stack NAND?".
 
+The design study behind each of the three is kept in `docs/studies/` (`metabolism.md`,
+`logic.md`, `meta-stack.md`); every number in them is pilot unless the record says otherwise.
+
 ## 2. Architecture
 
 ```
