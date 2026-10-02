@@ -7,3 +7,6 @@ db/schema.rb linguist-generated
 vendor/* linguist-vendored
 config/credentials/*.yml.enc diff=rails_credentials
 config/credentials.yml.enc diff=rails_credentials
+
+# The minimal-NAND tables are raw bytes with no NUL early on, which git would guess is text.
+research/minnand/data/*.bin binary
