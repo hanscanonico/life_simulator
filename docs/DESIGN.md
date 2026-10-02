@@ -873,6 +873,25 @@ sample.
     2026-10-02, "Meta-stack: does a soup assemble the deep rungs from paid parts on a
     metabolism tape read with a stack NAND?", whose numbers live in `Lab::MetaStackReading`;
     `lab:meta_stack_report` reads it.
+18. **Topless rise** — does the deepest rung held keep rising when depth is paid? The Topless
+    variant of §1.4, a descendant sweep from **all 54 meta-stack-arm children** of item 17
+    (H-deep-Ms shown on 9 children over 7 parents, fewer than about ten, so the topless
+    study's rule takes them all and reads the 9 deep ones as a declared subgroup), each from
+    its world at epoch 60 000, seeded only once the topless ladder's runner is deployed and
+    reach-cap128's post-run readings pass has completed. Three arms merged over each parent's
+    params, keeping its metabolism tape and stack NAND: **rise** (`tasks: logic4`,
+    `task_reward` 512, so no single rung up to the 13 floor saturates a cell), **capped** (the
+    same at `task_depth_cap: 5`) and **none** (`task_reward` 0). Seed 4001, 100 000 epochs past
+    the parent, priority 40, 162 children. Read as Logic is, with a rise rule on
+    `logic_depth_max`: a child rises late where its last-decile median is at least its
+    fifth-decile median + 1 (−1, nothing held, a number below every depth), and is ceilinged,
+    read as no rise and printed apart, where its fifth-decile median is already 13. Two
+    one-sided sign tests at p < 0.05: H-rise (rise against none) and H-rise-paid (rise
+    against capped), each re-read on the deep subgroup and with the extinct pairs kept;
+    H-rise-code, the load-bearing bytes of the dominant deepest solver first and last,
+    descriptive and offline. Pre-registered in `docs/design_record.md`, 2026-10-02, "Topless
+    rise: does the deepest rung held keep rising when depth is paid?", whose numbers live in
+    `Lab::ToplessRiseReading`; `lab:topless_rise_report` reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -923,8 +942,19 @@ rule unchanged, and rung 4 on Soup stays "not shown" whatever it reads. Its swee
 item 17, pre-registered in `docs/design_record.md`, 2026-10-02, "Meta-stack: does a soup
 assemble the deep rungs from paid parts on a metabolism tape read with a stack NAND?".
 
-The design study behind each of the three is kept in `docs/studies/` (`metabolism.md`,
-`logic.md`, `meta-stack.md`); every number in them is pilot unless the record says otherwise.
+**Topless** is a variant of Meta-stack that replaces the finite ladder by every function of
+three or four inputs, each a rung paid by its minimal NAND count (`tasks = logic3 | logic4`,
+§1.1), so a soup that keeps getting deeper meets no near top. It answers the question
+Meta-stack's deep rungs left: having assembled XOR and EQU from paid parts, does the deepest
+feature keep rising, or does the climb stop? It imports Meta-stack's four, plus a ladder of
+growing input arity. It carries Metabolism's label and pooling rule unchanged, and rung 4 on
+Soup stays "not shown" whatever it reads. Its sweep is §1.3 item 18, pre-registered in
+`docs/design_record.md`, 2026-10-02, "Topless rise: does the deepest rung held keep rising
+when depth is paid?".
+
+The design study behind each of the four is kept in `docs/studies/` (`metabolism.md`,
+`logic.md`, `meta-stack.md`, `topless.md`); every number in them is pilot unless the record
+says otherwise.
 
 ## 2. Architecture
 

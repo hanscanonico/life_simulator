@@ -99,6 +99,10 @@
   <%= render "experiments/meta_stack_reading", reading: @show.meta_stack_reading %>
 <% end %>
 
+<% if @show.topless_rise_reading %>
+  <%= render "experiments/topless_rise_reading", reading: @show.topless_rise_reading %>
+<% end %>
+
 <% if @show.lineage_diversity_reading %>
   <%= render "experiments/lineage_diversity_reading", reading: @show.lineage_diversity_reading %>
 <% end %>

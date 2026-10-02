@@ -5,6 +5,10 @@ module Experiments
   # which candidates qualify, and why each of the others does not yet. Both the builder,
   # which starts children from the qualifying ones, and the reading, which is interim until
   # the pool is settled, read the rule through here. It changes nothing.
+  #
+  # The candidates are the source experiment's founding runs, or its descendants where the
+  # rule says `"descendants" => true`. A rule naming no `instrument` qualifies every finished
+  # candidate that kept a world at its last epoch, with no reading of that world.
   class DescendantParentsService
     include Callable
 
@@ -30,9 +34,11 @@ module Experiments
     def candidates
       @candidates ||= begin
         source = Experiment.find_by(slug: @rule.fetch("experiment"))
-        source.nil? ? [] : source.runs.founding.order(:id).select { |run| in_arms?(run.params) }
+        source.nil? ? [] : pool_of(source).order(:id).select { |run| in_arms?(run.params) }
       end
     end
+
+    def pool_of(source) = @rule["descendants"] ? source.runs.where.not(parent_run_id: nil) : source.runs.founding
 
     def in_arms?(params)
       @rule.fetch("arms").any? do |arm|
@@ -43,6 +49,7 @@ module Experiments
     def skip_reason(run)
       return :unfinished unless run.finished?
       return :no_terminal_world unless terminal_worlds.include?(run.id)
+      return unless @rule.key?("instrument")
 
       share = terminal_shares[run.id]
       return :no_reading if share.nil?

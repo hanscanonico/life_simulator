@@ -517,6 +517,67 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the topless-rise sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("topless_rise") }
+      let(:treatments) { definition[:param_grid].fetch("treatment") }
+      let(:reading) { Lab::ToplessRiseReading }
+
+      it "starts from the meta-stack sweep's children of its meta-stack arm, unfloored or at the default floor" do
+        expect(definition[:parents]).to include("experiment" => "meta-stack", "descendants" => true)
+        expect(definition[:parents]["arms"].map { |arm| Lab::MetaStackReading.treatment_key(arm) })
+          .to eq(%i[meta_stack meta_stack])
+        expect(definition[:parents]["arms"].pluck("task_floor")).to eq([nil, "echo"])
+      end
+
+      it "runs one seed per parent a hundred thousand epochs past it at priority 40" do
+        expect(definition.values_at(:seeds, :epochs, :priority)).to eq([[4001], 100_000, 40])
+      end
+
+      it "runs the four-input ladder paid by depth, the same capped at five NANDs, and no reward" do
+        expect(treatments).to eq([{ "tasks" => "logic4", "task_reward" => 512 },
+                                  { "tasks" => "logic4", "task_reward" => 512, "task_depth_cap" => 5 },
+                                  { "tasks" => "logic4", "task_reward" => 0 }])
+        expect(treatments.map { |bundle| reading.treatment_key(bundle) }).to eq(%i[rise capped none])
+      end
+
+      it "sets only parameters the engine declares, each to a value it accepts" do
+        treatments.flat_map(&:to_a).each do |name, value|
+          field = Lab::Schema.field(name)
+          if field["values"]
+            expect(field["values"]).to include(value)
+          else
+            expect(value).to be_between(field["min"], field["max"])
+          end
+        end
+      end
+
+      it "changes no parameter that shapes the parent's world" do
+        expect(treatments.flat_map(&:keys) & Lab::CanonicalParams::STRUCTURAL_KEYS).to be_empty
+      end
+
+      it "pays no single rung up to the floor enough to saturate a cell holding ECHO, NOT and XOR beside it" do
+        units = Lab::Schema.tasks.fetch("topless").fetch("depth_units")
+        meta_stack = Lab::MetaStackReading::STACK_BUNDLE
+        income = ->(paid) { meta_stack.fetch("energy_influx") + (reading::REWARD * paid / meta_stack.fetch("task_every")) }
+
+        expect(income.call(1 + 1 + units[4] + units.last)).to be < Lab::Schema.run_defaults.fetch("max_steps")
+      end
+
+      it "ceilings a child at the depth the four-input table credits its open functions at" do
+        expect(reading::CEILING_DEPTH).to eq(Lab::Schema.tasks.fetch("topless").fetch("depth_floor"))
+      end
+
+      it "reads depth on an observable the engine records" do
+        expect(Sample::OBSERVABLES).to include(reading::DEPTH_KEY, reading::CLASSES_KEY)
+      end
+
+      it "names a seed no other sweep uses" do
+        other_seeds = Lab::SWEEPS.except("topless_rise").values.flat_map { |sweep| Array(sweep[:seeds]) }
+
+        expect(definition[:seeds] & other_seeds).to be_empty
+      end
+    end
+
     describe "the lineage-diversity sweep" do
       let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
       let(:reading) { Lab::LineageDiversityReading }

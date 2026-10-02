@@ -352,6 +352,79 @@ RSpec.describe Experiments::DescendantSweepBuilderService do
     end
   end
 
+  describe "the topless-rise sweep" do
+    let(:definition) { Lab::SWEEPS.fetch("topless_rise") }
+    let(:experiment) do
+      create(:experiment, slug: "topless-rise", **definition.slice(:parents, :param_grid, :seeds, :epochs, :priority))
+    end
+    let(:meta_stack) do
+      create(:experiment, slug: "meta-stack",
+                          **Lab::SWEEPS.fetch("meta_stack").slice(:parents, :param_grid, :seeds, :epochs, :priority))
+    end
+    let(:stack) do
+      meta_stack.runs.order(:id).select { |run| Lab::MetaStackReading.treatment_key(run.params) == :meta_stack }
+    end
+    let(:unfinished) { stack.first }
+    let(:unstored) { stack.second }
+    let(:parents) { stack.drop(2) }
+
+    before do
+      2.times { parent(share: 0.9) }
+      described_class.call(meta_stack)
+      meta_stack.runs.each do |run|
+        next if run == unfinished
+
+        run.update!(status: "finished")
+        create(:snapshot, run: run, epoch: run.epochs) unless run == unstored
+      end
+    end
+
+    it "starts from every finished meta-stack-arm child that kept its last world, and from no other arm" do
+      expect(build_sweep).to have_attributes(parents: parents, created: 12,
+                                             skipped: { unfinished: [unfinished.id],
+                                                        no_terminal_world: [unstored.id] })
+      expect(experiment.runs.pluck(:parent_run_id, :seed).tally).to eq(parents.map(&:id).product([4001]).index_with(3))
+    end
+
+    it "merges the rise, capped and none bundles over each parent's params, keeping its tape and stack NAND" do
+      build_sweep
+
+      expect(experiment.runs.where(parent_run: parents.last).order(:id).pluck(:params))
+        .to eq(definition[:param_grid].fetch("treatment").map { |bundle| parents.last.params.merge(bundle) })
+      expect(experiment.runs.map { |run| run.params.values_at("meta_len", "logic_nand", "tasks") }.uniq)
+        .to eq([[32, "stack", "logic4"]])
+    end
+
+    it "runs every child a hundred thousand epochs past its parent's last epoch at priority 40" do
+      build_sweep
+
+      expect(experiment.runs.distinct.pluck(:parent_epoch, :epochs, :priority)).to eq([[41_000, 141_000, 40]])
+    end
+
+    it "adds nothing once built" do
+      build_sweep
+
+      expect { described_class.call(experiment.reload) }.not_to change(Run, :count)
+    end
+
+    it "adds the children of a parent once it qualifies" do
+      build_sweep
+      unfinished.update!(status: "finished")
+      create(:snapshot, run: unfinished, epoch: unfinished.epochs)
+
+      expect { described_class.call(experiment.reload) }.to change(Run, :count).by(3)
+    end
+
+    it "leaves the meta-stack sweep's children as they were" do
+      before = meta_stack.runs.order(:id).pluck(:id, :params, :seed, :status)
+
+      build_sweep
+
+      expect(meta_stack.runs.order(:id).pluck(:id, :params, :seed, :status)).to eq(before)
+      expect(before.size).to eq(18)
+    end
+  end
+
   context "with no source experiment seeded" do
     it "builds nothing" do
       expect(build_sweep).to have_attributes(parents: [], created: 0, skipped: {})
