@@ -4238,10 +4238,13 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   does not close the four-input one.
   - **The cost** is the study's: the fewest two-input NAND gates of a circuit computing f
     from its inputs, fan-out free, NOT a = NAND(a, a) one gate as `logic::LOGIC_TASKS`
-    counts it. Inputs are free; constants are not given, so 1 costs 2 and 0 costs 3, as in
-    the study's table. Given free, they would change only those two entries; no slot credit
-    pays a constant. Cost is invariant under input permutation, so the tables are per
-    P-class (80 on three inputs, 3 984 on four).
+    counts it. Inputs are free. The tables count from the inputs alone, so 1 costs 2 and 0
+    costs 3, as in the study's table. The machine pays nothing for a constant: the assay
+    buffer is the tape followed by zeros, and a tape may hold any byte. So those two entries
+    are not machine costs and are never read as a depth. No slot credits a constant, and
+    free constants change no other entry, so every non-constant cost is the machine's. Cost
+    is invariant under input permutation, so the tables are per P-class (80 on three inputs,
+    3 984 on four).
   - **The tables**, committed as data: `data/minnand3.bin` (256 bytes) and
     `data/minnand4.bin` (65 536 bytes), one cost byte a function, with their SHA-256 in the
     crate's README, a witness circuit per class and a proof log. Three inputs: costs 0–10,

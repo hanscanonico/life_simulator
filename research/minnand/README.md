@@ -24,12 +24,20 @@ NOT a = NAND(a, a) is one gate, as the engine's logic ladder counts it
 (`logic::LOGIC_TASKS`: NOT 1, AND 2, OR 3, NOR 4, XOR 4, EQU 5). This is the study's
 definition exactly.
 
-**Constants.** The inputs are free and the constants are not given: the constant 1 costs 2,
-NAND(x, NOT x), and 0 costs 3, as in the study's table. Given 0 and 1 as free inputs, only
-those two entries would change (to 0): a gate reading 1 is NOT of its other operand, which
-NAND(a, a) computes at the same cost, and a gate reading 0, or 1 twice, is a constant whose
-readers rewire the same way, so a circuit for a non-constant function with free constants
-becomes one without them and no more gates. The engine's slot credit never pays a constant.
+**Constants.** The tables count from the inputs alone, as the study's table does, so the
+constant 1 costs 2, NAND(x, NOT x), and 0 costs 3. The machine does not pay that. Its assay
+buffer is the tape followed by zeros, and a tape may hold any byte, so a constant byte costs
+it no NAND. Those two entries (0x00 and 0xFF, 0x0000 and 0xFFFF) are therefore not the
+machine's costs, and nothing may read them as a depth. They are never needed: no slot
+credits a constant. The two-input draw separates so that no constant passes, and the
+study's three- and four-input slot rule refuses a constant output (study §1.2).
+
+Free constants change no other entry, so every non-constant cost here is the machine's. A
+gate reading 1 is NOT of its other operand, which NAND(a, a) computes at the same cost. A
+gate reading 0, or reading 1 twice, is itself a constant, and its readers rewire the same
+way. So a circuit with free constants for a non-constant function becomes one without them,
+with no more gates. The constant entries keep the study's values, so the tables check
+against its outputs byte for byte.
 
 **Tables.** Bit k of a truth table is f on the row whose input values are k's bits, the
 first input the most significant: on three inputs x = 0xF0, y = 0xCC, z = 0xAA; on four
@@ -145,6 +153,9 @@ of finished tasks) would let the 13-gate run spread over several sessions.
 - the three-input table equals the study's checked table, class by class
   (`tests/study3.txt`, transcribed from the study's `minnand_10.txt`), and is re-derived by
   the exhaustive enumeration with and without the symmetry reduction;
+- the enumeration, with and without the symmetry reduction, reaches exactly the table's
+  costs within every gate limit, three inputs to 10 and four to 7: both cuts bite hardest at
+  the limit, so a cut one step too tight loses a function there;
 - every three-input lower bound is re-proven by SAT: each class has no circuit at any size
   below its cost, and one at its cost;
 - every four-input cost to 10 equals the study's `minnand4` output (the SHA-256 of

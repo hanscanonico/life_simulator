@@ -69,6 +69,29 @@ fn the_three_input_table_is_re_derived_by_exhaustion() {
     assert_eq!(enumerate(3, 10, threads(), true).cost, t.cost);
 }
 
+/// Each cut bites hardest on circuits of exactly the gate limit, so the enumeration is re-run
+/// at every limit: a sink bound or a symmetry cut one step too tight loses a function there.
+#[test]
+fn every_gate_limit_reaches_exactly_the_costs_within_it() {
+    for (inputs, top) in [(3, 10), (4, 7)] {
+        let t = table(inputs);
+        for gates in 1..=top {
+            let within: Vec<u8> = t
+                .cost
+                .iter()
+                .map(|&c| if c as usize <= gates { c } else { u8::MAX })
+                .collect();
+            for reduce in [false, true] {
+                assert_eq!(
+                    enumerate(inputs, gates, threads(), reduce).cost,
+                    within,
+                    "{inputs} inputs to {gates} gates, reduce {reduce}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn every_three_input_lower_bound_is_unsat() {
     let t = table(3);
