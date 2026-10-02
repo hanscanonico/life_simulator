@@ -32,9 +32,11 @@ RSpec.describe Runs::ShowPage do
                   task_share_double task_share_mul logic_capability logic_capability_deep
                   dominant_logic_task_count logic_share_echo logic_share_not logic_share_nand
                   logic_share_and logic_share_orn logic_share_or logic_share_andn logic_share_nor
-                  logic_share_xor logic_share_equ])
+                  logic_share_xor logic_share_equ meta_inherit_rate meta_diversity
+                  logic_capability_replicating])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
-      create(:sample, run: run, epoch: 100, values: { "task_capability" => 0, "logic_capability" => 0 })
+      create(:sample, run: run, epoch: 100,
+                      values: { "task_capability" => 0, "logic_capability" => 0, "meta_diversity" => 1 })
       expect(page.charts.map(&:title))
         .to eq(described_class::METRICS.values +
                [described_class::COMPRESSIBILITY_TITLE, described_class::TURNOVER_TITLE])
@@ -50,21 +52,35 @@ RSpec.describe Runs::ShowPage do
     end
 
     context "with samples of a run assayed on neither task ladder" do
-      it "draws no chart of either ladder" do
+      it "draws no chart of either ladder, nor of the metabolism tape" do
         create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794, "task_capability" => nil })
+        gated = described_class::LADDERS.flatten + described_class::METABOLISM
 
-        expect(page.charts.size).to eq(described_class::METRICS.size - described_class::LADDERS.sum(&:size) + 2)
-        expect(described_class::LADDERS.flatten.map { |metric| chart_for(metric) }).to all(be_nil)
+        expect(page.charts.size).to eq(described_class::METRICS.size - gated.size + 2)
+        expect(gated.map { |metric| chart_for(metric) }).to all(be_nil)
       end
     end
 
     context "with samples of a run assayed on the logic ladder" do
-      it "draws every logic chart, an unsolved rung's included, and no arithmetic one" do
-        create(:sample, run: run, epoch: 100, values: { "logic_capability" => 0, "logic_share_xor" => 0.0 })
+      it "draws every logic chart, an unsolved rung's included, and no arithmetic or metabolism one" do
+        create(:sample, run: run, epoch: 100,
+                        values: { "logic_capability" => 0, "logic_share_xor" => 0.0, "meta_diversity" => nil })
 
         expect(described_class::LADDERS.last.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
         expect(chart_for("logic_share_equ")).to be_empty
         expect(described_class::LADDERS.first.map { |metric| chart_for(metric) }).to all(be_nil)
+        expect(described_class::METABOLISM.map { |metric| chart_for(metric) }).to all(be_nil)
+      end
+    end
+
+    context "with samples of a run that carries a metabolism tape" do
+      it "draws the metabolism charts beside the logic ones" do
+        create(:sample, run: run, epoch: 100,
+                        values: { "logic_capability" => 1, "meta_inherit_rate" => 0.0, "meta_diversity" => 3 })
+
+        expect(described_class::METABOLISM).to eq(%w[meta_inherit_rate meta_diversity logic_capability_replicating])
+        expect(described_class::METABOLISM.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
+        expect(chart_for("logic_capability_replicating")).to be_empty
       end
     end
 
@@ -244,6 +260,18 @@ RSpec.describe Runs::ShowPage do
       expect(%w[logic_share_xor logic_capability_deep].map { |metric| Runs::MetricSeriesService.call(run: run, metric: metric) })
         .to eq([[[300, 0.0]], [[300, 1]]])
       expect(chart_for("logic_share_equ")).to be_empty
+    end
+
+    # The metabolism readings are null on a run without the tape, and absent from every
+    # sample recorded before they existed: neither draws a point, never a zero.
+    it "draws the metabolism readings of the samples that carry them" do
+      create(:sample, run: run, epoch: 100, values: { "meta_inherit_rate" => nil, "meta_diversity" => nil })
+      create(:sample, run: run, epoch: 200, values: { "logic_capability" => 1 })
+      create(:sample, run: run, epoch: 300, values: { "meta_inherit_rate" => 0.0, "meta_diversity" => 12 })
+
+      expect(%w[meta_inherit_rate meta_diversity].map { |metric| Runs::MetricSeriesService.call(run: run, metric: metric) })
+        .to eq([[[300, 0.0]], [[300, 12]]])
+      expect(chart_for("logic_capability_replicating")).to be_empty
     end
 
     describe "#dominant_logic_tasks_label" do

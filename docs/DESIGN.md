@@ -135,6 +135,14 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   default pays every rung. A reward of `0` runs no assay, so `tasks = logic` at a reward
   of 0 is byte-identical to `tasks = off`. The task observables above read the arithmetic
   ladder only and are null under `logic`.
+- **The stack NAND** (`logic_nand`, default `in_place`; docs/design_record.md 2026-10-02,
+  the stack NAND): at `stack`, `~` in the logic assay writes `¬(B[head0] ∧ B[head1])` to
+  `B[head0 − 1]`, wrapping as `<` does, and moves head0 onto it, so both operands are kept
+  and a chain of NANDs stacks its results leftward. Everything else about the assay, the
+  ladder and the soup is as above: `~` is still a no-op outside the logic assay, and a lap
+  holding it is never replayed. `in_place` is the NAND above, so every earlier run is
+  unchanged. Only `tasks = logic` accepts `stack`. It is dynamics, not structure: a
+  descendant may set it.
 - **The metabolism tape** (`meta_len`, default `0` = off; `meta_rate`, default 32/8192;
   `meta_draw`, default `uniform`; `meta_seed`, default `zeros`; docs/design_record.md
   2026-10-02, Meta-stack slice B): with a length set, every soup cell carries a second tape
@@ -158,14 +166,6 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   `0` length nothing is allocated, drawn or stored, and the soup is exactly the substrate
   above. The world, not the program, copies the metabolism tape: it imports a hereditary
   channel.
-- **The stack NAND** (`logic_nand`, default `in_place`; docs/design_record.md 2026-10-02,
-  the stack NAND): at `stack`, `~` in the logic assay writes `¬(B[head0] ∧ B[head1])` to
-  `B[head0 − 1]`, wrapping as `<` does, and moves head0 onto it, so both operands are kept
-  and a chain of NANDs stacks its results leftward. Everything else about the assay, the
-  ladder and the soup is as above: `~` is still a no-op outside the logic assay, and a lap
-  holding it is never replayed. `in_place` is the NAND above, so every earlier run is
-  unchanged. Only `tasks = logic` accepts `stack`. It is dynamics, not structure: a
-  descendant may set it.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The
@@ -482,6 +482,31 @@ claim rests on it.
   they are **live-only**: neither `oriented_census/1` nor `/2` reads them. The run page
   names `dominant_logic_tasks` and draws the other thirteen, again only for a run that has
   a reading of them.
+  On a run that carries a metabolism tape (§1.1, `meta_len` above 0) they read the
+  metabolism tapes, the tapes the logic assay pays (docs/design_record.md 2026-10-02,
+  Meta-stack slice C): each `logic_share_*` assays the sampled cells' metabolism tapes, on
+  the same stream and draws, and `dominant_logic_tasks` reads the **most common metabolism
+  tape**, counted over the `meta_len`-byte tapes with ties broken in ascending byte order as
+  the census ranks tapes, on cases drawn on `STREAM_TASK | 4` as before. Without the tape
+  they are what they were, byte for byte.
+- `meta_inherit_rate` / `meta_diversity` / `logic_capability_replicating`: the
+  **metabolism readings** (docs/design_record.md 2026-10-02, Meta-stack slice C).
+  `meta_inherit_rate` is the share of the interactions of the epoch before the sample that
+  passed a metabolism tape on (the initiator's copied onto the partner's), counted in the
+  same pass and over the same interactions as `copy_rate`. `meta_diversity` is the number of
+  distinct metabolism tapes the world's cells hold, the metabolism tape's
+  `distinct_tapes`, read off the same ranking that names its dominant tape.
+  `logic_capability_replicating` is `logic_capability` read on the replicating tapes
+  instead, on cases and cells of its own on `STREAM_TASK | 5`: whether the copier still
+  computes anything once it is no longer paid. The first two draw nothing; none writes
+  anything, so reading them moves no byte, stock, lineage, metabolism tape or other
+  reading. On restored Logic pilot worlds (128×128, a 32-byte tape descended at the
+  study's bundle, 210 epochs on) a sample of a metabolism-tape world cost 1.2 to 4.6 ms
+  more than the tape-off world's (45 to 55 ms), at most 4% of a sample interval at
+  `sample_every` 10. Null on every run that carries no metabolism tape, on the life
+  substrate, and on every sample recorded before they existed. They are **live-only**:
+  neither `oriented_census/1` nor `/2` reads them. The run page draws them only for a run
+  that has a reading of them.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard

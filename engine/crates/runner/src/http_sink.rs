@@ -204,6 +204,9 @@ mod tests {
             logic_capability_deep: None,
             dominant_logic_tasks: None,
             dominant_logic_task_count: None,
+            meta_inherit_rate: None,
+            meta_diversity: None,
+            logic_capability_replicating: None,
         }
     }
 

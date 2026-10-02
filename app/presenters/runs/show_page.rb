@@ -59,13 +59,21 @@ module Runs
       "logic_share_andn" => "Share of cells solving ANDN",
       "logic_share_nor" => "Share of cells solving NOR",
       "logic_share_xor" => "Share of cells solving XOR",
-      "logic_share_equ" => "Share of cells solving EQU"
+      "logic_share_equ" => "Share of cells solving EQU",
+      "meta_inherit_rate" => "Metabolism tapes passed on per interaction",
+      "meta_diversity" => "Distinct metabolism tapes",
+      "logic_capability_replicating" => "Logic rungs a tenth of the replicating tapes solve"
     }.freeze
+
+    # The readings of a run that carries a metabolism tape (DESIGN §1.2): null at every
+    # sample of any other run.
+    METABOLISM = %w[meta_inherit_rate meta_diversity logic_capability_replicating].freeze
 
     # The readings of one task ladder are null at every sample of a run not assayed on it
     # (DESIGN §1.2), so a ladder's charts are drawn only for a run that has a reading of it,
-    # rather than as a block of empty charts on every other run.
-    LADDERS = [METRICS.keys.grep(/\A(dominant_)?task_/), METRICS.keys.grep(/\A(dominant_)?logic_/)].freeze
+    # rather than as a block of empty charts on every other run. The metabolism readings are
+    # drawn by the same rule.
+    LADDERS = [METRICS.keys.grep(/\A(dominant_)?task_/), METRICS.keys.grep(/\A(dominant_)?logic_/) - METABOLISM].freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
     TURNOVER_TITLE = "Dominant tape turnover (1 = a different tape than the sample before)"
@@ -247,7 +255,7 @@ module Runs
     end
 
     def drawn_metrics
-      unread = LADDERS.reject { |ladder| ladder.any? { |metric| series_of(metric).any? } }
+      unread = (LADDERS + [METABOLISM]).reject { |group| group.any? { |metric| series_of(metric).any? } }
       METRICS.keys - unread.flatten
     end
 
