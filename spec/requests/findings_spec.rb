@@ -1625,6 +1625,86 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the Meta-stack write-up" do
+      let(:meta_stack) { Findings::Registry.find("paid-parts-assemble-deep-logic-on-a-stack-nand") }
+
+      it "badges it as importing an objective beside its status" do
+        get finding_path(meta_stack)
+
+        meta = response.parsed_body.at_css(".finding-meta")
+        expect(meta.at_css(".badge").text).to eq("published")
+        expect(meta.at_css(".objective-badge").text.squish).to eq("imports an objective")
+      end
+
+      it "cites the pre-registration, names the four imports and states what is not claimed" do
+        get finding_path(meta_stack)
+
+        expect(response.body.squish)
+          .to include("DESIGN §1.3 item 17", "<strong>an objective</strong>", "<strong>a primitive</strong>",
+                      "<strong>a hereditary channel</strong>", "<strong>the primitive's semantics</strong>",
+                      "Lenski et al.'s 2003 stepping-stone mechanism", "rung 4 on Soup stays \"not shown\"",
+                      "The ladder tops out at EQU", "Depth is what the loop's later laps compute",
+                      "rests on parents 967 and 2771")
+      end
+
+      it "types the locked offline readings from their committed summary, and says why the distance is mute" do
+        get finding_path(meta_stack)
+
+        rows = response.parsed_body.css("#meta-stack-finding-offline ~ .table-scroll tbody tr")
+        expect(rows.map { |row| row.at_css("td").text }).to eq(%w[4845 4862 4863 4871 4890 4952 4961 4979 4980])
+        expect(rows[-2].css("td").map(&:text)).to include("20", "not heritable")
+        expect(response.body.squish).to include("0 heritable, 8 unresolved, 1 not heritable (4979)",
+                                                "In 14 of the 15 locked plantings", "The rule cannot tell here")
+      end
+
+      it "links the studies it cites and the offline readings' sources" do
+        get finding_path(meta_stack)
+
+        hrefs = response.parsed_body.css("a").pluck("href")
+        expect(hrefs).to include(end_with("docs/studies/meta-stack.md"), end_with("docs/studies/topless.md"),
+                                 end_with("docs/readings/meta-stack/summary.txt"),
+                                 end_with("docs/readings/meta-stack/summary.csv"))
+        %w[summary.txt summary.csv].each do |file|
+          expect(Rails.root.join("docs/readings/meta-stack", file)).to exist
+        end
+      end
+
+      context "with none of its children in this database" do
+        it "says so instead of reading" do
+          get finding_path(meta_stack)
+
+          expect(response.parsed_body.text.squish).to include("No child of the sweep is in this database")
+        end
+      end
+
+      context "with its children read" do
+        before do
+          experiment = meta_stack_experiment
+          logic = logic_experiment
+          metabolism_parent
+          Experiments::DescendantSweepBuilderService.call(logic)
+          Experiments::DescendantSweepBuilderService.call(experiment)
+          meta_stack_children(experiment, :meta_stack).each do |run|
+            meta_stack_sample(run, capability: 3, deep: 1, task_shares: { "xor" => 0.2 })
+          end
+          (experiment.runs + logic.runs).each { |run| meta_stack_sample(run) if run.samples.none? }
+        end
+
+        it "states each test from the sweep's reading and draws the sweep's section" do
+          get finding_path(meta_stack)
+
+          tests = response.parsed_body.at_css("#meta-stack-finding-tests").text.squish
+          expect(tests).to include("H-deep-Ms, meta-stack against logic-none: 3 pairs favour meta-stack, 0 " \
+                                   "logic-none and 0 tie, of 3 measured, p = 0.125, not shown.")
+          expect(tests).to include("H-deep-M, meta-inplace against logic-none: 0 pairs favour meta-inplace, 0 " \
+                                   "logic-none and 3 tie, of 3 measured, refuted.")
+          expect(response.parsed_body.at_css("#meta-stack-finding-deep-children ~ .table-scroll tbody")
+                         .css("tr").size).to eq(3)
+          expect(response.parsed_body.at_css("#meta-stack-reading")).to be_present
+        end
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

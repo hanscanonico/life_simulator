@@ -339,6 +339,24 @@ RSpec.describe Findings::ShowPage do
     end
   end
 
+  context "with the meta-stack sweep" do
+    let(:finding) { Findings::Registry.find("paid-parts-assemble-deep-logic-on-a-stack-nand") }
+
+    before { meta_stack_experiment }
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.meta_stack.report).to be_a(Lab::MetaStackReading::Report)
+    end
+  end
+
+  context "with the meta-stack sweep missing" do
+    let(:finding) { Findings::Registry.find("paid-parts-assemble-deep-logic-on-a-stack-nand") }
+
+    it "has no reading" do
+      expect(page.meta_stack).to be_nil
+    end
+  end
+
   describe "#sweep_seeded?" do
     let(:finding) { Findings::Registry.find("paid-logic-climbs-only-read-once-tasks") }
 
