@@ -1663,8 +1663,9 @@ RSpec.describe "Findings", type: :request do
         hrefs = response.parsed_body.css("a").pluck("href")
         expect(hrefs).to include(end_with("docs/studies/meta-stack.md"), end_with("docs/studies/topless.md"),
                                  end_with("docs/readings/meta-stack/summary.txt"),
-                                 end_with("docs/readings/meta-stack/summary.csv"))
-        %w[summary.txt summary.csv].each do |file|
+                                 end_with("docs/readings/meta-stack/summary.csv"),
+                                 end_with("docs/readings/meta-stack/README.md"))
+        %w[summary.txt summary.csv README.md].each do |file|
           expect(Rails.root.join("docs/readings/meta-stack", file)).to exist
         end
       end

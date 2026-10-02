@@ -4320,13 +4320,14 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   NAND, AND, ORN, OR, ANDN and NOR in 54, 54, 43, 17, 54, 51, 49 and 51 children, XOR in 7 and
   EQU in 9; 4979 and 4980 hold EQU alone. Meta-inplace reached every read-once rung but AND
   and no deep one; the deep-only arm reached ECHO alone. The deep children's last-decile
-  median XOR and EQU shares, read from the samples, are 0.47 to 0.57 for the six at
+  median XOR and EQU shares, read from the samples, are 0.46 to 0.57 for the six at
   `max_tape_len` 128; at 256, 4890 reads 0.28 and 0.41, 4980 EQU 0.47 and 4979 EQU 0.15.
 
   **The locked offline readings** ("Reported with each deep child"), made on 2026-10-02 with
   `research/landscape/` at `3cd9abb` on the stored worlds, read through SELECTs. Their summary
   is kept in `docs/readings/meta-stack/` (`summary.txt`, and `summary.csv`, one row per
-  planting); the 14 MB of worlds are not.
+  planting), with the scripts as run and the descriptive helper's source in `method/`; the
+  14 MB of worlds are not.
   - **Substitution distance**: 9 of 9 read d ≥ 2 (17 to 31), so "multi-step" by the locked
     rule, which is **uninformative here**. Each world holds 9 634 to 14 375 distinct
     metabolism tapes and its dominant tape sits on 9 to 21 cells; drift puts it a median 22
@@ -4340,10 +4341,10 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     (5 889 to 10 043 cells), level with the planted world; in 4979 neither reached a tenth.
     In 10 of 16 plantings (a labelled extension for 4890's XOR included) the filler is one
     substitution from the rung. Read plainly: in these worlds the deep rung is a property of
-    the population, re-derived within hundreds of epochs from abundant lower-rung tapes one
-    substitution below it, not a single lineage's invention — the study's §7.6, "the soup
+    the population, re-derived within hundreds of epochs, often from abundant lower-rung tapes
+    one substitution below it, not a single lineage's invention — the study's §7.6, "The soup
     then evolves loop-shaped ORN/ANDN/OR solvers that sit one substitution below XOR/EQU, and
-    takes that step".
+    takes that step."
   - **Circuits**: every deep solver is a loop that stacks NANDs leftward and reads earlier
     laps' results, credited on 18 of 18 traced cases, and each fans out an input. XOR takes
     4 to 6 NANDs, but 12 in 4863, a chain ending in a double negation; EQU 5 to 12.

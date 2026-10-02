@@ -216,8 +216,9 @@
   worlds, read through SELECTs only. They are offline measurements, not this page's code, so
   the table below is typed from their
   <%= link_to "summary", "#{readings_url}/summary.txt" %>
-  (<%= link_to "one row per planting", "#{readings_url}/summary.csv" %>). The first epochs in it
-  equal the live table's above.
+  (<%= link_to "one row per planting", "#{readings_url}/summary.csv" %>), whose
+  <%= link_to "README", "#{readings_url}/README.md" %> gives the scripts as run. The first
+  epochs in it equal the live table's above.
 </p>
 <figure class="table-figure mt-4">
   <figcaption class="table-caption text-sm text-muted" id="meta-stack-finding-offline">
@@ -242,47 +243,47 @@
       </thead>
       <tbody>
         <tr>
-          <td>4845</td><td>944, 2003</td><td class="numeric">128</td><td>XOR 21 870 (EQU 21 940)</td>
+          <td>4845</td><td>944, 2003</td><td class="numeric">128</td><td>XOR 21&nbsp;870 (EQU 21&nbsp;940)</td>
           <td class="numeric">25</td><td>2</td><td>unresolved</td>
           <td>2 NANDs a lap; XOR in 4 NANDs, EQU a lap later in 6; fans out x, y, t1</td>
         </tr>
         <tr>
-          <td>4862</td><td>967, 2002</td><td class="numeric">128</td><td>EQU 21 700 (XOR 21 760)</td>
+          <td>4862</td><td>967, 2002</td><td class="numeric">128</td><td>EQU 21&nbsp;700 (XOR 21&nbsp;760)</td>
           <td class="numeric">31</td><td>none within 3</td><td>unresolved</td>
           <td>4 NANDs a lap; XOR in 6, EQU in 8; fans out x, y, t1, t2</td>
         </tr>
         <tr>
-          <td>4863</td><td>967, 2003</td><td class="numeric">128</td><td>EQU 22 690 (XOR 33 530)</td>
+          <td>4863</td><td>967, 2003</td><td class="numeric">128</td><td>EQU 22&nbsp;690 (XOR 33&nbsp;530)</td>
           <td class="numeric">25</td><td>3</td><td>unresolved</td>
           <td>3 NANDs a lap; EQU in 6; XOR only later, a 12-NAND chain ending in a double negation; fans out x, y, t2, t3</td>
         </tr>
         <tr>
-          <td>4871</td><td>991, 2002</td><td class="numeric">128</td><td>XOR 23 180 (EQU 23 220)</td>
+          <td>4871</td><td>991, 2002</td><td class="numeric">128</td><td>XOR 23&nbsp;180 (EQU 23&nbsp;220)</td>
           <td class="numeric">22</td><td>2</td><td>unresolved</td>
           <td>4 NANDs a lap; XOR in 6, EQU in 12; fans out x, y, t1, t3</td>
         </tr>
         <tr>
-          <td>4890</td><td>1029, 2003</td><td class="numeric">256</td><td>EQU 22 880 (XOR 28 290)</td>
+          <td>4890</td><td>1029, 2003</td><td class="numeric">256</td><td>EQU 22&nbsp;880 (XOR 28&nbsp;290)</td>
           <td class="numeric">17</td><td>already an EQU solver</td><td>unresolved</td>
           <td>2 NANDs a lap after a copy prologue; EQU in 7, one a NOT; fans out x, y, t2, t3. Its later XOR solver: 1 NAND a lap, XOR in 5</td>
         </tr>
         <tr>
-          <td>4952</td><td>2654, 2002</td><td class="numeric">128</td><td>EQU 28 220 (XOR 28 790)</td>
+          <td>4952</td><td>2654, 2002</td><td class="numeric">128</td><td>EQU 28&nbsp;220 (XOR 28&nbsp;790)</td>
           <td class="numeric">30</td><td>3</td><td>unresolved</td>
           <td>4845's circuit: 2 NANDs a lap, XOR in 4, EQU in 6</td>
         </tr>
         <tr>
-          <td>4961</td><td>2676, 2002</td><td class="numeric">128</td><td>XOR 21 630 (EQU 21 700)</td>
+          <td>4961</td><td>2676, 2002</td><td class="numeric">128</td><td>XOR 21&nbsp;630 (EQU 21&nbsp;700)</td>
           <td class="numeric">26</td><td>none within 3</td><td>unresolved</td>
           <td>a prologue that emits x, then 2 NANDs a lap; XOR in 4, EQU in 6; fans out x, y, t3</td>
         </tr>
         <tr>
-          <td>4979</td><td>2771, 2002</td><td class="numeric">256</td><td>EQU 41 480 (no XOR)</td>
+          <td>4979</td><td>2771, 2002</td><td class="numeric">256</td><td>EQU 41&nbsp;480 (no XOR)</td>
           <td class="numeric">20</td><td>already an EQU solver</td><td>not heritable</td>
           <td>1 NAND a lap after a 2-NAND prologue; EQU in 5, built on NOT x; fans out y, NOT x, t2</td>
         </tr>
         <tr>
-          <td>4980</td><td>2771, 2003</td><td class="numeric">256</td><td>EQU 22 720 (no XOR)</td>
+          <td>4980</td><td>2771, 2003</td><td class="numeric">256</td><td>EQU 22&nbsp;720 (no XOR)</td>
           <td class="numeric">24</td><td>3</td><td>unresolved</td>
           <td>1 NAND a lap; EQU in 5; fans out x, y, t1, t2</td>
         </tr>
@@ -315,17 +316,18 @@
   seed's control re-grew the deep rung to a tenth of the world within 500 epochs, level with the
   planted world, which the entry reads as unresolved. In 4979 neither world reached a tenth. In
   10 of the 16 plantings, a labelled extension for 4890's XOR included, the tape the wipe put
-  in place, the world's commonest tape not credited the rung, is one substitution from it. So in these worlds the deep rung is a property of the
-  population: re-derived within hundreds of epochs from abundant lower-rung tapes one
-  substitution below it, not a single lineage's invention. That is what the design study's
-  §7.6 describes: "the soup then evolves loop-shaped ORN/ANDN/OR solvers that sit one
-  substitution below XOR/EQU, and takes that step".
+  in place, the world's commonest tape not credited the rung, is one substitution from it. So
+  in these worlds the deep rung is a property of the population: re-derived within hundreds of
+  epochs, often from abundant lower-rung tapes one substitution below it, not a single
+  lineage's invention. That is what the design study's §7.6 describes: "The soup then evolves
+  loop-shaped ORN/ANDN/OR solvers that sit one substitution below XOR/EQU, and takes that
+  step."
 </p>
 <p>
   <strong>The circuits.</strong> Every deep solver is a loop that stacks NANDs leftward, lap
   after lap, and reads earlier laps' results. Each is credited its rung on all 18 traced cases
-  and fans out an input. They compute XOR in 4 to 6 NANDs, but for 4863's, a 12-NAND chain ending in a double
-  negation, and EQU in 5 to 12.
+  and fans out an input. They compute XOR in 4 to 6 NANDs, but for 4863's, a 12-NAND chain
+  ending in a double negation, and EQU in 5 to 12.
 </p>
 
 <h2>What it means</h2>
