@@ -376,6 +376,32 @@
       <span class="mono">dominant_logic_task_count</span> is how many there are.
     </dd>
 
+    <dt class="mono">meta_inherit_rate</dt>
+    <dd>
+      A run may give every cell a second tape, its metabolism tape, that the soup never runs
+      and the logic assay reads instead of the cell's own tape. The world, not the program,
+      copies it: when an interaction leaves the partner's tape a near copy of the
+      initiator's, the initiator's metabolism tape is copied onto the partner's. This is the
+      share of the interactions just before the sample that passed one on, and empty where
+      no cell could afford to interact then. A near copy is a looser test than
+      <span class="mono">copy_rate</span>'s, so this can read far above it. On such a run
+      the logic readings above read the metabolism tapes, and the dominant tape they name is
+      the most common metabolism tape. Null on every run without one.
+    </dd>
+
+    <dt class="mono">meta_diversity</dt>
+    <dd>
+      How many distinct metabolism tapes the world's cells hold, the metabolism tape's
+      <span class="mono">distinct_tapes</span>. Null on a run without them.
+    </dd>
+
+    <dt class="mono">logic_capability_replicating</dt>
+    <dd>
+      <span class="mono">logic_capability</span> read on the cells' own, replicating tapes,
+      on draws of its own, where the run pays the metabolism tapes instead: whether the
+      copier still computes anything. Null on a run without metabolism tapes.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which

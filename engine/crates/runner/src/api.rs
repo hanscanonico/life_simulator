@@ -615,11 +615,13 @@ fn report(event: &str, url: &str, since: Instant, attempts: u32, failure: &str) 
 }
 
 /// What a snapshot answer of a world described by `params` is allowed to weigh: the
-/// uncompressed world twice over plus slack. A compressed blob is always well under it,
-/// and a runner resuming twelve slots at once can afford this where a flat limit of
-/// hundreds of megabytes per slot is what exhausted the mini-pc's swap.
+/// uncompressed world, its metabolism tapes included, twice over plus slack. A compressed
+/// blob is always well under it, and a runner resuming twelve slots at once can afford
+/// this where a flat limit of hundreds of megabytes per slot is what exhausted the
+/// mini-pc's swap.
 fn snapshot_body_limit(params: &Params) -> u64 {
-    (params.cell_count() as u64) * (params.stride() as u64) * 2 + SNAPSHOT_SLACK
+    let per_cell = params.stride() as u64 + u64::from(params.meta_len);
+    (params.cell_count() as u64) * per_cell * 2 + SNAPSHOT_SLACK
 }
 
 /// The snapshot request body, written field by field so the two big base64 strings are
@@ -1161,6 +1163,31 @@ mod tests {
 
         assert!(snapshot.len() as u64 <= bound, "{described}");
         assert!(bound <= 3 * snapshot.len() as u64, "{described}");
+    }
+
+    /// Metabolism tapes are world too: a world of short tapes whose long metabolism tapes
+    /// have mutated into noise must still come back.
+    #[test]
+    fn the_bound_admits_a_world_of_incompressible_metabolism_tapes() {
+        let params = Params {
+            width: 64,
+            height: 64,
+            tape_len: 8,
+            tasks: life_engine::params::Tasks::Logic,
+            meta_len: 256,
+            meta_rate: 1.0,
+            ..Params::default()
+        };
+        let mut world = life_engine::World::new(&params, 7).unwrap();
+        world.step();
+        let snapshot = world.snapshot();
+        let bound = snapshot_body_limit(&params);
+
+        assert!(
+            snapshot.len() as u64 <= bound,
+            "a {}-byte snapshot against a {bound}-byte bound",
+            snapshot.len()
+        );
     }
 
     #[test]

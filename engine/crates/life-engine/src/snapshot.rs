@@ -23,9 +23,16 @@
 //! length last, and the block itself after every payload. Stripping the block off the end
 //! leaves the container the older version wrote, which is how a blob of either shape is
 //! read by the one set of payload offsets.
+//!
+//! Versions 9, 10 and 11 are versions 6, 7 and 8 carrying a metabolism tape per cell as
+//! well (DESIGN §1.1, "The metabolism tape"): after the relative block's length the header
+//! holds the metabolism payload's length and the tape's length per cell, and that payload
+//! sits between the last of the older payloads and the relative block. Stripping it and
+//! those two fields leaves the container the older version wrote. A world without the tape
+//! writes 6, 7 or 8 as before, and a blob of those versions reads as a world without it.
 
 use crate::metrics::{self, PendingSample, RelativeState, TransitionState};
-use crate::params::{ParamError, Params, Substrate};
+use crate::params::{ParamError, Params, Substrate, META_LEN_MAX};
 use flate2::read::ZlibDecoder;
 use std::fmt;
 use std::io::Read;
@@ -42,6 +49,11 @@ pub const VERSION_STOCKED: u8 = 5;
 pub const VERSION_RELATIVE: u8 = 6;
 pub const VERSION_RELATIVE_RAGGED: u8 = 7;
 pub const VERSION_RELATIVE_STOCKED: u8 = 8;
+/// The versions that carry the metabolism tapes beside the relative reading, one per
+/// payload shape again.
+pub const VERSION_META: u8 = 9;
+pub const VERSION_META_RAGGED: u8 = 10;
+pub const VERSION_META_STOCKED: u8 = 11;
 pub const HEADER_LEN: usize = 62;
 const HEADER_LEN_V4: usize = 74;
 const HEADER_LEN_V5: usize = 82;
@@ -59,6 +71,9 @@ const PENDING_LEN: usize = 17;
 const RELATIVE_FIELD_BYTES: usize = 8;
 /// The header of a version 6 container: the version 3 header and that length.
 pub const HEADER_LEN_RELATIVE: usize = HEADER_LEN + RELATIVE_FIELD_BYTES;
+/// The metabolism fields after the relative block's length: the payload's length as a
+/// `u64` and the tape's length per cell as a `u32`.
+const META_FIELD_BYTES: usize = 12;
 const WORD_BYTES: usize = 4;
 const NO_EPOCH: i64 = -1;
 
@@ -119,13 +134,22 @@ pub struct Header {
 /// lengths a version 4 blob carries. `lineages` is `None` for the older formats, which
 /// held no ancestry — the caller mints a fresh census there rather than inventing one
 /// here — and `lens` is `None` wherever every tape fills its slot. `stock` is `None` for
-/// every format written before cells held energy.
+/// every format written before cells held energy, and `meta` for every format written
+/// without a metabolism tape.
 pub struct Restored {
     pub header: Header,
     pub cells: Vec<u8>,
     pub lineages: Option<Vec<u64>>,
     pub lens: Option<Vec<u32>>,
     pub stock: Option<Vec<u32>>,
+    pub meta: Option<Metabolism>,
+}
+
+/// The metabolism tapes a blob carries: `len` bytes per cell, cell by cell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Metabolism {
+    pub len: u32,
+    pub tapes: Vec<u8>,
 }
 
 fn epoch_field(epoch: Option<u64>) -> i64 {
@@ -157,6 +181,20 @@ pub fn encode_compressed(
     lens: &[u32],
     stock: &[u32],
 ) -> Vec<u8> {
+    encode_compressed_with_meta(header, payload, lineages, lens, stock, &[])
+}
+
+/// `encode_compressed` for a world that may carry metabolism tapes: `meta` holds one tape
+/// per cell of the header's world, all of one length, and is empty for a world without
+/// them, which is then written exactly as `encode_compressed` writes it.
+pub fn encode_compressed_with_meta(
+    header: &Header,
+    payload: &[u8],
+    lineages: &[u64],
+    lens: &[u32],
+    stock: &[u32],
+    meta: &[u8],
+) -> Vec<u8> {
     let tags = metrics::compress(&lineage_bytes(lineages));
     let stocked = !stock.is_empty();
     let ragged = stocked || !lens.is_empty();
@@ -168,10 +206,14 @@ pub fn encode_compressed(
     };
     let mut out = Vec::with_capacity(HEADER_LEN_V5 + payload.len() + tags.len());
     out.extend_from_slice(&MAGIC);
-    out.push(match (stocked, ragged) {
-        (true, _) => VERSION_RELATIVE_STOCKED,
-        (false, true) => VERSION_RELATIVE_RAGGED,
-        (false, false) => VERSION_RELATIVE,
+    let metabolic = !meta.is_empty();
+    out.push(match (stocked, ragged, metabolic) {
+        (true, _, false) => VERSION_RELATIVE_STOCKED,
+        (false, true, false) => VERSION_RELATIVE_RAGGED,
+        (false, false, false) => VERSION_RELATIVE,
+        (true, _, true) => VERSION_META_STOCKED,
+        (false, true, true) => VERSION_META_RAGGED,
+        (false, false, true) => VERSION_META,
     });
     out.push(substrate_byte(header.substrate));
     out.extend_from_slice(&header.width.to_le_bytes());
@@ -192,6 +234,15 @@ pub fn encode_compressed(
     }
     let relative = relative_bytes(&header.transition.relative);
     out.extend_from_slice(&(relative.len() as u64).to_le_bytes());
+    let tapes = match metabolic {
+        true => metrics::compress(meta),
+        false => Vec::new(),
+    };
+    if metabolic {
+        let cells = header.width as usize * header.height as usize;
+        out.extend_from_slice(&(tapes.len() as u64).to_le_bytes());
+        out.extend_from_slice(&((meta.len() / cells) as u32).to_le_bytes());
+    }
     out.extend_from_slice(payload);
     out.extend_from_slice(&tags);
     if ragged {
@@ -200,6 +251,7 @@ pub fn encode_compressed(
     if stocked {
         out.extend_from_slice(&metrics::compress(&word_bytes(stock)));
     }
+    out.extend_from_slice(&tapes);
     out.extend_from_slice(&relative);
     out
 }
@@ -320,15 +372,18 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
     }
     // The payload shape the blob was written in, and whether the relative block follows
     // it: the shapes read alike, since the block sits past every payload.
-    let (shape, carries_relative) = match bytes[4] {
-        1 => (HEADER_LEN_V1, false),
-        2 => (HEADER_LEN_V2, false),
-        VERSION => (HEADER_LEN, false),
-        VERSION_RAGGED => (HEADER_LEN_V4, false),
-        VERSION_STOCKED => (HEADER_LEN_V5, false),
-        VERSION_RELATIVE => (HEADER_LEN, true),
-        VERSION_RELATIVE_RAGGED => (HEADER_LEN_V4, true),
-        VERSION_RELATIVE_STOCKED => (HEADER_LEN_V5, true),
+    let (shape, carries_relative, carries_meta) = match bytes[4] {
+        1 => (HEADER_LEN_V1, false, false),
+        2 => (HEADER_LEN_V2, false, false),
+        VERSION => (HEADER_LEN, false, false),
+        VERSION_RAGGED => (HEADER_LEN_V4, false, false),
+        VERSION_STOCKED => (HEADER_LEN_V5, false, false),
+        VERSION_RELATIVE => (HEADER_LEN, true, false),
+        VERSION_RELATIVE_RAGGED => (HEADER_LEN_V4, true, false),
+        VERSION_RELATIVE_STOCKED => (HEADER_LEN_V5, true, false),
+        VERSION_META => (HEADER_LEN, true, true),
+        VERSION_META_RAGGED => (HEADER_LEN_V4, true, true),
+        VERSION_META_STOCKED => (HEADER_LEN_V5, true, true),
         version => return Err(SnapshotError::UnsupportedVersion(version)),
     };
     let header_len = shape
@@ -336,7 +391,8 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
             RELATIVE_FIELD_BYTES
         } else {
             0
-        };
+        }
+        + if carries_meta { META_FIELD_BYTES } else { 0 };
     if bytes.len() < header_len {
         return Err(SnapshotError::Truncated);
     }
@@ -355,10 +411,26 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
         .map_err(|_| SnapshotError::Truncated)?,
         false => 0,
     };
-    if bytes.len() < header_len + relative_len {
+    let (meta_payload_len, meta_len) = match carries_meta {
+        true => (
+            usize::try_from(u64::from_le_bytes(
+                bytes[shape + RELATIVE_FIELD_BYTES..shape + RELATIVE_FIELD_BYTES + 8]
+                    .try_into()
+                    .expect("eight bytes"),
+            ))
+            .map_err(|_| SnapshotError::Truncated)?,
+            word(shape + RELATIVE_FIELD_BYTES + 8),
+        ),
+        false => (0, 0),
+    };
+    let trailer_len = relative_len
+        .checked_add(meta_payload_len)
+        .ok_or(SnapshotError::Truncated)?;
+    if bytes.len() - header_len < trailer_len {
         return Err(SnapshotError::Truncated);
     }
-    let payloads_end = bytes.len() - relative_len;
+    let payloads_end = bytes.len() - trailer_len;
+    let relative_at = bytes.len() - relative_len;
     let transition = if shape > HEADER_LEN_V1 {
         TransitionState {
             candidate: epoch_from_field(signed(26)),
@@ -366,7 +438,7 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
             settled: epoch_from_field(signed(38)),
             last_epoch: epoch_from_field(signed(46)),
             relative: match carries_relative {
-                true => relative_from(&bytes[payloads_end..])?,
+                true => relative_from(&bytes[relative_at..])?,
                 false => RelativeState::default(),
             },
         }
@@ -483,12 +555,16 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
     let stock = stock_payload
         .map(|payload| decode_stock(params, payload, stock_cap))
         .transpose()?;
+    let meta = carries_meta
+        .then(|| decode_meta(params, &bytes[payloads_end..relative_at], meta_len))
+        .transpose()?;
     Ok(Restored {
         header,
         cells,
         lineages,
         lens,
         stock,
+        meta,
     })
 }
 
@@ -543,6 +619,26 @@ fn decode_stock(params: &Params, payload: &[u8], cap: u32) -> Result<Vec<u32>, S
         });
     }
     Ok(stock)
+}
+
+/// The metabolism tapes, refused unless the blob names a length and holds exactly one tape
+/// of it per cell. Whether that length is the params' own is the world's to judge: a
+/// resume holds it to them and a descendant need not (`World::descend`).
+fn decode_meta(params: &Params, payload: &[u8], len: u32) -> Result<Metabolism, SnapshotError> {
+    if len == 0 || len > META_LEN_MAX {
+        return Err(SnapshotError::Mismatch { field: "meta_len" });
+    }
+    let expected = params
+        .cell_count()
+        .checked_mul(len as usize)
+        .ok_or(SnapshotError::Truncated)?;
+    let tapes = inflate_bounded(payload, expected)?;
+    if tapes.len() != expected {
+        return Err(SnapshotError::Mismatch {
+            field: "cell count",
+        });
+    }
+    Ok(Metabolism { len, tapes })
 }
 
 fn decode_lineages(params: &Params, payload: &[u8]) -> Result<Vec<u64>, SnapshotError> {
@@ -1088,10 +1184,158 @@ mod tests {
         ));
 
         let mut future = bytes.clone();
-        future[4] = VERSION_RELATIVE_STOCKED + 1;
+        future[4] = VERSION_META_STOCKED + 1;
         assert!(matches!(
             decode(&params, &future),
-            Err(SnapshotError::UnsupportedVersion(9))
+            Err(SnapshotError::UnsupportedVersion(12))
         ));
+    }
+
+    fn tapes(params: &Params, len: usize) -> Vec<u8> {
+        (0..params.cell_count() * len)
+            .map(|at| (at * 7) as u8)
+            .collect()
+    }
+
+    /// Versions 9 to 11: the metabolism tapes travel beside every payload shape, and each
+    /// shape's other payloads come back as the older version carries them.
+    #[test]
+    fn round_trips_the_metabolism_tapes_in_every_payload_shape() {
+        let fixed = params();
+        let stocked = Params {
+            energy_influx: 4,
+            energy_stock_cap: 64,
+            ..params()
+        };
+        let ragged = Params {
+            max_tape_len: 32,
+            ..params()
+        };
+        let lens = vec![9u32; ragged.cell_count()];
+        let stock = vec![5u32; stocked.cell_count()];
+        for (params, lens, stock, version) in [
+            (&fixed, &[][..], &[][..], VERSION_META),
+            (&ragged, &lens[..], &[][..], VERSION_META_RAGGED),
+            (&stocked, &[][..], &stock[..], VERSION_META_STOCKED),
+        ] {
+            let live = match lens.is_empty() {
+                true => params.cell_count() * params.stride(),
+                false => lens.iter().sum::<u32>() as usize,
+            };
+            let cells: Vec<u8> = (0..live).map(|at| at as u8).collect();
+            let meta = tapes(params, 24);
+            let bytes = encode_compressed_with_meta(
+                &header(params, 40),
+                &metrics::compress(&cells),
+                &lineages(params),
+                lens,
+                stock,
+                &meta,
+            );
+
+            assert_eq!(bytes[4], version);
+            let restored = decode(params, &bytes).unwrap();
+            assert_eq!(
+                restored.meta,
+                Some(Metabolism {
+                    len: 24,
+                    tapes: meta
+                })
+            );
+            assert_eq!(restored.header.epoch, 40);
+            assert_eq!(restored.lineages, Some(lineages(params)));
+            assert_eq!(restored.lens.is_some(), !lens.is_empty());
+            assert_eq!(restored.stock.is_some(), !stock.is_empty());
+        }
+    }
+
+    /// The metabolism fields and payload are an addition: strip them and the version back
+    /// to the older one, and what is left is the container written without them, byte for
+    /// byte. A blob without them reads as a world without a metabolism tape.
+    #[test]
+    fn stripping_the_metabolism_section_leaves_the_older_container() {
+        let params = Params {
+            energy_influx: 4,
+            energy_stock_cap: 64,
+            ..params()
+        };
+        let payload = metrics::compress(&vec![3u8; params.cell_count() * params.stride()]);
+        let stock = vec![5u32; params.cell_count()];
+        let write = |meta: &[u8]| {
+            encode_compressed_with_meta(
+                &header(&params, 7),
+                &payload,
+                &lineages(&params),
+                &[],
+                &stock,
+                meta,
+            )
+        };
+        let older = write(&[]);
+        let meta = tapes(&params, 16);
+        let carried = write(&meta);
+
+        let fields = HEADER_LEN_V5 + RELATIVE_FIELD_BYTES;
+        let tapes_len = u64::from_le_bytes(carried[fields..fields + 8].try_into().unwrap());
+        assert_eq!(
+            u32::from_le_bytes(carried[fields + 8..fields + 12].try_into().unwrap()),
+            16
+        );
+        let relative_len = RELATIVE_LEN;
+        let tapes_at = carried.len() - relative_len - tapes_len as usize;
+        let mut stripped = carried[..fields].to_vec();
+        stripped.extend_from_slice(&carried[fields + META_FIELD_BYTES..tapes_at]);
+        stripped.extend_from_slice(&carried[carried.len() - relative_len..]);
+        stripped[4] = VERSION_RELATIVE_STOCKED;
+        assert_eq!(stripped, older);
+        assert_eq!(decode(&params, &older).unwrap().meta, None);
+    }
+
+    /// A metabolism payload that does not hold one tape of the named length per cell, or
+    /// names no length at all, is not this world's.
+    #[test]
+    fn rejects_metabolism_tapes_that_do_not_count_the_cells() {
+        let params = params();
+        let cells = vec![0u8; params.cell_count() * params.stride()];
+        let write = |meta: &[u8]| {
+            encode_compressed_with_meta(
+                &header(&params, 0),
+                &metrics::compress(&cells),
+                &lineages(&params),
+                &[],
+                &[],
+                meta,
+            )
+        };
+        let fields = HEADER_LEN + RELATIVE_FIELD_BYTES;
+
+        let mut short = write(&tapes(&params, 8));
+        short[fields + 8..fields + 12].copy_from_slice(&9u32.to_le_bytes());
+        assert!(matches!(
+            decode(&params, &short),
+            Err(SnapshotError::Mismatch {
+                field: "cell count"
+            })
+        ));
+
+        for len in [0, META_LEN_MAX + 1] {
+            let mut unnamed = write(&tapes(&params, 8));
+            unnamed[fields + 8..fields + 12].copy_from_slice(&len.to_le_bytes());
+            assert!(matches!(
+                decode(&params, &unnamed),
+                Err(SnapshotError::Mismatch { field: "meta_len" })
+            ));
+        }
+
+        // The first overflows the two trailer lengths' sum, the second only that sum plus
+        // the header's.
+        for claimed in [u64::MAX, u64::MAX - RELATIVE_LEN as u64] {
+            let mut overlong = write(&tapes(&params, 8));
+            overlong[fields..fields + 8].copy_from_slice(&claimed.to_le_bytes());
+            assert!(matches!(
+                decode(&params, &overlong),
+                Err(SnapshotError::Truncated)
+            ));
+        }
     }
 }

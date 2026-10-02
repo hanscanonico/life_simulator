@@ -8,7 +8,8 @@ use crate::hash::{fnv1a64, fnv1a64_of};
 use crate::logic;
 use crate::metrics::{self, Metrics, TransitionTracker};
 use crate::params::{
-    EnergyPayer, Init, Interaction, LineageRule, ParamError, Params, Substrate, Tasks,
+    EnergyPayer, Init, Interaction, LineageRule, MetaDraw, MetaSeed, ParamError, Params, Substrate,
+    Tasks,
 };
 use crate::render;
 use crate::replicator;
@@ -52,6 +53,35 @@ const STREAM_TASK_DOMINANT: u64 = STREAM_TASK | 2;
 /// no draw with the arithmetic readings or with the payment.
 const STREAM_LOGIC_SHARE: u64 = STREAM_TASK | 3;
 const STREAM_LOGIC_DOMINANT: u64 = STREAM_TASK | 4;
+/// `logic_capability_replicating`'s own cells and cases, the logic tally of the
+/// replicating tapes where the logic assay reads the metabolism tapes instead
+/// (`docs/design_record.md`, 2026-10-02, Meta-stack slice C).
+const STREAM_LOGIC_REPLICATING: u64 = STREAM_TASK | 5;
+/// The stream the metabolism tapes mutate on, once per epoch — its own, far from every id
+/// above, so the tapes' mutation moves no draw the run, the assay or any observable makes
+/// (`docs/design_record.md`, 2026-10-02, Meta-stack slice B).
+const STREAM_META: u64 = 0x4d45_5441_0000_0000;
+/// The 13 values an `isa` draw names outright, each at 1/14; the fourteenth fourteenth is
+/// one of the 243 other bytes, the no-ops.
+const META_ISA: [u8; 13] = [
+    bff::HEAD0_LEFT,
+    bff::HEAD0_RIGHT,
+    bff::HEAD1_LEFT,
+    bff::HEAD1_RIGHT,
+    bff::INC,
+    bff::DEC,
+    bff::COPY_TO_HEAD1,
+    bff::COPY_TO_HEAD0,
+    bff::LOOP_START,
+    bff::LOOP_END,
+    bff::EMIT,
+    bff::NAND,
+    0,
+];
+/// A partner's tape is a near copy of the initiator's when at least 9 in 10 of its bytes
+/// match, the inheritance rule of the design study's pilot (Meta-stack slice B).
+const NEAR_COPY_NUMERATOR: usize = 9;
+const NEAR_COPY_DENOMINATOR: usize = 10;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -70,6 +100,10 @@ pub struct World {
     steal_rate: f64,
     /// The `reverse_copy_rate` of that same epoch, counted in the same pass.
     reverse_copy_rate: f64,
+    /// The `meta_inherit_rate` of that same epoch, counted in the same pass: `None` until
+    /// a counted pass runs an interaction, and again after one that runs none: a share of
+    /// no interactions is no reading.
+    meta_inherit_rate: Option<f64>,
     /// One lineage id per cell, unique at init and inherited by descent in `step_soup`.
     /// Empty on the life substrate. A tag is read and written beside the tapes and never
     /// from the RNG stream, so a run's bytes are what they were before lineages existed.
@@ -83,6 +117,11 @@ pub struct World {
     /// hashed, snapshotted and restored. Empty — and never read — unless this run has an
     /// influx, so a run without one is the run it always was.
     stock: Vec<u32>,
+    /// Each cell's metabolism tape (DESIGN §1.1), `meta_len` bytes per cell, cell by cell:
+    /// never executed in the soup, read by the logic assay in place of the tape, inherited
+    /// on a near copy and mutated on `STREAM_META`. State of the world, so it is hashed,
+    /// snapshotted and restored. Empty — and never read — unless the run carries one.
+    meta: Vec<u8>,
 }
 
 impl World {
@@ -98,9 +137,11 @@ impl World {
             copy_rate: 0.0,
             steal_rate: 0.0,
             reverse_copy_rate: 0.0,
+            meta_inherit_rate: None,
             lineages: fresh_lineages(params),
             lens: fresh_lens(params),
             stock: fresh_stock(params),
+            meta: Vec::new(),
         };
         if params.init == Init::Random {
             let mut rng = rng::seeded(seed, STREAM_INIT, 0);
@@ -113,6 +154,7 @@ impl World {
                 }
             }
         }
+        world.meta = world.switched_on_meta();
         Ok(world)
     }
 
@@ -148,6 +190,25 @@ impl World {
         self.lineages.get(self.index(x, y)).copied().unwrap_or(0)
     }
 
+    /// The metabolism tape of one cell, or `None` on a world that carries none.
+    pub fn metabolism(&self, x: u32, y: u32) -> Option<&[u8]> {
+        self.params
+            .carries_meta()
+            .then(|| self.meta_of(self.index(x, y)))
+    }
+
+    /// Panics unless `bytes` fits one metabolism tape of a world that carries them.
+    pub fn set_metabolism(&mut self, x: u32, y: u32, bytes: &[u8]) {
+        let len = self.params.meta_len as usize;
+        assert!(
+            self.params.carries_meta(),
+            "this world carries no metabolism tapes"
+        );
+        assert_eq!(bytes.len(), len, "a metabolism tape holds {len} bytes");
+        let at = self.index(x, y) * len;
+        self.meta[at..at + len].copy_from_slice(bytes);
+    }
+
     /// Panics unless `bytes` fits one cell: exactly the slot on a world whose tapes cannot
     /// grow, and anything from one byte up to the cap on one whose tapes can.
     pub fn set_cell(&mut self, x: u32, y: u32, bytes: &[u8]) {
@@ -178,6 +239,7 @@ impl World {
             Substrate::Life => self.step_life(),
         }
         self.mutate(&mut rng);
+        self.mutate_meta();
         self.epoch += 1;
     }
 
@@ -200,12 +262,13 @@ impl World {
         let measured = self.sample(compressed);
         (
             measured,
-            snapshot::encode_compressed(
+            snapshot::encode_compressed_with_meta(
                 &self.snapshot_header(),
                 &payload,
                 &self.lineages,
                 &self.lens,
                 &self.stock,
+                &self.meta,
             ),
         )
     }
@@ -224,8 +287,24 @@ impl World {
     /// The hash of every byte the world holds, padding included — and after them, where
     /// tapes can grow, the lengths, and where cells hold energy, the stocks: the same bytes
     /// under two different sets of lengths, or two different stocks, are two different
-    /// worlds. A world with neither hashes the bytes alone, as it always did.
+    /// worlds. A world with neither hashes the bytes alone, as it always did. Where cells
+    /// carry metabolism tapes, those follow last.
     pub fn world_hash(&self) -> u64 {
+        if self.meta.is_empty() {
+            return self.soup_hash();
+        }
+        let (lens, stock) = (words(&self.lens), words(&self.stock));
+        fnv1a64_of([
+            self.cells.as_slice(),
+            lens.as_slice(),
+            stock.as_slice(),
+            self.meta.as_slice(),
+        ])
+    }
+
+    /// `world_hash` without the metabolism tapes: the hash of everything else the world
+    /// holds, which is the whole world's on a world that carries none.
+    fn soup_hash(&self) -> u64 {
         if self.lens.is_empty() && self.stock.is_empty() {
             return fnv1a64(&self.cells);
         }
@@ -234,12 +313,13 @@ impl World {
     }
 
     pub fn snapshot(&self) -> Vec<u8> {
-        snapshot::encode(
+        snapshot::encode_compressed_with_meta(
             &self.snapshot_header(),
-            &self.tapes().bytes(),
+            &metrics::compress(&self.tapes().bytes()),
             &self.lineages,
             &self.lens,
             &self.stock,
+            &self.meta,
         )
     }
 
@@ -252,6 +332,40 @@ impl World {
     fn tape(&self, cell: usize) -> &[u8] {
         let at = cell * self.params.stride();
         &self.cells[at..at + self.live_len(cell)]
+    }
+
+    fn meta_of(&self, cell: usize) -> &[u8] {
+        let len = self.params.meta_len as usize;
+        &self.meta[cell * len..cell * len + len]
+    }
+
+    /// The tape the logic assay reads for one cell: its metabolism tape where the run
+    /// carries them, and its replicating tape where it does not.
+    fn assayed_tape(&self, cell: usize) -> &[u8] {
+        match self.meta.is_empty() {
+            true => self.tape(cell),
+            false => self.meta_of(cell),
+        }
+    }
+
+    /// The metabolism tapes a world holds the moment they are switched on — at epoch 0 of
+    /// a founding run, or at descent from a parent that carried none — read off the
+    /// cells' tapes as they stand: zeros, or each cell's first `meta_len` bytes, zero
+    /// padded past a shorter tape. Empty on a world that carries none.
+    fn switched_on_meta(&self) -> Vec<u8> {
+        if !self.params.carries_meta() {
+            return Vec::new();
+        }
+        let len = self.params.meta_len as usize;
+        let mut meta = vec![0; self.params.cell_count() * len];
+        if self.params.meta_seed == MetaSeed::OwnTape {
+            for (cell, slot) in meta.chunks_mut(len).enumerate() {
+                let tape = self.tape(cell);
+                let seeded = tape.len().min(len);
+                slot[..seeded].copy_from_slice(&tape[..seeded]);
+            }
+        }
+        meta
     }
 
     fn live_len(&self, cell: usize) -> usize {
@@ -278,6 +392,7 @@ impl World {
     /// lineage observables read a world younger than it is.
     pub fn from_snapshot(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
         let restored = snapshot::decode(params, bytes)?;
+        let meta = restored_meta(params, restored.meta)?;
         Ok(Self {
             params: params.clone(),
             seed,
@@ -288,9 +403,11 @@ impl World {
             copy_rate: 0.0,
             steal_rate: 0.0,
             reverse_copy_rate: 0.0,
+            meta_inherit_rate: None,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: restored_stock(params, restored.stock)?,
+            meta,
         })
     }
 
@@ -308,6 +425,10 @@ impl World {
     /// Under the parent's own params and seed the descendant is the parent continued,
     /// byte for byte: the RNG is keyed by seed, stream and epoch and holds no state.
     ///
+    /// A parent's metabolism tapes carry over to a child whose tapes have their length;
+    /// otherwise a child that carries them switches them on here, seeded off the parent's
+    /// tapes as `switched_on_meta` reads them, and a child that carries none drops them.
+    ///
     /// A descendant is a new run, so its params are validated as `World::new` validates
     /// them. `from_snapshot` does not validate: it resumes a run already under way, which
     /// must keep resuming however validation has tightened since it started.
@@ -318,7 +439,7 @@ impl World {
         if epoch <= metrics::TRANSITION_BASELINE_EPOCHS {
             return Err(SnapshotError::InsideBaselineWindow { epoch });
         }
-        Ok(Self {
+        let mut world = Self {
             params: params.clone(),
             seed,
             epoch,
@@ -328,10 +449,17 @@ impl World {
             copy_rate: 0.0,
             steal_rate: 0.0,
             reverse_copy_rate: 0.0,
+            meta_inherit_rate: None,
             lineages: restored.lineages.unwrap_or_else(|| fresh_lineages(params)),
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: descended_stock(params, restored.stock)?,
-        })
+            meta: Vec::new(),
+        };
+        world.meta = match restored.meta {
+            Some(meta) if params.carries_meta() && meta.len == params.meta_len => meta.tapes,
+            _ => world.switched_on_meta(),
+        };
+        Ok(world)
     }
 
     /// Fills `buf` with `width × height` RGBA pixels, top-left first.
@@ -385,6 +513,7 @@ impl World {
         let mut copies: u64 = 0;
         let mut reversed_copies: u64 = 0;
         let mut thefts: u64 = 0;
+        let mut inherits: u64 = 0;
         for cell in &order {
             let a = *cell as usize;
             let b = self.pick_partner(a, rng);
@@ -448,6 +577,10 @@ impl World {
                 *len = grown_b as u32;
             }
             self.inherit_lineages(a, b, &pair, &before, live_a);
+            let inherited = self.inherit_meta(a, b, &pair, &before, live_a);
+            if counting {
+                inherits += u64::from(inherited);
+            }
         }
         self.stock = energy.into_stock();
         if counting {
@@ -458,6 +591,7 @@ impl World {
             self.copy_rate = share(copies);
             self.steal_rate = share(thefts);
             self.reverse_copy_rate = share(reversed_copies);
+            self.meta_inherit_rate = (interactions > 0).then(|| share(inherits));
         }
     }
 
@@ -490,7 +624,7 @@ impl World {
                 let cases = logic::Cases::draw(&mut rng);
                 let mut memo = logic::Memo::new(cases, ops, self.params.logic_nand);
                 cells
-                    .map(|cell| memo.credit(self.tape(cell)).units_from(floor))
+                    .map(|cell| memo.credit(self.assayed_tape(cell)).units_from(floor))
                     .collect()
             }
         };
@@ -513,6 +647,44 @@ impl World {
         }
         if inherits_partner(rule, &pair[split..], &before[split..], &before[..split]) {
             self.lineages[b] = was_a;
+        }
+    }
+
+    /// The metabolism tape follows a copy: when the interaction that just ran left the
+    /// partner's tape a near copy of the tape the initiator arrived with, the initiator's
+    /// metabolism tape is copied whole onto the partner's. The rule is the design study's
+    /// pilot's (`docs/design_record.md`, 2026-10-02, Meta-stack slice B): see `near_copy`.
+    /// Only the partner inherits, as only the partner's tape is the one a copier writes.
+    /// Whether it did.
+    fn inherit_meta(
+        &mut self,
+        a: usize,
+        b: usize,
+        pair: &[u8],
+        before: &[u8],
+        split: usize,
+    ) -> bool {
+        if self.meta.is_empty() || !near_copy(&pair[split..], &before[..split], &before[split..]) {
+            return false;
+        }
+        let len = self.params.meta_len as usize;
+        self.meta.copy_within(a * len..a * len + len, b * len);
+        true
+    }
+
+    /// Every metabolism-tape byte offered one draw at `meta_rate`, in cell order, on
+    /// `STREAM_META` at this epoch, and redrawn by `meta_draw` where it hits. No other
+    /// stream is touched, so the tapes' mutation moves no byte, stock or draw of the soup.
+    fn mutate_meta(&mut self) {
+        if self.meta.is_empty() || self.params.meta_rate <= 0.0 {
+            return;
+        }
+        let mut rng = rng::seeded(self.seed, STREAM_META, self.epoch);
+        let (rate, draw) = (self.params.meta_rate, self.params.meta_draw);
+        for byte in &mut self.meta {
+            if rng::chance(&mut rng, rate) {
+                *byte = draw_meta_byte(&mut rng, draw);
+            }
         }
     }
 
@@ -640,6 +812,11 @@ impl World {
         let task_share = |task: usize| tally.map(|tally| tally.share(task));
         let logic = self.logic_tally();
         let logic_share = |task: usize| logic.map(|tally| tally.share(task));
+        let ranked_meta = self.ranked_meta();
+        let dominant_logic = match self.meta.is_empty() {
+            true => census.dominant_logic_tasks,
+            false => self.dominant_logic_credit(ranked_meta.first().map(|(tape, _)| *tape)),
+        };
 
         Metrics {
             compress_ratio,
@@ -704,10 +881,13 @@ impl World {
             logic_share_equ: logic_share(9),
             logic_capability: logic.map(|tally| tally.capability()),
             logic_capability_deep: logic.map(|tally| tally.capability_deep()),
-            dominant_logic_tasks: census
-                .dominant_logic_tasks
-                .map(|credit| u32::from(credit.bits())),
-            dominant_logic_task_count: census.dominant_logic_tasks.map(|credit| credit.count()),
+            dominant_logic_tasks: dominant_logic.map(|credit| u32::from(credit.bits())),
+            dominant_logic_task_count: dominant_logic.map(|credit| credit.count()),
+            meta_inherit_rate: self.meta_inherit_rate.filter(|_| !self.meta.is_empty()),
+            meta_diversity: (!self.meta.is_empty()).then_some(ranked_meta.len() as u64),
+            logic_capability_replicating: self
+                .logic_tally_replicating()
+                .map(|tally| tally.capability()),
         }
     }
 
@@ -751,16 +931,61 @@ impl World {
         if !self.reads_logic() {
             return None;
         }
-        let mut rng = rng::seeded(self.seed, STREAM_LOGIC_SHARE, self.epoch);
+        Some(self.logic_tally_on(STREAM_LOGIC_SHARE, |cell| self.assayed_tape(cell)))
+    }
+
+    /// The same tally of the replicating tapes, where the assay reads the metabolism tapes
+    /// instead: whether the copier still computes anything of its own. On a stream of its
+    /// own, so it moves no other reading.
+    fn logic_tally_replicating(&self) -> Option<logic::LogicTally> {
+        if !self.reads_logic() || self.meta.is_empty() {
+            return None;
+        }
+        Some(self.logic_tally_on(STREAM_LOGIC_REPLICATING, |cell| self.tape(cell)))
+    }
+
+    fn logic_tally_on<'a>(
+        &'a self,
+        stream: u64,
+        tape: impl Fn(usize) -> &'a [u8],
+    ) -> logic::LogicTally {
+        let mut rng = rng::seeded(self.seed, stream, self.epoch);
         let cases = logic::Cases::draw(&mut rng);
         let mut memo = logic::Memo::new(cases, self.params.op_set(), self.params.logic_nand);
         let cells = self.params.cell_count() as u64;
         let mut tally = logic::LogicTally::default();
         for _ in 0..task::TASK_SAMPLE_CELLS {
             let cell = rng::below(&mut rng, cells) as usize;
-            tally.add(memo.credit(self.tape(cell)));
+            tally.add(memo.credit(tape(cell)));
         }
-        Some(tally)
+        tally
+    }
+
+    /// The metabolism tapes ranked by how many cells hold each, ties in ascending byte
+    /// order as `metrics::ranked_tapes` breaks them. Empty on a world that carries none.
+    fn ranked_meta(&self) -> Vec<(&[u8], u64)> {
+        if self.meta.is_empty() {
+            return Vec::new();
+        }
+        metrics::ranked_tapes(metrics::Tapes::uniform(
+            &self.meta,
+            self.params.meta_len as usize,
+        ))
+    }
+
+    /// The logic rungs of the tape the dominant logic reading reads: the census's dominant
+    /// replicating tape, or where the assay reads metabolism tapes, the most common of
+    /// those. On `STREAM_LOGIC_DOMINANT` either way.
+    fn dominant_logic_credit(&self, tape: Option<&[u8]>) -> Option<logic::Credit> {
+        let tape = tape.filter(|_| self.reads_logic())?;
+        let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DOMINANT, self.epoch);
+        let cases = logic::Cases::draw(&mut rng);
+        Some(logic::assay_on(
+            tape,
+            &cases,
+            self.params.op_set(),
+            self.params.logic_nand,
+        ))
     }
 
     /// The orientation-aware companion of the census: `SELF_REP_SAMPLE_CELLS` cells drawn
@@ -862,11 +1087,10 @@ impl World {
                 let mut rng = rng::seeded(self.seed, STREAM_TASK_DOMINANT, self.epoch);
                 task::assay(tape, &task::Cases::draw(&mut rng), self.params.op_set())
             }),
-            dominant_logic_tasks: first.dominant.filter(|_| self.reads_logic()).map(|tape| {
-                let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DOMINANT, self.epoch);
-                let cases = logic::Cases::draw(&mut rng);
-                logic::assay_on(tape, &cases, self.params.op_set(), self.params.logic_nand)
-            }),
+            dominant_logic_tasks: match self.meta.is_empty() {
+                true => self.dominant_logic_credit(first.dominant),
+                false => None,
+            },
             counts: draws.iter().map(|draw| draw.count).collect(),
         }
     }
@@ -1209,6 +1433,58 @@ fn oriented_distance(result: &[u8], arrived: &[u8]) -> u64 {
         .count() as u64
         + result.len().abs_diff(arrived.len()) as u64;
     metrics::hamming_distance(result, arrived).min(reversed)
+}
+
+/// Whether an interaction left a tape (`result`) a near copy of `source`: it changed the
+/// tape from what it arrived as, and at least `NEAR_COPY_NUMERATOR` in
+/// `NEAR_COPY_DENOMINATOR` of the positions the two share hold `source`'s byte, read either
+/// forward from byte zero or with `source` reversed — the orientations `copied_onto` and
+/// `reversed_onto` read. The positions shared are the shorter tape's length.
+fn near_copy(result: &[u8], source: &[u8], arrived: &[u8]) -> bool {
+    if result == arrived {
+        return false;
+    }
+    let shared = result.len().min(source.len());
+    let forward = result.iter().zip(source).filter(|(r, s)| r == s).count();
+    let reversed = result
+        .iter()
+        .zip(source.iter().rev())
+        .filter(|(r, s)| r == s)
+        .count();
+    forward.max(reversed) * NEAR_COPY_DENOMINATOR >= shared * NEAR_COPY_NUMERATOR
+}
+
+/// The resumed run's metabolism tapes. Like a stock, they are state the run spent epochs
+/// arriving at, so params that carry them meeting a blob without them — or the reverse, or
+/// another length — are refused rather than minted or dropped.
+fn restored_meta(
+    params: &Params,
+    meta: Option<snapshot::Metabolism>,
+) -> Result<Vec<u8>, SnapshotError> {
+    match (meta, params.carries_meta()) {
+        (None, false) => Ok(Vec::new()),
+        (Some(meta), true) if meta.len == params.meta_len => Ok(meta.tapes),
+        _ => Err(SnapshotError::Mismatch { field: "meta_len" }),
+    }
+}
+
+/// One metabolism-tape byte as `meta_draw` draws it.
+fn draw_meta_byte(rng: &mut Rng, draw: MetaDraw) -> u8 {
+    match draw {
+        MetaDraw::Uniform => rng::byte(rng),
+        MetaDraw::Isa => {
+            let pick = rng::below(rng, META_ISA.len() as u64 + 1) as usize;
+            match META_ISA.get(pick) {
+                Some(byte) => *byte,
+                None => loop {
+                    let byte = rng::byte(rng);
+                    if !META_ISA.contains(&byte) {
+                        break byte;
+                    }
+                },
+            }
+        }
+    }
 }
 
 /// A run of `u32`s as the little-endian bytes the world hashes them by.
@@ -6110,6 +6386,425 @@ mod tests {
         assert_eq!(measured.dominant_logic_task_count, Some(0));
     }
 
+    /// The metabolism-tape bundle of the design study (§7.6) on `logic_params`' economy:
+    /// 32 bytes per cell, seeded from each cell's own tape, drawn from the instruction set
+    /// at 32 times the Logic sweep's soup rate.
+    fn meta_params() -> Params {
+        Params {
+            meta_len: 32,
+            meta_rate: 32.0 / 8192.0,
+            meta_draw: MetaDraw::Isa,
+            meta_seed: MetaSeed::OwnTape,
+            ..logic_params()
+        }
+    }
+
+    fn without_meta(params: &Params) -> Params {
+        let defaults = Params::default();
+        Params {
+            meta_len: 0,
+            meta_rate: defaults.meta_rate,
+            meta_draw: defaults.meta_draw,
+            meta_seed: defaults.meta_seed,
+            ..params.clone()
+        }
+    }
+
+    /// At `meta_len` 0 nothing is allocated, nothing is read and the snapshot keeps the
+    /// container it always wrote, so every pin above is a pin of this engine too.
+    #[test]
+    fn a_world_without_a_metabolism_tape_allocates_none_and_writes_the_old_container() {
+        for params in [soup(8, 8), logic_params(), stocked_params()] {
+            let world = stepped(&params, 3, 3);
+            assert!(world.meta.is_empty());
+            assert_eq!(world.metabolism(0, 0), None);
+            assert_eq!(world.world_hash(), world.soup_hash());
+            assert!(world.snapshot()[4] <= snapshot::VERSION_RELATIVE_STOCKED);
+        }
+    }
+
+    /// At a reward of 0 the tape is never read: it still mutates and is still inherited,
+    /// on a stream and a rule that touch nothing else, so every byte, stock and lineage
+    /// of the world is the tape-off world's, and so is its hash with the tapes left out.
+    #[test]
+    fn a_metabolism_tape_at_a_reward_of_zero_moves_nothing_else() {
+        for draw in [MetaDraw::Isa, MetaDraw::Uniform] {
+            let params = Params {
+                meta_draw: draw,
+                ..unrewarded(&meta_params())
+            };
+            let seeded = with_logic_solvers(&params, 42);
+            let carried = stepped_world(seeded.clone(), 30);
+            let plain = stepped_world(with_logic_solvers(&without_meta(&params), 42), 30);
+            let off = stepped_world(
+                with_logic_solvers(&without_tasks(&without_meta(&params)), 42),
+                30,
+            );
+
+            assert_eq!(carried.soup_hash(), plain.world_hash(), "{draw:?}");
+            assert_eq!(carried.soup_hash(), off.world_hash(), "{draw:?}");
+            assert_eq!(carried.stock, plain.stock);
+            assert_eq!(carried.lineages, plain.lineages);
+            assert_ne!(carried.meta, seeded.meta, "the tapes never moved");
+            assert_ne!(carried.world_hash(), plain.world_hash());
+        }
+    }
+
+    /// The rewarded bundle's own pin, and its reward-0 arm's: `meta_params` over
+    /// `with_logic_solvers`, seed 42, after 50 epochs.
+    const PINNED_META_REWARD_HASH: u64 = 0x105b_389d_66e0_9981;
+    const PINNED_META_UNREWARDED_HASH: u64 = 0x5df3_4cfc_de0c_4f52;
+
+    #[test]
+    fn the_metabolism_reward_is_pinned() {
+        let rewarded = stepped_world(with_logic_solvers(&meta_params(), 42), 50);
+        let unrewarded = stepped_world(with_logic_solvers(&unrewarded(&meta_params()), 42), 50);
+        assert_eq!(rewarded.world_hash(), PINNED_META_REWARD_HASH);
+        assert_eq!(unrewarded.world_hash(), PINNED_META_UNREWARDED_HASH);
+        let woven = stepped_world(with_logic_solvers(&logic_params(), 42), 50);
+        assert_ne!(rewarded.soup_hash(), woven.world_hash());
+    }
+
+    /// `logic_paid_world` with a 24-byte metabolism tape per cell, zero at the start: the
+    /// ECHO, NOT and XOR solvers planted in the metabolism tapes of three cells, and the
+    /// XOR solver in the replicating tape of a fourth, whose metabolism tape stays zero.
+    fn meta_paid_world() -> World {
+        let params = Params {
+            meta_len: 24,
+            meta_rate: 0.0,
+            task_reward: 100,
+            ..logic_paid_world(0, "echo").params
+        };
+        let mut paid = World::new(&params, 5).unwrap();
+        for (x, y, program) in [(1, 1, &b"<!>"[..]), (5, 1, NOT_SOLVER), (1, 5, XOR_SOLVER)] {
+            let mut tape = program.to_vec();
+            tape.resize(24, 0);
+            paid.set_metabolism(x, y, &tape);
+        }
+        let mut tape = XOR_SOLVER.to_vec();
+        tape.resize(24, 0);
+        paid.set_cell(5, 5, &tape);
+        paid.stock.fill(0);
+        paid
+    }
+
+    /// The assay reads the metabolism tape in place of the replicating tape: each planted
+    /// metabolism tape is paid its units, ECHO 1, NOT 1 and XOR 8 at 100 a unit, and the
+    /// cell whose replicating tape solves XOR is paid nothing.
+    #[test]
+    fn the_logic_assay_pays_the_metabolism_tape_and_not_the_tape() {
+        let mut world = meta_paid_world();
+        world.step();
+        let solvers = [(1, 1), (5, 1), (1, 5), (5, 5)].map(|(x, y)| stock_at(&world, x, y));
+        assert_eq!(solvers, [100, 100, 800, 0]);
+        assert_eq!(world.stock.iter().sum::<u32>(), 1_000);
+    }
+
+    /// The metabolism tape is assayed with the run's own NAND: the stack XOR solver on a
+    /// metabolism tape earns XOR's 8 units under `stack` alone, and the in-place one under
+    /// `in_place` alone (under `stack` it is paid one unit of a rung below).
+    #[test]
+    fn the_metabolism_tape_is_paid_under_the_runs_own_nand() {
+        let xor_pay = |logic_nand, solver: &[u8]| {
+            let mut world = meta_paid_world();
+            world.params.logic_nand = logic_nand;
+            let mut tape = solver.to_vec();
+            tape.resize(24, 0);
+            world.set_metabolism(1, 5, &tape);
+            world.step();
+            stock_at(&world, 1, 5)
+        };
+        assert_eq!(xor_pay(LogicNand::Stack, STACK_XOR_SOLVER), 800);
+        assert_eq!(xor_pay(LogicNand::InPlace, STACK_XOR_SOLVER), 0);
+        assert_eq!(xor_pay(LogicNand::InPlace, XOR_SOLVER), 800);
+        assert_eq!(xor_pay(LogicNand::Stack, XOR_SOLVER), 100);
+    }
+
+    #[test]
+    fn determinism_holds_under_a_metabolism_tape() {
+        for (seed, draw, meta_seed) in [
+            (1, MetaDraw::Isa, MetaSeed::OwnTape),
+            (2, MetaDraw::Uniform, MetaSeed::Zeros),
+        ] {
+            assert_deterministic(
+                &Params {
+                    max_steps: 64,
+                    energy_payer: EnergyPayer::Initiator,
+                    energy_influx: 64,
+                    energy_stock_cap: 256,
+                    tasks: Tasks::Logic,
+                    task_every: 3,
+                    task_reward: 4,
+                    meta_len: 16,
+                    meta_rate: 1.0 / 64.0,
+                    meta_draw: draw,
+                    meta_seed,
+                    ..soup(16, 16)
+                },
+                seed,
+            );
+        }
+    }
+
+    /// A tape of ten bytes, `0..10`, a partner of ten `0xEE`s, and the tape the partner
+    /// ends with: whether the initiator's metabolism tape was copied onto the partner's.
+    fn inherits_meta(initiator: &[u8], arrived: &[u8], result: &[u8]) -> bool {
+        let params = Params {
+            tape_len: 10,
+            meta_len: 4,
+            meta_rate: 0.0,
+            tasks: Tasks::Logic,
+            ..soup(8, 8)
+        };
+        let mut world = World::new(&params, 1).unwrap();
+        world.set_metabolism(0, 0, b"meta");
+        let before = [initiator, arrived].concat();
+        let pair = [initiator, result].concat();
+        world.inherit_meta(0, 1, &pair, &before, initiator.len());
+        assert_eq!(world.metabolism(0, 0), Some(&b"meta"[..]));
+        world.metabolism(1, 0) == Some(&b"meta"[..])
+    }
+
+    /// The near-copy rule on exact, near (9 bytes in 10) and partial (8 in 10) copies, read
+    /// forward and reversed; a partner left as it arrived inherits nothing, even when it
+    /// arrived a copy already.
+    #[test]
+    fn the_metabolism_tape_follows_a_near_copy_in_either_orientation() {
+        let source: Vec<u8> = (0..10).collect();
+        let arrived = [0xEE; 10];
+        let reversed: Vec<u8> = source.iter().rev().copied().collect();
+        let with_misses = |image: &[u8], misses: usize| {
+            let mut tape = image.to_vec();
+            tape[..misses].fill(0xEE);
+            tape
+        };
+        for (image, orientation) in [(&source, "forward"), (&reversed, "reversed")] {
+            assert!(
+                inherits_meta(&source, &arrived, image),
+                "exact {orientation}"
+            );
+            assert!(
+                inherits_meta(&source, &arrived, &with_misses(image, 1)),
+                "near {orientation}"
+            );
+            assert!(
+                !inherits_meta(&source, &arrived, &with_misses(image, 2)),
+                "partial {orientation}"
+            );
+        }
+        assert!(
+            !inherits_meta(&source, &source, &source),
+            "a copy that arrived a copy"
+        );
+        assert!(
+            !inherits_meta(&source, &arrived, &arrived),
+            "nothing written"
+        );
+    }
+
+    /// Over a shorter partner the rule reads the positions the two tapes share.
+    #[test]
+    fn a_near_copy_reads_the_positions_two_ragged_tapes_share() {
+        let source: Vec<u8> = (0..20).collect();
+        assert!(near_copy(&source[..10], &source, &[0xEE; 10]));
+        assert!(near_copy(&source, &source[..10], &[0xEE; 20]));
+        let mut grown = source.clone();
+        grown[..2].fill(0xEE);
+        assert!(!near_copy(&grown, &source[..10], &[0xEE; 20]));
+    }
+
+    /// In a running world the handwritten replicator, copying itself down from its row,
+    /// carries that row's metabolism tape with it; nothing else writes one.
+    #[test]
+    fn a_copier_carries_its_metabolism_tape_onto_the_cells_it_copies_over() {
+        let params = Params {
+            meta_len: 8,
+            meta_rate: 0.0,
+            tasks: Tasks::Logic,
+            ..colony_params()
+        };
+        let mut world = colony(&params, 11);
+        for x in 0..params.width {
+            world.set_metabolism(x, 0, b"carried!");
+        }
+        let world = stepped_world(world, 6);
+        let replicator = replicator::handwritten_replicator();
+        let mut copied = 0;
+        for y in 1..params.height {
+            for x in 0..params.width {
+                let meta = world.metabolism(x, y).unwrap();
+                assert!(meta == b"carried!" || meta == [0; 8], "a tape from nowhere");
+                if world.cell(x, y) == replicator.as_slice() {
+                    copied += 1;
+                    assert_eq!(meta, b"carried!");
+                }
+            }
+        }
+        assert!(copied > 0, "the colony never spread");
+    }
+
+    /// Each byte is offered one draw at `meta_rate`: a uniform draw over zero tapes leaves
+    /// a byte zero only when it lands on 0, so the bytes that moved are the rate's share
+    /// of the 32 768 offered, less a 256th.
+    #[test]
+    fn the_metabolism_tape_mutates_at_its_rate() {
+        let moved = |meta_rate: f64| {
+            let params = Params {
+                init: Init::Zero,
+                mutation_rate: 0.0,
+                meta_len: 32,
+                meta_rate,
+                ..logic_params()
+            };
+            let world = stepped(&unrewarded(&params), 9, 1);
+            assert!(world.cells.iter().all(|byte| *byte == 0));
+            world.meta.iter().filter(|byte| **byte != 0).count()
+        };
+        let expected = 32_768.0 / 64.0 * 255.0 / 256.0;
+        let read = moved(1.0 / 64.0) as f64;
+        assert!(
+            (read - expected).abs() < 0.1 * expected,
+            "{read} of {expected}"
+        );
+        assert_eq!(moved(0.0), 0);
+    }
+
+    /// An `isa` draw names each of its 13 values and the no-ops as a class at 1/14 each,
+    /// and a no-op is never one of the 13.
+    #[test]
+    fn the_isa_draw_gives_each_value_and_the_no_ops_a_fourteenth() {
+        const DRAWS: usize = 140_000;
+        let mut rng = rng::seeded(4, STREAM_META, 0);
+        let mut counts = [0usize; 256];
+        for _ in 0..DRAWS {
+            counts[draw_meta_byte(&mut rng, MetaDraw::Isa) as usize] += 1;
+        }
+        let each = DRAWS as f64 / 14.0;
+        for byte in META_ISA {
+            let count = counts[byte as usize] as f64;
+            assert!((count - each).abs() < 0.05 * each, "{byte}: {count}");
+        }
+        let no_ops: Vec<usize> = (0..256)
+            .filter(|byte| !META_ISA.contains(&(*byte as u8)))
+            .map(|byte| counts[byte])
+            .collect();
+        assert_eq!(no_ops.len(), 243);
+        let total = no_ops.iter().sum::<usize>() as f64;
+        assert!((total - each).abs() < 0.05 * each, "no-ops: {total}");
+        assert!(no_ops.iter().filter(|count| **count > 0).count() > 200);
+    }
+
+    /// The tapes travel in the snapshot: a restored world holds them, hashes as the world
+    /// it was taken from, and steps on identically, through the combined sample too.
+    #[test]
+    fn a_snapshot_carries_the_metabolism_tapes_and_the_run_continues_identically() {
+        let mut world = stepped_world(with_logic_solvers(&meta_params(), 42), 10);
+        let (_, sampled) = world.clone().metrics_with_snapshot();
+        world.metrics();
+        let bytes = world.snapshot();
+        assert_eq!(bytes[4], snapshot::VERSION_META_STOCKED);
+        assert_eq!(sampled, bytes);
+
+        let mut restored = World::from_snapshot(&meta_params(), 42, &bytes).unwrap();
+        assert_eq!(restored.meta, world.meta);
+        assert_eq!(restored.world_hash(), world.world_hash());
+        for _ in 0..10 {
+            world.step();
+            restored.step();
+        }
+        assert_eq!(restored.world_hash(), world.world_hash());
+    }
+
+    /// A resume is the run under way, so its tapes must be the ones it carried: a blob
+    /// without them, with them under params without them, or of another length, is
+    /// refused.
+    #[test]
+    fn refuses_a_resume_whose_metabolism_tapes_do_not_match_the_params() {
+        let carried = stepped(&meta_params(), 3, 2).snapshot();
+        let plain = stepped(&without_meta(&meta_params()), 3, 2).snapshot();
+        let shorter = Params {
+            meta_len: 16,
+            ..meta_params()
+        };
+        for (params, blob) in [
+            (meta_params(), &plain),
+            (without_meta(&meta_params()), &carried),
+            (shorter, &carried),
+        ] {
+            assert!(matches!(
+                World::from_snapshot(&params, 3, blob),
+                Err(SnapshotError::Mismatch { field: "meta_len" })
+            ));
+        }
+    }
+
+    fn meta_descent_params() -> Params {
+        Params {
+            tasks: Tasks::Logic,
+            ..descent_params()
+        }
+    }
+
+    /// A child that switches the tape on at descent seeds it off the parent's tapes as
+    /// they were stored: each cell's first `meta_len` bytes under `own_tape`, zeros under
+    /// `zeros`.
+    #[test]
+    fn a_descendant_switches_its_metabolism_tape_on_from_the_parents_tapes() {
+        let parent = stepped(&meta_descent_params(), 11, DESCENT_EPOCH);
+        let blob = parent.snapshot();
+        let child_params = |meta_seed| Params {
+            meta_len: 32,
+            meta_seed,
+            ..meta_descent_params()
+        };
+
+        let own = World::descend(&child_params(MetaSeed::OwnTape), 11, &blob).unwrap();
+        for y in 0..parent.height() {
+            for x in 0..parent.width() {
+                assert_eq!(own.metabolism(x, y), Some(&parent.cell(x, y)[..32]));
+            }
+        }
+        assert_eq!(own.soup_hash(), parent.world_hash());
+
+        let zeros = World::descend(&child_params(MetaSeed::Zeros), 11, &blob).unwrap();
+        assert!(zeros.meta.iter().all(|byte| *byte == 0));
+        assert_eq!(zeros.meta.len(), 32 * parent.params.cell_count());
+    }
+
+    /// A parent that carried the tapes hands them on: under its own params and seed the
+    /// child is the parent continued, tapes and all. A child of another length switches
+    /// its own on, and a child without them drops them.
+    #[test]
+    fn a_descendant_carries_its_parents_metabolism_tapes_on() {
+        let params = Params {
+            meta_len: 16,
+            meta_rate: 1.0 / 64.0,
+            meta_seed: MetaSeed::OwnTape,
+            ..meta_descent_params()
+        };
+        let mut parent = stepped(&params, 11, DESCENT_EPOCH);
+        let blob = parent.snapshot();
+
+        let mut child = World::descend(&params, 11, &blob).unwrap();
+        assert_eq!(child.meta, parent.meta);
+        for _ in 0..20 {
+            parent.step();
+            child.step();
+        }
+        assert_eq!(child.world_hash(), parent.world_hash());
+
+        let longer = Params {
+            meta_len: 32,
+            ..params.clone()
+        };
+        let reseeded = World::descend(&longer, 11, &blob).unwrap();
+        let restored = World::from_snapshot(&params, 11, &blob).unwrap();
+        assert_eq!(reseeded.metabolism(2, 3), Some(&restored.cell(2, 3)[..32]));
+
+        let dropped = World::descend(&without_meta(&params), 11, &blob).unwrap();
+        assert!(dropped.meta.is_empty());
+    }
+
     /// The logic observables read the run's own NAND: a world of stack XOR solvers is
     /// capable of XOR under `stack` and of nothing under `in_place`.
     #[test]
@@ -6129,5 +6824,348 @@ mod tests {
             measured.dominant_logic_tasks.map(|bits| bits & (1 << 8)),
             Some(0)
         );
+    }
+
+    /// A still 16×16 soup of zero tapes and zero metabolism tapes of 32 bytes, under the
+    /// given NAND, with each program planted at the front of every replicating tape, or
+    /// every metabolism tape, of its rows.
+    fn meta_logic_world(
+        logic_nand: LogicNand,
+        tapes: &[(std::ops::Range<u32>, &[u8])],
+        metas: &[(std::ops::Range<u32>, &[u8])],
+    ) -> World {
+        let params = Params {
+            logic_nand,
+            meta_len: 32,
+            meta_rate: 0.0,
+            ..logic_world(&[]).params
+        };
+        let mut world = World::new(&params, 9).unwrap();
+        for (rows, program) in tapes {
+            let mut tape = program.to_vec();
+            tape.resize(params.tape_len as usize, 0);
+            for y in rows.clone() {
+                for x in 0..params.width {
+                    world.set_cell(x, y, &tape);
+                }
+            }
+        }
+        for (rows, program) in metas {
+            let mut tape = program.to_vec();
+            tape.resize(32, 0);
+            for y in rows.clone() {
+                for x in 0..params.width {
+                    world.set_metabolism(x, y, &tape);
+                }
+            }
+        }
+        world
+    }
+
+    fn meta_digest(measured: &Metrics) -> String {
+        format!(
+            "{} meta_inherit_rate={:?} meta_diversity={:?} logic_capability_replicating={:?}",
+            logic_digest(measured),
+            measured.meta_inherit_rate,
+            measured.meta_diversity,
+            measured.logic_capability_replicating,
+        )
+    }
+
+    const UNREAD_META: &str =
+        "meta_inherit_rate=None meta_diversity=None logic_capability_replicating=None";
+
+    /// Without a metabolism tape the three readings are null, whatever the ladder, and
+    /// the logic readings are the ones the tape-off pins above hold.
+    #[test]
+    fn the_metabolism_readings_are_null_without_a_tape() {
+        let mut worlds = vec![
+            World::new(&soup(16, 16), 42).unwrap(),
+            World::new(&life(16, 16), 42).unwrap(),
+            with_solvers(&rewarded_params(), 42),
+            stepped_world(with_logic_solvers(&logic_params(), 42), 10),
+            logic_world(&[(0..8, LOGIC_XOR)]),
+        ];
+        for world in &mut worlds {
+            let measured = world.metrics();
+            assert!(
+                meta_digest(&measured).ends_with(UNREAD_META),
+                "{measured:?}"
+            );
+        }
+    }
+
+    /// The logic readings read the metabolism tapes and not the replicating ones: a world
+    /// whose replicating tapes all solve NOT and whose metabolism tapes solve XOR on half
+    /// the rows and OR on a quarter is capable of XOR and OR, and the copier of NOT alone.
+    /// The same read under each NAND, with each NAND's own XOR and OR solvers.
+    #[test]
+    fn the_logic_readings_read_the_metabolism_tapes() {
+        for (nand, xor, or) in [
+            (LogicNand::InPlace, LOGIC_XOR, LOGIC_OR),
+            (LogicNand::Stack, STACK_XOR_SOLVER, STACK_OR_SOLVER),
+        ] {
+            let mut world =
+                meta_logic_world(nand, &[(0..16, NOT_SOLVER)], &[(0..8, xor), (8..12, or)]);
+            let measured = world.metrics();
+            let xor_share = measured.logic_share_xor.expect("logic is on");
+            assert!((0.4..0.6).contains(&xor_share), "{nand:?} {xor_share}");
+            assert_eq!(measured.logic_share_not, Some(0.0), "{nand:?}");
+            assert_eq!(measured.logic_capability, Some(2), "{nand:?}");
+            assert_eq!(measured.logic_capability_deep, Some(1), "{nand:?}");
+            assert_eq!(measured.dominant_logic_tasks, Some(1 << 8), "{nand:?}");
+            assert_eq!(measured.dominant_logic_task_count, Some(1), "{nand:?}");
+            assert_eq!(measured.logic_capability_replicating, Some(1), "{nand:?}");
+            assert_eq!(measured.meta_diversity, Some(3), "{nand:?}");
+            assert_eq!(measured.meta_inherit_rate, None, "{nand:?}");
+        }
+    }
+
+    /// Each NAND reads its own solver: the stack XOR on the metabolism tapes is a deep
+    /// capability under `stack` and none under `in_place`.
+    #[test]
+    fn the_metabolism_tapes_are_read_with_the_runs_own_nand() {
+        let deep = |nand| {
+            meta_logic_world(nand, &[], &[(0..16, STACK_XOR_SOLVER)])
+                .metrics()
+                .logic_capability_deep
+        };
+        assert_eq!(deep(LogicNand::Stack), Some(1));
+        assert_eq!(deep(LogicNand::InPlace), Some(0));
+    }
+
+    /// The dominant logic reading names the most common metabolism tape, not the census's
+    /// dominant tape: replicating tapes that all solve NOT behind zero metabolism tapes
+    /// read 0. Of two metabolism tapes held by as many cells, the lower in byte order is
+    /// the dominant one, as `metrics::ranked_tapes` breaks every tie.
+    #[test]
+    fn the_dominant_logic_reading_names_the_most_common_metabolism_tape() {
+        let mut zeros = meta_logic_world(LogicNand::InPlace, &[(0..16, NOT_SOLVER)], &[]);
+        let measured = zeros.metrics();
+        assert_eq!(measured.dominant_logic_tasks, Some(0));
+        assert_eq!(measured.dominant_logic_task_count, Some(0));
+        assert_eq!(measured.meta_diversity, Some(1));
+
+        for (solver, bits) in [(LOGIC_XOR, 1 << 8), (LOGIC_EQU, 1 << 9), (NOT_SOLVER, 0b10)] {
+            let mut solved = meta_logic_world(LogicNand::InPlace, &[], &[(0..12, solver)]);
+            assert_eq!(solved.metrics().dominant_logic_tasks, Some(bits));
+        }
+
+        assert!(LOGIC_XOR < NOT_SOLVER);
+        for metas in [
+            [(0..8, LOGIC_XOR), (8..16, NOT_SOLVER)],
+            [(0..8, NOT_SOLVER), (8..16, LOGIC_XOR)],
+        ] {
+            let mut tied = meta_logic_world(LogicNand::InPlace, &[], &metas);
+            let measured = tied.metrics();
+            assert_eq!(measured.dominant_logic_tasks, Some(1 << 8));
+            assert_eq!(measured.meta_diversity, Some(2));
+        }
+    }
+
+    /// The inherit rate counts the interactions of the epoch before a sample that passed a
+    /// metabolism tape on: in a colony of the handwritten replicator copying over a zero
+    /// soup, where every cell initiates once an epoch, it is a count over the 64 cells, and
+    /// the planted tape has spread. Before any epoch has run it is no reading at all.
+    #[test]
+    fn the_inherit_rate_counts_the_metabolism_tapes_passed_on() {
+        let params = Params {
+            meta_len: 8,
+            meta_rate: 0.0,
+            tasks: Tasks::Logic,
+            ..colony_params()
+        };
+        let mut world = colony(&params, 11);
+        for x in 0..params.width {
+            world.set_metabolism(x, 0, b"carried!");
+        }
+        assert_eq!(world.metrics().meta_inherit_rate, None);
+        let mut world = stepped_world(world, u64::from(params.sample_every));
+        let rate = world.metrics().meta_inherit_rate.expect("the tape is on");
+        assert_eq!(rate, PINNED_COLONY_INHERITS / 64.0);
+        let carried = world
+            .meta
+            .chunks(8)
+            .filter(|tape| tape == b"carried!")
+            .count();
+        assert!(carried > params.width as usize, "{carried}");
+    }
+
+    const PINNED_COLONY_INHERITS: f64 = 33.0;
+
+    /// A counted epoch in which no cell could pay to initiate passes no tape on and reads
+    /// null, not 0, as an energy-starved world's often does; the next sample, whose epoch
+    /// runs interactions, reads a number again.
+    #[test]
+    fn the_inherit_rate_of_an_epoch_without_interactions_is_null() {
+        let params = Params {
+            meta_len: 8,
+            meta_rate: 0.0,
+            tasks: Tasks::Logic,
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 2_048,
+            energy_stock_cap: 65_536,
+            ..colony_params()
+        };
+        let mut world = colony(&params, 11);
+        world.stock.fill(0);
+        let mut world = stepped_world(world, u64::from(params.sample_every));
+        assert_eq!(world.metrics().meta_inherit_rate, None);
+        assert_eq!(world.copy_rate, 0.0);
+        let mut world = stepped_world(world, u64::from(params.sample_every));
+        assert!(world.metrics().meta_inherit_rate.is_some());
+    }
+
+    /// The stack OR of `logic::tests::STACK_SOLVERS`.
+    const STACK_OR_SOLVER: &[u8] = b"{,~<~~!";
+
+    /// `with_logic_solvers` with each cell's metabolism tape reseeded from its planted
+    /// tape, as `own_tape` would have seeded it had the solvers been there at epoch 0.
+    fn with_meta_solvers(params: &Params, seed: u64) -> World {
+        let mut world = with_logic_solvers(params, seed);
+        for y in 0..params.height {
+            for x in 0..params.width {
+                let own = world.cell(x, y)[..params.meta_len as usize].to_vec();
+                world.set_metabolism(x, y, &own);
+            }
+        }
+        world
+    }
+
+    /// The metabolism-tape bundle's readings on `meta_params` over `with_meta_solvers`,
+    /// seed 42, after 50 epochs, pinned apart from every digest above
+    /// (`docs/design_record.md`, Meta-stack slice C). Its reward-0 arm reads the same but
+    /// for the inherit rate: no tape is passed on in either, so both hold the same
+    /// metabolism tapes, mutated on the one stream, and the replicating tapes the two arms
+    /// differ on still read one rung; but no unpaid cell can afford to initiate in the
+    /// epoch before the sample, so that arm has no rate to read.
+    /// `PINNED_META_COLONY_READINGS` pins arms that pass tapes on.
+    const PINNED_META_READINGS: &str = "logic_share_echo=Some(0.04296875) \
+         logic_share_not=Some(0.08984375) logic_share_nand=Some(0.0078125) logic_share_and=Some(0.0) \
+         logic_share_orn=Some(0.00390625) logic_share_or=Some(0.0) logic_share_andn=Some(0.00390625) \
+         logic_share_nor=Some(0.0) logic_share_xor=Some(0.00390625) logic_share_equ=Some(0.0) \
+         logic_capability=Some(0) logic_capability_deep=Some(0) dominant_logic_tasks=Some(0) \
+         dominant_logic_task_count=Some(0) meta_inherit_rate=Some(0.0) meta_diversity=Some(1024) \
+         logic_capability_replicating=Some(1)";
+
+    #[test]
+    fn the_metabolism_readings_of_a_fixed_seed_are_pinned() {
+        let mut rewarded = stepped_world(with_meta_solvers(&meta_params(), 42), 50);
+        let mut unrewarded = stepped_world(with_meta_solvers(&unrewarded(&meta_params()), 42), 50);
+        assert_eq!(meta_digest(&rewarded.metrics()), PINNED_META_READINGS);
+        assert_eq!(
+            meta_digest(&unrewarded.metrics()),
+            PINNED_META_READINGS.replace("meta_inherit_rate=Some(0.0)", "meta_inherit_rate=None")
+        );
+        assert_ne!(rewarded.soup_hash(), unrewarded.soup_hash());
+    }
+
+    /// A colony of the handwritten replicator whose row carries the NOT solver on its
+    /// metabolism tapes, under the stack NAND, paid every epoch on an economy where a cell
+    /// earns an interaction in four epochs unpaid: the copier hands the tape on, and the
+    /// pay decides how often it can.
+    fn meta_colony(task_reward: u32) -> World {
+        let params = Params {
+            meta_len: 8,
+            meta_rate: 1.0 / 64.0,
+            tasks: Tasks::Logic,
+            logic_nand: LogicNand::Stack,
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 2_048,
+            energy_stock_cap: 65_536,
+            task_every: 1,
+            task_reward,
+            ..colony_params()
+        };
+        let mut world = colony(&params, 11);
+        for x in 0..params.width {
+            world.set_metabolism(x, 0, b"<{~!\0\0\0\0");
+        }
+        world
+    }
+
+    /// `meta_colony`'s readings after 20 epochs, paid and unpaid: the paid colony is still
+    /// passing its tapes on, and holds fewer of them, a majority solving NOT; no unpaid
+    /// cell can afford to initiate in the epoch before the sample.
+    const PINNED_META_COLONY_READINGS: [&str; 2] = [
+        "logic_share_echo=Some(0.08203125) logic_share_not=Some(0.44921875) \
+         logic_share_nand=Some(0.0) logic_share_and=Some(0.0) logic_share_orn=Some(0.0) \
+         logic_share_or=Some(0.0) logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) \
+         logic_share_xor=Some(0.0) logic_share_equ=Some(0.0) logic_capability=Some(1) \
+         logic_capability_deep=Some(0) dominant_logic_tasks=Some(2) \
+         dominant_logic_task_count=Some(1) meta_inherit_rate=Some(0.2916666666666667) \
+         meta_diversity=Some(41) logic_capability_replicating=Some(0)",
+        "logic_share_echo=Some(0.25390625) logic_share_not=Some(0.203125) \
+         logic_share_nand=Some(0.0) logic_share_and=Some(0.0) logic_share_orn=Some(0.0) \
+         logic_share_or=Some(0.0) logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) \
+         logic_share_xor=Some(0.0) logic_share_equ=Some(0.0) logic_capability=Some(2) \
+         logic_capability_deep=Some(0) dominant_logic_tasks=Some(2) \
+         dominant_logic_task_count=Some(1) meta_inherit_rate=None meta_diversity=Some(53) \
+         logic_capability_replicating=Some(0)",
+    ];
+
+    #[test]
+    fn the_metabolism_readings_of_a_copying_colony_are_pinned() {
+        let mut rewarded = stepped_world(meta_colony(8_192), 20);
+        let mut unrewarded = stepped_world(meta_colony(0), 20);
+        assert_eq!(
+            [
+                meta_digest(&rewarded.metrics()),
+                meta_digest(&unrewarded.metrics())
+            ],
+            PINNED_META_COLONY_READINGS
+        );
+    }
+
+    /// The readings only read: sampling a metabolism-tape run at every epoch moves no byte,
+    /// stock, lineage or metabolism tape, and reads the same twice and after a resume.
+    /// `logic_capability_replicating` draws on a stream nothing else draws on.
+    #[test]
+    fn the_metabolism_readings_move_nothing_and_draw_on_a_stream_of_their_own() {
+        let seeded = with_meta_solvers(&meta_params(), 42);
+        let (mut read, mut unread) = (seeded.clone(), seeded);
+        for _ in 0..20 {
+            assert!(read.metrics().meta_diversity.is_some());
+            read.step();
+            unread.step();
+        }
+        assert_eq!(read.world_hash(), unread.world_hash());
+        assert_eq!(read.lineages, unread.lineages);
+
+        let first = read.metrics();
+        assert_eq!(meta_digest(&read.metrics()), meta_digest(&first));
+        let mut restored =
+            World::from_snapshot(read.params(), read.seed(), &read.snapshot()).unwrap();
+        let resumed = restored.metrics();
+        assert_eq!(
+            without_inherit_rate(&resumed),
+            without_inherit_rate(&first),
+            "a resume reads every metabolism reading but the rate, which needs an epoch"
+        );
+
+        let taken = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+            STREAM_TASK_SHARE,
+            STREAM_TASK_DOMINANT,
+            STREAM_LOGIC_SHARE,
+            STREAM_LOGIC_DOMINANT,
+            STREAM_META,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        assert!(!taken.contains(&STREAM_LOGIC_REPLICATING));
+        assert!(!draws.contains(&STREAM_LOGIC_REPLICATING));
+    }
+
+    fn without_inherit_rate(measured: &Metrics) -> String {
+        meta_digest(&Metrics {
+            meta_inherit_rate: None,
+            ..measured.clone()
+        })
     }
 }

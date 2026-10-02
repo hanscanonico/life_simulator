@@ -223,6 +223,20 @@ pub struct Metrics {
     pub dominant_logic_tasks: Option<u32>,
     /// How many rungs that is.
     pub dominant_logic_task_count: Option<u32>,
+    /// The share of the interactions of the epoch before the sample that passed a
+    /// metabolism tape on, the initiator's copied whole onto the partner's
+    /// (`docs/design_record.md`, 2026-10-02, Meta-stack slice C); `None` where that epoch
+    /// ran no interaction, or none has run since a resume. This and the two readings
+    /// below are `None` wherever the run carries no metabolism tape. Where it carries one,
+    /// the logic readings above read the metabolism tapes, and the dominant tape they name
+    /// is the most common metabolism tape.
+    pub meta_inherit_rate: Option<f64>,
+    /// How many distinct metabolism tapes the world's cells hold, `distinct_tapes`'
+    /// companion.
+    pub meta_diversity: Option<u64>,
+    /// `logic_capability` read on the replicating tapes instead, on cells and cases of its
+    /// own: whether the copier still computes anything.
+    pub logic_capability_replicating: Option<u32>,
 }
 
 impl Metrics {
@@ -1752,6 +1766,9 @@ mod tests {
             logic_capability_deep: None,
             dominant_logic_tasks: None,
             dominant_logic_task_count: None,
+            meta_inherit_rate: None,
+            meta_diversity: None,
+            logic_capability_replicating: None,
         }
     }
 

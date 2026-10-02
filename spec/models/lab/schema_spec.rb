@@ -51,7 +51,7 @@ RSpec.describe Lab::Schema do
                 energy_stock_cap energy_payer steal_amount steal_loss tasks task_every task_reward task_floor
                 logic_nand ops
                 mutation_rate structure structure_amplitude
-                interaction lineage_rule init top_k])
+                interaction lineage_rule meta_len meta_rate meta_draw meta_seed init top_k])
   end
 
   # Pinned by value rather than derived from the schema: an engine default moving under
@@ -63,7 +63,8 @@ RSpec.describe Lab::Schema do
       "steal_amount" => 0, "steal_loss" => 0.5, "tasks" => "off", "task_every" => 8, "task_reward" => 0,
       "task_floor" => "echo", "logic_nand" => "in_place", "ops" => "<>{}+-.,[]", "mutation_rate" => 1.0 / 4096,
       "structure" => "uniform", "structure_amplitude" => 0.5, "interaction" => "concat",
-      "lineage_rule" => "aligned", "init" => "random", "top_k" => 16
+      "lineage_rule" => "aligned", "meta_len" => 0, "meta_rate" => 32.0 / 8192, "meta_draw" => "uniform",
+      "meta_seed" => "zeros", "init" => "random", "top_k" => 16
     )
   end
 

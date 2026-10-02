@@ -3715,3 +3715,173 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   by the book over 10^5 random assay buffers dense in `~`, `!` and loops, with
   whole-byte inputs, beside the in-place run's own. Pairs that carry neither byte still run
   as the soup's interpreter runs them under all three assay machines.
+- 2026-10-02 — **The metabolism tape (Meta-stack, slice B).** "Meta-stack" is a variant of
+  Logic. It keeps Logic's economy, assay, ladder and reward, and moves what the assay reads
+  off the replicating tape onto a second tape the soup never executes. This is the slice
+  that builds that tape: its parameters, its state, its inheritance, its mutation, its pay
+  and its snapshot section. A sibling slice adds the stack-like NAND as a `logic_nand`
+  parameter, the observables slice points the logic readings at this tape, and the sweep
+  and its pre-registration follow in their own entry, before any of its runs is seeded.
+  Nothing is relocked.
+
+  **Why a second tape.** A design study (2026-10-02, a scratch study outside the
+  repository; its numbers are *pilot* numbers, from a throwaway copy of the engine at
+  `dba2c96` and the stored end worlds of two Logic pilot continuations, not findings) asked
+  what holds Logic's soups below XOR and EQU. In both pilot worlds the evolved circuit is
+  the copy loop: every byte the assay executes is also executed by a copy loop in one
+  orientation or the other, so no byte is free. The one deep rung the landscape offered,
+  EQU three substitutions from a NOR solver, passes through intermediates that all stop
+  copying and copies with a one-byte rotation, and four planted blocks of it were gone
+  within 500 epochs. The metabolism tape takes the copier out of every such path, and lets
+  the computing region take a rate the replicating tape cannot: × 16 on the soup melted the
+  copiers.
+  - *Pilot*, 32 bytes, instruction-set draws at × 32, today's in-place NAND, seeded with
+    zeros, from 1007's end world: ECHO at a tenth by 500 epochs, NOT and ORN by 1 500, OR
+    and NOR by 2 000, ANDN by 2 500, then no XOR or EQU, not even on one case set, in the
+    17 500 epochs that followed. Seven other metabolism-tape arms under today's NAND stalled
+    in the same place.
+  - *Pilot*, the same seeded from each cell's own first 32 tape bytes under the stack-like
+    NAND: XOR and EQU at a tenth in 2 of 3 seeds within 20 000 epochs (up to 8 434 cells),
+    and nothing past ECHO with every rung below XOR unpaid.
+  - *Pilot*: under uniform draws the replicating tape's detector share ended at 0.53–0.66,
+    from 0.92. Paid on another tape, the copier is no longer tied to the pay.
+
+  **The parameters** (DESIGN §1.1, "The metabolism tape"). `meta_len` (0–1 024 bytes, `0`
+  = off, the default; the sweep's 32), `meta_rate` (per byte per epoch; default 32/8192,
+  the study's × 32 on the Logic sweep's 1/8192), `meta_draw` (`uniform`, the default, or
+  `isa`) and `meta_seed` (`zeros`, the default, or `own_tape`). They are dynamics, so a
+  descendant may set them. A length needs `tasks = logic`, paid or not, since the logic
+  assay is its only reader; any other `meta_*` value away from its default with no length
+  is refused as silently inert. The defaults of the three settings are judgement calls: the
+  study's rate, so a length alone gives its design rate; the plainest draw, the one the
+  soup's own mutation makes; and the empty seed of the study's §5 design. The sweep names
+  all four explicitly.
+
+  **The state.** Each cell's tape sits in one flat array beside the cells, `meta_len` bytes
+  per cell. It is hashed after the stocks (a world without it hashes as it always did),
+  never rendered and never executed.
+  - **Inheritance**, the pilot's rule exactly (its `STATS` tally of near copies): after
+    every interaction, if the partner's tape changed and at least 9 in 10 of the positions
+    it shares with the tape the initiator arrived with hold the initiator's byte, read
+    forward from byte zero or with the initiator's tape reversed, the initiator's metabolism
+    tape is copied whole onto the partner's. The positions shared are the shorter tape's
+    length. Only the partner inherits: it is the tape a copier writes into, as the copy
+    rates read it. The comparison draws nothing.
+  - **Mutation**, after the soup's own, on `STREAM_META` (`0x4d45_5441_0000_0000`, "META",
+    keyed by seed and epoch like every stream): each byte in cell order is offered one
+    `chance` at `meta_rate`, and a hit is redrawn by `meta_draw`. `isa` picks one of 14 at
+    1/14: the ten ops, `!`, `~`, 0, or the 243 other bytes, drawn uniformly by rejection.
+    The structure parameters do not lean this rate.
+  - **Pay.** `pay_tasks` reads each cell's metabolism tape in place of its tape. The
+    observables still read the replicating tape until their slice moves them; the engine's
+    one switch for "the tape the logic assay reads" is `World::assayed_tape`.
+  - **Switching on.** At epoch 0 of a founding run, after the initial bytes are drawn, or
+    at descent from a parent without tapes: zeros, or each cell's first `meta_len` live
+    bytes, zero padded past a shorter tape. A parent whose tapes have the child's length
+    hands them on, so a child under its parent's params and seed is the parent continued;
+    a child of another length switches its own on; a child without them drops them.
+
+  **Reward 0.** A reward of 0 runs no assay, so the tape is never read; it still mutates
+  and is still inherited, on a stream and a rule that touch nothing else. Pinned: over 30
+  epochs, under either draw, every byte, stock and lineage of a reward-0 metabolism-tape
+  world equals the tape-off logic world's and the tasks-off world's, its hash with the
+  tapes left out equals theirs, and the tapes moved. So the Logic sweep's none child of a
+  (parent, seed) is a metabolism-tape none child's twin byte for byte, which is why the
+  sweep needs no none arm of its own. A reward-0 run that sets the tape is still a distinct
+  arm by canonical params, and its world hash includes the tapes.
+
+  **The snapshot.** Versions 9, 10 and 11 are 6, 7 and 8 with a metabolism section: two
+  header fields after the relative block's length (the compressed payload's length and the
+  tape length per cell) and the payload between the last older payload and the relative
+  block. Stripping them gives the older container byte for byte, a world without tapes
+  writes 6–8 as before, and a blob of an older version reads as a world without tapes. A
+  resume holds the tapes to the params, as it holds the stocks: a blob without them under
+  params with them, the reverse, or another length is refused. The runner's bound on a
+  snapshot answer now counts `meta_len` per cell; the app's 64 MiB cap is far above a
+  128×128 world with 32-byte tapes.
+
+  **Cost**, measured on the restored Logic pilot end worlds of 1007 and 944 (cap 128,
+  seed 2001, 400 epochs, the four arms run side by side on a loaded Mac): at a reward of 0,
+  which isolates the bookkeeping, the tape adds 10–17% per epoch (1007: 13.5 → 15.8 and
+  10.0 → 11.1 s per 1 000 epochs over two readings; 944: 9.2 → 10.0 and 7.5 → 8.5). With
+  the reward on, the metabolism-tape world ran at 0.6 and 0.9 times the Logic full world's
+  time (1007: 23.5 → 14.2; 944: 12.7 → 11.4), since a restored world's solvers stop being
+  paid and its cells initiate less until a tape climbs.
+
+  **The import.** The world, not the program, copies the metabolism tape: on a near copy
+  of the replicating tape, the engine moves the tape whole. Meta-stack therefore imports an
+  objective, a primitive **and a hereditary channel**. It carries Metabolism's label and
+  pooling rule, and rung 4 on Soup stays "not shown" whatever it reads.
+
+  **Tests.** Every existing pin and digest is unmoved at `meta_len` 0, where nothing is
+  allocated and the snapshot keeps its old version. New: the reward-0 identity above; a
+  pin of the rewarded bundle and of its reward-0 arm; the assay paying the metabolism tape
+  and not the tape; inheritance on exact, near (9 in 10) and partial (8 in 10) copies,
+  forward and reversed, on ragged pairs, and through a live copier colony; the mutation
+  rate and the `isa` draw's fourteenths; determinism with a mid-run resume under both
+  draws and seeds; the snapshot round trip in every payload shape, the stripping property,
+  the refusals; and descent under `own_tape`, `zeros`, a carried parent and a dropped one.
+- 2026-10-02 — **The logic observables read the metabolism tape (Meta-stack, slice C).** The
+  observables slice of Meta-stack. Slice B left the logic readings on the replicating tape
+  while the assay paid the metabolism tape; this slice points them at the tape that is paid,
+  and adds three readings of the tape itself. Nothing is relocked, and every reading of a run
+  without the tape is what it was.
+
+  **What moves.** Where a run carries a metabolism tape, `logic_share_*`,
+  `logic_capability` and `logic_capability_deep` assay each sampled cell's metabolism tape
+  through `World::assayed_tape`, the one switch the payment reads, on the same stream and
+  draws (`STREAM_TASK | 3`). `dominant_logic_tasks` and its count read the most common
+  metabolism tape, not the census's dominant replicating tape: counted over the `meta_len`
+  chunks with `metrics::ranked_tapes`, so a tie goes to the lower tape in byte order, the
+  rule the census already breaks ties by, on cases of `STREAM_TASK | 4` as before. A
+  descriptive reading of the replicating tape's logic would otherwise sit under the key the
+  pre-registration reads, beside a payment that never looks at it.
+
+  **Three new keys, live-only.**
+  - `meta_inherit_rate`: inherit events over interactions, counted at the `inherit_meta`
+    call in the pass that counts `copy_rate`, so over the same interactions of the epoch
+    before the sample. The study's §5.3 lists it as descriptive. Null, not 0, where that
+    epoch ran no interaction or none has run since a resume, unlike `copy_rate`, which
+    reads 0 there: a share of nothing is no reading, and on an energy-starved world it is
+    common. On the restored 1007, 944 and m6 worlds at the study's bundle, in the 300
+    epochs after descent, 70 of 90 sampled epochs ran no interaction and the rest ran 1 to
+    60 of 16 384 cells, where the rate read up to 1.0 beside a `copy_rate` of 0. No floor
+    on the count is set: any floor is arbitrary, and a small count is a true, noisy share,
+    so the reading is meant over a window. The near copy that passes a tape on is looser
+    than `copy_rate`'s exact copy and blind to orientation, so the rate can sit far above
+    the copy rates.
+  - `meta_diversity`: how many distinct metabolism tapes the whole world holds, not the 256
+    sampled cells the brief allowed. A judgement call: the whole-world count comes free with
+    the ranking that names the dominant tape, draws nothing, and is `distinct_tapes`' own
+    definition on the other tape, where a 256-cell count saturates at 256 on a world as
+    diverse as the restored pilot worlds (13 000–16 300 distinct tapes of 16 384).
+  - `logic_capability_replicating`: `logic_capability` read on the replicating tapes, on
+    cells and cases of `STREAM_TASK | 5`, so the reading can see whether the woven copier
+    still computes once it is no longer paid. One more 256-cell tally per sample.
+  Null wherever the run carries no tape. None writes anything; the first two draw nothing,
+  and the third draws on a stream nothing else draws on.
+
+  **Cost**, on the restored Logic pilot end worlds of 1007 and 944 and the m6 woven world
+  (128×128, descended to a 32-byte `own_tape` tape at `isa` × 32 under the stack NAND, 210
+  epochs on, on a loaded Mac): a metabolism-tape world's sample took 1.2–4.6 ms more than the
+  tape-off world's 45–55 ms, at most 4% of a 10-epoch sample interval.
+
+  **Tests.** The three keys null without the tape on every substrate and ladder, and every
+  earlier pin and digest unmoved. On hand-built worlds under both NANDs, with each NAND's
+  own solvers planted on the metabolism tapes and NOT on the replicating ones: the shares,
+  the capabilities and the dominant bitmask read the metabolism tapes, the replicating
+  capability reads NOT, and the diversity counts the planted tapes; the stack XOR is deep
+  under `stack` and nothing under `in_place`. The dominant reading names the most common
+  metabolism tape and breaks a tie by byte order whichever rows hold which. The inherit rate
+  through a live copier colony. A new digest pin, split from the logic one, of the
+  rewarded bundle and its reward-0 arm (equal but for the inherit rate, since neither passes
+  a tape on in 50 epochs and the reward-0 arm cannot afford to interact before the sample),
+  and of a copying colony under the stack NAND, paid and unpaid, whose readings differ. The
+  pay under the metabolism tape and the stack NAND together: the stack XOR solver on a
+  metabolism tape is paid XOR under `stack` alone. Sampling every epoch moves no byte, stock or lineage; a sample reads the same
+  twice and after a resume, but for the inherit rate, which needs an epoch.
+
+  **Rails.** `Sample::OBSERVABLES` gains the three keys; the run page charts them only for
+  a run that has a reading of them, as it gates each ladder; a sample without them draws no
+  point; the glossary defines them. They are live-only: no `oriented_census` version reads
+  them.
