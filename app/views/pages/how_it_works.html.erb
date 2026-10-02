@@ -382,7 +382,9 @@
       and the logic assay reads instead of the cell's own tape. The world, not the program,
       copies it: when an interaction leaves the partner's tape a near copy of the
       initiator's, the initiator's metabolism tape is copied onto the partner's. This is the
-      share of the interactions just before the sample that passed one on. On such a run
+      share of the interactions just before the sample that passed one on, and empty where
+      no cell could afford to interact then. A near copy is a looser test than
+      <span class="mono">copy_rate</span>'s, so this can read far above it. On such a run
       the logic readings above read the metabolism tapes, and the dominant tape they name is
       the most common metabolism tape. Null on every run without one.
     </dd>
