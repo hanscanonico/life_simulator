@@ -36,3 +36,4 @@ engine/target/
 # `make wasm` output: the build is the source of truth, never the artefact.
 /app/assets/wasm/*
 !/app/assets/wasm/.keep
+research/landscape/target/
