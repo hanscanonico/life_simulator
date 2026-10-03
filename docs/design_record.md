@@ -4828,3 +4828,46 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   tapes; a concurrent control (the control ran 2026-09-18 to 09-26 under `aligned`, which
   moves no byte); rate as against speed inside 20 000 epochs; any mechanism. Nothing about
   the engine, the rules or any observable moves.
+- 2026-10-03 — **The founding runs that never crossed keep only their first and last stored
+  world (#268; the user approved it on 2026-10-03).** The mini-pc disk is at 85% and
+  `snapshots` holds about 180 GB of world blobs. Pruning at finish (`Runs::PruneSnapshotsService`)
+  already keeps a thinned gallery per terminal run; this entry permanently deletes the
+  intermediate worlds of the runs no rule ever flagged.
+  - **The rule** (`Runs::ThinUnemergedService`, run by `lab:thin_unemerged`). A run is thinned
+    only if it is terminal (`finished` or `failed`), founding (`parent_run_id` null), has no
+    `emergence_epoch`, no `transition_epoch` and no `transition_epoch_relative`, has no
+    descendant run, and its experiment is not in `EXCLUDED_EXPERIMENTS` (empty). Such a run
+    keeps its first and last restorable world, and every world some instrument that has read
+    anything in its experiment — `oriented_census/1` always — holds no static reading
+    (`epoch = source_epoch`) of. Every other world of it is deleted. No reading, sample or
+    rescore row is deleted.
+  - **The estimate** (read-only, production, 2026-10-03 about 16:30Z): 3 844 runs carrying
+    80 468 snapshots, 72 780 of them intermediate, about 135 GB. Unread worlds stay, so the
+    deleted count can come out lower.
+  - **Nothing read moves.** An unread world stays, so a thinned run's `Runs::OrientedSummary`
+    has the same readings and the same unread count, and its `measured?` is unchanged. The
+    readings the locked instruments and the reports read are rows that stay: reach-cap128's
+    emergence (a run with no `emergence_epoch` reads false before any world is looked at),
+    the oriented arms report and CSV, `ReadingsCsvService`, the rescore summary.
+    `DescendantParentsService` reads a candidate's last world, which stays, and a run with a
+    descendant is never thinned.
+  - **The exclusion audit.** No pre-registration reads the intermediate worlds of a founding
+    run that never crossed. The lineage-diversity, locality-emergence and reach-cap128
+    readings read emerged runs' samples and the corpus readings; from-emerged, metabolism,
+    logic, meta-stack and topless-rise read descendant runs, which are never thinned (topless
+    rise's offline mechanism reading of its children's fifth-decile and last worlds among
+    them); the snapshot audit reads only runs with a transition. The list starts empty.
+  - **What is lost.** A future instrument cannot re-read those middle worlds: a new census,
+    `oriented_census/2` on a run it has not read, a rescore at another `top_k`. Their first
+    and last worlds, and the runs' live samples, remain.
+  - **Why that is acceptable.** These are worlds no rule ever flagged. Every reading the
+    corpus pass has taken of them stays. And the orientation-aware reading of the whole corpus
+    (entry of 2026-09-25, finding (b)) found no run the detector passed over holding a kept
+    world that is half replicators. The two replicator worlds the confirmation left
+    unemerged there (runs 59 and 170) were flagged, so neither is thinned.
+  - **Operation.** A dry run by default; `CONFIRM=yes` deletes, run by run, each delete asking
+    the whole rule again in its own statement, and `MAX_RUNS` or `TIME_LIMIT` bound an
+    invocation that the next one resumes. Deleted rows return no disk
+    on their own: `lab:vacuum_snapshots` runs a plain `VACUUM (ANALYZE) snapshots` so Postgres
+    reuses the space. Not `VACUUM FULL`: the disk has no room for its copy of the table, and
+    it would lock the table for hours while the runners write.

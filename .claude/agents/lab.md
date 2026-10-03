@@ -86,8 +86,22 @@ the mean epoch of the first crossing and the share of runs that crossed by epoch
 tracks `max_tape_len`, a run whose soup starts compressible crosses on the substrate and
 not on anything that replicated. It measures only — changing the detector to a per-run
 baseline moves a locked observable and starts with a `docs/design_record.md` entry.
-`lab:db_size` and
-`lab:prune_snapshots` are the maintenance tasks.
+`lab:db_size`, `lab:prune_snapshots`, `lab:thin_unemerged` and `lab:vacuum_snapshots` are
+the maintenance tasks. `lab:thin_unemerged` deletes the intermediate stored worlds of the
+founding runs that never crossed (`docs/design_record.md`, 2026-10-03; #268): terminal, no
+`emergence_epoch`, `transition_epoch` or `transition_epoch_relative`, no descendant, outside
+`Runs::ThinUnemergedService::EXCLUDED_EXPERIMENTS`. Each keeps its first and last world,
+every world an instrument of its experiment has not read statically, and every reading.
+Without `CONFIRM=yes` it is a dry run that prints runs, snapshots and bytes per experiment;
+`CONFIRM=yes` deletes, and `MAX_RUNS=<n>` or `TIME_LIMIT=<seconds>` bound one invocation (it prints
+"stopped at the batch limit" and the next invocation resumes):
+`docker compose -f deploy/docker-compose.yml exec -T -e CONFIRM=yes -e TIME_LIMIT=900 app bin/rails lab:thin_unemerged`.
+Deleted rows free no disk on their own: run `lab:vacuum_snapshots` afterwards, a plain
+`VACUUM (ANALYZE) snapshots` that lets Postgres reuse the space. Never `VACUUM FULL`: it
+rewrites the table into a copy the disk has no room for and locks it for hours while the
+runners write. The plain one lets the runners go on writing, but a deploy whose migration
+alters `snapshots` waits behind it, and every write then waits behind the migration: do
+not merge or deploy while it runs.
 `runner rescore` re-reads a run's stored world at other `top_k` settings, for the question
 "did the replicator test miss the lineage, or is there none?" — it measures only and
 changes no run, no param and no default (DESIGN §1.2 locks `top_k` at 16; moving it needs a
@@ -182,7 +196,9 @@ earlier checks. Each visit:
    and CPU — run it at every visit and paste its table into the report verbatim, so
    tonight's numbers are comparable with the last visit's), `df -h`, `docker compose ps`,
    the app's `/up`. A service down is brought back with `up -d`; a disk past 85% gets
-   `lab:prune_snapshots` and a `docker image prune -f`. Both are reported.
+   `lab:thin_unemerged` (its dry run first, then `CONFIRM=yes` with a `TIME_LIMIT`),
+   `lab:vacuum_snapshots` and a `docker image prune -f`. All are reported, with the counts
+   `lab:thin_unemerged` printed.
 2. **Queue.** Read the status page. Stale runs release themselves on the next claim, so
    leave them. When the pending count is below what the runners finish before the
    deadline (epochs per hour against the pending runs' epochs), seed the next sweep of

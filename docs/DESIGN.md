@@ -1064,5 +1064,10 @@ Copied from the `grid_commanders`/`stock_market` pattern on the mini-pc
   build cache is left alone, since `docker builder prune` cannot be scoped to one
   project and the sibling stacks share it.
 - `deploy/systemd/`: nightly `pg_dump` timer like the stock market one.
+- Stored-world retention: pruning at finish thins every terminal run (first, last, one per
+  10×`snapshot_every`, the transition, every descendant's start). The founding runs that
+  never crossed then lose their intermediate worlds too, once every instrument of their
+  experiment has read them (`lab:thin_unemerged`, design record 2026-10-03), and a plain
+  `lab:vacuum_snapshots` (never `VACUUM FULL`) lets Postgres reuse the space.
 - Cloudflare: one tunnel `life-simulator` in the existing account, public hostname
   `simulator-life.com` → `http://app:8080`.
