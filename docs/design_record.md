@@ -4846,8 +4846,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     worlds that lie one sample after another; the 2026-10-03 audit found six across
     lineage-diversity, locality-emergence and reach-cap128, and each of them saves the step
     it replaces, which is what dominates a pass.
-  - **What changes in the data.** Copy rates for non-stored epochs read exactly as before.
-    A stored world one sample after another no longer gains a stepped row with copy rates
+  - **What changes in the data.** Copy rates for non-stored epochs read exactly as before;
+    the row past a chain now names the chain's last world as its `source_epoch`, not its
+    first, since that is the world it was stepped from. A stored world one sample after another no longer gains a stepped row with copy rates
     at its own epoch; like every other stored world it has only its static row there.
   - **Unchanged.** No engine rule, observable, param or default; no published reading,
     since `OrientedSummary#measured?` and the reports read static rows only.

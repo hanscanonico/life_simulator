@@ -453,6 +453,25 @@ mod tests {
         assert_eq!(epochs, vec![(5, 5)]);
     }
 
+    /// A world stored between samples is not stepped when the sample it would stop at is
+    /// a stored world, though that world lies less than a whole sample on.
+    #[test]
+    fn a_world_stored_between_samples_is_not_stepped_into_the_next_stored_one() {
+        let mut live = copying_world();
+        step_to(&mut live, 7);
+
+        let readings = read_world(&stored(&live), Instrument::OrientedCensus1, |epoch| {
+            epoch == 10
+        })
+        .unwrap();
+
+        let epochs: Vec<(u64, u64)> = readings
+            .iter()
+            .map(|reading| (reading.epoch, reading.source_epoch))
+            .collect();
+        assert_eq!(epochs, vec![(7, 7)]);
+    }
+
     #[test]
     fn a_life_world_is_read_where_it_stands() {
         let params = Params {
@@ -664,8 +683,7 @@ mod tests {
 
     /// A chain of stored worlds each one sample after the one before is read statically,
     /// every world of it, in one pass: one restore per world and a single step, off the
-    /// last. The walk this replaced read a chain of k worlds over k passes, k restores in
-    /// all, and stepped k(k+1)/2 samples.
+    /// last.
     #[test]
     fn a_chain_of_stored_worlds_one_sample_apart_is_read_in_one_pass() {
         let lab = chain_lab(&[4, 6, 8]);
