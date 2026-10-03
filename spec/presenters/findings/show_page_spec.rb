@@ -303,6 +303,24 @@ RSpec.describe Findings::ShowPage do
     end
   end
 
+  context "with the reach-cap128 sweep" do
+    let(:finding) { Findings::Registry.find("reach-4-carries-to-growable-tapes") }
+
+    before { reach_cap128_experiment }
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.reach_cap128.report).to be_a(Lab::ReachCap128Reading::Report)
+    end
+  end
+
+  context "with the reach-cap128 sweep missing" do
+    let(:finding) { Findings::Registry.find("reach-4-carries-to-growable-tapes") }
+
+    it "has no reading" do
+      expect(page.reach_cap128).to be_nil
+    end
+  end
+
   context "with the metabolism sweep" do
     let(:finding) { Findings::Registry.find("paid-computation-stops-at-one-step-tasks") }
 

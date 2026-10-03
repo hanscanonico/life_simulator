@@ -4780,3 +4780,51 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **To do.** Re-run the readings pass that way (`oriented_census/1`, and `/2` where it
     was run) on lineage-diversity, locality-emergence and reach-cap128. Then re-read
     reach-cap128 and the oriented arms report and CSV.
+- 2026-10-03 — **The reach-cap128 finding states its claim: on growable tapes, a reach of 4
+  emerges more than ten times as often as radius 1.** Sweep 14 (`reach-cap128`, entry of
+  2026-10-01) finished 270 of 270 runs, and every world each run and each control run kept
+  has been read. Read under the pre-registered rule (`lab:reach_cap128_report` on the lab,
+  2026-10-03, "final reading"):
+
+  | arm | runs | counted | emerged | rate | median emergence epoch | median terminal share | median dominant length | median dominant instructions | self-replicating dominant | eligible parents |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | radius 4 | 270 | 270 | 119 | 0.441 | 10 960 | 0.918 | 128 | 19 | 118 | 108 |
+  | control, radius 1 | 270 | 270 | 11 | 0.0407 | 12 620 | 0.895 | 128 | 20 | 11 | 11 |
+
+  **H-reach128 shown**: 119/270 against 11/270, one-sided Fisher exact p = 1.50e-30
+  (`Stats::FisherExact.greater`; the report's fixed five decimals print it as 0.00000, so the
+  sweep page now prints its p as every other finding does, `p_value_text`). The rate ratio is
+  0.441 / 0.0407 = 10.8, hence "more than ten times".
+
+  **The claim**: on the host–parasite sweep's economy-off world at cap 128 (128², tapes of
+  64 bytes growing to 128, 2^-13, 20 000 epochs), radius 4 emerges far more often than radius
+  1 on the same seeds. It is the locality finding's best reach carried to the growable tapes
+  rung 4 runs on. Secondary, descriptive: radius 4 emerges earlier (median 10 960 against
+  12 620), its worlds end about as full (0.918 against 0.895), and in both arms the dominant
+  tape is 128 bytes long, the cap, with about the same instruction count (19 and 20): the
+  tapes use the room. The terminal dominant tape self-replicates in 118 of 119 and 11 of 11.
+
+  **Against sweep 13**: on fixed 64-byte tapes radius 4 read 16/90 against radius 1's 4/90,
+  four times the rate; here it is 10.8. That is a comparison across sweeps, not a test: the
+  emergence instrument (live samples there, stored worlds here), the seeds and the lineage
+  rule differ, so it says nothing about what room to grow does.
+
+  **The parent pool**: 108 emerged radius-4 worlds end with a terminal share of at least 0.5,
+  against the control's 11. They are counted, nothing more; no later sweep's parent rule is
+  locked by this entry.
+
+  **The readings bug**: before the reading went final, two radius-4 runs (4369, 4443) each
+  kept one world the readings pass never read statically, holding the reading interim at
+  117/268 counted; after the fix (#299, entry above) and a re-run pass both read as emerged.
+
+  **Registry status `published`**, finding `reach-4-carries-to-growable-tapes`: every run
+  finished, the reading is final and the one pre-registered test is shown. It is fitness-free
+  Soup and carries no "imports an objective" label. The page renders the arms, the test and
+  the descriptive medians at render time from `Experiments::ReachCap128ReadingService`, the
+  report the sweep page draws, and states the exact p through `p_value_text`; the
+  locality-emergence page gains a line pointing to it.
+
+  **Not claimed**: other world sizes, rates, caps or budgets; any reach but 4 on growable
+  tapes; a concurrent control (the control ran 2026-09-18 to 09-26 under `aligned`, which
+  moves no byte); rate as against speed inside 20 000 epochs; any mechanism. Nothing about
+  the engine, the rules or any observable moves.

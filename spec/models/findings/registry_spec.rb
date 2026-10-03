@@ -22,8 +22,8 @@ RSpec.describe Findings::Registry do
   it "leads a shared date with the strongest current result" do
     slugs = described_class.all.map(&:slug)
 
-    expect(slugs.first(12))
-      .to eq(%w[paid-parts-assemble-deep-logic-on-a-stack-nand
+    expect(slugs.first(13))
+      .to eq(%w[reach-4-carries-to-growable-tapes paid-parts-assemble-deep-logic-on-a-stack-nand
                 paid-computation-stops-at-one-step-tasks paid-logic-climbs-only-read-once-tasks
                 emergence-peaks-at-intermediate-reach copying-gets-faster-under-an-economy
                 complexity-from-an-emerged-start lineages-after-emergence complexity-under-contest
@@ -62,6 +62,18 @@ RSpec.describe Findings::Registry do
     expect(finding.summary).to include("9 pairs to 0 with 45 ties (p = 0.00195)", "is shown too, 9 to 0",
                                        "read 8 to 0 and rest on two parents", "In 14 of 15 plantings",
                                        "a hereditary channel", "stays not shown")
+  end
+
+  it "reads the reach-cap128 finding as published on fitness-free Soup" do
+    finding = described_class.find("reach-4-carries-to-growable-tapes")
+
+    expect(finding).to have_attributes(experiment_slug: "reach-cap128", status: :published,
+                                       imports_objective?: false,
+                                       related_finding_slugs: %w[emergence-peaks-at-intermediate-reach])
+    expect(finding.title).to eq("On growable tapes, a reach of 4 emerges more than ten times as often as radius 1")
+    expect(finding.summary).to include("119 of 270 worlds against the control's 11 of 270",
+                                       "10.8 times the rate (one-sided Fisher p = 1.5e-30)",
+                                       "four times radius 1", "no later sweep's rule is set by it")
   end
 
   it "labels no finding on a fitness-free sweep as importing an objective" do

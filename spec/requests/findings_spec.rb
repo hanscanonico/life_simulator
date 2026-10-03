@@ -1706,6 +1706,66 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the reach-cap128 write-up" do
+      let(:reach) { Findings::Registry.find("reach-4-carries-to-growable-tapes") }
+
+      it "publishes it without an objective badge or an instrument note" do
+        get finding_path(reach)
+
+        meta = response.parsed_body.at_css(".finding-meta")
+        expect(meta.at_css(".badge").text).to eq("published")
+        expect(meta.at_css(".objective-badge")).to be_nil
+        expect(response.parsed_body.at_css("#instrument-note")).to be_nil
+      end
+
+      it "cites the pre-registration, sets sweep 13 beside it and states what is not claimed" do
+        get finding_path(reach)
+
+        expect(response.body.squish)
+          .to include("2026-10-01, \"Does the reach effect carry to growable tapes?\"",
+                      "at 16 of 90 against radius 1's 4 of 90, four times the rate", "On growable tapes the effect is larger",
+                      "A historical control.", "Rate or speed.", "No mechanism.")
+      end
+
+      context "with none of its runs in this database" do
+        it "says so instead of reading" do
+          get finding_path(reach)
+
+          expect(response.parsed_body.text.squish).to include("No run of the sweep is in this database")
+        end
+      end
+
+      context "with its runs read" do
+        before do
+          sweep = reach_cap128_experiment
+          control = host_parasite_control_experiment
+          3.times { |index| reach_run(sweep, crossing: 1_000, shares: [0.0, 0.9, 0.9], seed: index + 1) }
+          reach_run(sweep, seed: 4)
+          control_run(control, crossing: 1_000, shares: [0.0, 0.6, 0.6], seed: 1)
+          3.times { |index| control_run(control, seed: index + 2) }
+        end
+
+        it "states the verdict and the exact p from the sweep's reading, and draws the sweep's section" do
+          get finding_path(reach)
+
+          claim = response.parsed_body.at_css("#reach-cap128-finding-claim").text.squish
+          expect(claim).to include("does not show the reach effect on growable tapes: H-reach128 not shown",
+                                   "p = #{Charts.format_value(Stats::FisherExact.greater([[3, 1], [1, 3]]).to_f)}")
+          expect(response.parsed_body.at_css("#reach-cap128-reading")).to be_present
+        end
+
+        it "states the descriptive secondaries and the parent pool" do
+          get finding_path(reach)
+
+          expect(response.parsed_body.at_css("#reach-cap128-finding-secondaries").text.squish)
+            .to include("median emergence epoch is 1 000 at radius 4 and 1 000 in the control",
+                        "90% and 60%", "self-replicates in 3 of 3 emerged runs and 1 of 1")
+          expect(response.parsed_body.at_css("#reach-cap128-finding-parents").text.squish)
+            .to include("Radius 4 gives 3 of them, against 1 in the control")
+        end
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

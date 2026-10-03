@@ -1,0 +1,138 @@
+<% sweep = Lab::SWEEPS.fetch("reach_cap128") %>
+<% grid = sweep.fetch(:param_grid) %>
+<% seeds = sweep.fetch(:seeds) %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% rate_exponent = -Math.log2(Lab::EMERGENT_MUTATION_RATE).round %>
+<% record_url = "https://github.com/hanscanonico/life_simulator/blob/main/docs/design_record.md" %>
+<% constants = Lab::ReachCap128Reading %>
+
+<h2>Question</h2>
+<p>
+  <%= link_to "Emergence peaks at an intermediate reach", finding_path("emergence-peaks-at-intermediate-reach") %>
+  found, on tapes held at 64 bytes, that a replicator arises most often when a cell reaches
+  about four cells away. Every rung-4 experiment runs instead on tapes that can grow, and starts
+  from emerged worlds of that kind, of which the lab had few: the host–parasite sweep's
+  economy-off control at cap 128 emerged in 11 of its 270 worlds, at radius 1. DESIGN §1.3
+  sweep 14 asks two things at once: <strong>does the reach effect carry to growable tapes, and
+  does it give rung 4 a pool of parents?</strong>
+</p>
+
+<h2>Method</h2>
+<p>
+  The control's world to the byte — a <%= grid.fetch("width").first %>×<%= grid.fetch("height").first %>
+  torus, tapes of <%= grid.fetch("tape_len").first %> bytes free to grow to
+  <%= grid.fetch("max_tape_len").first %>, the emergent mutation rate
+  <span class="mono">2<sup>-<%= rate_exponent %></sup></span>, the economy off — at radius
+  <%= constants::TREATMENT_RADIUS %>, with <span class="mono">lineage_rule = oriented</span>,
+  which changes no byte of a world. Seeds <%= seeds.first %>–<%= seeds.last %>, the control's,
+  <%= epochs %> epochs, <%= seeds.size %> runs. Radius changes the world, so these are new
+  worlds; the control is the host–parasite sweep's own runs at radius 1, a historical arm the
+  engine's determinism makes comparable.
+</p>
+<p>
+  The reading is <strong>pre-registered</strong>, with every number fixed before a run was
+  read: <%= link_to "docs/design_record.md", record_url %>, 2026-10-01, "Does the reach effect
+  carry to growable tapes?". Emergence is read identically in both arms off the stored worlds:
+  a run is emerged where it has a confirmed emergence epoch and the orientation-aware census of
+  some world it kept, from that epoch on, reads <span class="mono">replicator_share</span> of at
+  least <%= percent_value constants::MIN_SHARE %>. A run counts once the readings pass has read
+  every world it kept. <strong>H-reach128</strong>: radius <%= constants::TREATMENT_RADIUS %>
+  emerges more often than the control, one one-sided Fisher exact test at
+  p &lt; <%= constants::LEVEL %>. Everything else on this page is descriptive.
+</p>
+
+<% reading = @show.reach_cap128 %>
+<h2>Result</h2>
+<% if reading&.any? %>
+  <% treatment = reading.treatment %>
+  <% control = reading.control %>
+  <p id="reach-cap128-finding-claim">
+    <span class="badge <%= reading.comparison.badge_class %>">H-reach128 <%= reading.comparison.outcome_label %></span>
+    <strong><%= reading.claim_sentence %></strong>
+    <% if reading.comparison.testable? %>
+      One-sided Fisher exact test, p = <%= p_value_text reading.p_value %>.
+    <% end %>
+    On one world: a 128×128 torus, tapes of 64 bytes growing to 128,
+    <span class="mono">2<sup>-<%= rate_exponent %></sup></span>, <%= epochs %> epochs.
+  </p>
+  <% if reading.interim? %>
+    <p>Not every run of the two arms has finished and been read, so this reading is interim.</p>
+  <% end %>
+  <p class="text-sm text-muted">
+    Every count on this page is read from the stored runs at render time, through the same
+    reading <%= link_to "the sweep page", experiment_path("reach-cap128", anchor: "reach-cap128-reading") %>
+    draws. Before the reading went final, a readings-pass bug left one stored world of each of
+    two radius-4 runs unread, holding it interim at 117 of 268 counted; once it was fixed (#299)
+    and the worlds read, both runs read as emerged.
+  </p>
+
+  <%= render "experiments/reach_cap128_reading", reading: reading.report %>
+
+  <% if treatment.emerged.positive? && control.emerged.positive? %>
+    <h2 class="mt-6">The replicators that arose</h2>
+    <p id="reach-cap128-finding-secondaries">
+      Descriptive, over the emerged runs, and deciding nothing. The median emergence epoch is
+      <%= number_with_delimiter treatment.median_emergence_epoch, delimiter: " " %> at radius <%= constants::TREATMENT_RADIUS %>
+      and <%= number_with_delimiter control.median_emergence_epoch, delimiter: " " %> in the control. The median terminal
+      share of the world replicators hold is <%= percent_value treatment.median_terminal_share %>
+      and <%= percent_value control.median_terminal_share %>. The dominant replicator's median
+      length is <%= metric_value treatment.median_raw_len %> and
+      <%= metric_value control.median_raw_len %> bytes, so the tapes use the room they were
+      given, and its median instruction count is <%= metric_value treatment.median_instruction_count %>
+      and <%= metric_value control.median_instruction_count %>. The dominant tape of the terminal
+      world self-replicates in <%= treatment.self_replicating_dominant %> of
+      <%= treatment.emerged %> emerged runs and <%= control.self_replicating_dominant %> of
+      <%= control.emerged %>.
+    </p>
+  <% end %>
+
+  <h2>A pool of parents</h2>
+  <p id="reach-cap128-finding-parents">
+    An eligible parent is an emerged world whose terminal stored world reads a share of at least
+    <%= percent_value constants::PARENT_SHARE %>. Radius <%= constants::TREATMENT_RADIUS %> gives
+    <%= treatment.eligible_parents %> of them, against <%= control.eligible_parents %> in the
+    control, every one with tapes that have room to grow. The pool is counted here and nothing
+    more: no later sweep's parent rule is locked by this reading, and a sweep that starts from
+    these worlds states its own.
+  </p>
+<% else %>
+  <p class="text-muted">
+    No run of <%= link_to "the sweep", experiment_path("reach-cap128") %> is in this database,
+    so there is no arm to read here. This page reads the arms at render time and states the
+    claim from them.
+  </p>
+<% end %>
+
+<h2>How it reads against sweep 13</h2>
+<p>
+  On fixed 64-byte tapes,
+  <%= link_to "sweep 13", finding_path("emergence-peaks-at-intermediate-reach") %> read radius 4
+  at 16 of 90 against radius 1's 4 of 90, four times the rate. On growable tapes the effect is
+  larger. That is a comparison of two sweeps, not a test: they read emergence on different
+  instruments (sweep 13 on live samples, this one on stored worlds), on different seeds and
+  under different lineage rules, so nothing here says that room to grow is what made the
+  difference.
+</p>
+
+<h2>What is not claimed</h2>
+<ul>
+  <li>
+    <strong>One world, one reach against one.</strong> Every run is 128×128, at one mutation
+    rate, one cap of 128 bytes and a budget of <%= epochs %> epochs, and only radius 4 was run
+    against the control's radius 1. Where the peak sits on growable tapes is untested.
+  </li>
+  <li>
+    <strong>A historical control.</strong> The control ran in September under the
+    <span class="mono">aligned</span> lineage rule and an older engine build; neither moves a
+    byte of a world, so its runs are the runs it would be today, but they were not run beside
+    this sweep.
+  </li>
+  <li>
+    <strong>Rate or speed.</strong> A difference inside <%= epochs %> epochs can be a difference
+    in how soon a replicator arises rather than whether it does.
+  </li>
+  <li>
+    <strong>No mechanism.</strong> Nothing here says why a reach of 4 helps more on growable
+    tapes than the locality finding saw on fixed ones.
+  </li>
+</ul>

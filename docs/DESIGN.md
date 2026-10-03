@@ -810,6 +810,11 @@ sample.
     share is at least 0.5 is an eligible parent, and no later parent rule is locked.
     Pre-registered in `docs/design_record.md`, 2026-10-01, "Does the reach effect carry to
     growable tapes?", whose numbers live in `Lab::ReachCap128Reading`.
+    **Result** (2026-10-03, final, 270 + 270 runs counted): radius 4 emerged 119/270 against the
+    control's 11/270 (one-sided Fisher p = 1.5e-30), 10.8 times the rate — H-reach128 shown;
+    the dominant tape is 128 bytes in both arms (median 19 and 20 instructions), and 108
+    radius-4 worlds are eligible parents against 11; finding
+    `reach-4-carries-to-growable-tapes`, `published`.
 15. **Metabolism** — does complexity rise once computing pays? The substrate of §1.4, a
     descendant sweep from the from-emerged sweep's 18 parents under its own parent rule. Two
     arms merged over each parent's params, sharing the `initiator` economy (influx 1 024,
