@@ -26,12 +26,19 @@ module Lab
     # four-input ladder unpaid, the stack NAND on a 32-byte metabolism tape drawn at 8/8192
     # (×8, a quarter of Meta-stack's 32/8192) from each cell's own tape, every output slot the
     # assay allows read, and the predation pass's take, loss, period and shadow coin.
+    #
+    # A world every SNAPSHOT_EVERY epochs rather than the runner's 100, for disk (issue #268):
+    # pruning keeps one in Runs::PruneSnapshotsService::KEEP_FACTOR, so a child keeps about 22
+    # worlds instead of about 100. The offline readings' stored worlds then fall within 5 000
+    # epochs of the decile boundaries they are read at, and a restart redoes up to 500 epochs.
+    SNAPSHOT_EVERY = 500
     BUNDLE = {
       "energy_payer" => "initiator", "energy_influx" => 1024, "energy_stock_cap" => 65_536, "steal_amount" => 0,
       "tasks" => "logic4", "task_reward" => 0, "logic_nand" => "stack",
       "meta_len" => 32, "meta_rate" => 0.0009765625, "meta_draw" => "isa", "meta_seed" => "own_tape",
       "task_max_outputs" => 16,
-      "predation_transfer" => 8192, "predation_loss" => 0.5, "predation_every" => 8, "predation_shadow_p" => 0.3
+      "predation_transfer" => 8192, "predation_loss" => 0.5, "predation_every" => 8, "predation_shadow_p" => 0.3,
+      "snapshot_every" => SNAPSHOT_EVERY
     }.freeze
     OUT_COMPUTE_BUNDLE = BUNDLE.merge("predation" => "subset_class").freeze
     EQUAL_BUNDLE = BUNDLE.merge("predation" => "equal").freeze

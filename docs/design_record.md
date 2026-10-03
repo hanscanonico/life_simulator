@@ -5048,7 +5048,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
       agree on 8/8192), `meta_draw: isa`, `meta_seed: own_tape`;
     - the slots: `task_max_outputs` 16;
     - the pass: `predation_transfer` 8 192, `predation_loss` 0.5, `predation_every` 8,
-      `predation_shadow_p` 0.3.
+      `predation_shadow_p` 0.3;
+    - the cadence: `snapshot_every` 500 (below).
   - **The arms.**
     - **out-compute**: `predation: subset_class`;
     - **equal**: `predation: equal`, the same transfers with no ratchet;
@@ -5058,10 +5059,29 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
       topless run.
   - **Seed 6001**, one per parent, which no stored run uses (SELECT, 2026-10-03) and no other
     sweep names. **100 000 epochs** past the parent, **priority 40**: **216 children**.
+  - **The cadence, for disk** (issue #268; the mini-pc's disk stood at 85% on 2026-10-03).
+    Every arm stores a world every **500** epochs, not the runner's default 100, through the
+    grid (as `mutation_rate_long` and `bff_control` do). `Runs::PruneSnapshotsService` then
+    keeps one world in 10 (`KEEP_FACTOR`), every **5 000** epochs, plus the first and last.
+    - **Disk.** A finished child keeps 22 worlds instead of about 101: at about 1.4 MB a world
+      that is **about 6.7 GB for the 216 children instead of about 30 GB**. While a child runs,
+      its unpruned worlds peak at about 280 MB instead of 1.4 GB, so 12 running slots hold
+      about 3.4 GB rather than 17 GB.
+    - **The offline readings.** McShea's minimum and H-code read "the last stored world at or
+      before" the fifth decile's end, the earliest at or past the first settled sample, and the
+      last world. At this cadence the first two lie within 5 000 epochs of those boundaries,
+      and the last world is always kept. No live reading moves: samples are taken at the
+      runner's `sample_every` whatever the cadence.
+    - **Resuming.** A runner restart redoes up to 500 epochs of a child instead of up to 100.
+      A resume is deterministic, so this costs time and not results.
+    - `snapshot_every` is not a run parameter of the engine's dynamics
+      (`Lab::Schema::NON_RUN_PARAMS`). On the grid it enters each child's params, and so its
+      canonical identity, the same way in every arm.
   - **Validated in the engine.** Each of the four bundles was merged over the params of 4381
     and of 4428 and descended from their stored terminal worlds with `World::descend`. That
     path runs `Params::validate`, the paid-or-predatory refusal and the structure check. All
-    eight were accepted, at seed 6001, on the merged engine, for 1 000 epochs. At 1 000 epochs:
+    eight were accepted, at seed 6001, on the merged engine, for 1 000 epochs; with the
+    cadence added they were accepted again. At 1 000 epochs:
     - out-compute held depth 2 and 4 classes, with 5–8% of sampled cells silent,
       `predation_rate` 0.36 and `predation_relation_rate` 0.40;
     - equal held depth 1, with 48–56% silent;

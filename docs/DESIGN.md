@@ -972,7 +972,8 @@ sample.
     influx 1 024, cap 65 536, no theft; `tasks: logic4` at `task_reward` 0; the stack NAND on
     a 32-byte metabolism tape at `meta_rate` 8/8192, `isa` draws, seeded from the cell's own
     tape; `task_max_outputs` 16; `predation_transfer` 8 192, `predation_loss` 0.5,
-    `predation_every` 8, `predation_shadow_p` 0.3): **out-compute** (`predation:
+    `predation_every` 8, `predation_shadow_p` 0.3; a stored world every 500 epochs, for
+    disk): **out-compute** (`predation:
     subset_class`), **equal**, **shadow** and **none** (`predation: off`). Seed 6001,
     100 000 epochs past the parent, priority 40, 216 children. Read with topless-rise's
     machinery unchanged, on `logic_depth_max` and on `logic_depth_classes`, both over 16

@@ -587,7 +587,7 @@ RSpec.describe Lab do
           "tasks" => "logic4", "task_reward" => 0, "logic_nand" => "stack", "meta_len" => 32,
           "meta_rate" => 8.0 / 8192, "meta_draw" => "isa", "meta_seed" => "own_tape", "task_max_outputs" => 16,
           "predation_transfer" => 8192, "predation_loss" => 0.5, "predation_every" => 8,
-          "predation_shadow_p" => 0.3 }
+          "predation_shadow_p" => 0.3, "snapshot_every" => 500 }
       end
 
       it "starts from reach-cap128's first fifty-four emerged radius-4 runs ending at least half replicators" do

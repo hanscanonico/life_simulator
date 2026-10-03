@@ -489,6 +489,18 @@ RSpec.describe Experiments::DescendantSweepBuilderService do
         .to eq(12)
     end
 
+    it "stores a world every 500 epochs, so a finished child keeps one every 5 000 after pruning" do
+      build_sweep
+      child = experiment.runs.order(:id).first
+      (child.parent_epoch + 500).step(child.epochs, 500) { |epoch| create(:snapshot, run: child, epoch: epoch) }
+      child.update!(status: "finished")
+
+      Runs::PruneSnapshotsService.call(run: child)
+
+      expect(child.snapshots.order(:epoch).pluck(:epoch))
+        .to eq([2_500, *(5_000..100_000).step(5_000), 102_000])
+    end
+
     it "leaves the reach-cap128 runs as they were" do
       before = reach.runs.order(:id).pluck(:id, :params, :seed, :status)
 
