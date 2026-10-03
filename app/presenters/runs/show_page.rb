@@ -66,6 +66,7 @@ module Runs
       "logic_depth_max" => "NANDs in the deepest topless rung a tenth of the cells solve (−1: none)",
       "logic_depth_classes" => "Topless rungs a tenth of the cells solve",
       "predation_rate" => "Predation encounters that moved energy",
+      "predation_relation_rate" => "Predation encounters whose relation held",
       "repertoire_mean" => "Classes a metabolism tape computes, per cell",
       "silent_share" => "Share of cells whose metabolism tape computes nothing"
     }.freeze
@@ -79,7 +80,7 @@ module Runs
     DEPTH = %w[logic_depth_max logic_depth_classes].freeze
 
     # The readings of a run whose predation pass runs: null at every sample of any other run.
-    PREDATION = %w[predation_rate repertoire_mean silent_share].freeze
+    PREDATION = %w[predation_rate predation_relation_rate repertoire_mean silent_share].freeze
 
     # The readings of one task ladder are null at every sample of a run not assayed on it
     # (DESIGN §1.2), so a ladder's charts are drawn only for a run that has a reading of it,
@@ -271,8 +272,7 @@ module Runs
     end
 
     def drawn_metrics
-      unread = GATED.reject { |group| group.any? { |metric| series_of(metric).any? } }
-      METRICS.keys - unread.flatten
+      METRICS.keys - GATED.reject { |group| group.any? { |metric| series_of(metric).any? } }.flatten
     end
 
     def series_of(metric)

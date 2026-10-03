@@ -4879,12 +4879,21 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   It still imports the NAND and its stack semantics, the emit op, the input bytes, the
   world-copied metabolism tape, the emit cap and the rule itself, so rung 4 on Soup stays
   "not shown" whatever a predation run reads (study §2, step 4, is what would make the
-  machine the soup's own). A predation run is unpaid, so `Run.fitness_free` counts it as the
-  reward-0 arms of Meta-stack and topless-rise are counted; it carries no "imports an
-  objective" badge.
+  machine the soup's own). A predation run is unpaid, so it carries no "imports an
+  objective" badge. It is not plain Soup either: the reward-0 arms of Meta-stack and
+  topless-rise carry a metabolism tape nothing reads into the dynamics, while a predation
+  run's energy moves by what its tapes compute. Whether its runs pool with plain Soup's in
+  the site's fitness-free aggregates (`Run.fitness_free`, which reads the reward alone and so
+  would count them today) and the "imports a machine" label they show are settled with the
+  out-compute sweep's pre-registration, before any predation run exists. A descendant
+  records no transition, so no transition or emergence survey would read one meanwhile.
 
   **The readings** (live-only, null unless the pass runs): `predation_rate`, the share of
-  the last pass's encounters that moved energy; `repertoire_mean`, the mean distinct classes
+  the last pass's encounters that moved energy; `predation_relation_rate`, the share whose
+  relation held (under `shadow`, whose coin came up), moved or not, which is the pilot's eat
+  rate and so the one a pre-registration sets `predation_shadow_p` against: on the pilot's
+  out-compute end world of 4381 the engine reads 0.32 for it and 0.29 for `predation_rate`,
+  since a related partner may hold nothing; `repertoire_mean`, the mean distinct classes
   per cell of 256 sampled cells, and `silent_share`, the share of them computing none, both
   on `STREAM_PREDATION | 1`. `logic_depth_max` and `logic_depth_classes` now read every slot
   `task_max_outputs` allows: in the pilot the four-slot reading read 3 in both out-compute
@@ -4907,7 +4916,9 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - Every existing pin is unmoved, and at `off` (or a transfer of 0) a run is byte-, stock-,
     snapshot- and reading-identical to the run without the parameters; `task_max_outputs`
     moves no byte.
-  - Determinism, with a resume mid-period, under each relation at `predation_every` 1 and 3.
+  - Determinism, with a resume mid-period, under each relation at `predation_every` 1 and 3;
+    a world restored mid-period holds the cases the uninterrupted run drew at the period's
+    first epoch, and `shadow` draws none.
   - Every encounter of `subset_class` moves energy exactly when the actor covers the
     partner (the empty set is everyone's prey; kin eat kin), `equal` exactly on equal sets,
     and `shadow` at its coin whatever the tapes compute.

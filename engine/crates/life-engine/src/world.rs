@@ -138,6 +138,10 @@ pub struct World {
     /// The `predation_rate` of the last pass: `None` until a pass has met a partner, and
     /// again after one that met none.
     predation_rate: Option<f64>,
+    /// The share of the last pass's encounters whose relation held (under `shadow`, whose
+    /// coin came up), whether or not the partner had anything to give: the rate
+    /// `predation_shadow_p` is calibrated on. `None` exactly when `predation_rate` is.
+    predation_relation_rate: Option<f64>,
     /// The classes the predation pass has read since its cases were last drawn. Never
     /// state: a pure function of `(seed, epoch)` and the tapes, rebuilt after a restore.
     predation_memo: PredationMemo,
@@ -162,6 +166,7 @@ impl World {
             stock: fresh_stock(params),
             meta: Vec::new(),
             predation_rate: None,
+            predation_relation_rate: None,
             predation_memo: PredationMemo::default(),
         };
         if params.init == Init::Random {
@@ -430,6 +435,7 @@ impl World {
             stock: restored_stock(params, restored.stock)?,
             meta,
             predation_rate: None,
+            predation_relation_rate: None,
             predation_memo: PredationMemo::default(),
         })
     }
@@ -478,6 +484,7 @@ impl World {
             stock: descended_stock(params, restored.stock)?,
             meta: Vec::new(),
             predation_rate: None,
+            predation_relation_rate: None,
             predation_memo: PredationMemo::default(),
         };
         world.meta = match restored.meta {
@@ -646,7 +653,7 @@ impl World {
         let acts = 1.0 / f64::from(self.params.predation_every);
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, &mut rng);
-        let (mut encounters, mut moves) = (0u64, 0u64);
+        let (mut encounters, mut related, mut moves) = (0u64, 0u64, 0u64);
         for cell in order {
             if !rng::chance(&mut rng, acts) {
                 continue;
@@ -678,10 +685,13 @@ impl World {
             self.stock[a] = self.stock[a]
                 .saturating_add(theft.delivers(moved))
                 .min(theft.cap);
+            related += u64::from(preys);
             moves += u64::from(moved > 0);
         }
         self.predation_memo = memo;
-        self.predation_rate = (encounters > 0).then(|| moves as f64 / encounters as f64);
+        let share = |count: u64| (encounters > 0).then(|| count as f64 / encounters as f64);
+        self.predation_rate = share(moves);
+        self.predation_relation_rate = share(related);
     }
 
     /// The predation readings' tally: `task::TASK_SAMPLE_CELLS` cells drawn uniformly with
@@ -1030,6 +1040,9 @@ impl World {
             logic_depth_max: depth.as_ref().map(|tally| tally.depth_max()),
             logic_depth_classes: depth.as_ref().map(|tally| tally.classes()),
             predation_rate: self.predation_rate.filter(|_| self.params.predates()),
+            predation_relation_rate: self
+                .predation_relation_rate
+                .filter(|_| self.params.predates()),
             repertoire_mean: repertoire.map(|(classes, _)| per_sampled(classes)),
             silent_share: repertoire.map(|(_, silent)| per_sampled(silent)),
         }
@@ -7908,12 +7921,17 @@ mod tests {
 
     fn predation_digest(measured: &Metrics) -> String {
         format!(
-            "predation_rate={:?} repertoire_mean={:?} silent_share={:?}",
-            measured.predation_rate, measured.repertoire_mean, measured.silent_share
+            "predation_rate={:?} predation_relation_rate={:?} repertoire_mean={:?} \
+             silent_share={:?}",
+            measured.predation_rate,
+            measured.predation_relation_rate,
+            measured.repertoire_mean,
+            measured.silent_share
         )
     }
 
-    const UNREAD_PREDATION: &str = "predation_rate=None repertoire_mean=None silent_share=None";
+    const UNREAD_PREDATION: &str = "predation_rate=None predation_relation_rate=None \
+         repertoire_mean=None silent_share=None";
 
     /// Kinds of metabolism tape, each 256 bytes: one computing nothing, one ECHO, one XOR4,
     /// and one emitting x four times and then XOR4, so it computes ECHO and XOR4 on more
@@ -8162,6 +8180,33 @@ mod tests {
         }
     }
 
+    /// A world restored mid-period reads its encounters on the cases the uninterrupted run
+    /// drew at the period's first epoch, not on a draw of its own. The hash test above
+    /// cannot see this on a random soup, whose tapes compute next to nothing on any cases,
+    /// so the cases are compared outright; and `shadow`, reading no computation, draws none.
+    #[test]
+    fn a_world_restored_mid_period_reads_the_cases_of_the_period() {
+        let params = predation_params(Predation::SubsetClass);
+        assert_eq!(params.predation_every, 8);
+        let mut whole = stepped_world(World::new(&params, 42).unwrap(), 11);
+        let mut restored = World::from_snapshot(&params, 42, &whole.snapshot()).unwrap();
+        for _ in 0..2 {
+            whole.step();
+            restored.step();
+        }
+        let drawn = whole.predation_memo.drawn;
+        assert_eq!(drawn.map(|(at, _)| at), Some(8));
+        assert_eq!(restored.predation_memo.drawn, drawn);
+        let inputs = params.tasks.depth_inputs().unwrap();
+        let own = topless::Cases::draw(inputs, &mut rng::seeded(42, STREAM_PREDATION, 11));
+        assert_ne!(drawn.map(|(_, cases)| cases), Some(own));
+        let shadow = stepped_world(
+            World::new(&predation_params(Predation::Shadow), 42).unwrap(),
+            13,
+        );
+        assert_eq!(shadow.predation_memo.drawn, None);
+    }
+
     /// The predation runs' own pins: `predation_params` on a 32×32 random soup, seed 42,
     /// after 40 epochs, one per relation, each apart from the run without predation.
     const PINNED_PREDATION_HASHES: [u64; 3] = [
@@ -8186,11 +8231,12 @@ mod tests {
     /// The predation readings of those runs at epoch 40, pinned apart from every digest
     /// above. A random soup's own first 32 bytes compute next to nothing.
     const PINNED_PREDATION_READINGS: [&str; 3] = [
-        "predation_rate=Some(0.8809523809523809) repertoire_mean=Some(0.00390625) \
-         silent_share=Some(0.99609375)",
-        "predation_rate=Some(0.8650793650793651) repertoire_mean=Some(0.00390625) \
-         silent_share=Some(0.99609375)",
-        "predation_rate=Some(0.3) repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
+        "predation_rate=Some(0.8809523809523809) predation_relation_rate=Some(0.9761904761904762) \
+         repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
+        "predation_rate=Some(0.8650793650793651) predation_relation_rate=Some(0.9523809523809523) \
+         repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
+        "predation_rate=Some(0.3) predation_relation_rate=Some(0.3230769230769231) \
+         repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
     ];
 
     #[test]
@@ -8215,6 +8261,15 @@ mod tests {
             measured.predation_rate,
             Some(moving as f64 / met.len() as f64)
         );
+        let related = met.iter().filter(|(_, _, preys, _)| *preys).count();
+        assert!(
+            moving < related && related < met.len(),
+            "an empty partner is still prey, and gives nothing"
+        );
+        assert_eq!(
+            measured.predation_relation_rate,
+            Some(related as f64 / met.len() as f64)
+        );
         let silent = measured.silent_share.unwrap();
         assert!(silent > 0.3 && silent < 0.7, "{silent}");
         assert_eq!(measured.repertoire_mean, Some((1.0 - silent) * 2.0));
@@ -8223,10 +8278,11 @@ mod tests {
         assert_eq!(
             (
                 measured.predation_rate,
+                measured.predation_relation_rate,
                 measured.repertoire_mean,
                 measured.silent_share
             ),
-            (None, Some(2.0), Some(0.0)),
+            (None, None, Some(2.0), Some(0.0)),
             "no pass has run yet"
         );
     }

@@ -592,11 +592,15 @@ claim rests on it.
   read every output slot `task_max_outputs` allows, the default 4 reading exactly what they
   always read: a reading of four slots missed depths 5–6 that a full census of the study's
   pilot worlds held (`docs/studies/unassisted.md` §4.3, point 7).
-- `predation_rate` / `repertoire_mean` / `silent_share`: the **predation readings**
-  (docs/design_record.md 2026-10-03, Predation). `predation_rate` is the share of the last
-  pass's encounters (an acting cell meeting a partner other than itself) that moved energy,
-  counted in the pass and drawing nothing; null where that pass met no partner, or none has
-  run since a resume. `repertoire_mean` is the mean number of distinct classes the
+- `predation_rate` / `predation_relation_rate` / `repertoire_mean` / `silent_share`: the
+  **predation readings** (docs/design_record.md 2026-10-03, Predation). `predation_rate` is
+  the share of the last pass's encounters (an acting cell meeting a partner other than
+  itself) that moved energy, counted in the pass and drawing nothing; null where that pass
+  met no partner, or none has run since a resume. `predation_relation_rate` is the share of
+  the same encounters whose relation held (under `shadow`, whose coin came up), whether or
+  not the partner had stock to give: the study pilot's eat rate, the one
+  `predation_shadow_p` is calibrated on, null exactly where `predation_rate` is.
+  `repertoire_mean` is the mean number of distinct classes the
   metabolism tapes of 256 cells compute, drawn uniformly with replacement on cells and cases
   of `STREAM_PREDATION | 1`'s own at `(seed, epoch)`, over `task_max_outputs` slots, each
   distinct tape assayed once; `silent_share` is the share of those cells computing none.

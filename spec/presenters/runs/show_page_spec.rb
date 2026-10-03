@@ -34,7 +34,7 @@ RSpec.describe Runs::ShowPage do
                   logic_share_and logic_share_orn logic_share_or logic_share_andn logic_share_nor
                   logic_share_xor logic_share_equ meta_inherit_rate meta_diversity
                   logic_capability_replicating logic_depth_max logic_depth_classes predation_rate
-                  repertoire_mean silent_share])
+                  predation_relation_rate repertoire_mean silent_share])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
       create(:sample, run: run, epoch: 100,
                       values: { "task_capability" => 0, "logic_capability" => 0, "meta_diversity" => 1,
@@ -93,10 +93,10 @@ RSpec.describe Runs::ShowPage do
     context "with samples of a run whose predation pass runs" do
       it "draws the predation charts beside the depth ones" do
         create(:sample, run: run, epoch: 100,
-                        values: { "logic_depth_max" => 5, "predation_rate" => 0.3, "repertoire_mean" => 5.2,
-                                  "silent_share" => 0.07 })
+                        values: { "logic_depth_max" => 5, "predation_rate" => 0.29, "predation_relation_rate" => 0.32,
+                                  "repertoire_mean" => 5.2, "silent_share" => 0.07 })
 
-        expect(described_class::PREDATION).to eq(%w[predation_rate repertoire_mean silent_share])
+        expect(described_class::PREDATION).to eq(%w[predation_rate predation_relation_rate repertoire_mean silent_share])
         expect(described_class::PREDATION.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
         expect(described_class::DEPTH.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
       end

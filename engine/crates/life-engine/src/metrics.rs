@@ -252,6 +252,11 @@ pub struct Metrics {
     /// This and the two readings below are `None` unless the run's predation pass runs;
     /// this one also until a pass has met a partner, as after a resume.
     pub predation_rate: Option<f64>,
+    /// The share of those encounters whose relation held (under `predation = shadow`, whose
+    /// coin came up), whether or not the partner had stock to give: the eat rate the
+    /// study's pilot read and `predation_shadow_p` is calibrated on, where `predation_rate`
+    /// counts only the encounters that moved energy.
+    pub predation_relation_rate: Option<f64>,
     /// The mean number of distinct classes the metabolism tapes of
     /// `task::TASK_SAMPLE_CELLS` sampled cells compute, over the run's `task_max_outputs`
     /// slots, on cells and cases of its own.
@@ -1793,6 +1798,7 @@ mod tests {
             logic_depth_max: None,
             logic_depth_classes: None,
             predation_rate: None,
+            predation_relation_rate: None,
             repertoire_mean: None,
             silent_share: None,
         }
