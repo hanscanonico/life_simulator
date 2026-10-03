@@ -1,0 +1,11 @@
+[package]
+name = "msx"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+landscape = { path = "../../../../../research/landscape" }
+life-engine = { path = "../../../../../engine/crates/life-engine" }

@@ -1,0 +1,139 @@
+Meta-stack sweep: the locked offline readings for the 9 deep children
+=====================================================================
+These readings were made on 2026-10-02 with research/landscape at main 3cd9abb, built out of tree. The stored
+worlds and params came from the lab through SELECTs only. The method follows docs/design_record.md (2026-10-02,
+"Reported with each deep child") and research/landscape/README.md.
+
+First epochs follow the entry's persistence rule: the first own sample of 5 consecutive samples at a share of at
+least 1/10, over every sample past parent_epoch 20000. They are recomputed from logic_share_* and equal the final
+report's first_* columns exactly. E_deep is the earlier of first_xor and first_equ. E_last is the latest first
+epoch among the 8 rungs below XOR that reached the line at or before E_deep.
+
+PER CHILD
+---------
+run  parent/seed cap | E_last (rung) -> pre world | E_deep (rung) -> post world | d (edit) | multi-step | credited order | neutral-or-better | heritability: planted/control at e+2000 per seed 2001, 2002, 2003
+4845  944/2003 128 | 21770 nor  -> e21000 | 21870 xor (equ 21940) -> e22000 | 25 (23) | yes | no | no  | xor Unresolved 7948/7832 6483/6125 7661/8099; equ Unresolved 8302/8041 6563/6317 7907/8239
+4862  967/2002 128 | 21260 andn -> e21000 | 21700 equ (xor 21760) -> e22000 | 31 (27) | yes | no | no  | xor Unresolved 7220/7046 5601/5155 6779/6356; equ Unresolved 6671/7146 5766/5222 6976/6816
+4863  967/2003 128 | 21760 or   -> e21000 | 22690 equ (xor 33530) -> e23000 | 25 (25) | yes | no | YES | xor Unresolved 8016/8130 6712/6544 8256/7770; equ Unresolved 7969/8040 6281/6527 8044/8016
+4871  991/2002 128 | 22010 or+nor -> e22000 | 23180 xor (equ 23220) -> e24000 | 22 (21) | yes | no | no | xor Unresolved 8694/8691 7261/7162 8770/8880; equ Unresolved 8584/8700 6759/6953 8685/8231
+4890 1029/2003 256 | 22020 nor  -> e22000 | 22880 equ (xor 28290) -> e23000 | 17 (16) | yes | no | no  | equ Unresolved 6332/6304 6269/6119 6415/6588; [ext] xor Unresolved 2203/1575 2661/1598 2646/1758
+4952 2654/2002 128 | 23960 and  -> e23000 | 28220 equ (xor 28790) -> e29000 | 30 (28) | yes | no | no  | xor Unresolved 7930/7579 5932/6320 7548/7779; equ Unresolved 7960/7614 6274/6447 7552/7594
+4961 2676/2002 128 | 21250 or   -> e21000 | 21630 xor (equ 21700) -> e22000 | 26 (26) | yes | no | no  | xor Unresolved 8593/8312 6755/6971 8157/8500; equ Unresolved 8240/8157 6503/7005 8481/8015
+4979 2771/2002 256 | 40910 nand -> e40000 | 41480 equ (no xor)   -> e42000 | 20 (18) | yes | no | YES | equ NotHeritable 73/251 589/759 55/167
+4980 2771/2003 256 | 22230 nor  -> e22000 | 22720 equ (no xor)   -> e23000 | 24 (22) | yes | no | YES | equ Unresolved 7138/6979 7042/7372 7582/7188
+
+The tapes (dominant, with its cells in the pre world -> first deep solver, with its cells in the post world):
+4845 orn+or+nor n=9          -> orn+xor+equ n=20
+4862 not+or+nor n=9          -> nand+and+xor+equ n=33
+4863 nand+and n=10           -> nand+xor+equ n=18
+4871 not+orn+andn+nor n=18   -> not+xor+equ n=27
+4890 not+nand+equ n=12       -> not+nand+equ n=25   (the dominant tape is itself credited EQU on all 6 sets)
+4952 echo+not+orn n=11       -> orn+xor+equ n=22
+4961 not+or n=20             -> echo+orn+xor+equ n=29
+4979 not+nand+or+equ n=21    -> not+nand+or+equ n=19 (the dominant tape is itself credited EQU on all 6 sets)
+4980 orn+andn n=13           -> not+orn+or+equ n=20
+The hex values are in summary.csv and distance/tapes.txt.
+
+The circuits (trace on x=0x5a y=0x33). Every solver is a loop that stacks NANDs leftward and reads earlier
+laps' results. Each one is credited its rung in 18 of 18 cases and fans out an input in every case:
+4845  2 NANDs a lap, emits de 69 96 69: XOR at lap 2 is the 4-NAND circuit NAND(NAND(t1,x), NAND(t1,y)) with t1 = NAND(x,y); EQU follows a lap later as 6 NANDs; fans out x, y, t1
+4862  4 NANDs a lap, emits ed 69 96 12: XOR at slot 1 (6 NANDs, t2 = NAND(t1,x) read by 3), EQU at slot 2 (8 NANDs); fans out x, y, t1, t2
+4863  3 NANDs a lap, emits ed 96 96 69: EQU at slot 1 (6 NANDs); XOR only at slot 3, a 12-NAND chain ending in a double negation; fans out x (to 3), y, t2, t3
+4871  4 NANDs a lap, emits cc 69 cc 96: XOR at slot 1 (6 NANDs), EQU at slot 3 (12 NANDs); fans out x, y, t1 (to 3), t3
+4890  2 NANDs a lap after a copy prologue, emits ed a5 a5 96: EQU at slot 3 (7 NANDs, one a NOT); fans out x, y, t2, t3 (to 3). [ext] The XOR solver from e29000 has 1 NAND a lap, with XOR at slot 2 as 5 NANDs (NAND(x,y) made twice); fans out x and y (3 each)
+4952  2 NANDs a lap, emits de 69 96 69: the same circuit as 4845 (XOR 4 NANDs at slot 1, EQU 6 at slot 2)
+4961  a prologue that emits x, then 2 NANDs a lap, emits 5a b7 69 96: XOR at slot 2 (4 NANDs), EQU at slot 3 (6 NANDs); fans out x, y, t3
+4979  1 NAND a lap after a 2-NAND prologue, emits 7b ed cc 96: EQU at slot 3 (5 NANDs, built on NOT x = NAND(x,x)); fans out y, NOT x, t2
+4980  1 NAND a lap, emits de a5 7b 96: EQU at slot 3 (5 NANDs); fans out x, y, t1, t2
+
+TOTALS
+------
+Multi-step crossings, by the locked rule d >= 2: 9 of 9 (d = 17 to 31).
+Heritability, by child: 0 heritable, 8 unresolved, 1 not heritable (4979).
+By planting, that is 15 locked plantings plus 1 extension: 15 Unresolved and 1 NotHeritable. In every Unresolved
+planting, every seed's control was back at a tenth by e+500, at 5889 to 10043 cells, level with the planted world.
+The one exception is 4890's xor extension, where only seed 2003's control (1758) reached the tenth.
+4979: neither world reached a tenth. The planted world held 55 to 589 cells and the control 167 to 759.
+
+Credited order: none in any child. With more than 16 sites the tool reads no lattice. A credited order gains at
+least 1 paid unit a step, so it needs a gain of at least d. In every child the deep solver earns fewer than d
+units more than the dominant tape (gains 0 to 22 against d 17 to 31), so no credited order is possible.
+Neutral-or-better order: yes in 4863, 4979 and 4980; no in the other 6. This is an exhaustive search of the
+subset lattice (helper/, orders/).
+
+DESCRIPTIVE CONTEXT (not locked, not the entry's; read before quoting "9 of 9")
+-------------------------------------------------------------------------------
+- The locked distance is dominated by drift. Each world holds 9634 to 14375 distinct metabolism tapes out of
+  16384, and its dominant tape sits on 9 to 21 cells. That dominant tape is a median 22 to 30 bytes (of 32) from a
+  cell of its own world. In the pre world, the tape nearest the first deep solver is 13 to 23 substitutions away,
+  and no cell is within 2 of it in any child. At meta_rate 1/256 per byte, a 32-byte tape takes about 0.125 hits an
+  epoch, so any two stored worlds 1000 epochs apart differ by many more than 2 substitutions. The ">= 2" cut cannot
+  come out "no" except where the dominant tape is the deep solver itself.
+- The study's own view: `paths DOMINANT --k 3`, every mutant within 3 substitutions over the 14-symbol alphabet.
+  - nearest deep mutant at 2: 4845, 4871
+  - at 3: 4863, 4952, 4980
+  - none within 3: 4862, 4961
+  - already deep: 4890, 4979
+  - no credited path within 3 in any child.
+- Fewest of the d substitutions toward the first deep solver that make the dominant tape deep:
+  - 2: 4871
+  - 4: 4980
+  - 5: 4863
+  - more than 7: 4845, 4862, 4952, 4961
+  - 0, already deep: 4890, 4979
+- Why the plantings come out unresolved: the filler (the commonest tape credited the rung on no set) is one
+  substitution from the rung in 10 of 16 plantings (9 of them by a credited step). Wiping 2976 to 8601 carriers does not
+  stop the rung re-arising within 500 epochs. This is the case the entry foresaw: stepping stones sit one
+  substitution below, and a given substitution at a given site comes about every 3600 cell-epochs.
+
+INTERPRETATIONS OF THE LOCKED METHOD
+------------------------------------
+1. The deep rung's first epoch follows the entry's k = 5 rule (the report's first_xor and first_equ). The brief's
+   "first settled deep epoch" column is something else: the first single sample with logic_capability_deep > 0,
+   with no persistence. The two choices give different post worlds for 4952 (e29000 under the entry, e28000 under
+   the brief) and 4979 (e42000 against e40000).
+   Sensitivity (sensitivity/):
+   - 4952 at e28000: d = 28, still multi-step.
+   - 4979 at e40000: the commonest deep solver is the dominant tape itself, so d = 0 and it is not multi-step. The
+     tally would be 8 of 9 under the brief's epochs.
+2. "The last lower rung to reach the line" counts only rungs that reached it at or before E_deep. 4871's NAND
+   first reaches the line at 24430, after its deep rung at 23180. Taken literally, it would put the "pre-deep"
+   world at e24000, after the deep rung, where the dominant tape is the deep solver (d = 0). 4961's NOR (21730,
+   after XOR at 21630) is excluded the same way, but the world is e21000 either way.
+3. The dominant tape is the census's commonest metabolism tape, ties broken by byte order, with no credit
+   condition, as written. In 4890 and 4979 it is already credited EQU on all 6 sets at the last lower rung's
+   line. Their EQU share in the samples was below a tenth until later. The locked rule still reads d >= 2 as
+   multi-step for them, though no rung was crossed between the two tapes.
+4. Orders: the tool's lattice stops at 16 sites. I excluded credited orders by the unit bound above. I decided
+   neutral-or-better by an exhaustive level search, with the tool's own definition (no tape along the path earns
+   fewer paid units than the start) and the landscape crate's own Scorer, in a scratchpad helper (helper/). It
+   evaluated up to 40 M subsets for 4952.
+5. Planting per rung: the README says "once per deep rung it reached"; the entry speaks of "that deep solver" and
+   "the rung". I planted the first deep solver once for each deep rung that the child reached (k = 5) and that the
+   solver carries.
+   - 4890 reached XOR at 28290, but its first deep solver (e23000) carries EQU only. As a labelled extension, I
+     planted XOR's own first solver (the commonest XOR-credited tape at e29000, credited nand+orn+xor+equ). The
+     child's verdict is from EQU.
+   - Where a child has two rungs, both read the same, so no combining rule was needed.
+6. The planted replicating tape follows the README: that of the first cell, in row order, holding the deep solver
+   in the post world. The entry says only "its cell's".
+7. A filler may carry the other deep rung: 4890's EQU filler is credited XOR, and its XOR filler EQU. The entry
+   allows this ("credited it on none" refers to the planted rung).
+I found no contradiction between the README and the entry. The README adds the per-rung planting and the
+first-cell replicating tape. The entry does not lock the orders; only the brief asks for them.
+
+FILES (all under this directory)
+--------------------------------
+summary.txt, summary.csv     this reading; one CSV row per planting
+data/samples.csv, epochs.json, first_epochs.py   the samples (SELECT) and the k = 5 first epochs and worlds
+data/<run>/child.json, e<epoch>.lsnp             params and the stored worlds read (14 MB)
+census/<run>-e<epoch>.txt    landscape census: pre, post and sensitivity worlds
+distance/<run>.txt, tapes.txt                    landscape distance and the tapes it read
+orders/<run>.txt             helper: orders past 16 sites, fewest substitutions, nearest pre-world tape
+paths/<run>-k3.txt           landscape paths from the dominant tape, k = 3
+plant/<run>-<rung>.txt       landscape plant, per seed every 500 epochs, with the verdict
+filler/<run>-<rung>.txt      landscape paths --k 1 from each planting's filler
+trace/<run>-<rung>.txt       landscape trace
+sensitivity/                 distances under the brief's deep epochs
+helper/                      the descriptive helper's source (it uses the landscape crate)
+data/fetch.sh, plant.sh, tapes.sh, collate.py    the commands as run
