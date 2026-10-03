@@ -4747,3 +4747,36 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   every byte and none of its padding, on both ladders; the engine's compiled minimal-NAND
   witnesses do too but for one spare head move in each four-input compile. Nothing in the
   engine, the lab or the sweep changes.
+
+- 2026-10-03 — **A stored world counts as read only by its own static reading (bug fix,
+  relocks nothing).** `GET /api/experiments/:slug/corpus` named as read every epoch holding
+  any reading of an instrument, and `runner readings-corpus` skips those worlds. But the
+  pass also stores stepped readings, labelled at the next sample epoch with an earlier
+  `source_epoch`. Where that epoch is itself a stored world (two worlds one sample apart),
+  the world was skipped and its own static reading (`epoch = source_epoch`) never taken,
+  while `Runs::OrientedSummariesService` counts only static readings. Such a run stayed
+  unmeasured for good. An audit of production on 2026-10-03 found six terminal runs hit
+  under `oriented_census/1`, one world each: three in lineage-diversity, one in
+  locality-emergence, and two in reach-cap128 (4369 at world 19000, 4443 at 10010). The two
+  reach-cap128 runs kept that report interim at 268 of 270 counted. The endpoint now names
+  only static readings' epochs, so the next pass reads those worlds itself. Its static row
+  replaces the stepped one on the `[run_id, instrument, epoch]` key and drops the copy rates
+  that row carried. Like every other stored world, it then has no copy-rate row at its own
+  epoch. No engine change.
+  - **Unaffected.** The locality-emergence, lineage-diversity and from-emerged held-out
+    readings read live samples, not snapshot readings. The from-emerged parent pool reads
+    the terminal reading from any source, and a stepped reading of the same world holds the
+    same share. None of them depends on `OrientedSummary#measured?`, so their published
+    readings stand.
+  - **Affected.** The readings off `measured?` are reach-cap128's emergence and the
+    descriptive oriented arms report and CSV. A wrongly unmeasured run was listed but not
+    counted. In reach-cap128 it held the reading interim and moved no count. In the arms
+    report it lowered the measured counts and left the run out of the median.
+  - **Multi-pass limit (#300).** A walk still continues into the next unread stored world
+    and labels it stepped. A fresh run's pair of worlds one sample apart is therefore
+    measured only after a second pass, and a chain of k such worlds needs k passes. Each
+    pass reads at least one more world, so the pass never stalls. Until the engine stops
+    doing this, re-run `readings-corpus` until `event=readings_done` reports `worlds=0`.
+  - **To do.** Re-run the readings pass that way (`oriented_census/1`, and `/2` where it
+    was run) on lineage-diversity, locality-emergence and reach-cap128. Then re-read
+    reach-cap128 and the oriented arms report and CSV.
