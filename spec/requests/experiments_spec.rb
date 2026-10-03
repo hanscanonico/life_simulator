@@ -703,6 +703,56 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the topless-rise sweep seeded from the meta-stack sweep" do
+      let(:experiment) { topless_rise_experiment }
+
+      before do
+        topless_rise_parents
+        Experiments::SweepBuilderService.call(experiment)
+      end
+
+      it "lists its children without the from-emerged reading" do
+        get experiment_path(experiment)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.at_css("#descendant-reading, #heldout-reading, #meta-stack-reading")).to be_nil
+      end
+
+      context "with no child sampled yet" do
+        it "reads the sweep as pre-registered, interim, under the badge" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#topless-rise-reading")
+          expect(section.at_css("h2").text.squish).to eq("The pre-registered reading interim imports an objective")
+          expect(section.text.squish).to include("H-rise", "H-rise-paid", "no measured pairs", "ceilinged",
+                                                 "a ladder of growing input arity", "rung 4 on Soup stays not shown")
+        end
+      end
+
+      context "with every child finished, the rise arm alone rising and one rise child at the ceiling" do
+        before do
+          rise = topless_rise_children(experiment, :rise)
+          rise.each_with_index { |run, index| topless_rise_sample(run, fifth: index.zero? ? 13 : 8, last: 13) }
+          experiment.runs.each { |run| topless_rise_sample(run, fifth: 8) if run.samples.none? }
+        end
+
+        it "prints the arms, the tests beside their other readings and the ceilinged child" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#topless-rise-reading")
+          arms = section.css("#topless-rise-arms ~ .table-scroll tbody tr").map { |row| row.css("td").map(&:text) }
+          expect(arms).to eq([%w[rise 3 3 0 0 3 2 1 3], %w[capped 3 3 0 0 3 0 0 0], %w[none 3 3 0 0 3 0 0 0]])
+          expect(section.text.squish).to include("The pre-registered reading final", "H-rise-paid, rise against capped",
+                                                 "3 pairs measured on both sides: 2 favour rise",
+                                                 "With the extinct pairs kept", "On the deep parents' children",
+                                                 "Per-parent agreement")
+          expect(section.css("#topless-rise-ceilinged a").map(&:text)).to eq(["run #{rise_first_id} (rise)"])
+        end
+
+        def rise_first_id = topless_rise_children(experiment, :rise).first.id
+      end
+    end
+
     context "with a descendant sweep seeded from an emerged world" do
       let(:experiment) do
         create(:experiment, name: "From an emerged world", slug: "from-emerged",

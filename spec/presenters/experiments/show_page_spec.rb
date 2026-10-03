@@ -649,6 +649,53 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  # The topless-rise reading is held as the logic reading is.
+  describe "#topless_rise_reading" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let(:experiment) { topless_rise_experiment }
+
+    before do
+      allow(Rails).to receive(:cache).and_return(cache)
+      topless_rise_parents
+      Experiments::SweepBuilderService.call(experiment)
+      experiment.runs.order(:id).each { |run| topless_rise_sample(run, fifth: 8, last: 9) }
+      experiment.runs.order(:id).last.update!(status: "running")
+    end
+
+    def read_reading
+      reads = []
+      collect = ->(*, payload) { reads << payload[:sql] if payload[:sql].include?("samples") }
+      fresh = described_class.build(experiment: experiment, paginate: paginate)
+
+      [ActiveSupport::Notifications.subscribed(collect, "sql.active_record") { fresh.topless_rise_reading }, reads]
+    end
+
+    it "reads the children's samples once, and serves the same reading after" do
+      first, first_reads = read_reading
+      again, again_reads = read_reading
+
+      expect(first_reads).not_to be_empty
+      expect(again_reads).to be_empty
+      expect(again.arms.map(&:cells)).to eq(first.arms.map(&:cells))
+    end
+
+    it "reads it afresh, and final, once the last child finishes" do
+      first, = read_reading
+      experiment.runs.order(:id).last.update!(status: "finished")
+      last, last_reads = read_reading
+
+      expect(first).to be_interim
+      expect(last_reads).not_to be_empty
+      expect(last).not_to be_interim
+    end
+
+    it "is nil on any other sweep" do
+      meta_stack = Experiment.find_by(slug: "meta-stack")
+
+      expect(described_class.build(experiment: meta_stack, paginate: paginate).topless_rise_reading).to be_nil
+    end
+  end
+
   describe "#series_cache_key" do
     let!(:run) { finished_run(radius: 1) }
 
