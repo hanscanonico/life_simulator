@@ -40,11 +40,13 @@ RSpec.describe Experiments::OutComputeReadingService do
     expect(report.children.map(&:parent_id).uniq).to eq(parents.map(&:id))
   end
 
-  it "reads the three level tests and the two rise tests, each again with the extinct pairs kept" do
+  it "reads the three level tests and the two rise tests, each again with the extinct pairs kept and without " \
+     "the piloted parents" do
     expect(report.tests.map { |candidate| [candidate.hypothesis, candidate.treatment.name, candidate.control.name] })
       .to eq([%w[H-endogenous out-compute none], %w[H-ratchet out-compute equal], %w[H-driven out-compute shadow],
               %w[H-rise-unassisted out-compute none], %w[H-repertoire out-compute none]])
-    expect(report.readings.first.map(&:hypothesis)).to eq(["H-endogenous", "H-endogenous, extinct kept"])
+    expect(report.readings.first.map(&:hypothesis))
+      .to eq(["H-endogenous", "H-endogenous, extinct kept", "H-endogenous, unpiloted parents"])
   end
 
   context "with no child sampled yet" do
@@ -52,7 +54,7 @@ RSpec.describe Experiments::OutComputeReadingService do
       expect(report).to be_interim
       expect(report.heading).to eq("out-compute reading, interim: not every child of every qualifying parent " \
                                    "has finished (Out-compute: imports a machine, not an objective)")
-      expect([report.tests, report.kept_tests].flatten.map(&:outcome)).to all(eq(:no_pairs))
+      expect([report.tests, report.kept_tests, report.unpiloted_tests].flatten.map(&:outcome)).to all(eq(:no_pairs))
     end
   end
 
@@ -103,6 +105,22 @@ RSpec.describe Experiments::OutComputeReadingService do
       expect(report.tests.map { |candidate| candidate.comparison.p_value }).to all(eq(Rational(1, 32)))
       expect(test("H-endogenous").comparison.carried_by).to match_array(parents.map { |parent| [parent.id] })
       expect(test("H-driven").outcome_label).to eq("shown")
+    end
+
+    it "leaves out no pair without the piloted parents, none of these being one" do
+      expect(report.unpiloted_tests.map { |candidate| candidate.comparison.measured_count }).to all(eq(5))
+    end
+
+    context "with the first parent among the piloted ones" do
+      before { stub_const("Lab::OutComputeReading::PILOT_PARENTS", [parents.first.id]) }
+
+      it "re-reads every test without its pairs, which leaves four, too few to show, and decides nothing" do
+        expect(outcomes.values).to all(eq(:held))
+        expect(outcomes(report.unpiloted_tests).values).to all(eq(:not_shown))
+        expect(report.unpiloted_tests.map { |candidate| candidate.comparison.measured_count }).to all(eq(4))
+        expect(test("H-endogenous, unpiloted parents", report.unpiloted_tests).comparison.agreement.map(&:parent_id))
+          .to eq(parents.drop(1).map(&:id))
+      end
     end
 
     it "reads the per-parent agreement, one pair a parent" do

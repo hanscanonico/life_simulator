@@ -12,12 +12,13 @@ RSpec.describe "lab:out_compute_report" do
       Experiments::DescendantSweepBuilderService.call(out_compute_experiment)
     end
 
-    it "prints every child and the five tests with their extinct-kept readings, labelled interim while they run" do
+    it "prints every child and the five tests with their sensitivity readings, labelled interim while they run" do
       expect(invoke("lab:out_compute_report"))
         .to start_with("out-compute reading, interim")
         .and match(/^\s*run_id\s+parent\s+seed\s+treatment\s+status\s+settled_relapse_epoch/)
         .and match(/H-endogenous\s+out-compute\s+none\s+0\s+0\s+0\s+0\s+—\s+no measured pairs/)
         .and match(/H-driven, extinct kept\s+out-compute\s+shadow/)
+        .and match(/H-ratchet, unpiloted parents\s+out-compute\s+equal/)
         .and match(/H-repertoire\s+out-compute\s+none/)
     end
 

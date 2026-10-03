@@ -6,14 +6,15 @@ module Lab
   module OutComputeReading
     # The out-compute sweep's reading, as Experiments::OutComputeReadingService assembles it:
     # the per-child table, the per-arm counts, the five tests with each parent's agreement, and
-    # beside them their extinct-kept reading (`kept_tests`); interim until `final`.
-    Report = Data.define(:children, :arms, :tests, :kept_tests, :final) do
+    # beside them their sensitivity readings (the extinct pairs kept, `kept_tests`, and the
+    # piloted parents left out, `unpiloted_tests`); interim until `final`.
+    Report = Data.define(:children, :arms, :tests, :kept_tests, :unpiloted_tests, :final) do
       delegate :any?, to: :children
 
       def interim? = !final
 
-      # Each test beside its extinct-kept reading.
-      def readings = tests.zip(kept_tests)
+      # Each test beside its extinct-kept and its unpiloted reading.
+      def readings = tests.zip(kept_tests, unpiloted_tests)
 
       def heading
         state = if !any? then "no child yet"
@@ -45,7 +46,7 @@ module Lab
       def tables
         [[CHILD_COLUMNS, children.map(&:cells)], [ARM_COLUMNS, arms.map(&:cells)],
          [TEST_COLUMNS, tests.map(&:cells)], [TEST_COLUMNS, kept_tests.map(&:cells)],
-         [AGREEMENT_COLUMNS, tests.flat_map(&:agreement_cells)]]
+         [TEST_COLUMNS, unpiloted_tests.map(&:cells)], [AGREEMENT_COLUMNS, tests.flat_map(&:agreement_cells)]]
       end
     end
   end

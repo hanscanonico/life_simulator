@@ -337,8 +337,8 @@ namespace :lab do
   end
 
   desc "Read the out-compute sweep as pre-registered: every child, every arm, H-endogenous, H-ratchet, H-driven, " \
-       "H-rise-unassisted and H-repertoire with their extinct-kept readings (FORMAT=csv for CSV); labelled interim " \
-       "until every child of every qualifying parent is terminal"
+       "H-rise-unassisted and H-repertoire with their extinct-kept and unpiloted readings (FORMAT=csv for CSV); " \
+       "labelled interim until every child of every qualifying parent is terminal"
   task out_compute_report: :environment do
     experiment = Experiment.find_by(slug: Lab.slug_for("out_compute"))
     raise "The out-compute sweep is not seeded." if experiment.nil?

@@ -789,7 +789,7 @@ RSpec.describe "Experiments", type: :request do
           experiment.runs.each { |run| out_compute_sample(run, fifth: 0) if run.samples.none? }
         end
 
-        it "prints the arms and the tests beside their extinct-kept readings" do
+        it "prints the arms and the tests beside their sensitivity readings" do
           get experiment_path(experiment)
 
           section = response.parsed_body.at_css("#out-compute-reading")
@@ -798,7 +798,8 @@ RSpec.describe "Experiments", type: :request do
                               %w[shadow 1 1 0 0 1 0 0 0 0 0], %w[none 1 1 0 0 1 0 0 0 0 0]])
           expect(section.text.squish).to include("The pre-registered reading final", "H-driven, out-compute against shadow",
                                                  "1 pair measured on both sides: 1 favour out-compute",
-                                                 "With the extinct pairs kept", "Per-parent agreement")
+                                                 "With the extinct pairs kept", "Without the piloted parents",
+                                                 "runs 4381 and 4428", "Per-parent agreement")
         end
       end
     end

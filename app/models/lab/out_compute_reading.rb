@@ -47,6 +47,12 @@ module Lab
     # comparable with the other arms'.
     NONE_BUNDLE = BUNDLE.merge("predation" => "off").freeze
 
+    # The reach-cap128 worlds the study's pilots started from (lab run ids), both among the
+    # parents: every test is also read without their pairs, a sensitivity reading that decides
+    # no outcome.
+    PILOT_PARENTS = [4381, 4428].freeze
+    UNPILOTED_SUFFIX = LogicReading::UNPILOTED_SUFFIX
+
     SEEDS = [6001].freeze
     EPOCHS = 100_000
     PRIORITY = 40

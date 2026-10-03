@@ -9,8 +9,8 @@ module Experiments
   # `logic_depth_max` and again on `logic_depth_classes`. Its arm is keyed on the predation
   # relation (Lab::OutComputeReading.treatment_key). The five tests are sign tests of the
   # out-compute arm against the none, equal and shadow children of the same parent, each read
-  # again with the extinct pairs kept. It is interim until the parent pool and every child
-  # have settled.
+  # again with the extinct pairs kept and without the piloted parents. It is interim until the
+  # parent pool and every child have settled.
   #
   # It reads stored samples, one child at a time, and changes nothing.
   class OutComputeReadingService
@@ -80,7 +80,7 @@ module Experiments
 
     def call
       Lab::OutComputeReading::Report.new(children: children, arms: arms, tests: tests,
-                                         kept_tests: tests(keep_extinct: true),
+                                         kept_tests: tests(keep_extinct: true), unpiloted_tests: tests(unpiloted: true),
                                          final: DescendantSweepSettledService.call(@experiment))
     end
 
@@ -95,14 +95,18 @@ module Experiments
 
     def arm(key) = arms.find { |candidate| candidate.treatment.key == key }
 
-    def tests(keep_extinct: false)
-      suffix = keep_extinct ? Lab::OutComputeReading::KEPT_SUFFIX : nil
+    # `keep_extinct` re-reads each test with the pairs of extinct children kept; `unpiloted`
+    # without the pairs of Lab::OutComputeReading::PILOT_PARENTS.
+    def tests(keep_extinct: false, unpiloted: false)
+      suffix = if keep_extinct then Lab::OutComputeReading::KEPT_SUFFIX
+               elsif unpiloted then Lab::OutComputeReading::UNPILOTED_SUFFIX
+               end
 
       Lab::OutComputeReading::HYPOTHESES.map do |hypothesis, (treated_key, control_key, reading)|
         treated = arm(treated_key)
         control = arm(control_key)
         twins = control.children.index_by { |child| [child.parent_id, child.seed] }
-        pairs = treated.children.map do |child|
+        pairs = treated.children.reject { |child| unpiloted && piloted?(child) }.map do |child|
           pair(reading, keep_extinct, child, twins[[child.parent_id, child.seed]])
         end
         Lab::LogicReading::Test.new(hypothesis: "#{hypothesis}#{suffix}", treatment: treated.treatment,
@@ -110,6 +114,8 @@ module Experiments
                                     comparison: Lab::DescendantReading::Comparison.new(pairs: pairs, kills: false))
       end
     end
+
+    def piloted?(child) = Lab::OutComputeReading::PILOT_PARENTS.include?(child.parent_id)
 
     def pair(reading, keep_extinct, treated, control)
       attributes = { keep_extinct: keep_extinct, parent_id: treated.parent_id, seed: treated.seed, treated: treated,

@@ -32,7 +32,8 @@
     child is extinct where its last-decile median share of replicators is below
     <%= percent_value Lab::OutComputeReading::EXTINCT_SHARE %>, and a pair with an extinct child is in
     no test. Each test is a one-sided sign test at p &lt; <%= Lab::OutComputeReading::SIGN_TEST_LEVEL %>,
-    re-read with the extinct pairs kept. Nothing is paid here, but the machine the tapes compute
+    re-read with the extinct pairs kept and without the parents the design study piloted (runs
+    <%= Lab::OutComputeReading::PILOT_PARENTS.to_sentence %>). Nothing is paid here, but the machine the tapes compute
     with is given, so rung 4 on Soup stays not shown whatever it reads.
   </p>
 
@@ -75,7 +76,7 @@
 
     <h3 class="mt-4">Hypotheses</h3>
     <ul>
-      <% reading.readings.each do |test, kept| %>
+      <% reading.readings.each do |test, kept, unpiloted| %>
         <% comparison = test.comparison %>
         <li class="mb-3">
           <strong><%= test.hypothesis %></strong>, <%= test.treatment.name %> against <%= test.control.name %>:
@@ -90,10 +91,12 @@
               <%= comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>:
               without their pairs the test falls to p ≥ <%= Lab::OutComputeReading::SIGN_TEST_LEVEL %>.
             <% end %>
-            With the extinct pairs kept:
-            <span class="badge <%= kept.badge_class %>"><%= kept.outcome_label %></span>,
-            <%= kept.comparison.favouring %> to <%= kept.comparison.against %><% if kept.comparison.p_value %>,
-            p = <%= p_value_text kept.comparison.p_value %><% end %>.
+            <% [["With the extinct pairs kept", kept], ["Without the piloted parents", unpiloted]].each do |label, sensitivity| %>
+              <%= label %>:
+              <span class="badge <%= sensitivity.badge_class %>"><%= sensitivity.outcome_label %></span>,
+              <%= sensitivity.comparison.favouring %> to <%= sensitivity.comparison.against %><% if sensitivity.comparison.p_value %>,
+              p = <%= p_value_text sensitivity.comparison.p_value %><% end %>.
+            <% end %>
           </p>
           <% if comparison.agreement.any? %>
             <details class="text-sm">

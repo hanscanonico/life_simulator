@@ -5037,7 +5037,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
       parents.
     - The 54 lowest ids run 4306–4430, each from its terminal world at epoch 20 000. They
       include the pilot's two start worlds, 4381 and 4428. Their children are not replays of
-      the pilot (another seed, the real engine); no test leaves them out.
+      the pilot (another seed, the real engine), so the tests keep them; each test is re-read
+      without them, as Logic and Meta-stack re-read theirs (below).
     - Fitness-free history: none of them was ever paid.
   - **The bundle**, merged over each parent's params, every value named:
     - the economy: `energy_payer: initiator`, `energy_influx` 1 024, `energy_stock_cap`
@@ -5124,10 +5125,17 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **not shown** otherwise;
   - **no measured pairs** where none is measured on both sides.
   A pair is the out-compute child and the control child of the same parent. Each test carries
-  the per-parent agreement and the leave-one-or-two-parents-out rule, and is re-read with the
-  extinct pairs kept (a sensitivity reading that decides nothing). With a control at no rise,
+  the per-parent agreement and the leave-one-or-two-parents-out rule, and two sensitivity
+  readings that decide no outcome: **extinct kept**, with the extinct pairs kept, and
+  **unpiloted**, without the pairs of the two parents the pilot started from, **4381 and
+  4428** (`Lab::OutComputeReading::PILOT_PARENTS`). With a control at no rise,
   a rise test needs 5 discordant pairs (p = 1/32), and 7 to survive leaving out any two
-  parents.
+  parents. **Power**, over 54 measured pairs against a control that never rises: a rise test
+  is shown with probability 0.13 at a late-rise rate of 0.05 per out-compute child, 0.64 at
+  0.1, 0.92 at 0.15 and 0.99 at 0.2. The pilot's one barely late rise in two worlds bounds
+  nothing about 54. A level test with 60% of pairs favouring out-compute and 20% the control
+  is shown with probability 0.95; the pilot's depth 5–6 against 0, in both worlds, predicts
+  more.
   - **H-endogenous** (out-compute against none): the last-decile median `logic_depth_max`, as a
     level. A pair is measured where both medians are read and neither child is extinct, and it
     favours the higher median. Pilot prediction: **shown**.
@@ -5144,14 +5152,25 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
 
   **Descriptive and offline** (tested nowhere).
   - **McShea's minimum.** The 10th percentile of per-cell max depth among the cells computing
-    anything, on the fifth-decile and the last stored worlds of every child. A cell's max
-    depth is the deepest class its metabolism tape is credited on all six of topless-rise's
-    fixed case sets, over 16 slots. A driven trend raises it; a passive one need not.
+    anything, on the fifth-decile and the last stored worlds of every child. A driven trend
+    raises it; a passive one need not. The method, as the pilot read it:
+    - **the worlds**: the last stored world at or before the fifth decile's end, and the last
+      stored world (the cadence below);
+    - **the cells**: every cell of the world, 16 384, each metabolism tape assayed once
+      under the child's own instruction set and NAND, over 16 slots, on topless-rise's six
+      fixed case sets;
+    - **computing**: a cell whose tape is credited at least one class on all six sets; its
+      **max depth** is the deepest class so credited;
+    - **the percentile**: the max depths of the computing cells sorted ascending, the value at
+      index ⌊(n − 1) × 0.1⌋, counting from 0 (the pilot's rule); unread where no cell
+      computes. The share of cells not computing prints beside it.
   - **H-code**, topless-rise's method: the load-bearing bytes of the dominant deepest solver,
     the fifth-decile world against the last, over 16 slots, on every out-compute child that
     rises late and on its twins, with the same labels.
   - **Last-decile medians** of `repertoire_mean`, `silent_share`, `predation_rate`,
-    `predation_relation_rate` and `replicator_share`, printed per child. The depths first
+    `predation_relation_rate` and `replicator_share`, printed per child. The engine records
+    the first four only where predation runs, so the none children print them blank; the
+    share of none's cells not computing is read offline, beside McShea's minimum. The depths first
     held in the second half print beside them, for the study's §5.4.
   - **A tool slice comes first.** `research/landscape` reads the topless assay over four
     slots (`topless::assay`) and prints no per-cell percentile. A slice reading

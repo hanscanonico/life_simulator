@@ -977,7 +977,8 @@ sample.
     subset_class`), **equal**, **shadow** and **none** (`predation: off`). Seed 6001,
     100 000 epochs past the parent, priority 40, 216 children. Read with topless-rise's
     machinery unchanged, on `logic_depth_max` and on `logic_depth_classes`, both over 16
-    slots. Five one-sided sign tests at p < 0.05, each re-read with the extinct pairs kept:
+    slots. Five one-sided sign tests at p < 0.05, each re-read with the extinct pairs kept
+    and without the two parents the pilot started from (4381 and 4428):
     H-endogenous (out-compute against none), H-ratchet (against equal) and H-driven (against
     shadow) on the last-decile median `logic_depth_max` as a level; H-rise-unassisted
     (against none) on the rise rule, the rung-4 question; H-repertoire (against none) on the
