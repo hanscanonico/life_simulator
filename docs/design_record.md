@@ -4281,6 +4281,110 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     and 10 000 epochs) without reaching the top, 10; on the four-input ladder the same world
     re-climbed 4 → 8 → 9 and held 9 from 10 000 to 20 000 epochs. Depth jumped 5 → 9 and
     plateaued at 9 on both ladders. Pilot numbers, not findings.
+
+- 2026-10-02 — **The Meta-stack finding states its claim: with a stack NAND on a metabolism
+  tape, paid parts assemble the logic rungs that need an input twice, in a sixth of the
+  worlds.** Sweep 17 (`meta-stack`, entry of 2026-10-02 above, "Meta-stack: does a soup
+  assemble the deep rungs from paid parts on a metabolism tape read with a stack NAND?") is
+  final: every child of its 18 parents finished, here and in the Logic sweep whose children
+  are its twins. It is read here as registered, on the lab (`lab:meta_stack_report`,
+  2026-10-02 18:25Z, "meta-stack reading, final").
+
+  | arm | children | finished | settled relapses | extinct | capability measured | reached a deep rung | stepping stone | complexity survivors | rises |
+  |---|---|---|---|---|---|---|---|---|---|
+  | meta-stack | 54 | 54 | 0 | 0 | 54 | 9 | 9 | 54 | 3 |
+  | meta-stack-deep-only | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 2 |
+  | meta-inplace | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 3 |
+  | logic-none | 54 | 54 | 0 | 0 | 54 | 0 | 0 | 54 | 1 |
+  | logic-full | 54 | 54 | 6 | 1 | 53 | 0 | 0 | 48 | 2 |
+
+  | hypothesis | pairs | favour treated | favour control | ties | p | outcome | extinct kept | without the piloted parents |
+  |---|---|---|---|---|---|---|---|---|
+  | H-deep-Ms (meta-stack against logic-none) | 54 | 9 | 0 | 45 | 0.00195 | shown | the same | 8 to 0, 34 ties, p = 0.00391, shown, carried by 967 + 2771 |
+  | H-stones-Ms (against meta-stack-deep-only) | 54 | 9 | 0 | 45 | 0.00195 | shown | the same | 8 to 0, 34 ties, p = 0.00391, shown, carried by 967 + 2771 |
+  | H-stack (against meta-inplace) | 54 | 9 | 0 | 45 | 0.00195 | shown | the same | 8 to 0, 34 ties, p = 0.00391, shown, carried by 967 + 2771 |
+  | H-deep-M (meta-inplace against logic-none) | 54 | 0 | 0 | 54 | — | refuted | the same | 42 ties, refuted |
+  | H-decouple (meta-inplace against logic-full) | 53 | 0 | 0 | 53 | — | refuted | 54 ties, refuted | 41 ties, refuted |
+  | H-capability-M (meta-stack against logic-none) | 54 | 54 | 0 | 0 | 5.55e-17 | shown | the same | 42 to 0, p = 2.27e-13, shown |
+
+  **Per parent**: the 9 deep children are 4845, 4862, 4863, 4871, 4890, 4952, 4961, 4979 and
+  4980, from 7 parents: 967 and 2771 gave two each, and 944, 991, 1029, 2654 and 2676 one.
+  H-capability-M goes 3 to 0 at every parent. **The leave-out**: the report's `carried_by` is
+  "—" for every shown test, so no one or two of the 18 parents carry one; leaving out 967 and
+  2771 together leaves 5 to 0, p = 0.03125. **Without the piloted parents** (944's child 4845
+  goes), the three deep tests read 8 to 0 and that re-reading is carried by 967 + 2771:
+  without both, 4 to 0, p = 0.0625. By the entry, the re-readings decide no outcome; the page
+  states this one plainly.
+
+  **Descriptive**, from the report's per-child columns: the meta-stack arm reached ECHO, NOT,
+  NAND, AND, ORN, OR, ANDN and NOR in 54, 54, 43, 17, 54, 51, 49 and 51 children, XOR in 7 and
+  EQU in 9; 4979 and 4980 hold EQU alone. Meta-inplace reached every read-once rung but AND
+  and no deep one; the deep-only arm reached ECHO alone. The deep children's last-decile
+  median XOR and EQU shares, read from the samples, are 0.46 to 0.57 for the six at
+  `max_tape_len` 128; at 256, 4890 reads 0.28 and 0.41, 4980 EQU 0.47 and 4979 EQU 0.15.
+
+  **The locked offline readings** ("Reported with each deep child"), made on 2026-10-02 with
+  `research/landscape/` at `3cd9abb` on the stored worlds, read through SELECTs. Their summary
+  is kept in `docs/readings/meta-stack/` (`summary.txt`, and `summary.csv`, one row per
+  planting), with the scripts as run and the descriptive helper's source in `method/`; the
+  14 MB of worlds are not.
+  - **Substitution distance**: 9 of 9 read d ≥ 2 (17 to 31), so "multi-step" by the locked
+    rule, which is **uninformative here**. Each world holds 9 634 to 14 375 distinct
+    metabolism tapes and its dominant tape sits on 9 to 21 cells; drift puts it a median 22
+    to 30 of 32 bytes from a cell of its own world, so the d ≥ 2 test can only fail where the
+    dominant tape is the deep solver itself. Descriptive, not locked, every mutant within 3
+    substitutions of the dominant tape: no credited path in any child; the nearest deep
+    mutant at 2 (4845, 4871), at 3 (4863, 4952, 4980), none within 3 (4862, 4961); in 4890
+    and 4979 the dominant tape was already an EQU solver at the pre-deep line.
+  - **Heritability**: 0 heritable, 8 unresolved, 1 not heritable (4979). In 14 of the 15
+    locked plantings every seed's unplanted control re-grew the rung to a tenth by e + 500
+    (5 889 to 10 043 cells), level with the planted world; in 4979 neither reached a tenth.
+    In 10 of 16 plantings (a labelled extension for 4890's XOR included) the filler is one
+    substitution from the rung. Read plainly: in these worlds the deep rung is a property of
+    the population, re-derived within hundreds of epochs, often from abundant lower-rung tapes
+    one substitution below it, not a single lineage's invention — the study's §7.6, "The soup
+    then evolves loop-shaped ORN/ANDN/OR solvers that sit one substitution below XOR/EQU, and
+    takes that step."
+  - **Circuits**: every deep solver is a loop that stacks NANDs leftward and reads earlier
+    laps' results, credited on 18 of 18 traced cases, and each fans out an input. XOR takes
+    4 to 6 NANDs, but 12 in 4863, a chain ending in a double negation; EQU 5 to 12.
+
+  **The claim**, finding `paid-parts-assemble-deep-logic-on-a-stack-nand`, "With a stack
+  NAND on a metabolism tape, paid parts assemble the logic rungs that need an input twice, in
+  a sixth of the worlds": H-deep-Ms and H-stones-Ms shown, which the entry reads as "assembles
+  XOR and EQU from paid parts", Lenski's mechanism in a soup under the four imports named.
+  H-stack shown and H-deep-M refuted make the semantics decide it: the binding constraint
+  under the in-place NAND was fan-out in a two-head machine whose NAND writes in place, now
+  as a finding rather than a pilot. H-decouple ties throughout because neither of its arms
+  built a deep rung: under the in-place NAND, moving the computing off the copier was not
+  enough. No crossing is called multi-step on the distance.
+
+  **Registry status `published`.** The registry reads `published` as "every run finished and
+  the claim stands on them" and `partial` as "a reading is stated, but it cannot yet be read
+  as final". The reading is final, and the claim is the pre-registered one, made on the two
+  tests that ground it, both shown on the primary reading with no one or two parents carrying
+  either. `partial` was used where the supporting reading itself stood on too few runs to be
+  final (`complexity-under-contest`, 2026-09-24), which is not the case here. The two
+  weaknesses are stated, not hidden: the unpiloted re-reading is carried by two parents, and
+  the entry locks that re-readings decide no outcome; heritability is unresolved, which
+  bounds what the claim says (a population property, not a lineage's invention) and is not a
+  test of it. The title keeps the claim's size, a sixth of the worlds. It carries
+  `imports_objective: true`, and the page names the four imports.
+
+  **What it does not say.** Not open-endedness: the ladder tops out at EQU. Rung 4 on Soup
+  stays "not shown". The depth is what the loop's later laps compute (the topless study,
+  `docs/studies/topless.md` §2.3–2.4), not a count of accumulated steps. The next question,
+  whether depth keeps rising on a ladder without a near top, is the topless study's; its
+  engine slice is in review, and it needs a pre-registration of its own.
+
+  **The page** renders the six tests, their parent leanings, both re-readings with the
+  parents that carry them, the leave-out, the deep children and the arms' losses at render
+  time, through `Findings::MetaStack` over `Experiments::MetaStackReadingService`'s report,
+  the reading the sweep page draws and caches, and includes that page's section. The offline
+  readings are hand-typed from `docs/readings/meta-stack/summary.csv`, which it links, and
+  checked against it. DESIGN §1.3 item 17 gains a result line. Nothing about the engine, the
+  rules or any observable moves.
+
 - 2026-10-02 — **The topless ladder, engine slice: `tasks = logic3 | logic4`, depth-scaled
   pay and `task_depth_cap`, and the depth readings.** Slices 1–3 of the topless study's
   §1.5 (`docs/studies/topless.md`), built together because a sweep needs all three. No sweep
@@ -4390,6 +4494,7 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     uncapped run it was. `runner schema` exports the ladder's units, floor and draw bound
     under `tasks.topless`, with the reads per row and each ladder's case count.
 
+<<<<<<< HEAD
 - 2026-10-02 — **`research/landscape` reads the topless ladder: depth census and load-bearing
   bytes (tooling only).** The tool slice the topless-rise entry (#297) demands before its
   H-rise-code is read. `census` on a `logic3` or `logic4` run reads the topless assay under the
@@ -4405,3 +4510,242 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   every byte and none of its padding, on both ladders; the engine's compiled minimal-NAND
   witnesses do too but for one spare head move in each four-input compile. Nothing in the
   engine, the lab or the sweep changes.
+=======
+- 2026-10-02 — **Topless rise: does the deepest rung held keep rising when depth is paid?
+  The `topless_rise` sweep, pre-registered.** This is §1.3 item 18 and it adds a paragraph to
+  DESIGN §1.4. The experiment is `topless-rise` (sweep key `topless_rise`), and its numbers
+  live in `Lab::ToplessRiseReading`. It is the topless study's question 3
+  (`docs/studies/topless.md` §3), turned into an entry with the adjustments below, on the
+  engine slice above (`tasks = logic4`, `task_depth_cap`, `logic_depth_max`). Nothing is
+  relocked.
+
+  **What was seen.**
+  - **Meta-stack, final** (`lab:meta_stack_report`): **H-deep-Ms shown, 9 pairs to 0**, on 9
+    deep children over 7 parents: runs **4845, 4862, 4863, 4871, 4890, 4952, 4961, 4979 and
+    4980**. Each holds XOR, EQU or both by a tenth of the world, every one through a loop that
+    stacks NANDs leftward and reads an earlier lap's result.
+  - **Meta-stack's locked offline readings** (2026-10-02, `research/landscape` at `3cd9abb`;
+    `docs/readings/meta-stack/`):
+    multi-step crossings by the locked rule d ≥ 2 in **9 of 9** (d = 17–31); heritability by
+    planting **0 heritable, 8 unresolved, 1 not heritable** (4979); no credited order in any
+    child, a neutral-or-better one in 3. Two of those rules taught what this entry must not
+    repeat:
+    - **a distance from the dominant tape is uninformative here.** Each world holds 9 634 to
+      14 375 distinct metabolism tapes of 16 384, its dominant tape sits on 9 to 21 cells and
+      is a median 22–30 bytes from a cell of its own world, and at `meta_rate` 1/256 any two
+      stored worlds 1 000 epochs apart differ by far more than 2 substitutions. The d ≥ 2 cut
+      could only come out "no" where the dominant tape was the deep solver itself;
+    - **a planting test is unresolved when the control re-derives the rung inside the
+      window.** In every unresolved planting each seed's control was back at a tenth by
+      e + 500, level with the planted world: the filler sat one substitution below the rung
+      in 10 of 16 plantings.
+  - **The topless study's pilots, labelled pilot** (one start world family, a throwaway engine
+    copy; study §4): from Meta-stack child 4845's world at epoch 31 900, **depth jumped 5 → 9
+    by co-opting bytes into a loop** (+4 NANDs in one substitution, load-bearing bytes 14 → 20)
+    and **plateaued at 9 on both ladders**: no 10 on three inputs in 36 000 epochs, and on four
+    inputs the same world re-climbed 4 → 8 → 9 and held 9 from 10 000 to 20 000 epochs.
+    Switching to ×√2 pay at 1 024 cut every deep start's deep share within 500 epochs before
+    the re-climb. Pilot numbers, not findings.
+  - **The engine slice's false-credit measurements** (the entry above): on the study's draws a
+    masked NAND passed as a deep function — `[<~!]` credited depth ≥ 5 on 26.4% of four-input
+    draws and ≥ 7 on 15.6%, `~<~~!` ≥ 9 on 4.1%, and 383 of 45 982 paid four-input credits in
+    the `with_logic_solvers` world were functions the tape does not compute. With every row
+    read at three bit positions the worst is **0.04% at ≥ 5 and nothing at ≥ 7** on four
+    inputs, and none of the paid credits is false.
+
+  **The question.** On the nested four-input ladder, does the deepest rung held keep rising in
+  the second half of a long run when depth is paid, and not otherwise? "Keeps rising" is the
+  study's §2.4: a late, persistent increase of `logic_depth_max`, on a ladder whose top is not
+  within one reorganisation of the start, read beside load-bearing bytes so a rise by
+  co-option is told apart from one by new code.
+
+  **The sweep.**
+  - **Parents.** H-deep-Ms is shown on 9 children over 7 parents, fewer than about 10, so the
+    study's rule applies: **all 54 meta-stack-arm children** of the meta-stack sweep (the
+    stack NAND paid from ECHO up, no `task_floor` or the default one), each from its last
+    stored world at epoch 60 000 (SELECT, 2026-10-02: all 54 finished at 60 000; a terminal
+    world is the one snapshot pruning always keeps). The rule is data (`Lab::ToplessRiseReading::PARENTS`): the
+    children of `meta-stack` in that arm, finished, that kept a world at their last epoch,
+    with no reading of that world required. `Experiments::DescendantParentsService` reads a
+    rule with `"descendants" => true` over the source sweep's descendant runs, and a rule with
+    no instrument as qualifying on the terminal world alone; the from-emerged rule and every
+    sweep built on it read as before. No id is hard-coded in the rule. **The 9 deep children
+    are a declared subgroup** (`DEEP_PARENTS`).
+  - **Arms**, merged over each parent's params, so each keeps its 32-byte metabolism tape and
+    the stack NAND:
+    - **rise**: `tasks: logic4, task_reward: 512`;
+    - **capped**: the same with `task_depth_cap: 5`, every rung deeper than 5 paid as a
+      depth-5 rung: is the rise paid for, or does depth drift up by hitchhiking?
+    - **none**: `tasks: logic4, task_reward: 0`, the drift baseline. A reward of 0 runs no
+      assay, and the depth readings still read every sample (the slice pins this).
+  - **The reward, 512**, redone with the engine's `DEPTH_UNITS` (1, 1, 2, 3, 4, 6, 8, 11, 16,
+    23, 32, 45, 64, 91 for d = 0–13). Under the initiator payer a cell's income is
+    1 024 + reward × units / 8, worth nothing past 8 192, so a cell saturates at
+    57 344 / reward units: 56 at 1 024, 112 at 512. Beside ECHO, NOT and XOR in the other
+    slots (6 units), the gain of one more NAND in the deepest slot is:
+
+    | reward | saturates at | 5→6 | 7→8 | 9→10 | 10→11 | 11→12 | 12→13 |
+    |---|---|---|---|---|---|---|---|
+    | 1 024 | 56 units | 0.10 | 0.20 | 0.24 | 0.28 | 0.09 | **0** |
+    | 768 | 75 units | 0.09 | 0.18 | 0.23 | 0.27 | 0.31 | 0.06 |
+    | **512** | **112 units** | **0.07** | **0.15** | **0.20** | **0.24** | **0.28** | **0.31** |
+    | 256 | 224 units | 0.05 | 0.10 | 0.15 | 0.19 | 0.23 | 0.27 |
+
+    At 1 024 a lone depth-12 rung saturates the cell, so the gradient stops where the
+    four-input ladder starts to be topless. At 512 no single rung up to the 13 floor
+    saturates it (13 beside the three: 7 232 of 8 192), every NAND from 5 up pays 7–31% more
+    income, and only two rungs of 12 and 13 together saturate. The price: a depth-9 cell
+    earns about 2.5 times a shallow ECHO + NOT cell, against 3.7 at 1 024, so the switch from
+    Meta-stack's pay (about 5 : 1) dilutes deep shares more than the pilots did. 512 is
+    unpiloted.
+  - **Seed 4001**, one per parent. A descendant's identity is (canonical params, seed, parent
+    run, parent epoch); no stored run descends from a meta-stack child and none carries seed
+    4001 (SELECT, 2026-10-02), and no other sweep names it. It is not 2001–2003, so it replays
+    none of the meta-stack streams from a new start. **100 000 epochs** past the parent (each
+    child ends at epoch 160 000), **priority 40**. **54 × 3 = 162 children.**
+  - **Cost.** The meta-stack sweep's finished children ran at 68.2 s per 1 000 epochs (cap
+    128, 99 runs) and 64.9 (cap 256, 63 runs) on the mini-pc (SELECT, 2026-10-02). `logic4`
+    adds about 11.5 ms an assay epoch over `logic` (22.2 against 10.4–11.0 ms), every 8
+    epochs, so about 1.5 s per 1 000 epochs: rise and capped about **70**. The none arm runs
+    no assay: Logic's none rate, 42, plus 10–17% for the tape, about **47**. 54 × 100 × (70 +
+    70 + 47) s ≈ 1.0 M run-seconds ≈ **23 h of the 12 slots**; without the capped arm ≈ 14 h.
+    Interim until every child's `compute_seconds` replace it.
+  - **Validation.** Each bundle, merged over a cap-128 and a cap-256 meta-stack child's params
+    (4845 and 4890, read with SELECTs), was accepted by `runner run` from this branch; and
+    each was descended from that child's own stored world at epoch 60 000 by
+    `World::descend` and run 1 000 epochs, seed 4001, reading `logic_depth_max` at every
+    sample. *Pilot-level, one seed, labelled*: both worlds read depth 5 under four inputs at
+    the switch and lost it within 200 epochs in every arm (the reward switch of the study's
+    §1.3); 4845's rise child was back at 7 by 1 000 and its capped child at 0; the none
+    children fell to ECHO or nothing held. `replicator_share` fell from 0.85 and 0.78 to
+    0.38–0.56 by 1 000 epochs in all three arms, none included. On the Mac the rise and
+    capped arms stepped 1 000 epochs in 12.8–16.1 s and the none arm in 8.7–12.1 s, a ratio
+    of 1.3–1.5 against the 1.5 the cost above assumes.
+  - The builder is idempotent, adds nothing to the meta-stack sweep or any earlier one, and
+    adds a parent's three children once it qualifies.
+
+  **The readings, per child**, over its own samples. Logic's: the **settling window**
+  (epochs above `parent_epoch` + 1 000), **extinct** where the last-decile median
+  `replicator_share` (the detector on the replicating tape) is below **0.1**, a **settled
+  relapse** where it sits below 0.1 for 3 consecutive settled samples, **lower-middle
+  medians**, and a decile unread with fewer than **10** numbers in it.
+  - **Deciles** are cut by index over all `n` settled samples, unfiltered: decile k is the
+    samples from ⌊(k − 1)·n/10⌋ to before ⌊k·n/10⌋, so the tenth is Logic's last ⌈n/10⌉ and
+    the fifth ends the first half. Inside a decile the samples carrying `logic_depth_max` as a
+    number count.
+  - **−1**, nothing held at a tenth, **enters a median and the bar below as the number −1**,
+    one below ECHO's 0 and below every depth. A decile of −1 and 0 in equal numbers reads −1
+    (the lower middle).
+  - **The bar** is the deepest the child's lineage reached before the second half: the
+    largest of (a) its **fifth-decile median**, (b) its **depth at descent**, the
+    `logic_depth_max` of its first own sample, the parent's world read on the four-input
+    ladder one sample interval past the switch, and (c) **every depth it held under the
+    persistence rule** (below) in its own samples up to the fifth decile's end, settling
+    window included, the run of 5 completed by then.
+  - **The rise rule.** A child **rises late** where its last-decile median `logic_depth_max`
+    is at least **the bar + 1**. It is **measured** where both medians are read and it is not
+    extinct. Why a bar and not the fifth-decile median alone, as study §3 drafted: the pilot
+    validation above saw every arm lose its parent's depth 5 within 200 epochs of the switch
+    and re-climb, and study §2.4 reads "keeps rising" as a depth the lineage had not reached
+    ("not passing 5, or reaching any single depth"). Fed by the fifth decile alone, the rule
+    would count a slow re-climb to the parent's own depth, a dip at the fifth decile and back,
+    or a lineage that lost ECHO and regained it (−1 → 0) as rising. Against the bar, only a
+    depth deeper than any the lineage held, its parent's included, counts. No fixed depth
+    (6, past EQU) is required, for the same §2.4 reason: no single depth is evidence of a
+    sustained rise. A child that held nothing at descent and nothing since still rises at
+    ECHO; a parent holding any rung at its last epoch sets its children's bar at ECHO or
+    above, so that can only be a child whose parent's world was read holding nothing.
+  - **Ceilinged.** The 604 open four-input functions are credited at 13, a floor, so 13 is
+    both the floor value and the deepest depth any reading can show; the table's true maximum
+    is at least 13 and unknown. A child whose **bar is already 13** is ceilinged, read as
+    **no rise**, and printed apart: by the rule it could not rise. Any child reaching 13 in
+    any sample is named (`reached_floor`) and its depth reported as "13 or more". This
+    replaces the earlier entries' demand that the open functions be closed before the sweep:
+    a child that would need them is read apart rather than wrongly.
+  - **First epochs** under the **persistence rule, k = 5**: depth d is first held at the first
+    of 5 consecutive own samples at d or deeper. Descriptive: the deepest depth so held and
+    when, and the depths first held in the second half of the settled samples (from the
+    sixth decile), the "repeated, late" steps of §2.4.
+
+  **The tests.** One-sided sign tests over the discordant pairs at p < **0.05**, Logic's
+  machinery and outcome rules: **shown** at p < 0.05; **refuted** where the pairs favouring
+  the control are at least as many as those favouring the rise arm, ties included; **not
+  shown** otherwise; **no measured pairs** where none is measured on both sides. A pair is the
+  rise child and the control child of the same parent; it favours the side that rises late
+  alone. Each test carries the **per-parent agreement** (one pair a parent) and the
+  **leave-one-or-two-parents-out** rule. With the control at no rise each needs **5**
+  discordant pairs (p = 1/32), and **7** to survive leaving out any two parents (5 to 0 left,
+  p = 1/32). The bar makes a rise rarer in every arm alike: the none and capped children are
+  read under it too, and a drift child that never re-reaches its parent's depth reads no
+  rise, so the tests stay one-sided against a control near no rise. With 54 pairs the tests
+  can be shown if about one rise child in eight clears its bar and no control does.
+  - **H-rise** (rise against none): the rise rule.
+  - **H-rise-paid** (rise against capped): the rise rule.
+  - **The deep subgroup**, a declared secondary: both tests re-read on the pairs of the 9 deep
+    parents alone. It decides no outcome.
+  - **Extinct kept**, a sensitivity reading: both tests with the pairs of extinct children
+    kept. It decides no outcome.
+  - **H-rise-code (descriptive, tested nowhere).** The load-bearing bytes of the dominant
+    deepest solver, the fifth-decile world against the last, on every rise child that rises late and on
+    its twins, measured offline on the stored worlds. The method, locked now:
+    - **six fixed four-input case sets**, `topless::Cases::draw(Inputs::Four, ·)` six times in
+      turn off `rng::seeded(0xdee9, 4, 0)`, frozen as constants; a tape is credited a class
+      "on all 6 sets" where the topless assay, under the child's own instruction set and
+      NAND, credits it on each;
+    - **the world's deepest solid rung**: the deepest class credited on all 6 sets to at least
+      a tenth of the cells (1 639 of 16 384); **the dominant deepest solver**: the commonest
+      metabolism tape so credited, ties broken by byte order;
+    - **load-bearing bytes** (study §2.3): the positions at which at least 7 of the 13 other
+      symbols of the 14-symbol alphabet leave the tape credited, on all 6 sets, no class as
+      deep;
+    - **the worlds**: the earliest stored world at or past the first settled sample, the
+      last stored world at or before the fifth decile's end, and the last stored world
+      (pruning keeps one every 1 000 epochs, so all three exist);
+    - printed: the three counts and depths. New code where the depth rose from the
+      fifth-decile world to the last and the count rose by 2 or more; co-option where the
+      depth rose and the count did not. The fifth-decile world, not the first, is the base, so
+      the comparison spans the half the rise rule reads and not the re-climb after the
+      switch. The other cases are labelled too, descriptively: **neither** where the depth
+      rose and the count rose by exactly 1, **no rise in depth** where it did not rise, and
+      **unread** where the fifth-decile or the last world holds no class by a tenth, so has
+      no dominant deepest solver to count.
+    - **A tool slice comes first.** `research/landscape` reads the two-input assay only and
+      has no load-bearing count; a slice adding the topless assay and that count lands before
+      the sweep is read.
+  - **No distance-from-dominant rule and no planting-heritability test**, because of
+    Meta-stack's offline lessons above: in worlds of 10–14 k distinct tapes the distance from
+    the dominant tape measures drift, not a crossing, and a planting whose control re-derives
+    the rung within the window cannot resolve. Heritability is read instead as persistence:
+    a depth held 5 samples running and carried to the last decile.
+
+  **What each outcome means** (study §3).
+  - **H-rise shown, and H-rise-paid shown.** On a paid ladder with no near top, the deepest
+    feature keeps getting deeper late in long runs, and only when depth pays. That is the
+    rung-4 claim on this substrate, "complexity keeps rising", under the imports below. It is
+    **co-option** where load-bearing bytes stay flat, and **new code** where they rise.
+  - **H-rise shown, H-rise-paid refuted.** Depth rises without being paid for: it is
+    hitchhiking on the paid lower rungs, not selection for depth.
+  - **H-rise refuted or not shown.** The climb stops: the soup takes the jumps a
+    reorganisation offers early and then plateaus, as the pilots did at 9. That is the
+    open-endedness answer here, a negative one: paid parts buy a deeper feature, not a climb.
+  - **Most children ceilinged** (more than half of the rise arm's children with both deciles
+    read have a bar of 13). The ladder had a near top after all, and the question needs more
+    inputs; the tests are printed but not read as an answer.
+
+  **What is not claimed.** The substrate imports **an objective, a primitive, a hereditary
+  channel and the primitive's semantics** (Meta-stack's four), **plus an imported ladder of
+  growing input arity**. Whatever rises says nothing about fitness-free emergence, and **rung
+  4 on Soup stays "not shown"** whatever it reads. It is one substrate, one budget, one seed a
+  parent, and its parents are three correlated children of 18 worlds. Every constant above
+  lives in `Lab::ToplessRiseReading`.
+
+  **Seeding rule.** `lab:sweep[topless_rise]` is run **only after** the topless ladder's
+  engine slice and this entry are deployed (one runner restart), **and after reach-cap128 has
+  finished and its post-run readings pass has completed**: the restart would interrupt that
+  pass. It should create 162 runs.
+
+  **When it is read.** `lab:topless_rise_report` (text, or CSV with `FORMAT=csv`) and the
+  sweep's page read it, labelled **interim** until the parent pool is terminal and every
+  child of every qualifying parent has finished (`Experiments::DescendantSweepSettledService`),
+  then **final**.
+>>>>>>> origin/main

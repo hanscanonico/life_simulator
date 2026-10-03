@@ -4,7 +4,7 @@ namespace :lab do
   desc "Build a sweep experiment from DESIGN.md 1.3 " \
        "(mutation_rate, world_size, radius, max_steps, ops, energy_per_epoch, " \
        "environmental_structure, max_tape_len, host_parasite, asymmetric_execution, from_emerged, metabolism, logic, " \
-       "meta_stack)"
+       "meta_stack, topless_rise)"
   task :sweep, [:sweep] => :environment do |_task, args|
     definition = Lab::SWEEPS[args[:sweep]]
     raise "Unknown sweep #{args[:sweep].inspect}. Known sweeps: #{Lab::SWEEPS.keys.join(', ')}" if definition.nil?
@@ -320,6 +320,18 @@ namespace :lab do
     raise "The meta-stack sweep is not seeded." if experiment.nil?
 
     report = Experiments::MetaStackReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
+  desc "Read the topless-rise sweep as pre-registered: every child, every arm, H-rise and H-rise-paid with " \
+       "their extinct-kept and deep-subgroup readings, and the ceilinged children apart (FORMAT=csv for CSV); " \
+       "labelled interim until every child of every qualifying parent is terminal"
+  task topless_rise_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("topless_rise"))
+    raise "The topless-rise sweep is not seeded." if experiment.nil?
+
+    report = Experiments::ToplessRiseReadingService.call(experiment: experiment)
 
     print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end

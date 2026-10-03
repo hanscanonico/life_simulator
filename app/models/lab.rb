@@ -470,6 +470,28 @@ module Lab
       epochs: 40_000,
       priority: 40
     },
+    "topless_rise" => {
+      name: "Topless rise",
+      description: "Does the deepest logic feature a soup holds keep getting deeper when depth is " \
+                   "paid? Each run continues a Meta-stack world on a ladder of every function of four " \
+                   "inputs, each paid by its minimal NAND count, for 100 000 epochs. One arm pays " \
+                   "depth, one pays nothing deeper than five NANDs, and one pays nothing. A labelled " \
+                   "substrate: it imports an objective, a primitive, a hereditary channel, the " \
+                   "primitive's semantics and a ladder.",
+      # §1.3 item 18 and §1.4, pre-registered on 2026-10-02, "Topless rise: does the deepest
+      # rung held keep rising when depth is paid?", whose numbers live in
+      # `Lab::ToplessRiseReading`. Seeded only once the topless ladder's runner is deployed and
+      # reach-cap128's post-run readings pass has completed. The parents are runs of the
+      # meta-stack sweep, so their own seeds are the meta-stack children's.
+      parents: ToplessRiseReading::PARENTS,
+      param_grid: {
+        "treatment" => [ToplessRiseReading::RISE_BUNDLE, ToplessRiseReading::CAPPED_BUNDLE,
+                        ToplessRiseReading::NONE_BUNDLE]
+      },
+      seeds: ToplessRiseReading::SEEDS,
+      epochs: ToplessRiseReading::EPOCHS,
+      priority: ToplessRiseReading::PRIORITY
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

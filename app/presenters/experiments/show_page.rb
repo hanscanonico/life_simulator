@@ -149,9 +149,10 @@ module Experiments
     # The from-emerged sweep's pre-registered reading, on a sweep with a parent rule only.
     # Whether it is final also turns on the parent pool, whose runs belong to another
     # experiment and so are not in this key: the settled service keys it on that pool. The
-    # metabolism, logic and meta-stack sweeps have a parent rule but their own readings
-    # (`lab:metabolism_report`, `lab:logic_report`, `lab:meta_stack_report`): this one would
-    # pair their arms against a continuation they do not have.
+    # metabolism, logic, meta-stack and topless-rise sweeps have a parent rule but their own
+    # readings (`lab:metabolism_report`, `lab:logic_report`, `lab:meta_stack_report`,
+    # `lab:topless_rise_report`): this one would pair their arms against a continuation they
+    # do not have.
     def descendant_reading
       return nil if experiment.parents.blank? || own_descendant_reading?
 
@@ -216,6 +217,16 @@ module Experiments
                          .with(final: DescendantSweepSettledService.call(experiment))
     end
 
+    # The topless-rise sweep's pre-registered reading, on that sweep only, cached and
+    # finalised as the logic reading is.
+    def topless_rise_reading
+      return nil unless ToplessRiseReadingService.applies_to?(experiment)
+
+      @topless_rise_reading ||= cached("topless_rise_reading") do
+        ToplessRiseReadingService.call(experiment: experiment)
+      end.with(final: DescendantSweepSettledService.call(experiment))
+    end
+
     # A sweep holding a run paid for its tasks imports an objective (DESIGN.md §1.4), and its
     # page says so beside its substrate.
     def imports_objective?
@@ -227,7 +238,7 @@ module Experiments
     private
 
     def own_descendant_reading?
-      [MetabolismReadingService, LogicReadingService, MetaStackReadingService]
+      [MetabolismReadingService, LogicReadingService, MetaStackReadingService, ToplessRiseReadingService]
         .any? { |reading| reading.applies_to?(experiment) }
     end
 
