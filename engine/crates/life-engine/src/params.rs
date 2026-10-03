@@ -12,7 +12,8 @@ use crate::replicator::{
     SELF_REP_SAMPLE_CELLS, SELF_REP_TRIALS,
 };
 use crate::task::{
-    TASKS, TASK_CASES, TASK_CASE_DRAWS, TASK_INPUT_RANGE, TASK_MAX_OUTPUTS, TASK_STEPS,
+    TASKS, TASK_CASES, TASK_CASE_DRAWS, TASK_INPUT_RANGE, TASK_MAX_OUTPUTS, TASK_MAX_OUTPUTS_LIMIT,
+    TASK_STEPS,
 };
 use crate::topless::{Inputs, DEPTH_CASE_DRAWS, DEPTH_FLOOR, DEPTH_UNITS, READS_PER_ROW};
 use serde::{Deserialize, Serialize};
@@ -151,6 +152,23 @@ impl LogicNand {
     }
 }
 
+/// Which relation between two cells' computations lets one take energy from the other
+/// (`docs/DESIGN.md` §1.1, "Predation"; the 2026-10-03 design-record entry). `Off` is the
+/// default and the soup every earlier run lived in. Under the other three a cell that acts
+/// picks a partner by the soup's own rule and, where the relation holds, takes up to
+/// `predation_transfer` of its stock: `SubsetClass` when every input-permutation class the
+/// partner's metabolism tape computes is one the actor's computes too, `Equal` when the two
+/// sets are the same, and `Shadow` on a coin at `predation_shadow_p` that reads no
+/// computation at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Predation {
+    Off,
+    SubsetClass,
+    Equal,
+    Shadow,
+}
+
 /// Every name `task_floor` may take, the arithmetic ladder's rungs then the logic ladder's
 /// not already named; which of them a run may choose is set by its `tasks`. Both ladders
 /// begin at ECHO, the default.
@@ -255,6 +273,23 @@ pub struct Params {
     /// is paid as a rung of this depth. `0` (the default) caps nothing. Refused away from
     /// `tasks = logic3` and `logic4`.
     pub task_depth_cap: u32,
+    /// How many output slots the topless assay reads: `TASK_MAX_OUTPUTS` (the default, the
+    /// engine's rule) up to `TASK_MAX_OUTPUTS_LIMIT`. Refused above the default anywhere
+    /// but an unpaid topless ladder, so no paid run reads a wider assay.
+    pub task_max_outputs: u32,
+    /// The interaction rule that reads what tapes compute: none (`off`, the default), or
+    /// one of the relations of `Predation`.
+    pub predation: Predation,
+    /// The most stock one predation moves out of the partner; `0` (the default) moves
+    /// nothing, and the pass does not run.
+    pub predation_transfer: u32,
+    /// The share of what a predation moves that is destroyed in transit, as `steal_loss`.
+    pub predation_loss: f64,
+    /// The predation pass's period: each cell acts with probability 1 in this every epoch,
+    /// and the cases a cell's computation is read on are redrawn every this many epochs.
+    pub predation_every: u32,
+    /// The coin `predation = shadow` decides an encounter by.
+    pub predation_shadow_p: f64,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -314,6 +349,12 @@ impl Default for Params {
             task_floor: TASK_FLOORS[0].to_string(),
             logic_nand: LogicNand::InPlace,
             task_depth_cap: 0,
+            task_max_outputs: TASK_MAX_OUTPUTS as u32,
+            predation: Predation::Off,
+            predation_transfer: 0,
+            predation_loss: 0.5,
+            predation_every: 8,
+            predation_shadow_p: 0.3,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
@@ -556,6 +597,70 @@ const FIELDS: &[Field] = &[
               Only tasks logic3 and logic4 accept anything but 0.",
     },
     Field {
+        name: "task_max_outputs",
+        kind: Kind::Integer {
+            min: TASK_MAX_OUTPUTS as f64,
+            max: TASK_MAX_OUTPUTS_LIMIT as f64,
+        },
+        doc: "How many outputs a case of the logic3 or logic4 assay may emit before it \
+              stops, and so how many output slots are read for rungs: by the predation \
+              pass, the depth readings and the logic readings. The first four read what \
+              they always read, so a wider assay only adds rungs. Anything above 4 needs \
+              tasks logic3 or logic4 and a task_reward of 0: no paid run reads it.",
+    },
+    Field {
+        name: "predation",
+        kind: Kind::Choice(&["off", "subset_class", "equal", "shadow"]),
+        doc: "An interaction rule that reads what metabolism tapes compute and names no \
+              computation. Every epoch, before the influx, each cell acts with probability \
+              1 in predation_every, in an order of its own, and picks a partner by the soup's \
+              own neighbour rule; where the relation holds it takes up to predation_transfer \
+              of the partner's stock, predation_loss of what moves destroyed, never past \
+              energy_stock_cap. subset_class: every input-permutation class the partner's \
+              metabolism tape computes on the logic3 or logic4 assay, over task_max_outputs \
+              slots, is one the actor's computes too, so a tape computing nothing is \
+              everyone's prey and two tapes computing the same are each other's. equal: the \
+              two sets are the same. shadow: a coin at predation_shadow_p, reading nothing. \
+              The cases are drawn on the pass's own stream every predation_every epochs. \
+              off runs no pass, which is the substrate of DESIGN 1.1. Anything but off needs \
+              a metabolism tape, an energy_influx, energy_payer initiator, tasks logic3 or \
+              logic4, and a task_reward of 0.",
+    },
+    Field {
+        name: "predation_transfer",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "The most stock one predation takes out of its partner: what the partner holds \
+              when that is less. 0 moves nothing and runs no pass. Read only once predation \
+              is set.",
+    },
+    Field {
+        name: "predation_loss",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The share of what a predation moves that is destroyed in transit: the actor \
+              receives the rest, rounded down, as a steal op's thief does. Read only once \
+              predation is set.",
+    },
+    Field {
+        name: "predation_every",
+        kind: Kind::Integer {
+            min: 1.0,
+            max: 1_000_000.0,
+        },
+        doc: "The predation pass's period: each cell acts with probability 1 in this every \
+              epoch, so stocks are met at every phase of the initiation cycle, and the cases \
+              computations are read on are redrawn every this many epochs. Read only once \
+              predation is set.",
+    },
+    Field {
+        name: "predation_shadow_p",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The probability an encounter moves energy under predation shadow, a coin that \
+              reads no computation. Read only under predation shadow.",
+    },
+    Field {
         name: "ops",
         kind: Kind::Subset(&["<", ">", "{", "}", "+", "-", ".", ",", "[", "]"]),
         doc: "The BFF instructions this run executes, as a string of distinct op bytes. \
@@ -758,6 +863,21 @@ pub enum ParamError {
         task_depth_cap: u32,
         tasks: Tasks,
     },
+    /// Predation reads the topless assay's classes off the metabolism tape and moves stock
+    /// an initiator lives on: without any of those it reads or moves nothing it means to.
+    PredationNeeds {
+        needs: &'static str,
+    },
+    /// A run is either paid or predatory, never both, so the label of what it imports
+    /// stays clean.
+    PredationPaid {
+        task_reward: u32,
+    },
+    /// A wider assay on a paid run, or one with no topless ladder, would change what is
+    /// paid or read nothing.
+    WideAssayOutsideUnpaidTopless {
+        task_max_outputs: u32,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -877,6 +997,21 @@ impl fmt::Display for ParamError {
                  rungs are paid by depth",
                 tasks.name()
             ),
+            Self::PredationNeeds { needs } => write!(
+                f,
+                "predation is set without {needs}: the pass reads the logic3 or logic4 \
+                 classes of metabolism tapes and moves the stock an initiator pays from"
+            ),
+            Self::PredationPaid { task_reward } => write!(
+                f,
+                "predation is set with a task_reward of {task_reward}: a run is either paid \
+                 or predatory, never both"
+            ),
+            Self::WideAssayOutsideUnpaidTopless { task_max_outputs } => write!(
+                f,
+                "task_max_outputs is {task_max_outputs}: above {TASK_MAX_OUTPUTS} it needs \
+                 tasks logic3 or logic4 and a task_reward of 0"
+            ),
         }
     }
 }
@@ -932,6 +1067,7 @@ impl Params {
         }
         self.validate_tasks()?;
         self.validate_meta()?;
+        self.validate_predation()?;
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
             return Err(ParamError::RadiusTooWide {
                 radius: self.radius,
@@ -988,6 +1124,42 @@ impl Params {
             return Err(ParamError::DepthCapWithoutDepth {
                 task_depth_cap: self.task_depth_cap,
                 tasks: self.tasks,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_predation(&self) -> Result<(), ParamError> {
+        let unpaid_topless = self.tasks.depth_inputs().is_some() && self.task_reward == 0;
+        if self.task_max_outputs as usize > TASK_MAX_OUTPUTS && !unpaid_topless {
+            return Err(ParamError::WideAssayOutsideUnpaidTopless {
+                task_max_outputs: self.task_max_outputs,
+            });
+        }
+        if self.predation == Predation::Off {
+            return Ok(());
+        }
+        let missing = [
+            (self.meta_len == 0, "a metabolism tape (meta_len above 0)"),
+            (
+                self.energy_influx == 0,
+                "an energy stock (energy_influx above 0)",
+            ),
+            (
+                self.energy_payer != EnergyPayer::Initiator,
+                "the initiator payer (energy_payer initiator)",
+            ),
+            (
+                self.tasks.depth_inputs().is_none(),
+                "a topless ladder (tasks logic3 or logic4)",
+            ),
+        ];
+        if let Some((_, needs)) = missing.into_iter().find(|(missing, _)| *missing) {
+            return Err(ParamError::PredationNeeds { needs });
+        }
+        if self.task_reward > 0 {
+            return Err(ParamError::PredationPaid {
+                task_reward: self.task_reward,
             });
         }
         Ok(())
@@ -1170,6 +1342,22 @@ impl Params {
     /// at 0 none is allocated, drawn, inherited or snapshotted.
     pub fn carries_meta(&self) -> bool {
         self.substrate == Substrate::Soup && self.meta_len > 0
+    }
+
+    /// Whether this run's predation pass runs at all: a relation chosen and a transfer to
+    /// move, on a soup whose cells hold a stock and a metabolism tape and sit on a topless
+    /// ladder. At `off` or a transfer of 0 nothing is drawn, read or moved.
+    pub fn predates(&self) -> bool {
+        self.predation != Predation::Off
+            && self.predation_transfer > 0
+            && self.stocked()
+            && self.carries_meta()
+            && self.tasks.depth_inputs().is_some()
+    }
+
+    /// The output slots the topless assay reads, never past `TASK_MAX_OUTPUTS_LIMIT`.
+    pub fn assay_slots(&self) -> usize {
+        (self.task_max_outputs as usize).clamp(TASK_MAX_OUTPUTS, TASK_MAX_OUTPUTS_LIMIT)
     }
 
     /// The depth the topless ladder pays a deeper rung as, `None` where it caps nothing.
@@ -1605,7 +1793,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 33);
+        assert_eq!(fields.len(), 39);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -2377,5 +2565,226 @@ mod tests {
             0
         );
         assert_eq!(Params::default().task_depth_cap, 0);
+    }
+
+    /// The out-compute bundle of the design study (§4.4): an unpaid topless ladder on a
+    /// metabolism tape, under the initiator economy.
+    fn predatory_params() -> Params {
+        Params {
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 1024,
+            energy_stock_cap: 65_536,
+            tasks: Tasks::Logic4,
+            task_reward: 0,
+            logic_nand: LogicNand::Stack,
+            meta_len: 32,
+            meta_draw: MetaDraw::Isa,
+            meta_seed: MetaSeed::OwnTape,
+            task_max_outputs: 16,
+            predation: Predation::SubsetClass,
+            predation_transfer: 8192,
+            ..Params::default()
+        }
+    }
+
+    /// Predation is off by default, every relation is read by name, and a stored run that
+    /// predates the parameters reads as the run it was.
+    #[test]
+    fn predation_is_off_by_default() {
+        let params = Params::default();
+        assert_eq!(
+            (
+                params.predation,
+                params.predation_transfer,
+                params.predation_loss,
+                params.predation_every,
+                params.predation_shadow_p,
+                params.task_max_outputs,
+            ),
+            (Predation::Off, 0, 0.5, 8, 0.3, 4)
+        );
+        assert!(!params.predates());
+        assert_eq!(params.assay_slots(), TASK_MAX_OUTPUTS);
+        let stored = serde_json::from_str::<Params>(r#"{"tasks": "logic4"}"#).unwrap();
+        assert_eq!(stored.predation, Predation::Off);
+        assert_eq!(stored.task_max_outputs, 4);
+        for (name, rule) in [
+            ("off", Predation::Off),
+            ("subset_class", Predation::SubsetClass),
+            ("equal", Predation::Equal),
+            ("shadow", Predation::Shadow),
+        ] {
+            let read =
+                serde_json::from_str::<Params>(&format!(r#"{{"predation": "{name}"}}"#)).unwrap();
+            assert_eq!(read.predation, rule);
+        }
+        assert!(serde_json::from_str::<Params>(r#"{"predation": "subset"}"#).is_err());
+    }
+
+    #[test]
+    fn the_out_compute_bundle_validates_and_predates() {
+        let params = predatory_params();
+        assert_eq!(params.validate(), Ok(()));
+        assert!(params.predates());
+        assert_eq!(params.assay_slots(), 16);
+        for predation in [Predation::Equal, Predation::Shadow] {
+            assert_eq!(
+                Params {
+                    predation,
+                    ..predatory_params()
+                }
+                .validate(),
+                Ok(())
+            );
+        }
+        let none = Params {
+            predation: Predation::Off,
+            ..predatory_params()
+        };
+        assert_eq!(none.validate(), Ok(()), "the none arm reads the same slots");
+        assert!(!none.predates());
+        let still = Params {
+            predation_transfer: 0,
+            ..predatory_params()
+        };
+        assert_eq!(still.validate(), Ok(()));
+        assert!(!still.predates(), "a transfer of 0 runs no pass");
+    }
+
+    #[test]
+    fn predation_is_refused_without_what_it_reads_and_moves() {
+        let refused = |params: Params, needs: &'static str| {
+            assert_eq!(params.validate(), Err(ParamError::PredationNeeds { needs }));
+        };
+        refused(
+            Params {
+                meta_len: 0,
+                meta_draw: MetaDraw::Uniform,
+                meta_seed: MetaSeed::Zeros,
+                ..predatory_params()
+            },
+            "a metabolism tape (meta_len above 0)",
+        );
+        refused(
+            Params {
+                energy_influx: 0,
+                energy_payer: EnergyPayer::Pair,
+                ..predatory_params()
+            },
+            "an energy stock (energy_influx above 0)",
+        );
+        refused(
+            Params {
+                energy_payer: EnergyPayer::Pair,
+                ..predatory_params()
+            },
+            "the initiator payer (energy_payer initiator)",
+        );
+        refused(
+            Params {
+                tasks: Tasks::Logic,
+                task_max_outputs: 4,
+                ..predatory_params()
+            },
+            "a topless ladder (tasks logic3 or logic4)",
+        );
+        assert_eq!(
+            Params {
+                tasks: Tasks::Logic3,
+                ..predatory_params()
+            }
+            .validate(),
+            Ok(())
+        );
+        let paid = Params {
+            task_reward: 1024,
+            task_max_outputs: 4,
+            ..predatory_params()
+        };
+        assert_eq!(
+            paid.validate(),
+            Err(ParamError::PredationPaid { task_reward: 1024 })
+        );
+        assert_eq!(
+            paid.validate().unwrap_err().to_string(),
+            "predation is set with a task_reward of 1024: a run is either paid or predatory, \
+             never both"
+        );
+    }
+
+    /// A wider assay is accepted on an unpaid topless ladder alone, so no paid run reads
+    /// it, and never past `TASK_MAX_OUTPUTS_LIMIT`.
+    #[test]
+    fn a_wider_assay_is_refused_outside_an_unpaid_topless_ladder() {
+        let wide = |params: Params| Params {
+            task_max_outputs: 16,
+            predation: Predation::Off,
+            ..params
+        };
+        assert_eq!(wide(predatory_params()).validate(), Ok(()));
+        for tasks in [Tasks::Off, Tasks::Arith, Tasks::Logic] {
+            let params = wide(Params {
+                tasks,
+                meta_len: 0,
+                meta_draw: MetaDraw::Uniform,
+                meta_seed: MetaSeed::Zeros,
+                logic_nand: LogicNand::InPlace,
+                ..predatory_params()
+            });
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::WideAssayOutsideUnpaidTopless {
+                    task_max_outputs: 16
+                }),
+                "{tasks:?}"
+            );
+        }
+        assert_eq!(
+            wide(Params {
+                task_reward: 1024,
+                ..predatory_params()
+            })
+            .validate(),
+            Err(ParamError::WideAssayOutsideUnpaidTopless {
+                task_max_outputs: 16
+            })
+        );
+        for task_max_outputs in [3, 17] {
+            assert!(matches!(
+                Params {
+                    task_max_outputs,
+                    ..predatory_params()
+                }
+                .validate(),
+                Err(ParamError::OutOfRange {
+                    field: "task_max_outputs",
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn schema_carries_predation() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        let fields = schema["fields"].as_array().unwrap();
+        let field = |name: &str| fields.iter().find(|f| f["name"] == name).unwrap().clone();
+        assert_eq!(
+            field("predation")["values"],
+            serde_json::json!(["off", "subset_class", "equal", "shadow"])
+        );
+        assert_eq!(field("predation")["default"], "off");
+        assert_eq!(field("predation_transfer")["default"], 0);
+        assert_eq!(field("predation_loss")["default"], 0.5);
+        assert_eq!(field("predation_every")["min"], 1);
+        assert_eq!(field("predation_shadow_p")["default"], 0.3);
+        assert_eq!(
+            (
+                field("task_max_outputs")["default"].as_i64(),
+                field("task_max_outputs")["min"].as_i64(),
+                field("task_max_outputs")["max"].as_i64()
+            ),
+            (Some(4), Some(4), Some(16))
+        );
     }
 }

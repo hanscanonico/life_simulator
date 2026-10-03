@@ -195,6 +195,41 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   `0` length nothing is allocated, drawn or stored, and the soup is exactly the substrate
   above. The world, not the program, copies the metabolism tape: it imports a hereditary
   channel.
+- **Predation** (`predation`, default `off`; `predation_transfer`, default `0`;
+  `predation_loss`, default `0.5`; `predation_every`, default `8`; `predation_shadow_p`,
+  default `0.3`; `task_max_outputs`, default `4`; docs/design_record.md 2026-10-03,
+  Predation; `docs/studies/unassisted.md` §4): an interaction rule that reads what the
+  metabolism tapes compute and names no computation, in place of a paid ladder. Every epoch,
+  before the influx, every cell, in an order shuffled on the pass's own stream at (seed,
+  epoch), **acts with probability 1 in `predation_every`** and picks one partner by the
+  soup's own neighbour rule and `radius`. What a cell computes is the set of
+  input-permutation classes its metabolism tape is credited with by the topless assay of the
+  run's ladder (`logic3` or `logic4`, the run's `logic_nand`), over `task_max_outputs`
+  output slots, on cases drawn first off that stream every `predation_every` epochs and
+  shared by every cell; each distinct tape is read once until they are redrawn, and a tape
+  with no `!` computes nothing. Under `subset_class` the actor takes from a partner whose
+  every class it computes too: the empty set is a subset of every set, so a cell that
+  computes nothing is anyone's food, and two cells computing the same set are each other's.
+  Under `equal` it takes from a partner computing exactly its own set (the same transfers,
+  no ratchet); under `shadow` a coin at `predation_shadow_p` decides and no computation is
+  read (the same transfers, no selection on computing). A take is settled as a steal op of
+  `predation_transfer` at a loss of `predation_loss`: what the partner holds when that is
+  less, the actor's share rounded down, never past `energy_stock_cap`. The pass is
+  **asynchronous** because under the `initiator` payer a descended world's cells initiate in
+  lockstep: a pass run for every cell once a period meets them only when their stocks are
+  empty, and moves nothing (the study's pilot, §4.2). It writes the stocks and nothing else.
+  Predation needs a metabolism tape, an `energy_influx`, the `initiator` payer and a topless
+  ladder, and is refused with a `task_reward`: a run is either paid or predatory, never
+  both. `task_max_outputs` (4–16) is how many outputs a case of the topless assay may emit
+  before it stops, read by the pass, the depth readings and the logic readings alike; the
+  first four slots read what they always read, and anything above 4 is refused but on an
+  unpaid topless ladder, so no paid run reads it. At `off`, or a transfer of `0`, no stream
+  is drawn and nothing is read or moved. The parameters are dynamics: a descendant may set
+  them. Predation **imports a machine, not an objective**: the relation is unchanged under
+  any relabelling of the functions, and in a world where every cell computes the same set,
+  whatever that set, every cell's payoff is the same. The machine (the NAND, the emit op,
+  the inputs, the metabolism tape) and the rule itself are imported, so rung 4 on Soup stays
+  "not shown" whatever a predation run reads.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The
@@ -553,6 +588,24 @@ claim rests on it.
   streams and read the ladder's two-input rungs, each the class of its two-input form
   (AND is x∧y, x∧z or y∧z alike). They only read, so they move no byte, stock or other
   reading. Null on every other run, on the life substrate and on every earlier sample;
+  **live-only**. The run page draws them only for a run that has a reading of them. They
+  read every output slot `task_max_outputs` allows, the default 4 reading exactly what they
+  always read: a reading of four slots missed depths 5–6 that a full census of the study's
+  pilot worlds held (`docs/studies/unassisted.md` §4.3, point 7).
+- `predation_rate` / `predation_relation_rate` / `repertoire_mean` / `silent_share`: the
+  **predation readings** (docs/design_record.md 2026-10-03, Predation). `predation_rate` is
+  the share of the last pass's encounters (an acting cell meeting a partner other than
+  itself) that moved energy, counted in the pass and drawing nothing; null where that pass
+  met no partner, or none has run since a resume. `predation_relation_rate` is the share of
+  the same encounters whose relation held (under `shadow`, whose coin came up), whether or
+  not the partner had stock to give: the study pilot's eat rate, the one
+  `predation_shadow_p` is calibrated on, null exactly where `predation_rate` is.
+  `repertoire_mean` is the mean number of distinct classes the
+  metabolism tapes of 256 cells compute, drawn uniformly with replacement on cells and cases
+  of `STREAM_PREDATION | 1`'s own at `(seed, epoch)`, over `task_max_outputs` slots, each
+  distinct tape assayed once; `silent_share` is the share of those cells computing none.
+  They only read, so they move no byte, stock or other reading. Null on every run whose
+  predation pass does not run, on the life substrate and on every earlier sample;
   **live-only**. The run page draws them only for a run that has a reading of them.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
@@ -908,6 +961,32 @@ sample.
     fifth decile and last, descriptive and offline. Pre-registered in `docs/design_record.md`, 2026-10-02, "Topless
     rise: does the deepest rung held keep rising when depth is paid?", whose numbers live in
     `Lab::ToplessRiseReading`; `lab:topless_rise_report` reads it.
+19. **Out-compute** — does computing climb, and keep climbing, when nothing pays for it? The
+    Out-compute variant of §1.4, step 1 of the ablation ladder in `docs/studies/unassisted.md`
+    §2: the paid ladder removed by substituting an endogenous rule, predation (§1.1). A
+    descendant sweep from **reach-cap128's first 54 eligible parents** (radius 4, emerged,
+    terminal `replicator_share` at least 0.5: 108 runs, the 54 lowest run ids), each from its
+    terminal world at epoch 20 000; fitness-free history, none ever paid. Seeded only once
+    the predation slice and this item are deployed and the topless-rise sweep has finished.
+    Four arms merged over each parent's params on one bundle (the `initiator` economy at
+    influx 1 024, cap 65 536, no theft; `tasks: logic4` at `task_reward` 0; the stack NAND on
+    a 32-byte metabolism tape at `meta_rate` 8/8192, `isa` draws, seeded from the cell's own
+    tape; `task_max_outputs` 16; `predation_transfer` 8 192, `predation_loss` 0.5,
+    `predation_every` 8, `predation_shadow_p` 0.3; a stored world every 500 epochs, for
+    disk): **out-compute** (`predation:
+    subset_class`), **equal**, **shadow** and **none** (`predation: off`). Seed 6001,
+    100 000 epochs past the parent, priority 40, 216 children. Read with topless-rise's
+    machinery unchanged, on `logic_depth_max` and on `logic_depth_classes`, both over 16
+    slots. Five one-sided sign tests at p < 0.05, each re-read with the extinct pairs kept
+    and without the two parents the pilot started from (4381 and 4428):
+    H-endogenous (out-compute against none), H-ratchet (against equal) and H-driven (against
+    shadow) on the last-decile median `logic_depth_max` as a level; H-rise-unassisted
+    (against none) on the rise rule, the rung-4 question; H-repertoire (against none) on the
+    rise rule over `logic_depth_classes`. McShea's minimum and the load-bearing bytes are
+    read offline and descriptively. Pre-registered in `docs/design_record.md`, 2026-10-03,
+    "Out-compute: does an endogenous rule make computing climb, and keep climbing, with
+    nothing paid?", whose numbers live in `Lab::OutComputeReading`; `lab:out_compute_report`
+    reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -968,9 +1047,25 @@ Soup stays "not shown" whatever it reads. Its sweep is §1.3 item 18, pre-regist
 `docs/design_record.md`, 2026-10-02, "Topless rise: does the deepest rung held keep rising
 when depth is paid?".
 
-The design study behind each of the four is kept in `docs/studies/` (`metabolism.md`,
-`logic.md`, `meta-stack.md`, `topless.md`); every number in them is pilot unless the record
-says otherwise.
+**Out-compute** is the first variant that removes the objective rather than adding an import:
+Topless's machine (the stack NAND on a metabolism tape, the four-input assay) with nothing
+paid, and **predation** (§1.1) in its place, so a cell's energy moves by what its tape
+computes against what its neighbours' compute. The rule names no function and grades
+nothing absolutely, so it **imports a machine, not an objective**: the NAND and its stack
+semantics, the metabolism tape, the emit op and the emit cap, the input bytes and the
+predation rule itself. A predatory run (`predation` other than `off` with a positive
+`predation_transfer`) is unpaid, so it carries no "imports an objective" badge, but it is
+not plain Soup either: it is never pooled with fitness-free runs, its findings carry an
+"imports a machine, not an objective" badge, and rung 4 on Soup stays "not shown" whatever
+it reads, until the machine is the soup's own (the study's §2, step 4). An unpaid run with
+predation off is plain Soup carrying a tape nothing reads into its dynamics, as the reward-0
+arms of Meta-stack and Topless are, and pools as they do. Its sweep is §1.3 item 19,
+pre-registered in `docs/design_record.md`, 2026-10-03, "Out-compute: does an endogenous rule
+make computing climb, and keep climbing, with nothing paid?".
+
+The design study behind each of the five is kept in `docs/studies/` (`metabolism.md`,
+`logic.md`, `meta-stack.md`, `topless.md`, `unassisted.md`); every number in them is pilot
+unless the record says otherwise.
 
 ## 2. Architecture
 

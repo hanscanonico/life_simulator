@@ -8,8 +8,8 @@ use crate::hash::{fnv1a64, fnv1a64_of};
 use crate::logic;
 use crate::metrics::{self, Metrics, TransitionTracker};
 use crate::params::{
-    EnergyPayer, Init, Interaction, LineageRule, MetaDraw, MetaSeed, ParamError, Params, Substrate,
-    Tasks,
+    EnergyPayer, Init, Interaction, LineageRule, MetaDraw, MetaSeed, ParamError, Params, Predation,
+    Substrate, Tasks,
 };
 use crate::render;
 use crate::replicator;
@@ -17,6 +17,7 @@ use crate::rng::{self, Rng};
 use crate::snapshot::{self, SnapshotError};
 use crate::task;
 use crate::topless::{self, Inputs};
+use std::collections::HashMap;
 
 const STREAM_INIT: u64 = 0;
 const STREAM_STEP: u64 = 1;
@@ -65,6 +66,14 @@ const STREAM_LOGIC_DEPTH: u64 = STREAM_TASK | 6;
 /// above, so the tapes' mutation moves no draw the run, the assay or any observable makes
 /// (`docs/design_record.md`, 2026-10-02, Meta-stack slice B).
 const STREAM_META: u64 = 0x4d45_5441_0000_0000;
+/// The stream the predation pass draws on, once per epoch: the cases first, at an epoch
+/// that redraws them, then the order cells act in, whether each acts, its partner and,
+/// under `shadow`, its coin. Its own, far from every id above, so the pass moves no draw
+/// the run, the assay or any observable makes (`docs/design_record.md`, 2026-10-03,
+/// predation).
+const STREAM_PREDATION: u64 = 0x5052_4544_0000_0000;
+/// The predation readings' own cells and cases, `repertoire_mean` and `silent_share`.
+const STREAM_PREDATION_READ: u64 = STREAM_PREDATION | 1;
 /// The 13 values an `isa` draw names outright, each at 1/14; the fourteenth fourteenth is
 /// one of the 243 other bytes, the no-ops.
 const META_ISA: [u8; 13] = [
@@ -126,6 +135,16 @@ pub struct World {
     /// on a near copy and mutated on `STREAM_META`. State of the world, so it is hashed,
     /// snapshotted and restored. Empty — and never read — unless the run carries one.
     meta: Vec<u8>,
+    /// The `predation_rate` of the last pass: `None` until a pass has met a partner, and
+    /// again after one that met none.
+    predation_rate: Option<f64>,
+    /// The share of the last pass's encounters whose relation held (under `shadow`, whose
+    /// coin came up), whether or not the partner had anything to give: the rate
+    /// `predation_shadow_p` is calibrated on. `None` exactly when `predation_rate` is.
+    predation_relation_rate: Option<f64>,
+    /// The classes the predation pass has read since its cases were last drawn. Never
+    /// state: a pure function of `(seed, epoch)` and the tapes, rebuilt after a restore.
+    predation_memo: PredationMemo,
 }
 
 impl World {
@@ -146,6 +165,9 @@ impl World {
             lens: fresh_lens(params),
             stock: fresh_stock(params),
             meta: Vec::new(),
+            predation_rate: None,
+            predation_relation_rate: None,
+            predation_memo: PredationMemo::default(),
         };
         if params.init == Init::Random {
             let mut rng = rng::seeded(seed, STREAM_INIT, 0);
@@ -412,6 +434,9 @@ impl World {
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: restored_stock(params, restored.stock)?,
             meta,
+            predation_rate: None,
+            predation_relation_rate: None,
+            predation_memo: PredationMemo::default(),
         })
     }
 
@@ -458,6 +483,9 @@ impl World {
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: descended_stock(params, restored.stock)?,
             meta: Vec::new(),
+            predation_rate: None,
+            predation_relation_rate: None,
+            predation_memo: PredationMemo::default(),
         };
         world.meta = match restored.meta {
             Some(meta) if params.carries_meta() && meta.len == params.meta_len => meta.tapes,
@@ -507,6 +535,7 @@ impl World {
         if self.assays_tasks() {
             self.pay_tasks();
         }
+        self.predate();
         let mut energy = Energy::recharged(&self.params, std::mem::take(&mut self.stock));
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
@@ -599,6 +628,106 @@ impl World {
         }
     }
 
+    /// The predation pass (`docs/DESIGN.md` §1.1, "Predation"), before the epoch's influx.
+    /// Every cell, in an order shuffled on `STREAM_PREDATION` at this epoch, acts with
+    /// probability 1 in `predation_every`: a pass that ran for every cell once a period
+    /// would meet a world whose cells initiate in lockstep only when its stocks are empty.
+    /// An actor picks a partner by the soup's own rule and, where `predation` relates the
+    /// two, takes of the partner's stock what a steal op of `predation_transfer` would, and
+    /// is settled as one. It writes the stocks and nothing else.
+    fn predate(&mut self) {
+        if !self.params.predates() {
+            return;
+        }
+        let mut rng = rng::seeded(self.seed, STREAM_PREDATION, self.epoch);
+        let rule = self.params.predation;
+        let mut memo = std::mem::take(&mut self.predation_memo);
+        if rule != Predation::Shadow {
+            memo.redraw(&self.params, self.seed, self.epoch, &mut rng);
+        }
+        let theft = Theft {
+            amount: self.params.predation_transfer,
+            loss: self.params.predation_loss,
+            cap: self.params.energy_stock_cap,
+        };
+        let acts = 1.0 / f64::from(self.params.predation_every);
+        let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
+        rng::shuffle(&mut order, &mut rng);
+        let (mut encounters, mut related, mut moves) = (0u64, 0u64, 0u64);
+        for cell in order {
+            if !rng::chance(&mut rng, acts) {
+                continue;
+            }
+            let a = cell as usize;
+            let b = self.pick_partner(a, &mut rng);
+            if a == b {
+                continue;
+            }
+            encounters += 1;
+            let preys = match rule {
+                Predation::Off => false,
+                Predation::Shadow => rng::chance(&mut rng, self.params.predation_shadow_p),
+                Predation::SubsetClass => memo
+                    .credit(self.assayed_tape(a), &self.params)
+                    .covers(&memo.credit(self.assayed_tape(b), &self.params)),
+                Predation::Equal => {
+                    memo.credit(self.assayed_tape(a), &self.params)
+                        == memo.credit(self.assayed_tape(b), &self.params)
+                }
+            };
+            let moved = match preys {
+                true => theft.takes(self.stock[b]),
+                false => 0,
+            };
+            #[cfg(test)]
+            PREYED.with_borrow_mut(|preyed| preyed.push((a, b, preys, moved)));
+            self.stock[b] -= moved;
+            self.stock[a] = self.stock[a]
+                .saturating_add(theft.delivers(moved))
+                .min(theft.cap);
+            related += u64::from(preys);
+            moves += u64::from(moved > 0);
+        }
+        self.predation_memo = memo;
+        let share = |count: u64| (encounters > 0).then(|| count as f64 / encounters as f64);
+        self.predation_rate = share(moves);
+        self.predation_relation_rate = share(related);
+    }
+
+    /// The predation readings' tally: `task::TASK_SAMPLE_CELLS` cells drawn uniformly with
+    /// replacement on cases and cells of `STREAM_PREDATION_READ`'s own, each distinct
+    /// metabolism tape assayed once over `task_max_outputs` slots: the classes credited
+    /// per cell, summed, and how many cells were credited none. It writes nothing.
+    fn repertoire(&self) -> Option<(u64, u64)> {
+        let inputs = self
+            .params
+            .tasks
+            .depth_inputs()
+            .filter(|_| self.params.predates())?;
+        let mut rng = rng::seeded(self.seed, STREAM_PREDATION_READ, self.epoch);
+        let cases = topless::Cases::draw(inputs, &mut rng);
+        let mut memo = self.topless_memo(cases);
+        let cells = self.params.cell_count() as u64;
+        let (mut classes, mut silent) = (0u64, 0u64);
+        for _ in 0..task::TASK_SAMPLE_CELLS {
+            let cell = rng::below(&mut rng, cells) as usize;
+            let count = memo.credit(self.assayed_tape(cell)).count();
+            classes += u64::from(count);
+            silent += u64::from(count == 0);
+        }
+        Some((classes, silent))
+    }
+
+    /// The topless assay's memo on `cases`, reading the run's own `task_max_outputs` slots.
+    fn topless_memo<'a>(&self, cases: topless::Cases) -> topless::Memo<'a> {
+        topless::Memo::upto(
+            cases,
+            self.params.op_set(),
+            self.params.logic_nand,
+            self.params.assay_slots(),
+        )
+    }
+
     /// Whether this epoch opens with a task assay: a run that pays for tasks, at a multiple
     /// of its `task_every`. A run with no reward never assays, which is what keeps it the
     /// same run, byte for byte, as one with tasks off.
@@ -644,8 +773,7 @@ impl World {
     /// off `rng`: each distinct rung credited once, by its depth, capped at the run's
     /// `task_depth_cap`.
     fn depth_units(&self, inputs: Inputs, rng: &mut Rng) -> Vec<u32> {
-        let cases = topless::Cases::draw(inputs, rng);
-        let mut memo = topless::Memo::new(cases, self.params.op_set(), self.params.logic_nand);
+        let mut memo = self.topless_memo(topless::Cases::draw(inputs, rng));
         let cap = self.params.depth_cap();
         (0..self.params.cell_count())
             .map(|cell| memo.credit(self.assayed_tape(cell)).units(cap))
@@ -832,6 +960,8 @@ impl World {
         let logic_share = |task: usize| logic.map(|tally| tally.share(task));
         let ranked_meta = self.ranked_meta();
         let depth = self.depth_tally();
+        let repertoire = self.repertoire();
+        let per_sampled = |count: u64| count as f64 / task::TASK_SAMPLE_CELLS as f64;
         let dominant_logic = match self.meta.is_empty() {
             true => census.dominant_logic_tasks,
             false => self.dominant_logic_credit(ranked_meta.first().map(|(tape, _)| *tape)),
@@ -909,6 +1039,12 @@ impl World {
                 .map(|tally| tally.capability()),
             logic_depth_max: depth.as_ref().map(|tally| tally.depth_max()),
             logic_depth_classes: depth.as_ref().map(|tally| tally.classes()),
+            predation_rate: self.predation_rate.filter(|_| self.params.predates()),
+            predation_relation_rate: self
+                .predation_relation_rate
+                .filter(|_| self.params.predates()),
+            repertoire_mean: repertoire.map(|(classes, _)| per_sampled(classes)),
+            silent_share: repertoire.map(|(_, silent)| per_sampled(silent)),
         }
     }
 
@@ -957,8 +1093,7 @@ impl World {
             .depth_inputs()
             .filter(|_| self.params.substrate == Substrate::Soup)?;
         let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DEPTH, self.epoch);
-        let cases = topless::Cases::draw(inputs, &mut rng);
-        let mut memo = topless::Memo::new(cases, self.params.op_set(), self.params.logic_nand);
+        let mut memo = self.topless_memo(topless::Cases::draw(inputs, &mut rng));
         let cells = self.params.cell_count() as u64;
         let mut tally = topless::DepthTally::new(inputs);
         for _ in 0..task::TASK_SAMPLE_CELLS {
@@ -1239,6 +1374,11 @@ thread_local! {
     static DRAWN: std::cell::RefCell<Vec<(usize, usize)>> = const {
         std::cell::RefCell::new(Vec::new())
     };
+    /// Every encounter the predation pass has met on this thread: the actor, its partner,
+    /// whether the relation held, and what the partner gave up.
+    static PREYED: std::cell::RefCell<Vec<(usize, usize, bool, u32)>> = const {
+        std::cell::RefCell::new(Vec::new())
+    };
 }
 
 /// What the epoch's cells may spend on instructions, out of the two economies the
@@ -1505,6 +1645,59 @@ fn restored_meta(
     }
 }
 
+/// The predation pass's reading of what each metabolism tape computes: the cases of the
+/// period under way and the credit of every distinct tape read on them so far.
+#[derive(Debug, Clone, Default)]
+struct PredationMemo {
+    drawn: Option<(u64, topless::Cases)>,
+    seen: HashMap<Vec<u8>, topless::Credit>,
+}
+
+impl PredationMemo {
+    /// Holds the cases of the period `epoch` falls in, drawn first off that period's first
+    /// epoch's `STREAM_PREDATION`: off `rng` itself at that epoch, and off a fresh copy of
+    /// that epoch's stream at any later one the memo does not yet hold them for, which is
+    /// how a restored world reads the cases the uninterrupted run read.
+    fn redraw(&mut self, params: &Params, seed: u64, epoch: u64, rng: &mut Rng) {
+        let Some(inputs) = params.tasks.depth_inputs() else {
+            return;
+        };
+        let drawn_at = epoch - epoch % u64::from(params.predation_every);
+        let cases = if epoch == drawn_at {
+            topless::Cases::draw(inputs, rng)
+        } else if self.drawn.is_some_and(|(at, _)| at == drawn_at) {
+            return;
+        } else {
+            topless::Cases::draw(inputs, &mut rng::seeded(seed, STREAM_PREDATION, drawn_at))
+        };
+        self.drawn = Some((drawn_at, cases));
+        self.seen.clear();
+    }
+
+    /// The classes `tape` computes on the period's cases, over the run's
+    /// `task_max_outputs` slots; a tape holding no emit byte computes none.
+    fn credit(&mut self, tape: &[u8], params: &Params) -> topless::Credit {
+        let (_, cases) = self
+            .drawn
+            .expect("the cases are drawn before a credit is read");
+        if !tape.contains(&bff::EMIT) {
+            return topless::Credit::none(cases.inputs());
+        }
+        if let Some(credit) = self.seen.get(tape) {
+            return *credit;
+        }
+        let credit = topless::assay_upto(
+            tape,
+            &cases,
+            params.op_set(),
+            params.logic_nand,
+            params.assay_slots(),
+        );
+        self.seen.insert(tape.to_vec(), credit);
+        credit
+    }
+}
+
 /// The logic observables' assay on a run's own logic ladder, read as the logic ladder's
 /// rungs: the two-input ladder's credit itself, or on a topless ladder the two-input
 /// classes among the rungs it credits, so the Logic keys keep their meaning there.
@@ -1521,7 +1714,12 @@ impl<'a> LogicReader<'a> {
         match params.tasks.depth_inputs() {
             None => Self::Two(logic::Memo::new(logic::Cases::draw(rng), ops, nand)),
             Some(inputs) => Self::Topless(
-                topless::Memo::new(topless::Cases::draw(inputs, rng), ops, nand),
+                topless::Memo::upto(
+                    topless::Cases::draw(inputs, rng),
+                    ops,
+                    nand,
+                    params.assay_slots(),
+                ),
                 inputs.two_input_rungs(),
             ),
         }
@@ -7685,6 +7883,499 @@ mod tests {
             }
             let sample = started.elapsed().as_secs_f64() * 1000.0 / 24.0;
             println!("{tasks:?}: {per_epoch:.2} ms an assay epoch, {sample:.3} ms the sample readings, {distinct} distinct tapes");
+        }
+    }
+
+    /// The out-compute bundle of the design study (§4.4) on `rewarded_params`' economy: an
+    /// unpaid four-input ladder on 32-byte metabolism tapes seeded from each cell's own
+    /// tape, every slot of 16 read, a whole initiation taken at a loss of half.
+    fn predation_params(predation: Predation) -> Params {
+        Params {
+            tasks: Tasks::Logic4,
+            task_reward: 0,
+            logic_nand: LogicNand::Stack,
+            meta_len: 32,
+            meta_rate: 8.0 / 8192.0,
+            meta_draw: MetaDraw::Isa,
+            meta_seed: MetaSeed::OwnTape,
+            task_max_outputs: 16,
+            predation,
+            predation_transfer: 8192,
+            ..rewarded_params()
+        }
+    }
+
+    const PREDATORY: [Predation; 3] = [Predation::SubsetClass, Predation::Equal, Predation::Shadow];
+
+    fn without_predation(params: &Params) -> Params {
+        let defaults = Params::default();
+        Params {
+            predation: defaults.predation,
+            predation_transfer: defaults.predation_transfer,
+            predation_loss: defaults.predation_loss,
+            predation_every: defaults.predation_every,
+            predation_shadow_p: defaults.predation_shadow_p,
+            ..params.clone()
+        }
+    }
+
+    fn predation_digest(measured: &Metrics) -> String {
+        format!(
+            "predation_rate={:?} predation_relation_rate={:?} repertoire_mean={:?} \
+             silent_share={:?}",
+            measured.predation_rate,
+            measured.predation_relation_rate,
+            measured.repertoire_mean,
+            measured.silent_share
+        )
+    }
+
+    const UNREAD_PREDATION: &str = "predation_rate=None predation_relation_rate=None \
+         repertoire_mean=None silent_share=None";
+
+    /// Kinds of metabolism tape, each 256 bytes: one computing nothing, one ECHO, one XOR4,
+    /// and one emitting x four times and then XOR4, so it computes ECHO and XOR4 on more
+    /// than four slots.
+    fn prey_tapes() -> [Vec<u8>; 4] {
+        let xor4 = depth_solver(Inputs::Four, 0x6996, LogicNand::Stack);
+        let mut wide = vec![bff::HEAD0_LEFT];
+        wide.extend([bff::EMIT; task::TASK_MAX_OUTPUTS]);
+        wide.push(bff::HEAD0_RIGHT);
+        wide.extend(&xor4);
+        [Vec::new(), b"<!".to_vec(), xor4, wide].map(|mut tape| {
+            tape.resize(256, 0);
+            tape
+        })
+    }
+
+    /// Whether a cell of kind `a` of `prey_tapes` covers one of kind `b`: silence is
+    /// covered by everything, the wide tape covers everything, and each kind itself.
+    fn covers(a: usize, b: usize) -> bool {
+        a == b || b == 0 || a == 3
+    }
+
+    /// A still 8×8 world of `prey_tapes` laid by `kind`, every cell acting every epoch and
+    /// holding 1 000, so every take is the whole transfer of 100.
+    fn prey_world(predation: Predation, kind: impl Fn(u32, u32) -> usize) -> World {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            meta_len: 256,
+            meta_rate: 0.0,
+            meta_seed: MetaSeed::Zeros,
+            predation_every: 1,
+            predation_transfer: 100,
+            width: 8,
+            height: 8,
+            ..predation_params(predation)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let tapes = prey_tapes();
+        for y in 0..8 {
+            for x in 0..8 {
+                world.set_metabolism(x, y, &tapes[kind(x, y)]);
+            }
+        }
+        world.stock.fill(1000);
+        world
+    }
+
+    fn mixed_kind(x: u32, y: u32) -> usize {
+        ((x + 3 * y) % 4) as usize
+    }
+
+    /// Runs `passes` predation passes alone, one epoch apart, and returns every encounter.
+    fn preyed(world: &mut World, passes: u64) -> Vec<(usize, usize, bool, u32)> {
+        PREYED.take();
+        for _ in 0..passes {
+            world.predate();
+            world.epoch += 1;
+        }
+        PREYED.take()
+    }
+
+    /// Under `subset_class` an actor takes from a partner exactly when it computes every
+    /// class the partner does: a silent partner is everyone's prey, kin eat kin, the wide
+    /// tape eats everything and nothing eats it but its own kind; each take is the
+    /// transfer, half of it destroyed.
+    #[test]
+    fn subset_class_moves_energy_only_where_the_actor_covers_the_partner() {
+        let mut world = prey_world(Predation::SubsetClass, mixed_kind);
+        let before: u64 = world.stock.iter().map(|held| u64::from(*held)).sum();
+        let kind = |cell: usize| mixed_kind(cell as u32 % 8, cell as u32 / 8);
+        let encounters = preyed(&mut world, 4);
+        assert!(encounters.len() > 200);
+        for (a, b, preys, moved) in &encounters {
+            assert_eq!(*preys, covers(kind(*a), kind(*b)), "{a} on {b}");
+            assert_eq!(*moved, if *preys { 100 } else { 0 });
+        }
+        let seen = |a: usize, b: usize, preys: bool| {
+            encounters
+                .iter()
+                .any(|(x, y, p, _)| kind(*x) == a && kind(*y) == b && *p == preys)
+        };
+        assert!(
+            seen(0, 0, true),
+            "the empty set is prey even to the empty set"
+        );
+        assert!(seen(1, 0, true) && seen(2, 0, true));
+        assert!(seen(1, 1, true) && seen(2, 2, true), "kin eat kin");
+        assert!(seen(3, 1, true) && seen(3, 2, true));
+        assert!(seen(1, 2, false) && seen(2, 1, false) && seen(0, 1, false));
+        assert!(seen(1, 3, false) && seen(2, 3, false));
+        let moved: u64 = encounters.iter().map(|(_, _, _, m)| u64::from(*m)).sum();
+        let after: u64 = world.stock.iter().map(|held| u64::from(*held)).sum();
+        assert_eq!(after, before - moved / 2);
+    }
+
+    /// Under `equal` an actor takes only from a partner computing exactly what it does.
+    #[test]
+    fn equal_moves_energy_only_between_equal_sets() {
+        let mut world = prey_world(Predation::Equal, mixed_kind);
+        let kind = |cell: usize| mixed_kind(cell as u32 % 8, cell as u32 / 8);
+        let encounters = preyed(&mut world, 4);
+        for (a, b, preys, _) in &encounters {
+            assert_eq!(*preys, kind(*a) == kind(*b), "{a} on {b}");
+        }
+        assert!(encounters.iter().any(|(_, _, preys, _)| *preys));
+        assert!(encounters
+            .iter()
+            .any(|(a, b, preys, _)| kind(*b) == 0 && kind(*a) != 0 && !preys));
+    }
+
+    /// Under `shadow` a coin at `predation_shadow_p` decides, reading no computation: the
+    /// same draws whatever the tapes compute, and a share of encounters near the coin.
+    #[test]
+    fn shadow_moves_energy_at_its_rate_and_reads_no_computation() {
+        let mut silent = prey_world(Predation::Shadow, |_, _| 0);
+        let mut wide = prey_world(Predation::Shadow, |_, _| 3);
+        let (read, other) = (preyed(&mut silent, 8), preyed(&mut wide, 8));
+        assert_eq!(read, other);
+        let rate = read.iter().filter(|(_, _, preys, _)| *preys).count() as f64 / read.len() as f64;
+        assert!((rate - 0.3).abs() < 0.07, "{rate}");
+        let mut sure = prey_world(Predation::Shadow, |_, _| 0);
+        sure.params.predation_shadow_p = 1.0;
+        assert!(preyed(&mut sure, 2).iter().all(|(_, _, preys, _)| *preys));
+        let mut never = prey_world(Predation::Shadow, |_, _| 0);
+        never.params.predation_shadow_p = 0.0;
+        assert!(preyed(&mut never, 2).iter().all(|(_, _, preys, _)| !preys));
+    }
+
+    /// A partner poorer than the transfer gives up what it holds, and an actor's take never
+    /// passes the cap.
+    #[test]
+    fn a_predation_settles_as_a_steal_op_does() {
+        let mut world = prey_world(Predation::SubsetClass, |_, _| 0);
+        world.stock.fill(30);
+        let met = preyed(&mut world, 1);
+        assert_eq!(met[0].3, 30, "the first take is all the partner holds");
+        // A cell holds at most 30 and half of what it takes, so under 60.
+        assert!(met.iter().all(|(_, _, preys, moved)| *preys && *moved < 60));
+        let mut full = prey_world(Predation::SubsetClass, |_, _| 0);
+        full.params.energy_stock_cap = 1000;
+        preyed(&mut full, 1);
+        assert!(full.stock.iter().all(|held| *held <= 1000));
+    }
+
+    /// The trap the study's pilot fell into: cells that initiate in lockstep hold empty
+    /// stocks at one phase of their cycle, where a pass run once a period would move
+    /// nothing, ever. The asynchronous pass acts at every phase, so the world still sees
+    /// transfers; at epoch 0, where every stock is empty, it moves nothing.
+    #[test]
+    fn the_pass_meets_a_lockstep_world_at_every_phase_of_its_cycle() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            meta_rate: 0.0,
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 256,
+            predation_transfer: 64,
+            ..predation_params(Predation::SubsetClass)
+        };
+        let mut world = World::new(&params, 11).unwrap();
+        world.stock.fill(0);
+        let mut phases = BTreeSet::new();
+        let mut moved = 0;
+        for epoch in 0..24 {
+            PREYED.take();
+            world.step();
+            let met = PREYED.take();
+            assert!(met.iter().all(|(_, _, preys, _)| *preys), "silence is prey");
+            if !met.is_empty() {
+                phases.insert(epoch % 8);
+            }
+            let taken: u32 = met.iter().map(|(_, _, _, m)| *m).sum();
+            if epoch == 0 {
+                assert_eq!(taken, 0);
+            }
+            moved += taken;
+        }
+        assert_eq!(phases.len(), 8);
+        assert!(moved > 0);
+    }
+
+    /// At `off`, or at a transfer of 0, the pass draws nothing and moves nothing: the run
+    /// is the run without predation, byte for byte and reading for reading, however the
+    /// other predation settings stand.
+    #[test]
+    fn predation_off_is_the_run_without_predation() {
+        let narrow = Params {
+            task_max_outputs: 4,
+            ..predation_params(Predation::Off)
+        };
+        let still = Params {
+            predation_transfer: 0,
+            ..predation_params(Predation::SubsetClass)
+        };
+        for params in [narrow, still] {
+            let mut off = World::new(&params, 42).unwrap();
+            let mut plain = World::new(&without_predation(&params), 42).unwrap();
+            for _ in 0..4 {
+                for _ in 0..5 {
+                    off.step();
+                    plain.step();
+                }
+                let measured = off.metrics();
+                assert_eq!(predation_digest(&measured), UNREAD_PREDATION);
+                assert_eq!(measured, plain.metrics());
+            }
+            assert_eq!(off.world_hash(), plain.world_hash());
+            assert_eq!(off.snapshot(), plain.snapshot());
+        }
+        let wide = stepped_world(
+            World::new(&predation_params(Predation::Off), 42).unwrap(),
+            20,
+        );
+        let narrow = Params {
+            task_max_outputs: 4,
+            ..predation_params(Predation::Off)
+        };
+        let twin = stepped_world(World::new(&narrow, 42).unwrap(), 20);
+        assert_eq!(
+            wide.world_hash(),
+            twin.world_hash(),
+            "the slots read move no byte"
+        );
+    }
+
+    #[test]
+    fn determinism_holds_under_predation() {
+        for (seed, predation) in [7, 8, 9].into_iter().zip(PREDATORY) {
+            for predation_every in [1, 3] {
+                assert_deterministic(
+                    &Params {
+                        max_steps: 64,
+                        energy_influx: 8,
+                        energy_stock_cap: 256,
+                        predation_transfer: 48,
+                        predation_every,
+                        width: 16,
+                        height: 16,
+                        ..predation_params(predation)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// A world restored mid-period reads its encounters on the cases the uninterrupted run
+    /// drew at the period's first epoch, not on a draw of its own. The hash test above
+    /// cannot see this on a random soup, whose tapes compute next to nothing on any cases,
+    /// so the cases are compared outright; and `shadow`, reading no computation, draws none.
+    #[test]
+    fn a_world_restored_mid_period_reads_the_cases_of_the_period() {
+        let params = predation_params(Predation::SubsetClass);
+        assert_eq!(params.predation_every, 8);
+        let mut whole = stepped_world(World::new(&params, 42).unwrap(), 11);
+        let mut restored = World::from_snapshot(&params, 42, &whole.snapshot()).unwrap();
+        for _ in 0..2 {
+            whole.step();
+            restored.step();
+        }
+        let drawn = whole.predation_memo.drawn;
+        assert_eq!(drawn.map(|(at, _)| at), Some(8));
+        assert_eq!(restored.predation_memo.drawn, drawn);
+        let inputs = params.tasks.depth_inputs().unwrap();
+        let own = topless::Cases::draw(inputs, &mut rng::seeded(42, STREAM_PREDATION, 11));
+        assert_ne!(drawn.map(|(_, cases)| cases), Some(own));
+        let shadow = stepped_world(
+            World::new(&predation_params(Predation::Shadow), 42).unwrap(),
+            13,
+        );
+        assert_eq!(shadow.predation_memo.drawn, None);
+    }
+
+    /// The predation runs' own pins: `predation_params` on a 32×32 random soup, seed 42,
+    /// after 40 epochs, one per relation, each apart from the run without predation.
+    const PINNED_PREDATION_HASHES: [u64; 3] = [
+        0x32ac_4fdb_4f91_8468,
+        0x675b_25a4_3073_6116,
+        0xbbf3_170c_125b_d800,
+    ];
+
+    #[test]
+    fn the_predation_runs_are_pinned() {
+        let plain = stepped_world(
+            World::new(&without_predation(&predation_params(Predation::Off)), 42).unwrap(),
+            40,
+        );
+        for (predation, pin) in PREDATORY.into_iter().zip(PINNED_PREDATION_HASHES) {
+            let run = stepped_world(World::new(&predation_params(predation), 42).unwrap(), 40);
+            assert_eq!(run.world_hash(), pin, "{predation:?}");
+            assert_ne!(run.world_hash(), plain.world_hash());
+        }
+    }
+
+    /// The predation readings of those runs at epoch 40, pinned apart from every digest
+    /// above. A random soup's own first 32 bytes compute next to nothing.
+    const PINNED_PREDATION_READINGS: [&str; 3] = [
+        "predation_rate=Some(0.8809523809523809) predation_relation_rate=Some(0.9761904761904762) \
+         repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
+        "predation_rate=Some(0.8650793650793651) predation_relation_rate=Some(0.9523809523809523) \
+         repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
+        "predation_rate=Some(0.3) predation_relation_rate=Some(0.3230769230769231) \
+         repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
+    ];
+
+    #[test]
+    fn the_predation_readings_of_a_fixed_seed_are_pinned() {
+        for (predation, pin) in PREDATORY.into_iter().zip(PINNED_PREDATION_READINGS) {
+            let mut run = stepped_world(World::new(&predation_params(predation), 42).unwrap(), 40);
+            assert_eq!(predation_digest(&run.metrics()), pin, "{predation:?}");
+        }
+    }
+
+    /// The rate is the share of the last pass's encounters that moved energy; the
+    /// repertoire readings count the classes of the sampled cells' metabolism tapes.
+    #[test]
+    fn the_predation_readings_read_the_last_pass_and_the_sampled_tapes() {
+        let mut world = prey_world(Predation::SubsetClass, |x, _| if x < 4 { 0 } else { 3 });
+        world.stock.iter_mut().step_by(2).for_each(|held| *held = 0);
+        let met = preyed(&mut world, 1);
+        let moving = met.iter().filter(|(_, _, _, moved)| *moved > 0).count();
+        assert!(moving > 0 && moving < met.len());
+        let measured = world.metrics();
+        assert_eq!(
+            measured.predation_rate,
+            Some(moving as f64 / met.len() as f64)
+        );
+        let related = met.iter().filter(|(_, _, preys, _)| *preys).count();
+        assert!(
+            moving < related && related < met.len(),
+            "an empty partner is still prey, and gives nothing"
+        );
+        assert_eq!(
+            measured.predation_relation_rate,
+            Some(related as f64 / met.len() as f64)
+        );
+        let silent = measured.silent_share.unwrap();
+        assert!(silent > 0.3 && silent < 0.7, "{silent}");
+        assert_eq!(measured.repertoire_mean, Some((1.0 - silent) * 2.0));
+        let mut all_wide = prey_world(Predation::SubsetClass, |_, _| 3);
+        let measured = all_wide.metrics();
+        assert_eq!(
+            (
+                measured.predation_rate,
+                measured.predation_relation_rate,
+                measured.repertoire_mean,
+                measured.silent_share
+            ),
+            (None, None, Some(2.0), Some(0.0)),
+            "no pass has run yet"
+        );
+    }
+
+    /// The readings only read, on a stream of their own: reading every sample moves no
+    /// byte or stock, a sample read twice or after a restore reads the same repertoire,
+    /// and neither of the pass's streams is one anything else draws on.
+    #[test]
+    fn the_predation_readings_move_nothing_and_draw_on_a_stream_of_their_own() {
+        let params = predation_params(Predation::SubsetClass);
+        let mut read = World::new(&params, 42).unwrap();
+        let mut unread = World::new(&params, 42).unwrap();
+        for _ in 0..4 {
+            assert!(read.metrics().repertoire_mean.is_some());
+            for _ in 0..5 {
+                read.step();
+                unread.step();
+            }
+        }
+        assert_eq!(read.world_hash(), unread.world_hash());
+        let first = read.metrics();
+        assert_eq!(read.metrics(), first);
+        let mut restored =
+            World::from_snapshot(read.params(), read.seed(), &read.snapshot()).unwrap();
+        let resumed = restored.metrics();
+        assert_eq!(
+            (
+                resumed.repertoire_mean,
+                resumed.silent_share,
+                resumed.predation_rate
+            ),
+            (first.repertoire_mean, first.silent_share, None)
+        );
+
+        let taken = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+            STREAM_TASK_SHARE,
+            STREAM_TASK_DOMINANT,
+            STREAM_LOGIC_SHARE,
+            STREAM_LOGIC_DOMINANT,
+            STREAM_LOGIC_REPLICATING,
+            STREAM_LOGIC_DEPTH,
+            STREAM_META,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        for stream in [STREAM_PREDATION, STREAM_PREDATION_READ] {
+            assert!(!taken.contains(&stream) && !draws.contains(&stream));
+        }
+    }
+
+    /// The depth readings read every slot `task_max_outputs` allows: four slots of the
+    /// wide tape read ECHO alone, sixteen read XOR4's twelve NANDs too, and at the default
+    /// they read what they always did.
+    #[test]
+    fn the_depth_readings_read_every_slot_the_run_allows() {
+        let mut wide = prey_world(Predation::SubsetClass, |_, _| 3);
+        assert_eq!(
+            depth_digest(&wide.metrics()),
+            "logic_depth_max=Some(12) logic_depth_classes=Some(2)"
+        );
+        wide.params.task_max_outputs = 4;
+        assert_eq!(
+            depth_digest(&wide.metrics()),
+            "logic_depth_max=Some(0) logic_depth_classes=Some(1)"
+        );
+        assert_eq!(wide.metrics().repertoire_mean, Some(1.0));
+    }
+
+    /// The cost of a predation epoch against the run without one, on demand, on the
+    /// study's bundle over a 128×128 random soup. `cargo test --release -p life-engine
+    /// --lib -- --ignored the_predation_cost --nocapture`.
+    #[test]
+    #[ignore]
+    fn the_predation_cost() {
+        for predation in [Predation::Off, Predation::SubsetClass] {
+            let params = Params {
+                width: 128,
+                height: 128,
+                ..predation_params(predation)
+            };
+            let mut world = stepped_world(World::new(&params, 7).unwrap(), 8);
+            let started = std::time::Instant::now();
+            for _ in 0..40 {
+                world.step();
+            }
+            let per_epoch = started.elapsed().as_secs_f64() * 1000.0 / 40.0;
+            println!("{predation:?}: {per_epoch:.2} ms an epoch");
         }
     }
 }

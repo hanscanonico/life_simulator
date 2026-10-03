@@ -8,7 +8,10 @@ module Experiments
   #
   # The candidates are the source experiment's founding runs, or its descendants where the
   # rule says `"descendants" => true`. A rule naming no `instrument` qualifies every finished
-  # candidate that kept a world at its last epoch, with no reading of that world.
+  # candidate that kept a world at its last epoch, with no reading of that world. A rule with
+  # `"emerged" => true` qualifies only a candidate with a confirmed emergence (Run#emerged?),
+  # and one with `"first" => n` only the n qualifying candidates with the lowest run ids, the
+  # rest skipped as past it.
   class DescendantParentsService
     include Callable
 
@@ -24,6 +27,10 @@ module Experiments
         reason = skip_reason(run)
         skipped[reason] << run.id if reason
         reason.nil?
+      end
+      if @rule.key?("first")
+        qualifying, past = qualifying.partition.with_index { |_, index| index < @rule.fetch("first") }
+        skipped[:past_first].concat(past.map(&:id)) if past.any?
       end
 
       Pool.new(candidates: candidates, qualifying: qualifying, skipped: skipped.to_h)
@@ -49,6 +56,7 @@ module Experiments
     def skip_reason(run)
       return :unfinished unless run.finished?
       return :no_terminal_world unless terminal_worlds.include?(run.id)
+      return :not_emerged if @rule["emerged"] && !run.emerged?
       return unless @rule.key?("instrument")
 
       share = terminal_shares[run.id]

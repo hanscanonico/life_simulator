@@ -696,6 +696,60 @@ RSpec.describe Experiments::ShowPage do
     end
   end
 
+  # The out-compute reading is held as the topless-rise reading is.
+  describe "#out_compute_reading" do
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+    let(:experiment) { out_compute_experiment }
+
+    before do
+      allow(Rails).to receive(:cache).and_return(cache)
+      out_compute_parents
+      Experiments::SweepBuilderService.call(experiment)
+      experiment.runs.order(:id).each { |run| out_compute_sample(run, fifth: 4, last: 5) }
+      experiment.runs.order(:id).last.update!(status: "running")
+    end
+
+    def read_reading
+      reads = []
+      collect = ->(*, payload) { reads << payload[:sql] if payload[:sql].include?("samples") }
+      fresh = described_class.build(experiment: experiment, paginate: paginate)
+
+      [ActiveSupport::Notifications.subscribed(collect, "sql.active_record") { fresh.out_compute_reading }, reads]
+    end
+
+    it "reads the children's samples once, and serves the same reading after" do
+      first, first_reads = read_reading
+      again, again_reads = read_reading
+
+      expect(first_reads).not_to be_empty
+      expect(again_reads).to be_empty
+      expect(again.arms.map(&:cells)).to eq(first.arms.map(&:cells))
+    end
+
+    it "reads it afresh, and final, once the last child finishes" do
+      first, = read_reading
+      experiment.runs.order(:id).last.update!(status: "finished")
+      last, last_reads = read_reading
+
+      expect(first).to be_interim
+      expect(last_reads).not_to be_empty
+      expect(last).not_to be_interim
+    end
+
+    it "labels the sweep as importing a machine, not an objective" do
+      page = described_class.build(experiment: experiment, paginate: paginate)
+
+      expect([page.imports_machine?, page.imports_objective?]).to eq([true, false])
+    end
+
+    it "is nil on any other sweep, which imports no machine" do
+      reach = Experiment.find_by(slug: "reach-cap128")
+      page = described_class.build(experiment: reach, paginate: paginate)
+
+      expect([page.out_compute_reading, page.imports_machine?]).to eq([nil, false])
+    end
+  end
+
   describe "#series_cache_key" do
     let!(:run) { finished_run(radius: 1) }
 

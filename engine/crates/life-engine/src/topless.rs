@@ -16,7 +16,9 @@ use crate::bff::OpSet;
 use crate::logic::{self, LOGIC_TASKS};
 use crate::params::LogicNand;
 use crate::rng::{self, Rng};
-use crate::task::{self, TASK_CAPABILITY_DENOMINATOR, TASK_MAX_OUTPUTS, TASK_SAMPLE_CELLS};
+use crate::task::{
+    self, TASK_CAPABILITY_DENOMINATOR, TASK_MAX_OUTPUTS, TASK_MAX_OUTPUTS_LIMIT, TASK_SAMPLE_CELLS,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
@@ -395,19 +397,29 @@ fn equal(outputs: &[u8]) -> bool {
 }
 
 /// The rungs one tape was credited with: the classes its output slots compute, each once,
-/// greatest first, 0 past the last (no class is 0, the constant).
+/// greatest first, 0 past the last (no class is 0, the constant). Two credits of one ladder
+/// are equal exactly when they hold the same set of classes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Credit {
     inputs: Inputs,
-    classes: [u16; TASK_MAX_OUTPUTS],
+    classes: [u16; TASK_MAX_OUTPUTS_LIMIT],
 }
 
 impl Credit {
     pub fn none(inputs: Inputs) -> Self {
         Self {
             inputs,
-            classes: [0; TASK_MAX_OUTPUTS],
+            classes: [0; TASK_MAX_OUTPUTS_LIMIT],
         }
+    }
+
+    /// Whether every class `other` holds is one this credit holds too, the out-compute
+    /// relation of `predation = subset_class`: the empty credit is covered by every credit,
+    /// and every credit covers itself.
+    pub fn covers(&self, other: &Self) -> bool {
+        other
+            .classes()
+            .all(|class| self.classes().any(|held| held == class))
     }
 
     pub fn classes(&self) -> impl Iterator<Item = u16> + '_ {
@@ -459,14 +471,22 @@ impl Credit {
 /// The rungs `tape` is credited with on `cases`: every class an output slot computes in
 /// every case run. A tape holding no emit byte is credited nothing and never run.
 pub fn assay(tape: &[u8], cases: &Cases, ops: OpSet, nand: LogicNand) -> Credit {
+    assay_upto(tape, cases, ops, nand, TASK_MAX_OUTPUTS)
+}
+
+/// `assay` over the first `slots` output slots, each case stopping at its `slots`-th emit
+/// (at most `TASK_MAX_OUTPUTS_LIMIT`). The first `TASK_MAX_OUTPUTS` slots read what
+/// `assay` reads, so a wider reading only ever adds classes.
+pub fn assay_upto(tape: &[u8], cases: &Cases, ops: OpSet, nand: LogicNand, slots: usize) -> Credit {
     let mut credit = Credit::none(cases.inputs);
     let count = cases.inputs.count();
     let inputs = cases.values.each_ref().map(|case| &case[..count]);
     let run = &inputs[..cases.inputs.cases()];
-    let Some(runs) = task::case_outputs_with(tape, run, ops, nand.assay_ops()) else {
+    let slots = slots.min(TASK_MAX_OUTPUTS_LIMIT);
+    let Some(runs) = task::case_outputs_upto(tape, run, ops, nand.assay_ops(), slots) else {
         return credit;
     };
-    for slot in 0..TASK_MAX_OUTPUTS {
+    for slot in 0..slots {
         if runs.iter().any(|outputs| outputs.len() <= slot) {
             break;
         }
@@ -484,15 +504,22 @@ pub struct Memo<'a> {
     cases: Cases,
     ops: OpSet,
     nand: LogicNand,
+    slots: usize,
     seen: HashMap<&'a [u8], Credit>,
 }
 
 impl<'a> Memo<'a> {
     pub fn new(cases: Cases, ops: OpSet, nand: LogicNand) -> Self {
+        Self::upto(cases, ops, nand, TASK_MAX_OUTPUTS)
+    }
+
+    /// The memo of `assay_upto` over `slots` output slots.
+    pub fn upto(cases: Cases, ops: OpSet, nand: LogicNand, slots: usize) -> Self {
         Self {
             cases,
             ops,
             nand,
+            slots,
             seen: HashMap::new(),
         }
     }
@@ -501,11 +528,11 @@ impl<'a> Memo<'a> {
         if !tape.contains(&crate::bff::EMIT) {
             return Credit::none(self.cases.inputs);
         }
-        let (cases, ops, nand) = (&self.cases, self.ops, self.nand);
+        let (cases, ops, nand, slots) = (&self.cases, self.ops, self.nand, self.slots);
         *self
             .seen
             .entry(tape)
-            .or_insert_with(|| assay(tape, cases, ops, nand))
+            .or_insert_with(|| assay_upto(tape, cases, ops, nand, slots))
     }
 }
 
@@ -1087,6 +1114,66 @@ pub(crate) mod tests {
         let mut floor = Credit::none(Inputs::Four);
         floor.insert(Inputs::Four.class_of(0x0116));
         assert_eq!(floor.units(None), 91);
+    }
+
+    /// The out-compute relation: a credit covers each subset of its classes, itself
+    /// included, and the empty credit; the empty credit covers only itself.
+    #[test]
+    fn a_credit_covers_every_subset_of_its_classes() {
+        let credit = |functions: &[u16]| {
+            let mut credit = Credit::none(Inputs::Three);
+            for function in functions {
+                credit.insert(Inputs::Three.class_of(*function));
+            }
+            credit
+        };
+        let (none, maj, both) = (credit(&[]), credit(&[0xe8]), credit(&[0xe8, 0x96]));
+        assert!(none.covers(&none));
+        assert!(maj.covers(&none) && both.covers(&none));
+        assert!(!none.covers(&maj));
+        assert!(both.covers(&maj) && both.covers(&both));
+        assert!(!maj.covers(&both));
+        assert!(!credit(&[0x96]).covers(&maj));
+        assert_eq!(
+            credit(&[0x96, 0xe8]),
+            both,
+            "a credit is its set of classes"
+        );
+    }
+
+    /// A tape that emits x four times and then XOR4: the engine's four slots read ECHO
+    /// alone, sixteen read XOR4 too, and the first four read the same either way.
+    #[test]
+    fn a_wider_assay_reads_the_slots_past_the_fourth() {
+        let (_, _, _, witness) = SOLVERS
+            .into_iter()
+            .find(|(inputs, function, _, _)| *inputs == Inputs::Four && *function == 0x6996)
+            .unwrap();
+        let mut tape = vec![bff::HEAD0_LEFT];
+        tape.extend([bff::EMIT; TASK_MAX_OUTPUTS]);
+        tape.push(bff::HEAD0_RIGHT);
+        tape.extend(compile(Inputs::Four, witness, LogicNand::Stack));
+        for seed in 0..8 {
+            let cases = Cases::draw(Inputs::Four, &mut rng::seeded(seed, 0, 0));
+            let four = assay(&tape, &cases, OpSet::ALL, LogicNand::Stack);
+            assert_eq!(four.depth(), Some(0), "seed {seed}");
+            assert_eq!(four.count(), 1);
+            assert_eq!(
+                assay_upto(
+                    &tape,
+                    &cases,
+                    OpSet::ALL,
+                    LogicNand::Stack,
+                    TASK_MAX_OUTPUTS
+                ),
+                four
+            );
+            let wide = assay_upto(&tape, &cases, OpSet::ALL, LogicNand::Stack, 16);
+            assert_eq!((wide.count(), wide.depth()), (2, Some(12)), "seed {seed}");
+            assert!(wide.covers(&four));
+            let mut memo = Memo::upto(cases, OpSet::ALL, LogicNand::Stack, 16);
+            assert_eq!(memo.credit(&tape), wide);
+        }
     }
 
     #[test]

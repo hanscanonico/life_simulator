@@ -121,6 +121,30 @@ RSpec.describe Lab::ToplessRiseReading::Child do
     expect(reading).to have_attributes(reached_floor: true, ceilinged?: false)
   end
 
+  describe "another key" do
+    def read_classes(classes, ceiling: nil)
+      samples = Array.new(200) do |index|
+        [1_000 + (10 * (index + 1)), { "logic_depth_max" => 2, "logic_depth_classes" => classes.call(index) }]
+      end
+      described_class.read(samples, parent_epoch: 1_000, key: "logic_depth_classes", ceiling: ceiling)
+    end
+
+    it "runs the same rule on it, depth aside" do
+      reading = read_classes(steps(14, 16))
+
+      expect(reading).to have_attributes(fifth_depth: 14, last_depth: 16, descent_depth: 14, bar: 14, rises?: true)
+      expect(reading.late_depths).to eq([15, 16])
+    end
+
+    it "reads no ceiling and no floor where it is given none" do
+      expect(read_classes(steps(13, 20))).to have_attributes(ceilinged?: false, reached_floor: false, rises?: true)
+    end
+
+    it "ceilings at the ceiling it is given" do
+      expect(read_classes(steps(13, 20), ceiling: 13)).to have_attributes(ceilinged?: true, rises?: false)
+    end
+  end
+
   describe "first epochs" do
     it "needs five samples running at a depth or deeper" do
       reading = read(->(index) { index.between?(10, 13) || index >= 160 ? 11 : 9 })

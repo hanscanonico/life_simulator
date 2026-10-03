@@ -55,7 +55,8 @@ RSpec.describe "Pages", type: :request do
          logic_share_nand logic_share_and logic_share_orn logic_share_or logic_share_andn logic_share_nor
          logic_share_xor logic_share_equ logic_capability logic_capability_deep dominant_logic_tasks
          dominant_logic_task_count meta_inherit_rate meta_diversity logic_capability_replicating
-         logic_depth_max logic_depth_classes transition_epoch]
+         logic_depth_max logic_depth_classes predation_rate predation_relation_rate repertoire_mean silent_share
+         transition_epoch]
     end
 
     it "defines the substrate and links to the sweeps" do
@@ -158,6 +159,15 @@ RSpec.describe "Pages", type: :request do
       expect(entry.text).to eq("imports an objective")
       expect(entry.next_element.text.squish).to include("never pooled with the fitness-free ones",
                                                         'rung 4 on Soup stays "not shown"', "DESIGN §1.4")
+    end
+
+    it "anchors the out-compute label the machine badge links to" do
+      get how_it_works_path
+
+      entry = response.parsed_body.at_css("dt#imports-a-machine")
+      expect(entry.text).to eq("imports a machine, not an objective")
+      expect(entry.next_element.text.squish).to include("never pooled with the fitness-free ones",
+                                                        'rung 4 on Soup stays "not shown"', "is pooled")
     end
 
     it "lists the ten instructions and the opt-in steal byte" do

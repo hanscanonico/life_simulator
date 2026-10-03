@@ -9,6 +9,7 @@
   <dd>
     <%= @show.experiment.substrate %>
     <% if @show.imports_objective? %><%= render "findings/objective_badge" %><% end %>
+    <% if @show.imports_machine? %><%= render "findings/machine_badge" %><% end %>
   </dd>
   <dt>Status</dt><dd><%= @show.experiment.status %></dd>
   <dt>Epochs per run</dt><dd><%= number_with_delimiter @show.experiment.epochs %></dd>
@@ -37,6 +38,7 @@
       <%= link_to finding.title, finding_path(finding) %>
       <span class="badge <%= finding.badge_class %>"><%= finding.status_label %></span>
       <% if finding.imports_objective? %><%= render "findings/objective_badge" %><% end %>
+      <% if finding.imports_machine? %><%= render "findings/machine_badge" %><% end %>
     <% end %>
   </p>
 <% end %>
@@ -101,6 +103,10 @@
 
 <% if @show.topless_rise_reading %>
   <%= render "experiments/topless_rise_reading", reading: @show.topless_rise_reading %>
+<% end %>
+
+<% if @show.out_compute_reading %>
+  <%= render "experiments/out_compute_reading", reading: @show.out_compute_reading %>
 <% end %>
 
 <% if @show.lineage_diversity_reading %>
