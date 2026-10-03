@@ -4863,9 +4863,11 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **Why that is acceptable.** These are worlds no rule ever flagged. Every reading the
     corpus pass has taken of them stays. And the orientation-aware reading of the whole corpus
     (entry of 2026-09-25, finding (b)) found no run the detector passed over holding a kept
-    world that is half replicators: the emergence gate missed none.
-  - **Operation.** A dry run by default; `CONFIRM=yes` deletes, run by run, and `MAX_RUNS` or
-    `TIME_LIMIT` bound an invocation that the next one resumes. Deleted rows return no disk
+    world that is half replicators. The two replicator worlds the confirmation left
+    unemerged there (runs 59 and 170) were flagged, so neither is thinned.
+  - **Operation.** A dry run by default; `CONFIRM=yes` deletes, run by run, each delete asking
+    the whole rule again in its own statement, and `MAX_RUNS` or `TIME_LIMIT` bound an
+    invocation that the next one resumes. Deleted rows return no disk
     on their own: `lab:vacuum_snapshots` runs a plain `VACUUM (ANALYZE) snapshots` so Postgres
     reuses the space. Not `VACUUM FULL`: the disk has no room for its copy of the table, and
     it would lock the table for hours while the runners write.

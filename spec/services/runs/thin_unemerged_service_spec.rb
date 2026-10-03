@@ -67,13 +67,24 @@ RSpec.describe Runs::ThinUnemergedService do
       "a running run" => { status: "running" },
       "a pending run" => { status: "pending" }
     }.each do |label, attributes|
-      it "leaves #{label}" do
+      it "leaves #{label}, and counts none of it in a dry run" do
         run = read_run(**attributes)
 
+        counted = described_class.call.total.snapshots
         thin
 
-        expect(kept(run)).to eq([0, 1_000, 2_000, 3_000])
+        expect([counted, kept(run)]).to eq([0, [0, 1_000, 2_000, 3_000]])
       end
+    end
+
+    it "leaves an experiment oriented_census/1 has not read, whatever else has" do
+      run = create(:run, experiment: experiment, status: "finished", epochs: 3_000)
+      insert_snapshots(run, [0, 1_000, 2_000, 3_000])
+      [0, 1_000, 2_000, 3_000].each { |epoch| read(run, epoch, instrument: "oriented_census/2") }
+
+      thin
+
+      expect(kept(run)).to eq([0, 1_000, 2_000, 3_000])
     end
 
     it "leaves a descendant run" do
@@ -144,6 +155,86 @@ RSpec.describe Runs::ThinUnemergedService do
       thin
 
       expect(kept(run)).to eq([0, 2_000, 3_000])
+    end
+  end
+
+  describe "a run that changes between its reading and its delete" do
+    def changing(run, &change)
+      allow(described_class).to receive(:intermediate_worlds).and_wrap_original do |original, *args|
+        original.call(*args).tap { change.call(run) }
+      end
+    end
+
+    {
+      "requeued" => ->(run) { run.update!(status: "pending") },
+      "backfilled with a crossing" => ->(run) { run.update!(transition_epoch: 1_000) },
+      "confirmed emerged" => ->(run) { run.update!(emergence_epoch: 1_000, emergence_witness: "census") }
+    }.each do |label, change|
+      it "deletes nothing of a run #{label} mid-batch, and counts nothing" do
+        run = read_run
+        changing(run, &change)
+
+        result = thin
+
+        expect([kept(run), result.total]).to eq([[0, 1_000, 2_000, 3_000], described_class::Tally.zero])
+      end
+    end
+
+    it "deletes nothing of a run given a descendant mid-batch" do
+      run = read_run
+      changing(run) { create(:run, experiment: experiment, parent_run: run, parent_epoch: 3_000, epochs: 4_000) }
+
+      thin
+
+      expect(kept(run)).to eq([0, 1_000, 2_000, 3_000])
+    end
+  end
+
+  describe "a run with few worlds" do
+    it "leaves a run with a single stored world" do
+      run = read_run([3_000])
+
+      expect([thin.total.runs, kept(run)]).to eq([0, [3_000]])
+    end
+
+    it "leaves a run with two stored worlds" do
+      run = read_run([0, 3_000])
+
+      expect([thin.total.runs, kept(run)]).to eq([0, [0, 3_000]])
+    end
+
+    it "leaves a run with no restorable world" do
+      run = read_run([0, 1_000, 3_000])
+      Snapshot.where(run: run).update_all(blob: nil)
+
+      expect([thin.total.runs, kept(run)]).to eq([0, [0, 1_000, 3_000]])
+    end
+  end
+
+  describe "the rows it never deletes" do
+    it "keeps a png-only row between the ends" do
+      run = read_run
+      Snapshot.where(run: run, epoch: 2_000).update_all(blob: nil)
+
+      thin
+
+      expect(kept(run)).to eq([0, 2_000, 3_000])
+    end
+
+    it "keeps the world at the run's last epoch, the one a descendant sweep starts from" do
+      run = read_run
+
+      thin
+
+      expect(Snapshot.restorable.joins(:run).where(run: run).where("snapshots.epoch = runs.epochs").count).to eq(1)
+    end
+
+    it "keeps every sample and rescore of a thinned run" do
+      run = read_run
+      create(:sample, run: run, epoch: 1_000)
+      create(:rescore, run: run, epoch: 1_000)
+
+      expect { thin }.not_to(change { [run.samples.count, run.rescores.count] })
     end
   end
 

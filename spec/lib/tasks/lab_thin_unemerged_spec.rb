@@ -59,6 +59,35 @@ RSpec.describe "lab:thin_unemerged" do
     end
   end
 
+  context "with CONFIRM=yes and DRY_RUN=true" do
+    it "deletes nothing" do
+      ENV["CONFIRM"] = "yes"
+      ENV["DRY_RUN"] = "true"
+
+      invoke("lab:thin_unemerged")
+
+      expect(kept).to eq([0, 1_000, 2_000, 3_000])
+    end
+  end
+
+  context "with a limit that is not a positive number" do
+    it "refuses before deleting anything" do
+      ENV["CONFIRM"] = "yes"
+      ENV["MAX_RUNS"] = "0"
+
+      expect { invoke("lab:thin_unemerged") }.to raise_error(RuntimeError, /must be positive/)
+      expect(kept).to eq([0, 1_000, 2_000, 3_000])
+    end
+
+    it "refuses a TIME_LIMIT it cannot read" do
+      ENV["CONFIRM"] = "yes"
+      ENV["TIME_LIMIT"] = "15m"
+
+      expect { invoke("lab:thin_unemerged") }.to raise_error(ArgumentError)
+      expect(kept).to eq([0, 1_000, 2_000, 3_000])
+    end
+  end
+
   context "with MAX_RUNS reached" do
     it "says to run it again" do
       other = create(:run, experiment: experiment, status: "finished", epochs: 2_000)

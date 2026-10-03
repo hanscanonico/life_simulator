@@ -379,9 +379,12 @@ namespace :lab do
   desc "Delete the intermediate stored worlds of the founding runs that never crossed (#268): a dry run " \
        "unless CONFIRM=yes; MAX_RUNS and TIME_LIMIT (seconds) bound one invocation, and the next resumes"
   task thin_unemerged: :environment do
-    delete = ENV.fetch("CONFIRM", nil) == "yes" && ENV.fetch("DRY_RUN", nil) != "1"
-    result = Runs::ThinUnemergedService.call(dry_run: !delete, max_runs: ENV["MAX_RUNS"]&.to_i,
-                                             time_limit: ENV["TIME_LIMIT"]&.to_f)
+    delete = ENV.fetch("CONFIRM", nil) == "yes" && ENV.fetch("DRY_RUN", "0").in?(["", "0"])
+    max_runs = ENV["MAX_RUNS"]&.then { |value| Integer(value, 10) }
+    time_limit = ENV["TIME_LIMIT"]&.then { |value| Float(value) }
+    raise "MAX_RUNS and TIME_LIMIT must be positive." if [max_runs, time_limit].compact.any? { |limit| limit <= 0 }
+
+    result = Runs::ThinUnemergedService.call(dry_run: !delete, max_runs: max_runs, time_limit: time_limit)
     human = ActiveSupport::NumberHelper
 
     result.by_experiment.each do |slug, tally|

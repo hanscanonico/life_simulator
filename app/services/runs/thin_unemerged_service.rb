@@ -88,10 +88,19 @@ module Runs
     def thin(run)
       rows = self.class.intermediate_worlds(run, instruments(run.experiment_id)).pluck(:id, Arel.sql(BYTES))
       return if rows.empty?
+      return Tally.new(runs: 1, snapshots: rows.size, bytes: rows.sum(&:last)) if @dry_run
 
-      ids = rows.map(&:first)
-      Snapshot.where(id: ids, run_id: Run.terminal.where(id: run.id).select(:id)).delete_all unless @dry_run
-      Tally.new(runs: 1, snapshots: ids.size, bytes: rows.sum(&:last))
+      delete(run, rows)
+    end
+
+    # The delete asks the whole selection again in the same statement, so a run requeued,
+    # backfilled with a crossing or given a descendant since it was read loses nothing.
+    def delete(run, rows)
+      deleted = Snapshot.where(id: rows.map(&:first), run_id: self.class.candidates.where(id: run.id).select(:id))
+                        .delete_all
+      return if deleted.zero?
+
+      Tally.new(runs: 1, snapshots: deleted, bytes: rows.sum(&:last))
     end
 
     def spent?(by_experiment)
