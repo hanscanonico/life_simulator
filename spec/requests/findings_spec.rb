@@ -1723,7 +1723,7 @@ RSpec.describe "Findings", type: :request do
 
         expect(response.body.squish)
           .to include("2026-10-01, \"Does the reach effect carry to growable tapes?\"",
-                      "at 16 of 90 against radius 1's 4 of 90, four times the rate", "On growable tapes the effect is larger",
+                      "at 16 of 90 against radius 1's 4 of 90, four times the rate", "On growable tapes the ratio of the rates is larger",
                       "A historical control.", "Rate or speed.", "No mechanism.")
       end
 
