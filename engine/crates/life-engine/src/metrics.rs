@@ -247,6 +247,17 @@ pub struct Metrics {
     /// How many of the topless ladder's rungs at least a tenth of those cells are credited
     /// with.
     pub logic_depth_classes: Option<u32>,
+    /// The share of the last predation pass's encounters, an actor meeting a partner other
+    /// than itself, that moved energy (`docs/design_record.md`, 2026-10-03, predation).
+    /// This and the two readings below are `None` unless the run's predation pass runs;
+    /// this one also until a pass has met a partner, as after a resume.
+    pub predation_rate: Option<f64>,
+    /// The mean number of distinct classes the metabolism tapes of
+    /// `task::TASK_SAMPLE_CELLS` sampled cells compute, over the run's `task_max_outputs`
+    /// slots, on cells and cases of its own.
+    pub repertoire_mean: Option<f64>,
+    /// The share of those cells whose metabolism tapes compute no class at all.
+    pub silent_share: Option<f64>,
 }
 
 impl Metrics {
@@ -1781,6 +1792,9 @@ mod tests {
             logic_capability_replicating: None,
             logic_depth_max: None,
             logic_depth_classes: None,
+            predation_rate: None,
+            repertoire_mean: None,
+            silent_share: None,
         }
     }
 

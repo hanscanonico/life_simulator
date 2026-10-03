@@ -16,6 +16,10 @@ pub const TASK_STEPS: u32 = 4096;
 pub const TASK_CASES: usize = 3;
 /// The most outputs one case may emit before it stops; a task may be credited on any slot.
 pub const TASK_MAX_OUTPUTS: usize = 4;
+/// The most outputs a topless assay may read, where an unpaid run raises its
+/// `task_max_outputs` above `TASK_MAX_OUTPUTS` (`docs/design_record.md`, 2026-10-03,
+/// predation).
+pub const TASK_MAX_OUTPUTS_LIMIT: usize = 16;
 /// Both inputs are drawn uniformly below this, as 2607.09211 draws its inputs: a small
 /// domain keeps loops over an input bounded. A draw holding a 0 is redrawn (`separates`).
 pub const TASK_INPUT_RANGE: u8 = 16;
@@ -300,6 +304,18 @@ pub(crate) fn run_case_with(
     ops: OpSet,
     assay_ops: AssayOps,
 ) -> CaseRun {
+    run_case_upto(tape, inputs, ops, assay_ops, TASK_MAX_OUTPUTS)
+}
+
+/// `run_case_with` stopping at the `most`-th emit rather than the `TASK_MAX_OUTPUTS`-th.
+/// The emits before it are the same either way: a run is cut short, never rerouted.
+pub(crate) fn run_case_upto(
+    tape: &[u8],
+    inputs: &[u8],
+    ops: OpSet,
+    assay_ops: AssayOps,
+    most: usize,
+) -> CaseRun {
     let len = 2 * tape.len();
     let mut buffer = Vec::with_capacity(len);
     buffer.extend_from_slice(tape);
@@ -310,8 +326,8 @@ pub(crate) fn run_case_with(
         }
     }
     let mut emitted = Emitted {
-        bytes: Vec::with_capacity(TASK_MAX_OUTPUTS),
-        most: TASK_MAX_OUTPUTS,
+        bytes: Vec::with_capacity(most),
+        most,
     };
     let bounds = Bounds {
         max_steps: TASK_STEPS,
@@ -370,12 +386,23 @@ pub(crate) fn case_outputs_with(
     ops: OpSet,
     assay_ops: AssayOps,
 ) -> Option<Vec<Vec<u8>>> {
+    case_outputs_upto(tape, inputs, ops, assay_ops, TASK_MAX_OUTPUTS)
+}
+
+/// `case_outputs_with`, each case stopping at its `most`-th emit.
+pub(crate) fn case_outputs_upto(
+    tape: &[u8],
+    inputs: &[&[u8]],
+    ops: OpSet,
+    assay_ops: AssayOps,
+    most: usize,
+) -> Option<Vec<Vec<u8>>> {
     if !tape.contains(&bff::EMIT) {
         return None;
     }
     let mut runs = Vec::with_capacity(inputs.len());
     for case in inputs {
-        let run = run_case_with(tape, case, ops, assay_ops);
+        let run = run_case_upto(tape, case, ops, assay_ops, most);
         if run.outputs.is_empty() {
             return None;
         }

@@ -33,11 +33,12 @@ RSpec.describe Runs::ShowPage do
                   dominant_logic_task_count logic_share_echo logic_share_not logic_share_nand
                   logic_share_and logic_share_orn logic_share_or logic_share_andn logic_share_nor
                   logic_share_xor logic_share_equ meta_inherit_rate meta_diversity
-                  logic_capability_replicating logic_depth_max logic_depth_classes])
+                  logic_capability_replicating logic_depth_max logic_depth_classes predation_rate
+                  repertoire_mean silent_share])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
       create(:sample, run: run, epoch: 100,
                       values: { "task_capability" => 0, "logic_capability" => 0, "meta_diversity" => 1,
-                                "logic_depth_max" => -1 })
+                                "logic_depth_max" => -1, "silent_share" => 1.0 })
       expect(page.charts.map(&:title))
         .to eq(described_class::METRICS.values +
                [described_class::COMPRESSIBILITY_TITLE, described_class::TURNOVER_TITLE])
@@ -53,9 +54,10 @@ RSpec.describe Runs::ShowPage do
     end
 
     context "with samples of a run assayed on neither task ladder" do
-      it "draws no chart of either ladder, nor of the metabolism tape or the topless ladder" do
+      it "draws no chart of either ladder, nor of the metabolism tape, the topless ladder or predation" do
         create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794, "task_capability" => nil })
-        gated = described_class::LADDERS.flatten + described_class::METABOLISM + described_class::DEPTH
+        gated = described_class::LADDERS.flatten + described_class::METABOLISM + described_class::DEPTH +
+                described_class::PREDATION
 
         expect(page.charts.size).to eq(described_class::METRICS.size - gated.size + 2)
         expect(gated.map { |metric| chart_for(metric) }).to all(be_nil)
@@ -84,6 +86,19 @@ RSpec.describe Runs::ShowPage do
         expect(described_class::DEPTH.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
         expect(described_class::LADDERS.last.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
         expect(described_class::METABOLISM.map { |metric| chart_for(metric) }).to all(be_nil)
+        expect(described_class::PREDATION.map { |metric| chart_for(metric) }).to all(be_nil)
+      end
+    end
+
+    context "with samples of a run whose predation pass runs" do
+      it "draws the predation charts beside the depth ones" do
+        create(:sample, run: run, epoch: 100,
+                        values: { "logic_depth_max" => 5, "predation_rate" => 0.3, "repertoire_mean" => 5.2,
+                                  "silent_share" => 0.07 })
+
+        expect(described_class::PREDATION).to eq(%w[predation_rate repertoire_mean silent_share])
+        expect(described_class::PREDATION.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
+        expect(described_class::DEPTH.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
       end
     end
 

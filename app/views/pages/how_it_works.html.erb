@@ -420,6 +420,28 @@
       ladder.
     </dd>
 
+    <dt class="mono">predation_rate</dt>
+    <dd>
+      Under <span class="mono">predation</span>, the share of the last epoch's encounters,
+      a cell meeting a partner, that moved energy from the partner to the cell. Null on
+      every run without predation, and on a run's first sample after a resume.
+    </dd>
+
+    <dt class="mono">repertoire_mean</dt>
+    <dd>
+      Under <span class="mono">predation</span>, how many distinct rungs a cell's
+      metabolism tape computes, a rung being a function up to a reordering of its inputs,
+      averaged over 256 sampled cells and read over every output the run's assay allows.
+      Null on every run without predation.
+    </dd>
+
+    <dt class="mono">silent_share</dt>
+    <dd>
+      Under <span class="mono">predation</span>, the share of those sampled cells whose
+      metabolism tape computes no rung at all: the cells every neighbour may eat. Null on
+      every run without predation.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which
@@ -485,6 +507,15 @@
       never pooled with the fitness-free ones in any count on this site, its findings carry
       this badge, and whatever it reads, rung 4 on Soup stays "not shown". See
       <a href="https://github.com/hanscanonico/life_simulator/blob/main/docs/DESIGN.md#14-metabolism-a-second-labelled-substrate-that-imports-an-objective">DESIGN §1.4</a>.
+    </dd>
+
+    <dt>predation</dt>
+    <dd>
+      A rule under which a cell takes energy from a neighbour whose every computed rung it
+      computes too, so a cell that computes nothing is anyone's food and a cell computing
+      the same as its neighbour is food for it as well. It names no function and pays for
+      none: it imports a machine to compute with, not an objective. Its runs are unpaid,
+      and whatever they read, rung 4 on Soup stays "not shown".
     </dd>
 
     <dt>arm</dt>
