@@ -102,6 +102,15 @@ module Findings
       @locality_emergence = report && LocalityEmergence.build(report, exploratory: exploratory_emergence)
     end
 
+    # Sweep 14 read under its own pre-registered rule, from the report its sweep page draws.
+    # Nil where the sweep is not in the lab.
+    def reach_cap128
+      return @reach_cap128 if defined?(@reach_cap128)
+
+      report = evidence&.reach_cap128_reading
+      @reach_cap128 = report && ReachCap128.build(report)
+    end
+
     # Sweep 15 read under its own pre-registered rule, from the report its sweep page draws.
     # Nil where the sweep is not in the lab.
     def metabolism

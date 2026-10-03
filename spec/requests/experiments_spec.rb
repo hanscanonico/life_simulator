@@ -935,6 +935,21 @@ RSpec.describe "Experiments", type: :request do
                                    "H-reach128", "not shown", "radius 4 1/1 against control, radius 1 0/1")
       end
 
+      context "with a p too small for fixed-point digits" do
+        before do
+          control = Experiment.find_by!(slug: "host-parasite")
+          8.times { reach_run(experiment, crossing: 0, shares: [0.9]) }
+          8.times { control_run(control, shares: [0.0]) }
+        end
+
+        it "prints the test's p in exponent form" do
+          get experiment_path(experiment)
+
+          expect(response.parsed_body.at_css("#reach-cap128-reading").text.squish)
+            .to include("radius 4 9/9 against control, radius 1 0/9, p = 2.06e-05.")
+        end
+      end
+
       context "with emerged runs that carry a complexity reading" do
         before do
           2.times do

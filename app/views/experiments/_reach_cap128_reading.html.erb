@@ -75,7 +75,7 @@
   <p class="text-sm text-muted">
     <% if comparison.testable? %>
       One one-sided Fisher exact test at p &lt; <%= Lab::ReachCap128Reading::LEVEL %>:
-      <%= comparison.counts %>, p = <%= metric_value comparison.p_value.to_f %>.
+      <%= comparison.counts %>, p = <%= p_value_text comparison.p_value %>.
     <% else %>
       Untested until both arms have a counted run.
     <% end %>

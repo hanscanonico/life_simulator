@@ -7,6 +7,25 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "reach-4-carries-to-growable-tapes",
+        title: "On growable tapes, a reach of 4 emerges more than ten times as often as radius 1",
+        date: Date.new(2026, 10, 3),
+        experiment_slug: "reach-cap128",
+        related_finding_slugs: %w[emergence-peaks-at-intermediate-reach],
+        status: :published,
+        summary: "DESIGN §1.3 sweep 14 asked whether the best reach of the locality finding " \
+                 "carries to the growable tapes every rung-4 experiment runs on: the host–parasite " \
+                 "sweep's economy-off world at cap 128, tapes of 64 bytes free to grow to 128, at " \
+                 "radius 4 on that control's seeds 1–270. All 270 runs finished and every world " \
+                 "they kept was read. Radius 4 emerged in 119 of 270 worlds against the control's " \
+                 "11 of 270 at radius 1, 10.8 times the rate (one-sided Fisher p = 1.5e-30), so " \
+                 "the pre-registered test is shown. On fixed 64-byte tapes sweep 13 had read " \
+                 "radius 4 at four times radius 1. In both arms the dominant replicator fills " \
+                 "the 128 bytes it may grow to. 108 of the emerged worlds at radius 4 end with " \
+                 "replicators holding at least half the world, against 11 in the control: a pool " \
+                 "of parents with room to grow, though no later sweep's rule is set by it."
+      ),
+      Finding.new(
         slug: "paid-parts-assemble-deep-logic-on-a-stack-nand",
         title: "With a stack NAND on a metabolism tape, paid parts assemble the logic rungs that need " \
                "an input twice, in a sixth of the worlds",
