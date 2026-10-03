@@ -131,7 +131,11 @@ Stepping to E′ dominates the cost and grows with `sample_every` (bff-control s
 readings still could not be stored logs `event=error` and counts its worlds as `failed=`;
 running the pass again stores them. Both skip the worlds an earlier pass already read, so an
 interrupted pass is resumed by running it again, and an `all` pass after a `latest` one
-does not read those worlds twice. Run one experiment at a time and start small: first
+does not read those worlds twice. A world counts as read only by its own static row
+(`source_epoch` = `epoch`). When a stored world lies one sample after another, the walk
+steps into it and gives it only a stepped row, so it is read on the *next* pass (#300).
+Run the pass again until `event=readings_done` reports `worlds=0`. A run is not measured
+until then. Run one experiment at a time and start small: first
 `--dry-run --limit 5` (reads five worlds and stores nothing), then `bff-control`, then
 `max-tape-len`. Each run prints
 `event=readings run= worlds= rows= failed= skipped= stored=`, and the pass ends with
