@@ -28,6 +28,7 @@
           <p class="finding-meta text-sm text-muted">
             <span class="badge <%= row.finding.badge_class %>" title="<%= row.finding.status_meaning %>"><%= row.finding.status_label %></span>
             <% if row.finding.imports_objective? %><%= render "findings/objective_badge" %><% end %>
+            <% if row.finding.imports_machine? %><%= render "findings/machine_badge" %><% end %>
             <time datetime="<%= row.finding.date.iso8601 %>"><%= l row.finding.date, format: :long %></time>
             <% if row.finding.instrument_note? %>
               <%= link_to "instrument note", finding_path(row.finding, anchor: "instrument-note"),

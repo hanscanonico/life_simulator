@@ -165,6 +165,37 @@ RSpec.describe Run, type: :model do
     end
   end
 
+  describe ".predatory, .labelled and .fitness_free" do
+    let(:defaults) { Lab::Schema.run_defaults }
+    let!(:out_compute) { create(:run, :predatory) }
+    let!(:equal) { create(:run, params: defaults.merge(Lab::OutComputeReading::EQUAL_BUNDLE)) }
+    let!(:shadow) { create(:run, params: defaults.merge(Lab::OutComputeReading::SHADOW_BUNDLE)) }
+    let!(:none) { create(:run, params: defaults.merge(Lab::OutComputeReading::NONE_BUNDLE)) }
+    let!(:no_transfer) do
+      create(:run, params: defaults.merge(Lab::OutComputeReading::OUT_COMPUTE_BUNDLE, "predation_transfer" => 0))
+    end
+    let!(:text_transfer) do
+      create(:run, params: defaults.merge(Lab::OutComputeReading::OUT_COMPUTE_BUNDLE, "predation_transfer" => "8192"))
+    end
+    let!(:predating) { create(:run, params: defaults.except("predation", "predation_transfer")) }
+    let!(:paid) { create(:run, :metabolism) }
+
+    it "reads a relation with a transfer to move as predatory, whatever the relation" do
+      expect(described_class.predatory).to contain_exactly(out_compute, equal, shadow)
+    end
+
+    it "labels the paid and the predatory runs, and pools the rest as fitness-free" do
+      expect(described_class.labelled).to contain_exactly(out_compute, equal, shadow, paid)
+      expect(described_class.fitness_free).to contain_exactly(none, no_transfer, text_transfer, predating)
+    end
+
+    it "agrees with the reading's own rule on every run" do
+      [out_compute, equal, shadow, none, no_transfer, text_transfer, predating, paid].each do |run|
+        expect(described_class.predatory.exists?(run.id)).to eq(Lab::OutComputeReading.predatory_run?(run.params))
+      end
+    end
+  end
+
   describe "a descendant in the transition surveys" do
     let!(:descendant) { create(:run, :descendant, status: "finished") }
 

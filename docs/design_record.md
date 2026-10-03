@@ -4933,3 +4933,251 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     Meta-stack child 4845's world the rise arm 34.1 ms and `subset_class` 29.5. An
     out-compute child costs about what a topless-rise rise child costs on the same world,
     and about 1.5 times a none child.
+- 2026-10-03 — **Out-compute: does an endogenous rule make computing climb, and keep climbing,
+  with nothing paid?** Pre-registration of §1.3 item 19, the Out-compute variant of §1.4 (a
+  DESIGN paragraph added), on the predation slice of the entry above. Nothing here is a
+  finding; every number under "What was seen" is pilot.
+
+  **The choice, and why.**
+  - **The ablation ladder** (`docs/studies/unassisted.md` §2). Meta-stack's claim imports four
+    things: the objective (O, the paid ladder), the primitive (P, the NAND byte), the channel
+    (C, the metabolism tape) and the semantics (S, the stack NAND). S is known load-bearing (a
+    finding, H-stack), P is load-bearing by construction (BFF has no two-input data op), and C
+    is predicted to fail for two measured reasons, the copier valley and the error threshold.
+    O removed bare is answered: every none arm collapses. The study orders the ladder O, then
+    P and S made native, then C made the program's.
+  - **This is step 1.** It removes O by **substitution**, not bare: the paid ladder is
+    replaced by predation, an interaction rule that reads what the tapes compute and names no
+    computation. P, C and S are kept, so the sweep changes exactly one import.
+  - **Why it imports no objective.** The relation is set inclusion between the class sets two
+    tapes are credited with. It is **relabelling-invariant**: permute the functions any way
+    and every comparison comes out the same. It is **relational**: in a world where every cell
+    computes the same set, whatever it is, every cell covers every other and every payoff is
+    the same. No depth table, no units and no ladder lie on its code path; the predation
+    slice's reviewer checked that path. What it does import is listed under "The label".
+  - **The instruction.** The user's instruction for the programme is "continue, don't stop
+    until life exists". Rung 4 on Soup is not shown, and every paid substrate stopped.
+    Removing the objective is the step the honest bar (study §5, clause 2) asks for first.
+
+  **What was seen** (pilot, one seed per arm and world, a throwaway engine copy at `b30196a`).
+  - **Study §4.3.** From reach-cap128 worlds 4381 and 4428, whose metabolism tapes computed
+    nothing at descent, with nothing paid: out-compute at `meta_rate` 8/8192 and a take of
+    8 192 held depth 5 and 6 by a tenth of the world, depth 7 by a hundredth, and 5–6 classes
+    per cell. Every control held depth 0: drift left 88% of cells silent and `equal` 36%.
+    Most of the climb came in the first 8 000–10 000 epochs, then it flattened. By the
+    topless-rise rule one world rose late by one NAND on a series flickering between 5 and 6,
+    and the other did not. The 10th percentile of per-cell max depth among computing cells
+    stayed at 1 throughout: **the minimum did not rise**. At Meta-stack's ×32 rate with half
+    the take, the same rule held depth 1.
+  - **Study §7, the growable channel (pilot 2, negative).** A metabolism tape growing from 32
+    up to 256 bytes, with segment duplication and deletion at 0.05 per inheritance, ran under
+    out-compute for 60 000 epochs on both worlds. It reached one NAND deeper and one or two
+    more classes per cell than the fixed channel within 15 000 epochs, then stood still. The
+    minimum stayed at 1. Neither growable run met the study's §5.4 (the one pass was a fixed
+    arm, by one NAND).
+    - **Why it did not climb late.** The tapes grew to ~210 bytes, but every load-bearing byte
+      sat in the first 16. One stack-NAND loop spends the whole emit budget, so code appended
+      after it is never read. A changed loop changes its whole orbit and replaces its classes
+      rather than adding to them, so the subset ratchet does not pay it. A tandem-duplication
+      probe did no better.
+    - **So the plateau is the loop's orbit, not the channel's length.** The study recommends
+      **no growable arm**, and this sweep has none: it would cost ~1.6 times a fixed arm, and
+      the pilot predicts it ties the fixed arm on the rise rule.
+  - **Topless-rise, interim** (`lab:topless_rise_report` on the lab, 2026-10-03 15:49Z,
+    "interim"; not the sweep's final reading). 68 of 162 children had finished. Last-decile
+    medians of `logic_depth_max` over the finished children: rise 10 (23 children, 16 of them
+    at 10), capped 7–8, none 0. H-rise read 0 to 0 with 26 ties and H-rise-paid 1 to 4, both
+    refuted so far. So even under pay, on the ladder built without a near top, the deepest
+    rung held so far jumps early and stands still at the mode of the depth scale.
+  - **The predation slice's reproduction on the engine.** On the pilot's out-compute end
+    world of 4381 the engine reads `predation_relation_rate` 0.32, against the 0.30 coin
+    `predation_shadow_p` sets for shadow, and `predation_rate` 0.29. An out-compute child costs
+    about what a topless-rise rise child costs on the same world.
+
+  **The label: "imports a machine, not an objective"** (`Lab::OutComputeReading::LABEL`).
+  - **The machine** is the NAND primitive, its stack semantics, the world-copied metabolism
+    tape, the emit op and its cap of 16, the input bytes and the predation rule itself. No
+    objective: nothing says which computation is wanted.
+  - **Rung 4 on Soup stays "not shown"** whatever this sweep reads; the study's §2 step 4
+    (P and S made soup instructions, emergence re-shown on them) is what would make the
+    machine native.
+  - **Pooling**, settled here as the predation entry left it. `Run.predatory` is the runs
+    whose pass runs: `predation` a string other than `off` and `predation_transfer` a
+    positive JSON number, the engine's own `predation_active`. `Lab::OutComputeReading.
+    predatory_run?` is the same rule on a params hash.
+    - `Run.fitness_free` now excludes them beside the paid runs, and `Run.labelled` (paid or
+      predatory) is what `Programme::Status#peak_replicator_count` leaves out. Every
+      aggregate already on `fitness_free` follows: the status strip's seeds transitioned, the
+      lab-wide surveys and their index denominator, the lab-wide detector baseline and the
+      oriented corpus total.
+    - **The none arm (`predation: off`) is not predatory** and pools as plain Soup: a
+      metabolism tape nothing reads into the dynamics. That is the predation reviewer's ruling
+      on Meta-stack's and topless-rise's reward-0 arms, which do not change.
+    - Today no stored run carries the key (SELECT, 2026-10-03: 0 of 5 126), so no number on
+      the site moves now. Once the sweep is seeded, its 162 predatory children leave every
+      fitness-free aggregate, and its 54 none children stay in.
+  - **The badge.** A finding carries the flag as `imports_objective` is carried
+    (`Findings::Finding#imports_machine`, stated in its registry entry). The registry spec
+    holds every finding resting on this sweep to it, and no other. The badge sits beside the
+    finding's status wherever that renders, on this sweep's page beside its substrate and
+    over its reading, and it links to a new glossary entry.
+
+  **The sweep** (`out-compute`, a descendant sweep).
+  - **Parents.** The rule `Lab::OutComputeReading::PARENTS`, read by
+    `Experiments::DescendantParentsService`, extended as data with two keys:
+    - `emerged`: only a candidate with a confirmed emergence epoch;
+    - `first: 54`: the first 54 qualifying candidates by run id, the rest skipped as past
+      it.
+    The candidates are reach-cap128's founding runs at radius 4, qualified on the oriented
+    census of the terminal world (`oriented_census/1`, `replicator_share` ≥ 0.5). With a
+    confirmed emergence and a terminal share ≥ 0.5 at the terminal world, that is reach-cap128's
+    own emergence rule.
+    - SELECT, 2026-10-03: 270 runs. 113 read a terminal share ≥ 0.5, and 5 of those (4368,
+      4373, 4420, 4433, 4485) never emerged, which leaves **108**, the finding's eligible
+      parents.
+    - The 54 lowest ids run 4306–4430, each from its terminal world at epoch 20 000. They
+      include the pilot's two start worlds, 4381 and 4428. Their children are not replays of
+      the pilot (another seed, the real engine); no test leaves them out.
+    - Fitness-free history: none of them was ever paid.
+  - **The bundle**, merged over each parent's params, every value named:
+    - the economy: `energy_payer: initiator`, `energy_influx` 1 024, `energy_stock_cap`
+      65 536, `steal_amount` 0;
+    - the assay, unpaid: `tasks: logic4`, `task_reward` 0, `logic_nand: stack`;
+    - the metabolism tape: `meta_len` 32, `meta_rate` 0.0009765625 (8/8192, the pilot's ×8, a
+      quarter of Meta-stack's 32/8192: the study's §4.4 and the record's predation entry
+      agree on 8/8192), `meta_draw: isa`, `meta_seed: own_tape`;
+    - the slots: `task_max_outputs` 16;
+    - the pass: `predation_transfer` 8 192, `predation_loss` 0.5, `predation_every` 8,
+      `predation_shadow_p` 0.3.
+  - **The arms.**
+    - **out-compute**: `predation: subset_class`;
+    - **equal**: `predation: equal`, the same transfers with no ratchet;
+    - **shadow**: `predation: shadow`, the same transfers on a coin;
+    - **none**: `predation: off`. It keeps `task_max_outputs` 16 so its depth readings read
+      the slots the treatment arms read, which the predation slice accepts on any unpaid
+      topless run.
+  - **Seed 6001**, one per parent, which no stored run uses (SELECT, 2026-10-03) and no other
+    sweep names. **100 000 epochs** past the parent, **priority 40**: **216 children**.
+  - **Validated in the engine.** Each of the four bundles was merged over the params of 4381
+    and of 4428 and descended from their stored terminal worlds with `World::descend`. That
+    path runs `Params::validate`, the paid-or-predatory refusal and the structure check. All
+    eight were accepted, at seed 6001, on the merged engine, for 1 000 epochs. At 1 000 epochs:
+    - out-compute held depth 2 and 4 classes, with 5–8% of sampled cells silent,
+      `predation_rate` 0.36 and `predation_relation_rate` 0.40;
+    - equal held depth 1, with 48–56% silent;
+    - shadow held nothing (−1), with 87–88% silent and a relation rate of 0.29–0.31 against
+      its coin of 0.30;
+    - none held ECHO or nothing, its predation readings null;
+    - `replicator_share` read 0.76–0.92 everywhere.
+  - **Cost.** On the mini-pc, finished topless-rise children took 59 s per 1 000 epochs
+    (rise) and 39 s (none), wall time from claim to finish under the full 12-slot load
+    (SELECT, 2026-10-03). The predation entry measured, on one climbed world, out-compute and
+    equal at about 1.04 times a rise child, and shadow and off at about two-thirds of it.
+    Taking out-compute and equal at 61 s and shadow and none at 39 s:
+    54 × 100 × (61 + 61 + 39 + 39) s ≈ 1.08 M run-seconds ≈ **25 h of the 12 slots**. At the
+    study's more cautious 80 s and 45 s it is 36 h.
+  - **The builder.** It is idempotent, adds nothing to reach-cap128 or any earlier sweep,
+    gives each child of a parent its own canonical params, and so collides with no stored
+    run.
+
+  **The readings, per child.** Topless-rise's machinery, unchanged (`Lab::ToplessRiseReading`):
+  - the **settling window** of 1 000 epochs;
+  - **deciles** cut by index over all settled samples, with **lower-middle medians**, and a
+    decile unread under 10 numbers;
+  - **extinct** where the last-decile median `replicator_share` is below 0.1, and a **settled
+    relapse** as before;
+  - **the rise rule with the bar**: a child rises late where its last-decile median is at
+    least the bar + 1. The bar is the largest of its fifth-decile median, its value at
+    descent and every value held under the persistence rule (**k = 5**) up to the fifth
+    decile's end.
+  - **On two keys, both read over 16 slots.** It reads `logic_depth_max`, −1 entering as
+    itself, ceilinged at 13 as there. It reads `logic_depth_classes` (the classes held by a
+    tenth) with **no ceiling**: no reading can reach the 3 982 classes.
+  - The only change to the module is that its child reading takes the key and the ceiling as
+    arguments, defaulting to topless-rise's, which reads as before.
+
+  **The tests.** One-sided sign tests over the discordant pairs at p < 0.05, Logic's
+  machinery and outcome rules:
+  - **shown** at p < 0.05;
+  - **refuted** where the pairs favouring the control are at least as many as those favouring
+    out-compute, ties included;
+  - **not shown** otherwise;
+  - **no measured pairs** where none is measured on both sides.
+  A pair is the out-compute child and the control child of the same parent. Each test carries
+  the per-parent agreement and the leave-one-or-two-parents-out rule, and is re-read with the
+  extinct pairs kept (a sensitivity reading that decides nothing). With a control at no rise,
+  a rise test needs 5 discordant pairs (p = 1/32), and 7 to survive leaving out any two
+  parents.
+  - **H-endogenous** (out-compute against none): the last-decile median `logic_depth_max`, as a
+    level. A pair is measured where both medians are read and neither child is extinct, and it
+    favours the higher median. Pilot prediction: **shown**.
+  - **H-ratchet** (out-compute against equal): the same key. Prediction: **shown**.
+  - **H-driven** (out-compute against shadow): the same key. Not piloted. Prediction:
+    **shown**, since shadow moves energy without reading computation; the validation above saw
+    it hold nothing. A tie would mean the climb is passive.
+  - **H-rise-unassisted** (out-compute against none): the rise rule on `logic_depth_max`, the
+    rung-4 question. Prediction: **not shown, or refuted**. The pilot made its climb in the
+    first 10 000 epochs, so a 100 000-epoch child's bar is set by its fifth decile at the
+    plateau.
+  - **H-repertoire** (out-compute against none): the rise rule on `logic_depth_classes`.
+    Predicted the same way.
+
+  **Descriptive and offline** (tested nowhere).
+  - **McShea's minimum.** The 10th percentile of per-cell max depth among the cells computing
+    anything, on the fifth-decile and the last stored worlds of every child. A cell's max
+    depth is the deepest class its metabolism tape is credited on all six of topless-rise's
+    fixed case sets, over 16 slots. A driven trend raises it; a passive one need not.
+  - **H-code**, topless-rise's method: the load-bearing bytes of the dominant deepest solver,
+    the fifth-decile world against the last, over 16 slots, on every out-compute child that
+    rises late and on its twins, with the same labels.
+  - **Last-decile medians** of `repertoire_mean`, `silent_share`, `predation_rate`,
+    `predation_relation_rate` and `replicator_share`, printed per child. The depths first
+    held in the second half print beside them, for the study's §5.4.
+  - **A tool slice comes first.** `research/landscape` reads the topless assay over four
+    slots (`topless::assay`) and prints no per-cell percentile. A slice reading
+    `task_max_outputs` slots (`topless::assay_upto`) and printing the percentile above lands
+    before the sweep is read. The method is locked here.
+
+  **What each outcome means** (study §4.4).
+  - **The three level tests shown and H-rise-unassisted shown.** On a machine that imports no
+    objective, computing climbs and keeps climbing late, driven by what neighbours compute.
+    That is rung 4 with an endogenous objective, on an imported machine.
+  - **The level tests shown, H-rise-unassisted refuted or not shown.** An endogenous rule makes
+    computing pay and builds depth and repertoire, then stops. Study §7 diagnoses why, as a
+    pilot: one stack-NAND loop spends the emit budget, so later code is never read, and a
+    variant loop replaces its classes instead of adding to them, so the ratchet cannot pay
+    it. The next levers are **the emit budget** (an assay that reads code past a loop, a
+    change to the machine) and **a variation that preserves supersets** (insertions that
+    leave a loop's laps intact). The channel's length is not one: pilot 2 refuted it.
+  - **H-ratchet not shown.** Being different is enough; transitivity adds nothing.
+  - **H-driven not shown.** The level is reached by energy flow, not by selection on what is
+    computed: passive.
+  - **H-endogenous refuted.** The pilot was a fluke of two worlds.
+
+  **What is not claimed.**
+  - **The machine is imported** (above), and the predation rule with it.
+  - It is **one substrate**, one budget and one seed a parent.
+  - **The honest "life exists" bar** (study §5) is not met by this sweep alone. Of its six
+    clauses:
+    - it addresses **clause 2** (no imported objective: the rule passes both checks);
+    - it addresses **clause 5** in part: drift, no-ratchet and shadow controls, with McShea's
+      minimum read descriptively;
+    - it addresses **clause 3** in part: depth and repertoire on the function side, and
+      load-bearing bytes offline on the program side, but on four inputs and a fixed 32-byte
+      channel, which has a near top;
+    - it does **not** meet **clause 1** (the stack NAND, the emit op and the metabolism tape
+      exist only in descendants), **clause 4** (it reads the rise rule, not three persistent
+      new maxima with the last in the final quarter; those are printed only), or **clause 6**
+      (100 000 epochs, not 10⁶; one seed a parent).
+  - Every constant above lives in `Lab::OutComputeReading`.
+
+  **Seeding rule.** `lab:sweep[out_compute]` is run **only after** the predation slice (#303)
+  and this entry are deployed, **and after the topless-rise sweep has finished**: the deploy
+  restarts the runner, and the topless-rise children must not be interrupted. If the
+  readings-walk PR (#302) is still pending then, deploy it in the same batch. It should create
+  216 runs.
+
+  **When it is read.** `lab:out_compute_report` (text, or CSV with `FORMAT=csv`) and the
+  sweep's page read it, cached as the topless-rise reading is. It is labelled **interim**
+  until the parent pool is terminal and every child of every qualifying parent has finished
+  (`Experiments::DescendantSweepSettledService`), then **final**.

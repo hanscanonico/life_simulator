@@ -161,6 +161,15 @@ RSpec.describe "Pages", type: :request do
                                                         'rung 4 on Soup stays "not shown"', "DESIGN §1.4")
     end
 
+    it "anchors the out-compute label the machine badge links to" do
+      get how_it_works_path
+
+      entry = response.parsed_body.at_css("dt#imports-a-machine")
+      expect(entry.text).to eq("imports a machine, not an objective")
+      expect(entry.next_element.text.squish).to include("never pooled with the fitness-free ones",
+                                                        'rung 4 on Soup stays "not shown"', "is pooled")
+    end
+
     it "lists the ten instructions and the opt-in steal byte" do
       get how_it_works_path
 

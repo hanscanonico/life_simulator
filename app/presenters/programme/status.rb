@@ -5,7 +5,8 @@ module Programme
   # what has been queued, what has finished, and the largest replicator census any run has
   # ever recorded. Every page that carries the status strip builds one of these. The counts
   # of work done take every run; the two readings of what the worlds did take the
-  # fitness-free runs alone, since a Metabolism run is never pooled with them (DESIGN.md §1.4).
+  # fitness-free runs alone, since a Metabolism or a predation run is never pooled with them
+  # (DESIGN.md §1.4).
   class Status
     def self.build = new
 
@@ -25,13 +26,13 @@ module Programme
 
     # nil until some sample has counted a replicator. The predicate matches
     # `index_samples_on_run_id_replicated` (db/schema.rb) exactly, so the maximum is read
-    # off that partial index instead of scanning every sample ever taken; the paid runs are
-    # few, so leaving them out is a hashed NOT IN beside it.
+    # off that partial index instead of scanning every sample ever taken; the paid and the
+    # predatory runs are few, so leaving them out is a hashed NOT IN beside it.
     def peak_replicator_count
       return @peak_replicator_count if defined?(@peak_replicator_count)
 
       @peak_replicator_count = Sample.where("values -> 'replicator_count' > '0'::jsonb")
-                                     .where.not(run_id: Run.metabolism.select(:id))
+                                     .where.not(run_id: Run.labelled.select(:id))
                                      .maximum(Arel.sql("(values ->> 'replicator_count')::numeric"))
     end
   end

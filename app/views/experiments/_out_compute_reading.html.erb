@@ -1,0 +1,131 @@
+<%# The out-compute sweep's pre-registered reading (docs/design_record.md, 2026-10-03,
+    "Out-compute: does an endogenous rule make computing climb, and keep climbing, with nothing
+    paid?"): `reading` is a Lab::OutComputeReading::Report. The per-child rows stay in
+    `lab:out_compute_report`. %>
+<section class="mt-6" id="out-compute-reading">
+  <h2>
+    The pre-registered reading
+    <% if reading.any? %>
+      <span class="badge <%= reading.interim? ? 'badge-warning' : 'badge-success' %>">
+        <%= reading.interim? ? "interim" : "final" %>
+      </span>
+    <% end %>
+    <%= render "findings/machine_badge" %>
+  </h2>
+  <p class="text-sm text-muted">
+    <% if reading.interim? %>
+      Interim: not every child of every qualifying parent has finished, and nothing here is the
+      sweep's result yet.
+    <% else %>
+      Every child of every qualifying parent has finished.
+    <% end %>
+    Each child continues an emerged world of the
+    <%= link_to "Reach with room to grow", experiment_path(Lab::OutComputeReading::PARENTS.fetch("experiment")) %>
+    sweep, which no pay ever touched, and is paired with the child of the same parent in each other
+    arm. All are read over their own samples past a settling window of
+    <%= number_with_delimiter Lab::OutComputeReading::SETTLING_WINDOW %> epochs. The level tests
+    compare the median depth of the deepest rung held by a tenth of the world over the last tenth of
+    those samples. The rise tests ask whether that median, or the number of rungs held, is at least
+    <%= Lab::OutComputeReading::RISE_STEP %> above the most the lineage reached before the second half:
+    its median over the fifth tenth, its depth at descent, and every value it held for
+    <%= Lab::OutComputeReading::PERSISTENCE_RUN %> samples running up to the fifth tenth's end. A
+    child is extinct where its last-decile median share of replicators is below
+    <%= percent_value Lab::OutComputeReading::EXTINCT_SHARE %>, and a pair with an extinct child is in
+    no test. Each test is a one-sided sign test at p &lt; <%= Lab::OutComputeReading::SIGN_TEST_LEVEL %>,
+    re-read with the extinct pairs kept. Nothing is paid here, but the machine the tapes compute
+    with is given, so rung 4 on Soup stays not shown whatever it reads.
+  </p>
+
+  <% if reading.any? %>
+    <figure class="table-figure mt-4">
+      <figcaption class="table-caption text-sm text-muted" id="out-compute-arms">
+        Children per arm, read so far. Measured means read on the last tenth and not extinct; the
+        last column is the median of those children's last-tenth depth.
+      </figcaption>
+      <div class="table-scroll" tabindex="0" role="region" aria-labelledby="out-compute-arms">
+        <table class="data-table" aria-labelledby="out-compute-arms">
+          <thead>
+            <tr>
+              <th>Arm</th>
+              <th class="numeric">Children</th>
+              <th class="numeric">Finished</th>
+              <th class="numeric">Settled relapses</th>
+              <th class="numeric">Extinct</th>
+              <th class="numeric">Measured</th>
+              <th class="numeric">Depth rises late</th>
+              <th class="numeric">Rungs held rise late</th>
+              <th class="numeric">Ceilinged</th>
+              <th class="numeric">Reached the floor</th>
+              <th class="numeric">Median last-tenth depth</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% reading.arms.each do |arm| %>
+              <tr>
+                <td><%= arm.name %></td>
+                <% arm.cells.drop(1).each do |count| %>
+                  <td class="numeric"><%= count.nil? ? "—" : count %></td>
+                <% end %>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </figure>
+
+    <h3 class="mt-4">Hypotheses</h3>
+    <ul>
+      <% reading.readings.each do |test, kept| %>
+        <% comparison = test.comparison %>
+        <li class="mb-3">
+          <strong><%= test.hypothesis %></strong>, <%= test.treatment.name %> against <%= test.control.name %>:
+          <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>
+          <p class="text-sm text-muted">
+            <%= pluralize(comparison.measured_count, "pair") %> measured on both sides:
+            <%= comparison.favouring %> favour <%= test.treatment.name %>, <%= comparison.against %>
+            <%= test.control.name %>,
+            <%= comparison.ties %> tie<% if comparison.p_value %>; p = <%= p_value_text comparison.p_value %><% end %>.
+            <% if comparison.carried_by.any? %>
+              Carried by parents
+              <%= comparison.carried_by.map { |parents| parents.map { |id| "run #{id}" }.join(" and ") }.to_sentence(two_words_connector: " or ", last_word_connector: ", or ") %>:
+              without their pairs the test falls to p ≥ <%= Lab::OutComputeReading::SIGN_TEST_LEVEL %>.
+            <% end %>
+            With the extinct pairs kept:
+            <span class="badge <%= kept.badge_class %>"><%= kept.outcome_label %></span>,
+            <%= kept.comparison.favouring %> to <%= kept.comparison.against %><% if kept.comparison.p_value %>,
+            p = <%= p_value_text kept.comparison.p_value %><% end %>.
+          </p>
+          <% if comparison.agreement.any? %>
+            <details class="text-sm">
+              <summary>Per-parent agreement</summary>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Parent</th>
+                    <th class="numeric">Favour <%= test.treatment.name %></th>
+                    <th class="numeric">Favour <%= test.control.name %></th>
+                    <th class="numeric">Tie</th>
+                    <th class="numeric">Not both measured</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% comparison.agreement.each do |row| %>
+                    <tr>
+                      <td><%= link_to "run #{row.parent_id}", run_path(row.parent_id) %></td>
+                      <td class="numeric"><%= row.treatment %></td>
+                      <td class="numeric"><%= row.continuation %></td>
+                      <td class="numeric"><%= row.ties %></td>
+                      <td class="numeric"><%= row.unmeasured %></td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </details>
+          <% end %>
+        </li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="mt-4">No child yet.</p>
+  <% end %>
+</section>

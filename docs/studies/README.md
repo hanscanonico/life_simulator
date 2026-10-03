@@ -14,7 +14,7 @@ pilot worlds — unless the record says otherwise. A pilot number is not a findi
 | [`logic.md`](logic.md): what holds the Metabolism ladder at one substitution | 2026-10-01 | §1.3 item 16; record 2026-10-01, "Logic: does a soup assemble features beyond its one-step rungs when the parts are paid?" |
 | [`meta-stack.md`](meta-stack.md): if Logic's deep rungs do not come, what binds next? | 2026-10-02 | §1.3 item 17; record 2026-10-02, "Meta-stack: does a soup assemble the deep rungs from paid parts on a metabolism tape read with a stack NAND?" |
 | [`topless.md`](topless.md): does the climb keep going? A ladder without a near top | 2026-10-02 | no sweep; record 2026-10-02, "The minimal-NAND tables for the topless ladder (preparation only)" |
-| [`unassisted.md`](unassisted.md): from imported scaffolding toward unassisted open-endedness | 2026-10-03 | the engine slice of out-compute, no sweep yet; record 2026-10-03, "Predation: the out-compute rule, an endogenous pressure in place of the paid ladder (engine slice)" |
+| [`unassisted.md`](unassisted.md): from imported scaffolding toward unassisted open-endedness | 2026-10-03 | the engine slice of out-compute and §1.3 item 19; record 2026-10-03, "Predation: the out-compute rule, an endogenous pressure in place of the paid ladder (engine slice)" and "Out-compute: does an endogenous rule make computing climb, and keep climbing, with nothing paid?" |
 
 The landscape methods the Meta-stack sweep locks as offline readings (the substitution
 distance, heritability by planting, the circuit behind a deep solver) are preserved, ported

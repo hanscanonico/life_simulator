@@ -578,6 +578,67 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the out-compute sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("out_compute") }
+      let(:treatments) { definition[:param_grid].fetch("treatment") }
+      let(:reading) { Lab::OutComputeReading }
+      let(:bundle) do
+        { "energy_payer" => "initiator", "energy_influx" => 1024, "energy_stock_cap" => 65_536, "steal_amount" => 0,
+          "tasks" => "logic4", "task_reward" => 0, "logic_nand" => "stack", "meta_len" => 32,
+          "meta_rate" => 8.0 / 8192, "meta_draw" => "isa", "meta_seed" => "own_tape", "task_max_outputs" => 16,
+          "predation_transfer" => 8192, "predation_loss" => 0.5, "predation_every" => 8,
+          "predation_shadow_p" => 0.3 }
+      end
+
+      it "starts from reach-cap128's first fifty-four emerged radius-4 runs ending at least half replicators" do
+        expect(definition[:parents]).to eq("experiment" => "reach-cap128", "arms" => [{ "radius" => 4 }],
+                                           "emerged" => true, "instrument" => "oriented_census/1",
+                                           "share_key" => "replicator_share", "min_share" => 0.5, "first" => 54)
+      end
+
+      it "runs one seed per parent a hundred thousand epochs past it at priority 40" do
+        expect(definition.values_at(:seeds, :epochs, :priority)).to eq([[6001], 100_000, 40])
+      end
+
+      it "runs out-compute, equal, shadow and no predation over one bundle, at a quarter of Meta-stack's tape rate" do
+        expect(treatments).to eq(%w[subset_class equal shadow off].map { |relation| bundle.merge("predation" => relation) })
+        expect(treatments.map { |arm| reading.treatment_key(arm) }).to eq(%i[out_compute equal shadow none])
+        expect(bundle["meta_rate"] * 4).to eq(Lab::MetaStackReading::META_BUNDLE.fetch("meta_rate"))
+      end
+
+      it "sets only parameters the engine declares, each to a value it accepts" do
+        treatments.flat_map(&:to_a).each do |name, value|
+          field = Lab::Schema.field(name)
+          if field["values"]
+            expect(field["values"]).to include(value)
+          else
+            expect(value).to be_between(field["min"], field["max"])
+          end
+        end
+      end
+
+      it "changes no parameter that shapes the parent's world" do
+        expect(treatments.flat_map(&:keys) & Lab::CanonicalParams::STRUCTURAL_KEYS).to be_empty
+      end
+
+      it "pays no arm, and labels every arm but none predatory" do
+        expect(treatments.map { |arm| Lab::MetabolismReading.metabolism_run?(arm) }).to all(be(false))
+        expect(treatments.map { |arm| reading.predatory_run?(arm) }).to eq([true, true, true, false])
+      end
+
+      it "reads the topless-rise entry's rules and observables the engine records" do
+        expect(%i[SETTLING_WINDOW PERSISTENCE_RUN RISE_STEP].map { |name| reading.const_get(name) })
+          .to eq([1_000, 5, 1])
+        expect(Sample::OBSERVABLES).to include(reading::DEPTH_KEY, reading::CLASSES_KEY, *reading::DESCRIPTIVE_KEYS)
+      end
+
+      it "names a seed no other sweep uses" do
+        other_seeds = Lab::SWEEPS.except("out_compute").values.flat_map { |sweep| Array(sweep[:seeds]) }
+
+        expect(definition[:seeds] & other_seeds).to be_empty
+      end
+    end
+
     describe "the lineage-diversity sweep" do
       let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
       let(:reading) { Lab::LineageDiversityReading }

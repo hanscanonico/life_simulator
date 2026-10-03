@@ -961,6 +961,30 @@ sample.
     fifth decile and last, descriptive and offline. Pre-registered in `docs/design_record.md`, 2026-10-02, "Topless
     rise: does the deepest rung held keep rising when depth is paid?", whose numbers live in
     `Lab::ToplessRiseReading`; `lab:topless_rise_report` reads it.
+19. **Out-compute** — does computing climb, and keep climbing, when nothing pays for it? The
+    Out-compute variant of §1.4, step 1 of the ablation ladder in `docs/studies/unassisted.md`
+    §2: the paid ladder removed by substituting an endogenous rule, predation (§1.1). A
+    descendant sweep from **reach-cap128's first 54 eligible parents** (radius 4, emerged,
+    terminal `replicator_share` at least 0.5: 108 runs, the 54 lowest run ids), each from its
+    terminal world at epoch 20 000; fitness-free history, none ever paid. Seeded only once
+    the predation slice and this item are deployed and the topless-rise sweep has finished.
+    Four arms merged over each parent's params on one bundle (the `initiator` economy at
+    influx 1 024, cap 65 536, no theft; `tasks: logic4` at `task_reward` 0; the stack NAND on
+    a 32-byte metabolism tape at `meta_rate` 8/8192, `isa` draws, seeded from the cell's own
+    tape; `task_max_outputs` 16; `predation_transfer` 8 192, `predation_loss` 0.5,
+    `predation_every` 8, `predation_shadow_p` 0.3): **out-compute** (`predation:
+    subset_class`), **equal**, **shadow** and **none** (`predation: off`). Seed 6001,
+    100 000 epochs past the parent, priority 40, 216 children. Read with topless-rise's
+    machinery unchanged, on `logic_depth_max` and on `logic_depth_classes`, both over 16
+    slots. Five one-sided sign tests at p < 0.05, each re-read with the extinct pairs kept:
+    H-endogenous (out-compute against none), H-ratchet (against equal) and H-driven (against
+    shadow) on the last-decile median `logic_depth_max` as a level; H-rise-unassisted
+    (against none) on the rise rule, the rung-4 question; H-repertoire (against none) on the
+    rise rule over `logic_depth_classes`. McShea's minimum and the load-bearing bytes are
+    read offline and descriptively. Pre-registered in `docs/design_record.md`, 2026-10-03,
+    "Out-compute: does an endogenous rule make computing climb, and keep climbing, with
+    nothing paid?", whose numbers live in `Lab::OutComputeReading`; `lab:out_compute_report`
+    reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -1021,9 +1045,25 @@ Soup stays "not shown" whatever it reads. Its sweep is §1.3 item 18, pre-regist
 `docs/design_record.md`, 2026-10-02, "Topless rise: does the deepest rung held keep rising
 when depth is paid?".
 
-The design study behind each of the four is kept in `docs/studies/` (`metabolism.md`,
-`logic.md`, `meta-stack.md`, `topless.md`); every number in them is pilot unless the record
-says otherwise.
+**Out-compute** is the first variant that removes the objective rather than adding an import:
+Topless's machine (the stack NAND on a metabolism tape, the four-input assay) with nothing
+paid, and **predation** (§1.1) in its place, so a cell's energy moves by what its tape
+computes against what its neighbours' compute. The rule names no function and grades
+nothing absolutely, so it **imports a machine, not an objective**: the NAND and its stack
+semantics, the metabolism tape, the emit op and the emit cap, the input bytes and the
+predation rule itself. A predatory run (`predation` other than `off` with a positive
+`predation_transfer`) is unpaid, so it carries no "imports an objective" badge, but it is
+not plain Soup either: it is never pooled with fitness-free runs, its findings carry an
+"imports a machine, not an objective" badge, and rung 4 on Soup stays "not shown" whatever
+it reads, until the machine is the soup's own (the study's §2, step 4). An unpaid run with
+predation off is plain Soup carrying a tape nothing reads into its dynamics, as the reward-0
+arms of Meta-stack and Topless are, and pools as they do. Its sweep is §1.3 item 19,
+pre-registered in `docs/design_record.md`, 2026-10-03, "Out-compute: does an endogenous rule
+make computing climb, and keep climbing, with nothing paid?".
+
+The design study behind each of the five is kept in `docs/studies/` (`metabolism.md`,
+`logic.md`, `meta-stack.md`, `topless.md`, `unassisted.md`); every number in them is pilot
+unless the record says otherwise.
 
 ## 2. Architecture
 

@@ -149,10 +149,10 @@ module Experiments
     # The from-emerged sweep's pre-registered reading, on a sweep with a parent rule only.
     # Whether it is final also turns on the parent pool, whose runs belong to another
     # experiment and so are not in this key: the settled service keys it on that pool. The
-    # metabolism, logic, meta-stack and topless-rise sweeps have a parent rule but their own
-    # readings (`lab:metabolism_report`, `lab:logic_report`, `lab:meta_stack_report`,
-    # `lab:topless_rise_report`): this one would pair their arms against a continuation they
-    # do not have.
+    # metabolism, logic, meta-stack, topless-rise and out-compute sweeps have a parent rule but
+    # their own readings (`lab:metabolism_report`, `lab:logic_report`, `lab:meta_stack_report`,
+    # `lab:topless_rise_report`, `lab:out_compute_report`): this one would pair their arms
+    # against a continuation they do not have.
     def descendant_reading
       return nil if experiment.parents.blank? || own_descendant_reading?
 
@@ -201,31 +201,21 @@ module Experiments
     # The metabolism sweep's pre-registered reading, on that sweep only: one pass over each
     # child's samples, held under this page's key, and final once the parent pool has settled,
     # which the settled service keys on that pool, as for `descendant_reading`.
-    def metabolism_reading
-      return nil unless MetabolismReadingService.applies_to?(experiment)
-
-      @metabolism_reading ||= cached("metabolism_reading") { MetabolismReadingService.call(experiment: experiment) }
-                              .with(final: DescendantSweepSettledService.call(experiment))
-    end
+    def metabolism_reading = @metabolism_reading ||= settled_reading(MetabolismReadingService, "metabolism_reading")
 
     # The logic sweep's pre-registered reading, on that sweep only, cached and finalised as
     # the metabolism reading is.
-    def logic_reading
-      return nil unless LogicReadingService.applies_to?(experiment)
-
-      @logic_reading ||= cached("logic_reading") { LogicReadingService.call(experiment: experiment) }
-                         .with(final: DescendantSweepSettledService.call(experiment))
-    end
+    def logic_reading = @logic_reading ||= settled_reading(LogicReadingService, "logic_reading")
 
     # The topless-rise sweep's pre-registered reading, on that sweep only, cached and
     # finalised as the logic reading is.
     def topless_rise_reading
-      return nil unless ToplessRiseReadingService.applies_to?(experiment)
-
-      @topless_rise_reading ||= cached("topless_rise_reading") do
-        ToplessRiseReadingService.call(experiment: experiment)
-      end.with(final: DescendantSweepSettledService.call(experiment))
+      @topless_rise_reading ||= settled_reading(ToplessRiseReadingService, "topless_rise_reading")
     end
+
+    # The out-compute sweep's pre-registered reading, on that sweep only, cached and finalised
+    # as the topless-rise reading is.
+    def out_compute_reading = @out_compute_reading ||= settled_reading(OutComputeReadingService, "out_compute_reading")
 
     # A sweep holding a run paid for its tasks imports an objective (DESIGN.md §1.4), and its
     # page says so beside its substrate.
@@ -235,16 +225,32 @@ module Experiments
       @imports_objective = experiment.runs.metabolism.exists?
     end
 
+    # A sweep holding a predatory run imports a machine, not an objective (DESIGN.md §1.4),
+    # and its page says so beside its substrate too.
+    def imports_machine?
+      return @imports_machine if defined?(@imports_machine)
+
+      @imports_machine = experiment.runs.predatory.exists?
+    end
+
     private
 
     def own_descendant_reading?
-      [MetabolismReadingService, LogicReadingService, MetaStackReadingService, ToplessRiseReadingService]
-        .any? { |reading| reading.applies_to?(experiment) }
+      [MetabolismReadingService, LogicReadingService, MetaStackReadingService, ToplessRiseReadingService,
+       OutComputeReadingService].any? { |reading| reading.applies_to?(experiment) }
     end
 
     def own_emergence_rule?
       [LineageDiversityReadingService, LocalityEmergenceReadingService, ReachCap128ReadingService]
         .any? { |rule| rule.applies_to?(experiment) }
+    end
+
+    # A descendant sweep's own reading, on its sweep only: one pass over each child's samples
+    # held under this page's key, and final once the parent pool and every child have settled.
+    def settled_reading(service, name)
+      return nil unless service.applies_to?(experiment)
+
+      cached(name) { service.call(experiment: experiment) }.with(final: DescendantSweepSettledService.call(experiment))
     end
 
     def twins_version
