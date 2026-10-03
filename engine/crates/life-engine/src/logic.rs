@@ -213,6 +213,12 @@ fn offset_of(outputs: &[u8; TASK_CASES], input: &[u8; TASK_CASES]) -> bool {
 pub struct Credit(u16);
 
 impl Credit {
+    /// The credit whose bits are `bits`, in `LOGIC_TASKS` order: how the topless ladder
+    /// names the two-input rungs it credits (`topless::Credit::two_input`).
+    pub(crate) fn from_bits(bits: u16) -> Self {
+        Self(bits)
+    }
+
     pub fn bits(self) -> u16 {
         self.0
     }

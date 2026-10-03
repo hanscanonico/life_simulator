@@ -358,7 +358,7 @@
       and <span class="mono">logic_share_equ</span> are the same share for the rest of the
       logic ladder. The prefix keeps them apart from the arithmetic readings: bitwise NOT of a
       byte is the arithmetic NOT. They only read, on draws of their own, and are null unless
-      the run's tasks are logic — with tasks off or arithmetic, on the Life substrate, and on
+      the run's tasks are logic, logic3 or logic4 — with tasks off or arithmetic, on the Life substrate, and on
       every sample recorded before they existed.
     </dd>
 
@@ -400,6 +400,24 @@
       <span class="mono">logic_capability</span> read on the cells' own, replicating tapes,
       on draws of its own, where the run pays the metabolism tapes instead: whether the
       copier still computes anything. Null on a run without metabolism tapes.
+    </dd>
+
+    <dt class="mono">logic_depth_max</dt>
+    <dd>
+      Under the topless ladders, logic3 and logic4, the logic assay gets a third input and
+      a fourth, each one byte further left, and every function of them a tape computes is a
+      rung, worth the fewest NAND gates that build it. This is that count for the deepest
+      rung at least a tenth of 256 sampled cells solve, and −1 where none is held. 13 is a
+      floor: a few hundred four-input functions are only known to need 13 or more. On those
+      runs the logic readings above read the two-input rungs, AND of any two inputs counting
+      as AND. Null on every other run.
+    </dd>
+
+    <dt class="mono">logic_depth_classes</dt>
+    <dd>
+      How many topless rungs at least a tenth of those sampled cells solve, a rung being a
+      function up to a reordering of its inputs. Null on every run that is not on a topless
+      ladder.
     </dd>
 
     <dt class="mono">transition_epoch</dt>
@@ -455,7 +473,8 @@
       NOT, DOUBLE, MUL. A tape solves one when some output it emits with the
       <span class="mono">!</span> byte holds the answer on every input pair of the assay.
       Under logic tasks the ladder is ECHO, NOT, NAND, AND, ORN, OR, ANDN, NOR, XOR, EQU
-      instead, on whole bytes, with <span class="mono">~</span> writing a NAND.
+      instead, on whole bytes, with <span class="mono">~</span> writing a NAND. Under logic3
+      and logic4 every function of three or four such inputs is a rung, worth its NAND count.
     </dd>
 
     <dt id="imports-an-objective">imports an objective</dt>

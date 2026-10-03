@@ -207,6 +207,8 @@ mod tests {
             meta_inherit_rate: None,
             meta_diversity: None,
             logic_capability_replicating: None,
+            logic_depth_max: None,
+            logic_depth_classes: None,
         }
     }
 

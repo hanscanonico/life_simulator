@@ -51,6 +51,20 @@ RSpec.describe Lab::CanonicalParams do
       expect(described_class.for(stored)).to include("logic_nand" => "in_place")
     end
 
+    it "reads a run stored before the depth cap existed as the uncapped run it was" do
+      stored = Lab::Schema.run_defaults.except("task_depth_cap").merge("tasks" => "logic", "task_reward" => 2048)
+
+      expect(described_class.for(stored)).to eq(described_class.for(stored.merge("task_depth_cap" => 0)))
+      expect(described_class.for(stored)).to include("task_depth_cap" => 0)
+    end
+
+    it "keeps a capped topless arm apart from its uncapped twin, and each ladder apart" do
+      rise = { "tasks" => "logic4", "task_reward" => 1024 }
+
+      expect(described_class.for(rise)).not_to eq(described_class.for(rise.merge("task_depth_cap" => 5)))
+      expect(described_class.for(rise)).not_to eq(described_class.for(rise.merge("tasks" => "logic3")))
+    end
+
     it "keeps a stack-NAND arm apart from its in-place twin" do
       full = { "tasks" => "logic", "task_reward" => 2048 }
 

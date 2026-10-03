@@ -237,6 +237,16 @@ pub struct Metrics {
     /// `logic_capability` read on the replicating tapes instead, on cells and cases of its
     /// own: whether the copier still computes anything.
     pub logic_capability_replicating: Option<u32>,
+    /// The minimal NAND count of the deepest rung of the topless ladder at least a tenth of
+    /// `task::TASK_SAMPLE_CELLS` sampled cells are credited with, 26 of 256, on cells and
+    /// cases of its own (`docs/design_record.md`, 2026-10-02, the topless ladder); −1 where
+    /// no rung is. 13 is a floor: a four-input rung whose cost is only known to be 13 or
+    /// more is read at 13. This and the reading below are `None` unless tasks are `logic3`
+    /// or `logic4`, where the logic readings above read the ladder's two-input rungs.
+    pub logic_depth_max: Option<i32>,
+    /// How many of the topless ladder's rungs at least a tenth of those cells are credited
+    /// with.
+    pub logic_depth_classes: Option<u32>,
 }
 
 impl Metrics {
@@ -1769,6 +1779,8 @@ mod tests {
             meta_inherit_rate: None,
             meta_diversity: None,
             logic_capability_replicating: None,
+            logic_depth_max: None,
+            logic_depth_classes: None,
         }
     }
 

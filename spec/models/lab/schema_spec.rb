@@ -23,7 +23,7 @@ RSpec.describe Lab::Schema do
     expect(described_class.values_for("interaction")).to eq(%w[concat host])
     expect(described_class.values_for("lineage_rule")).to eq(%w[aligned oriented])
     expect(described_class.values_for("energy_payer")).to eq(%w[pair initiator])
-    expect(described_class.values_for("tasks")).to eq(%w[off arith logic])
+    expect(described_class.values_for("tasks")).to eq(%w[off arith logic logic3 logic4])
     expect(described_class.values_for("task_floor"))
       .to eq(%w[echo inc dec add sub not double mul nand and orn or andn nor xor equ])
     expect(described_class.values_for("logic_nand")).to eq(%w[in_place stack])
@@ -49,7 +49,7 @@ RSpec.describe Lab::Schema do
     expect(described_class.run_defaults.keys)
       .to eq(%w[width height tape_len max_tape_len radius max_steps energy_per_epoch energy_influx
                 energy_stock_cap energy_payer steal_amount steal_loss tasks task_every task_reward task_floor
-                logic_nand ops
+                logic_nand task_depth_cap ops
                 mutation_rate structure structure_amplitude
                 interaction lineage_rule meta_len meta_rate meta_draw meta_seed init top_k])
   end
@@ -61,7 +61,7 @@ RSpec.describe Lab::Schema do
       "width" => 128, "height" => 128, "tape_len" => 64, "max_tape_len" => 0, "radius" => 1, "max_steps" => 2**13,
       "energy_per_epoch" => 0, "energy_influx" => 0, "energy_stock_cap" => 0, "energy_payer" => "pair",
       "steal_amount" => 0, "steal_loss" => 0.5, "tasks" => "off", "task_every" => 8, "task_reward" => 0,
-      "task_floor" => "echo", "logic_nand" => "in_place", "ops" => "<>{}+-.,[]", "mutation_rate" => 1.0 / 4096,
+      "task_floor" => "echo", "logic_nand" => "in_place", "task_depth_cap" => 0, "ops" => "<>{}+-.,[]", "mutation_rate" => 1.0 / 4096,
       "structure" => "uniform", "structure_amplitude" => 0.5, "interaction" => "concat",
       "lineage_rule" => "aligned", "meta_len" => 0, "meta_rate" => 32.0 / 8192, "meta_draw" => "uniform",
       "meta_seed" => "zeros", "init" => "random", "top_k" => 16

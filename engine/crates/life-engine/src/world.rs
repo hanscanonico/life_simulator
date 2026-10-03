@@ -16,6 +16,7 @@ use crate::replicator;
 use crate::rng::{self, Rng};
 use crate::snapshot::{self, SnapshotError};
 use crate::task;
+use crate::topless::{self, Inputs};
 
 const STREAM_INIT: u64 = 0;
 const STREAM_STEP: u64 = 1;
@@ -57,6 +58,9 @@ const STREAM_LOGIC_DOMINANT: u64 = STREAM_TASK | 4;
 /// replicating tapes where the logic assay reads the metabolism tapes instead
 /// (`docs/design_record.md`, 2026-10-02, Meta-stack slice C).
 const STREAM_LOGIC_REPLICATING: u64 = STREAM_TASK | 5;
+/// The topless ladder's depth readings' own cells and cases, `logic_depth_max` and
+/// `logic_depth_classes` (`docs/design_record.md`, 2026-10-02, the topless ladder).
+const STREAM_LOGIC_DEPTH: u64 = STREAM_TASK | 6;
 /// The stream the metabolism tapes mutate on, once per epoch — its own, far from every id
 /// above, so the tapes' mutation moves no draw the run, the assay or any observable makes
 /// (`docs/design_record.md`, 2026-10-02, Meta-stack slice B).
@@ -627,11 +631,25 @@ impl World {
                     .map(|cell| memo.credit(self.assayed_tape(cell)).units_from(floor))
                     .collect()
             }
+            Tasks::Logic3 => self.depth_units(Inputs::Three, &mut rng),
+            Tasks::Logic4 => self.depth_units(Inputs::Four, &mut rng),
         };
         let (reward, cap) = (self.params.task_reward, self.params.energy_stock_cap);
         for (held, units) in self.stock.iter_mut().zip(units) {
             *held = held.saturating_add(reward.saturating_mul(units)).min(cap);
         }
+    }
+
+    /// The units each cell's tape earns on the topless ladder of `inputs`, on cases drawn
+    /// off `rng`: each distinct rung credited once, by its depth, capped at the run's
+    /// `task_depth_cap`.
+    fn depth_units(&self, inputs: Inputs, rng: &mut Rng) -> Vec<u32> {
+        let cases = topless::Cases::draw(inputs, rng);
+        let mut memo = topless::Memo::new(cases, self.params.op_set(), self.params.logic_nand);
+        let cap = self.params.depth_cap();
+        (0..self.params.cell_count())
+            .map(|cell| memo.credit(self.assayed_tape(cell)).units(cap))
+            .collect()
     }
 
     /// Descent, read off the one interaction that just ran: a cell takes its partner's
@@ -813,6 +831,7 @@ impl World {
         let logic = self.logic_tally();
         let logic_share = |task: usize| logic.map(|tally| tally.share(task));
         let ranked_meta = self.ranked_meta();
+        let depth = self.depth_tally();
         let dominant_logic = match self.meta.is_empty() {
             true => census.dominant_logic_tasks,
             false => self.dominant_logic_credit(ranked_meta.first().map(|(tape, _)| *tape)),
@@ -888,6 +907,8 @@ impl World {
             logic_capability_replicating: self
                 .logic_tally_replicating()
                 .map(|tally| tally.capability()),
+            logic_depth_max: depth.as_ref().map(|tally| tally.depth_max()),
+            logic_depth_classes: depth.as_ref().map(|tally| tally.classes()),
         }
     }
 
@@ -918,10 +939,33 @@ impl World {
         Some(tally)
     }
 
-    /// Whether the samples read the logic observables: whenever the logic ladder is on,
-    /// paid for or not, as `reads_tasks` is for the arithmetic one.
+    /// Whether the samples read the logic observables: whenever a logic ladder is on, paid
+    /// for or not, as `reads_tasks` is for the arithmetic one. On a topless ladder they read
+    /// its two-input rungs.
     fn reads_logic(&self) -> bool {
-        self.params.substrate == Substrate::Soup && self.params.tasks == Tasks::Logic
+        self.params.substrate == Substrate::Soup && self.params.tasks.is_logic()
+    }
+
+    /// The depth readings' tally: whenever a topless ladder is on, paid for or not, the
+    /// same 256 cells' worth of draws as `logic_tally`, on cases and cells of
+    /// `STREAM_LOGIC_DEPTH`'s own, each distinct tape assayed once. It writes and pays
+    /// nothing.
+    fn depth_tally(&self) -> Option<topless::DepthTally> {
+        let inputs = self
+            .params
+            .tasks
+            .depth_inputs()
+            .filter(|_| self.params.substrate == Substrate::Soup)?;
+        let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DEPTH, self.epoch);
+        let cases = topless::Cases::draw(inputs, &mut rng);
+        let mut memo = topless::Memo::new(cases, self.params.op_set(), self.params.logic_nand);
+        let cells = self.params.cell_count() as u64;
+        let mut tally = topless::DepthTally::new(inputs);
+        for _ in 0..task::TASK_SAMPLE_CELLS {
+            let cell = rng::below(&mut rng, cells) as usize;
+            tally.add(&memo.credit(self.assayed_tape(cell)));
+        }
+        Some(tally)
     }
 
     /// `task_tally` on the logic ladder: the same 256 cells' worth of draws, on cases and
@@ -950,8 +994,7 @@ impl World {
         tape: impl Fn(usize) -> &'a [u8],
     ) -> logic::LogicTally {
         let mut rng = rng::seeded(self.seed, stream, self.epoch);
-        let cases = logic::Cases::draw(&mut rng);
-        let mut memo = logic::Memo::new(cases, self.params.op_set(), self.params.logic_nand);
+        let mut memo = LogicReader::draw(&self.params, &mut rng);
         let cells = self.params.cell_count() as u64;
         let mut tally = logic::LogicTally::default();
         for _ in 0..task::TASK_SAMPLE_CELLS {
@@ -979,13 +1022,7 @@ impl World {
     fn dominant_logic_credit(&self, tape: Option<&[u8]>) -> Option<logic::Credit> {
         let tape = tape.filter(|_| self.reads_logic())?;
         let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DOMINANT, self.epoch);
-        let cases = logic::Cases::draw(&mut rng);
-        Some(logic::assay_on(
-            tape,
-            &cases,
-            self.params.op_set(),
-            self.params.logic_nand,
-        ))
+        Some(LogicReader::draw(&self.params, &mut rng).credit(tape))
     }
 
     /// The orientation-aware companion of the census: `SELF_REP_SAMPLE_CELLS` cells drawn
@@ -1465,6 +1502,36 @@ fn restored_meta(
         (None, false) => Ok(Vec::new()),
         (Some(meta), true) if meta.len == params.meta_len => Ok(meta.tapes),
         _ => Err(SnapshotError::Mismatch { field: "meta_len" }),
+    }
+}
+
+/// The logic observables' assay on a run's own logic ladder, read as the logic ladder's
+/// rungs: the two-input ladder's credit itself, or on a topless ladder the two-input
+/// classes among the rungs it credits, so the Logic keys keep their meaning there.
+enum LogicReader<'a> {
+    Two(logic::Memo<'a>),
+    Topless(topless::Memo<'a>, [u16; logic::LOGIC_TASKS.len()]),
+}
+
+impl<'a> LogicReader<'a> {
+    /// The reader of `params`' ladder, its cases drawn off `rng` as that ladder's payment
+    /// draws them.
+    fn draw(params: &Params, rng: &mut Rng) -> Self {
+        let (ops, nand) = (params.op_set(), params.logic_nand);
+        match params.tasks.depth_inputs() {
+            None => Self::Two(logic::Memo::new(logic::Cases::draw(rng), ops, nand)),
+            Some(inputs) => Self::Topless(
+                topless::Memo::new(topless::Cases::draw(inputs, rng), ops, nand),
+                inputs.two_input_rungs(),
+            ),
+        }
+    }
+
+    fn credit(&mut self, tape: &'a [u8]) -> logic::Credit {
+        match self {
+            Self::Two(memo) => memo.credit(tape),
+            Self::Topless(memo, rungs) => memo.credit(tape).two_input(rungs),
+        }
     }
 }
 
@@ -7167,5 +7234,457 @@ mod tests {
             meta_inherit_rate: None,
             ..measured.clone()
         })
+    }
+
+    /// The topless ladder on `logic_params`' economy at the study's reward of 1 024.
+    fn depth_params(tasks: Tasks) -> Params {
+        Params {
+            tasks,
+            task_reward: 1024,
+            ..logic_params()
+        }
+    }
+
+    const TOPLESS: [Tasks; 2] = [Tasks::Logic3, Tasks::Logic4];
+
+    /// A compiled straight-line solver of `topless::tests::SOLVERS`, by its function.
+    fn depth_solver(inputs: Inputs, function: u16, nand: LogicNand) -> Vec<u8> {
+        let (_, _, _, witness) = topless::tests::SOLVERS
+            .into_iter()
+            .find(|(of, solves, _, _)| *of == inputs && *solves == function)
+            .expect("a compiled solver of that function");
+        topless::tests::compile(inputs, witness, nand)
+    }
+
+    /// The topless rewards' own pins: `depth_params` over `with_logic_solvers`' layout, seed
+    /// 42, after 50 epochs. Both two-input solvers keep their rungs: the XOR solver copies x
+    /// onto the byte z holds before it reads there.
+    const PINNED_LOGIC3_REWARD_HASH: u64 = 0x2561_20e8_9636_e281;
+    const PINNED_LOGIC4_REWARD_HASH: u64 = 0x7eb5_a1ec_92c0_2518;
+
+    #[test]
+    fn the_topless_rewards_are_pinned() {
+        for (tasks, pin) in TOPLESS
+            .into_iter()
+            .zip([PINNED_LOGIC3_REWARD_HASH, PINNED_LOGIC4_REWARD_HASH])
+        {
+            let params = depth_params(tasks);
+            let rewarded = stepped_world(with_logic_solvers(&params, 42), 50);
+            assert_eq!(rewarded.world_hash(), pin, "{tasks:?}");
+            let twin = stepped_world(with_logic_solvers(&unrewarded(&params), 42), 50);
+            assert_ne!(rewarded.world_hash(), twin.world_hash());
+            let two = Params {
+                tasks: Tasks::Logic,
+                ..params.clone()
+            };
+            let logic = stepped_world(with_logic_solvers(&two, 42), 50);
+            assert_ne!(rewarded.world_hash(), logic.world_hash());
+        }
+    }
+
+    /// A topless reward of 0 runs no assay, so that control arm is the run with tasks off,
+    /// byte for byte and stock for stock.
+    #[test]
+    fn a_topless_reward_of_zero_is_the_run_with_tasks_off() {
+        for tasks in TOPLESS {
+            for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+                for task_every in [1, 8] {
+                    let params = Params {
+                        energy_payer: payer,
+                        task_every,
+                        ..unrewarded(&depth_params(tasks))
+                    };
+                    let control = stepped_world(with_logic_solvers(&params, 42), 30);
+                    let off = stepped_world(with_logic_solvers(&without_tasks(&params), 42), 30);
+                    assert_eq!(
+                        control.world_hash(),
+                        off.world_hash(),
+                        "{tasks:?} {payer:?}"
+                    );
+                    assert_eq!(control.stock, off.stock);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn determinism_holds_under_a_topless_reward() {
+        for (seed, tasks) in [(5, Tasks::Logic3), (6, Tasks::Logic4)] {
+            for (logic_nand, task_depth_cap) in [(LogicNand::InPlace, 0), (LogicNand::Stack, 5)] {
+                assert_deterministic(
+                    &Params {
+                        max_steps: 64,
+                        energy_payer: EnergyPayer::Initiator,
+                        energy_influx: 8,
+                        energy_stock_cap: 256,
+                        tasks,
+                        task_every: 3,
+                        task_reward: 4,
+                        logic_nand,
+                        task_depth_cap,
+                        ..soup(16, 16)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// `logic_paid_world`'s still soup on a topless ladder, with tapes of 256 bytes, each
+    /// planting a program in its own cell.
+    fn depth_paid_world(tasks: Tasks, task_reward: u32, plantings: &[(u32, u32, &[u8])]) -> World {
+        let params = Params {
+            tape_len: 256,
+            tasks,
+            task_reward,
+            ..logic_paid_world(0, "echo").params.clone()
+        };
+        let mut world = World::new(&params, 5).unwrap();
+        for (x, y, program) in plantings {
+            let mut tape = program.to_vec();
+            tape.resize(256, 0);
+            world.set_cell(*x, *y, &tape);
+        }
+        world.stock.fill(0);
+        world
+    }
+
+    /// Each solver is paid its rung's units, ×√2 per NAND: ECHO 1, MAJ3 (6 NANDs) 8, NOR3
+    /// (7) 11 and XOR3 (8) 16 at 10 a unit; a depth cap of 6 pays NOR3 and XOR3 as MAJ3. On
+    /// four inputs XOR4 (12) is 64 units and the four-input NOR (10) 32. Nothing else is paid.
+    #[test]
+    fn the_topless_ladder_pays_each_rung_by_its_depth() {
+        let three =
+            |nand| [0xe8, 0x01, 0x96].map(|function| depth_solver(Inputs::Three, function, nand));
+        for nand in [LogicNand::InPlace, LogicNand::Stack] {
+            let solvers = three(nand);
+            let paid = |cap: u32| {
+                let mut world = depth_paid_world(
+                    Tasks::Logic3,
+                    10,
+                    &[
+                        (1, 1, b"<!"),
+                        (5, 1, &solvers[0]),
+                        (1, 5, &solvers[1]),
+                        (5, 5, &solvers[2]),
+                    ],
+                );
+                world.params.logic_nand = nand;
+                world.params.task_depth_cap = cap;
+                world.step();
+                let total: u32 = world.stock.iter().sum();
+                let read = [(1, 1), (5, 1), (1, 5), (5, 5)].map(|(x, y)| stock_at(&world, x, y));
+                assert_eq!(
+                    total,
+                    read.iter().sum::<u32>(),
+                    "a cell that solves nothing was paid"
+                );
+                read
+            };
+            assert_eq!(paid(0), [10, 80, 110, 160], "{nand:?}");
+            assert_eq!(paid(6), [10, 80, 80, 80], "{nand:?}");
+
+            let xor4 = depth_solver(Inputs::Four, 0x6996, nand);
+            let nor4 = depth_solver(Inputs::Four, 0x0001, nand);
+            let mut world =
+                depth_paid_world(Tasks::Logic4, 10, &[(1, 1, &xor4[..]), (5, 1, &nor4[..])]);
+            world.params.logic_nand = nand;
+            world.step();
+            assert_eq!(
+                [(1, 1), (5, 1)].map(|(x, y)| stock_at(&world, x, y)),
+                [640, 320]
+            );
+        }
+    }
+
+    fn depth_digest(measured: &Metrics) -> String {
+        format!(
+            "logic_depth_max={:?} logic_depth_classes={:?}",
+            measured.logic_depth_max, measured.logic_depth_classes
+        )
+    }
+
+    const UNREAD_DEPTH: &str = "logic_depth_max=None logic_depth_classes=None";
+
+    /// Null with tasks off, arith or logic, and on life, a life run resumed with a topless
+    /// ladder included.
+    #[test]
+    fn the_depth_readings_are_null_unless_a_topless_ladder_is_on() {
+        let mut off = World::new(&soup(16, 16), 42).unwrap();
+        assert_eq!(depth_digest(&off.metrics()), UNREAD_DEPTH);
+        for params in [
+            rewarded_params(),
+            logic_params(),
+            unrewarded(&logic_params()),
+        ] {
+            let mut world = with_logic_solvers(&params, 42);
+            assert_eq!(depth_digest(&world.metrics()), UNREAD_DEPTH);
+        }
+        let grid = World::new(&life(16, 16), 42).unwrap();
+        let blob = grid.snapshot();
+        for tasks in TOPLESS {
+            let topless_life = Params {
+                tasks,
+                ..life(16, 16)
+            };
+            assert!(topless_life.validate().is_err());
+            let mut resumed = World::from_snapshot(&topless_life, 42, &blob).unwrap();
+            assert_eq!(depth_digest(&resumed.metrics()), UNREAD_DEPTH);
+            assert_eq!(logic_digest(&resumed.metrics()), UNREAD_LOGIC);
+        }
+    }
+
+    /// `task_world` on a topless ladder, with tapes long enough for the compiled solvers.
+    fn depth_world(tasks: Tasks, plantings: &[(std::ops::Range<u32>, Vec<u8>)]) -> World {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            tape_len: 256,
+            tasks,
+            ..soup(16, 16)
+        };
+        let mut world = World::new(&params, 9).unwrap();
+        for (rows, program) in plantings {
+            let mut tape = program.clone();
+            tape.resize(256, 0);
+            for y in rows.clone() {
+                for x in 0..params.width {
+                    world.set_cell(x, y, &tape);
+                }
+            }
+        }
+        world
+    }
+
+    /// Half the cells XOR3, a quarter MAJ3 and one row NOR3: the deepest rung held is XOR3's
+    /// 8, two rungs are held, and NOR3, at a sixteenth, is not. The Logic keys read the
+    /// two-input rungs, of which there are none.
+    #[test]
+    fn the_depth_readings_count_the_rungs_a_tenth_of_the_cells_solve() {
+        let solver = |function| depth_solver(Inputs::Three, function, LogicNand::InPlace);
+        let mut world = depth_world(
+            Tasks::Logic3,
+            &[
+                (0..8, solver(0x96)),
+                (8..12, solver(0xe8)),
+                (12..13, solver(0x01)),
+            ],
+        );
+        let measured = world.metrics();
+        assert_eq!(measured.logic_depth_max, Some(8));
+        assert_eq!(measured.logic_depth_classes, Some(2));
+        assert_eq!(measured.logic_capability, Some(0));
+        assert_eq!(measured.logic_share_xor, Some(0.0));
+
+        let mut echo = depth_world(Tasks::Logic4, &[(0..2, b"<<<<!".to_vec())]);
+        let measured = echo.metrics();
+        assert_eq!(
+            (measured.logic_depth_max, measured.logic_depth_classes),
+            (Some(0), Some(1))
+        );
+        assert_eq!(measured.logic_capability, Some(1));
+        let mut empty = depth_world(Tasks::Logic4, &[]);
+        assert_eq!(
+            depth_digest(&empty.metrics()),
+            "logic_depth_max=Some(-1) logic_depth_classes=Some(0)"
+        );
+    }
+
+    /// The depth readings of the reward-0 controls of `depth_params`, seed 42, after 50
+    /// epochs, and of a planted world, pinned apart from every digest above
+    /// (`docs/design_record.md`, 2026-10-02, the topless ladder).
+    const PINNED_DEPTH: [&str; 2] = [
+        "logic_depth_max=Some(4) logic_depth_classes=Some(2) logic_share_echo=Some(0.01171875) \
+         logic_share_not=Some(0.09375) logic_share_nand=Some(0.00390625) \
+         logic_share_and=Some(0.00390625) logic_share_orn=Some(0.0078125) logic_share_or=Some(0.0) \
+         logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) logic_share_xor=Some(0.05859375) \
+         logic_share_equ=Some(0.0) logic_capability=Some(0) logic_capability_deep=Some(0) \
+         dominant_logic_tasks=Some(0) dominant_logic_task_count=Some(0)",
+        "logic_depth_max=Some(4) logic_depth_classes=Some(2) logic_share_echo=Some(0.015625) \
+         logic_share_not=Some(0.078125) logic_share_nand=Some(0.0078125) \
+         logic_share_and=Some(0.00390625) logic_share_orn=Some(0.0) logic_share_or=Some(0.0) \
+         logic_share_andn=Some(0.0) logic_share_nor=Some(0.0) logic_share_xor=Some(0.06640625) \
+         logic_share_equ=Some(0.0) logic_capability=Some(0) logic_capability_deep=Some(0) \
+         dominant_logic_tasks=Some(0) dominant_logic_task_count=Some(0)",
+    ];
+    /// Six rows of XOR4 (12 NANDs), four of the four-input NOR (10) and one of a 13-NAND
+    /// rung: XOR4 and NOR4 are held.
+    const PINNED_PLANTED_DEPTH: &str = "logic_depth_max=Some(12) logic_depth_classes=Some(2)";
+
+    #[test]
+    fn the_depth_readings_of_a_fixed_seed_are_pinned() {
+        for (tasks, pin) in TOPLESS.into_iter().zip(PINNED_DEPTH) {
+            let params = unrewarded(&depth_params(tasks));
+            let mut control = stepped_world(with_logic_solvers(&params, 42), 50);
+            let measured = control.metrics();
+            assert_eq!(
+                format!("{} {}", depth_digest(&measured), logic_digest(&measured)),
+                pin,
+                "{tasks:?}"
+            );
+        }
+        let solver = |function| depth_solver(Inputs::Four, function, LogicNand::Stack);
+        let mut planted = depth_world(
+            Tasks::Logic4,
+            &[
+                (0..6, solver(0x6996)),
+                (6..10, solver(0x0001)),
+                (10..11, solver(0x0168)),
+            ],
+        );
+        planted.params.logic_nand = LogicNand::Stack;
+        assert_eq!(depth_digest(&planted.metrics()), PINNED_PLANTED_DEPTH);
+    }
+
+    /// The topless readings only read: a topless run with no reward samples them beside
+    /// every other reading and is still the run with tasks off — the same bytes, stocks and
+    /// snapshot, and every reading the two share the same, sample for sample — under either
+    /// payer.
+    #[test]
+    fn reading_the_topless_ladder_moves_no_byte_and_no_other_observable() {
+        for tasks in TOPLESS {
+            for payer in [EnergyPayer::Initiator, EnergyPayer::Pair] {
+                let params = Params {
+                    energy_payer: payer,
+                    ..unrewarded(&depth_params(tasks))
+                };
+                let mut control = with_logic_solvers(&params, 42);
+                let mut off = with_logic_solvers(&without_tasks(&params), 42);
+                for _ in 0..6 {
+                    let (read, unread) = (control.metrics(), off.metrics());
+                    assert!(read.logic_depth_max.is_some() && read.logic_share_not.is_some());
+                    assert_eq!(depth_digest(&unread), UNREAD_DEPTH);
+                    let stripped = Metrics {
+                        logic_depth_max: None,
+                        logic_depth_classes: None,
+                        ..without_logic_readings(&read)
+                    };
+                    assert_eq!(stripped, unread, "{tasks:?} {payer:?}");
+                    for _ in 0..5 {
+                        control.step();
+                        off.step();
+                    }
+                }
+                assert_eq!(control.world_hash(), off.world_hash());
+                assert_eq!(control.stock, off.stock);
+                assert_eq!(control.snapshot(), off.snapshot());
+            }
+        }
+    }
+
+    /// Reading a sample twice, or after a restore, reads it the same, and the depth
+    /// readings draw on a stream nothing else draws on.
+    #[test]
+    fn the_depth_readings_draw_on_a_stream_of_their_own() {
+        let params = unrewarded(&depth_params(Tasks::Logic3));
+        let mut world = stepped_world(with_logic_solvers(&params, 42), 20);
+        let first = depth_digest(&world.metrics());
+        assert_eq!(depth_digest(&world.metrics()), first);
+        let mut restored =
+            World::from_snapshot(world.params(), world.seed(), &world.snapshot()).unwrap();
+        assert_eq!(depth_digest(&restored.metrics()), first);
+
+        let taken = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+            STREAM_TASK_SHARE,
+            STREAM_TASK_DOMINANT,
+            STREAM_LOGIC_SHARE,
+            STREAM_LOGIC_DOMINANT,
+            STREAM_LOGIC_REPLICATING,
+            STREAM_META,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        assert!(!taken.contains(&STREAM_LOGIC_DEPTH));
+        assert!(!draws.contains(&STREAM_LOGIC_DEPTH));
+    }
+
+    /// The metabolism tape is what a topless ladder reads too, and it pays it: a planted
+    /// XOR3 metabolism tape behind a replicating tape that solves nothing.
+    #[test]
+    fn a_topless_ladder_reads_and_pays_the_metabolism_tape() {
+        let xor3 = depth_solver(Inputs::Three, 0x96, LogicNand::Stack);
+        let mut world = depth_paid_world(Tasks::Logic3, 10, &[]);
+        world.params.logic_nand = LogicNand::Stack;
+        world.params.meta_len = 256;
+        world.meta = vec![0; world.params.cell_count() * 256];
+        let mut tape = xor3.clone();
+        tape.resize(256, 0);
+        world.set_metabolism(1, 1, &tape);
+        world.step();
+        assert_eq!(stock_at(&world, 1, 1), 160);
+        assert_eq!(world.stock.iter().sum::<u32>(), 160);
+    }
+
+    /// The cost of a topless assay epoch against the logic one, on demand, on a
+    /// Meta-stack-like world: 128×128 cells whose 32-byte metabolism tapes are the evolved
+    /// stack loop `{<<[~><~{~{!]` with four `isa` substitutions each, so most tapes emit and
+    /// most are distinct. `cargo test -p life-engine --lib -- --ignored
+    /// the_topless_assay_cost --nocapture`.
+    #[test]
+    #[ignore]
+    fn the_topless_assay_cost() {
+        let params = Params {
+            logic_nand: LogicNand::Stack,
+            ..stacked(&meta_params())
+        };
+        let mut world = World::new(
+            &Params {
+                width: 128,
+                height: 128,
+                ..params.clone()
+            },
+            7,
+        )
+        .unwrap();
+        let mut rng = rng::seeded(7, 99, 0);
+        let len = world.params.meta_len as usize;
+        for cell in 0..world.params.cell_count() {
+            let mut tape = b"{<<[~><~{~{!]".to_vec();
+            tape.resize(len, 0);
+            for _ in 0..4 {
+                let at = rng::below(&mut rng, len as u64) as usize;
+                tape[at] = draw_meta_byte(&mut rng, MetaDraw::Isa);
+            }
+            world.meta[cell * len..cell * len + len].copy_from_slice(&tape);
+        }
+        let distinct = world.ranked_meta().len();
+        for tasks in [Tasks::Logic, Tasks::Logic3, Tasks::Logic4] {
+            world.params.tasks = tasks;
+            let started = std::time::Instant::now();
+            for epoch in 0..24 {
+                let mut rng = rng::seeded(7, STREAM_TASK, epoch);
+                let units: u64 = match tasks.depth_inputs() {
+                    None => {
+                        let cases = logic::Cases::draw(&mut rng);
+                        let mut memo =
+                            logic::Memo::new(cases, world.params.op_set(), LogicNand::Stack);
+                        (0..world.params.cell_count())
+                            .map(|cell| u64::from(memo.credit(world.assayed_tape(cell)).units()))
+                            .sum()
+                    }
+                    Some(inputs) => world
+                        .depth_units(inputs, &mut rng)
+                        .iter()
+                        .map(|u| u64::from(*u))
+                        .sum(),
+                };
+                assert!(units > 0);
+            }
+            let per_epoch = started.elapsed().as_secs_f64() * 1000.0 / 24.0;
+            let started = std::time::Instant::now();
+            for _ in 0..24 {
+                world.epoch += 1;
+                std::hint::black_box(world.depth_tally());
+                std::hint::black_box(world.logic_tally());
+            }
+            let sample = started.elapsed().as_secs_f64() * 1000.0 / 24.0;
+            println!("{tasks:?}: {per_epoch:.2} ms an assay epoch, {sample:.3} ms the sample readings, {distinct} distinct tapes");
+        }
     }
 }

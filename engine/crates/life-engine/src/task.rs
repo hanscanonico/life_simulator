@@ -288,13 +288,26 @@ pub fn run_case(tape: &[u8], x: u8, y: u8, ops: OpSet) -> CaseRun {
 /// `run_case` on the machine `assay_ops` names: the arithmetic assay's, or the logic
 /// assay's, where `bff::NAND` is an instruction too. The buffer is the same for both.
 pub(crate) fn run_case_on(tape: &[u8], x: u8, y: u8, ops: OpSet, assay_ops: AssayOps) -> CaseRun {
+    run_case_with(tape, &[x, y], ops, assay_ops)
+}
+
+/// `run_case_on` with any number of inputs, each one byte further left: `inputs[0]` on the
+/// buffer's last byte, `inputs[1]` on the one before, and so on, the topless ladder's z and
+/// w on `B[2L−3]` and `B[2L−4]`. A buffer shorter than the inputs holds none of them.
+pub(crate) fn run_case_with(
+    tape: &[u8],
+    inputs: &[u8],
+    ops: OpSet,
+    assay_ops: AssayOps,
+) -> CaseRun {
     let len = 2 * tape.len();
     let mut buffer = Vec::with_capacity(len);
     buffer.extend_from_slice(tape);
     buffer.resize(len, 0);
-    if len >= 2 {
-        buffer[len - 1] = x;
-        buffer[len - 2] = y;
+    if len >= inputs.len() {
+        for (slot, value) in inputs.iter().enumerate() {
+            buffer[len - 1 - slot] = *value;
+        }
     }
     let mut emitted = Emitted {
         bytes: Vec::with_capacity(TASK_MAX_OUTPUTS),
@@ -340,12 +353,29 @@ pub(crate) fn case_outputs(
     ops: OpSet,
     assay_ops: AssayOps,
 ) -> Option<Vec<Vec<u8>>> {
+    let pairs = inputs.map(|(x, y)| [x, y]);
+    case_outputs_with(
+        tape,
+        &pairs.each_ref().map(|pair| pair.as_slice()),
+        ops,
+        assay_ops,
+    )
+}
+
+/// `case_outputs` on any number of cases, each case's inputs placed as `run_case_with`
+/// places them.
+pub(crate) fn case_outputs_with(
+    tape: &[u8],
+    inputs: &[&[u8]],
+    ops: OpSet,
+    assay_ops: AssayOps,
+) -> Option<Vec<Vec<u8>>> {
     if !tape.contains(&bff::EMIT) {
         return None;
     }
-    let mut runs = Vec::with_capacity(TASK_CASES);
-    for (x, y) in inputs {
-        let run = run_case_on(tape, *x, *y, ops, assay_ops);
+    let mut runs = Vec::with_capacity(inputs.len());
+    for case in inputs {
+        let run = run_case_with(tape, case, ops, assay_ops);
         if run.outputs.is_empty() {
             return None;
         }

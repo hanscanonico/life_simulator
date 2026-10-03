@@ -218,6 +218,12 @@ RSpec.describe Run, type: :model do
                                                     "logic_nand" => "stack"))).to be_valid
     end
 
+    it "accepts a child that climbs the topless ladder with a depth cap" do
+      expect(descendant(params: parent.params.merge("energy_influx" => 2**10, "energy_stock_cap" => 2**16,
+                                                    "tasks" => "logic4", "task_reward" => 2**10,
+                                                    "task_depth_cap" => 5))).to be_valid
+    end
+
     it "accepts the parent's params and seed, the exact continuation" do
       expect(descendant(params: parent.params, seed: parent.seed)).to be_valid
     end

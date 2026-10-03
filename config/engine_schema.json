@@ -110,13 +110,15 @@
     },
     {
       "default": "off",
-      "doc": "Which tasks a soup cell is assayed on. off assays nothing, which is the substrate of DESIGN 1.1. arith runs each cell's tape alone, on two small inputs at the end of a buffer twice its length, with ! emitting the byte under head0, and credits the tasks of an arithmetic ladder (echo, inc, dec, add, sub, not, double, mul) that one of its outputs computes in all three cases. logic runs the same assay on two whole-byte inputs, with ~ also writing the NAND of the bytes under the two heads under head0, and credits the tasks of a logic ladder (echo, not, nand, and, orn, or, andn, nor, xor, equ). Outside the assay ! and ~ are never instructions, and ~ is never one under arith. Refused on life.",
+      "doc": "Which tasks a soup cell is assayed on. off assays nothing, which is the substrate of DESIGN 1.1. arith runs each cell's tape alone, on two small inputs at the end of a buffer twice its length, with ! emitting the byte under head0, and credits the tasks of an arithmetic ladder (echo, inc, dec, add, sub, not, double, mul) that one of its outputs computes in all three cases. logic runs the same assay on two whole-byte inputs, with ~ also writing the NAND of the bytes under the two heads under head0, and credits the tasks of a logic ladder (echo, not, nand, and, orn, or, andn, nor, xor, equ). logic3 and logic4 run the logic assay with a third input z one byte left of y, and a fourth w one byte left of z under logic4, and credit every non-constant function of the inputs that an output computes on every bit column of its cases, three under logic3 and six under logic4, drawn so each combination of the inputs is read at three different bit positions; each class of functions equal up to a permutation of the inputs is a rung of its own, worth its minimal NAND count. Outside the assay ! and ~ are never instructions, and ~ is never one under arith. Refused on life.",
       "name": "tasks",
       "type": "enum",
       "values": [
         "off",
         "arith",
-        "logic"
+        "logic",
+        "logic3",
+        "logic4"
       ]
     },
     {
@@ -129,7 +131,7 @@
     },
     {
       "default": 0,
-      "doc": "Instruction energy paid into a cell's stock, before that epoch's influx and never past energy_stock_cap, per unit of the tasks its tape is credited with at an assay, at or above task_floor; the arith ladder's units are 1, 2, 2, 4, 4, 8, 8 and 16, the logic ladder's 1, 1, 1, 2, 2, 4, 4, 8, 8 and 16. 0 pays nothing and runs no assay, so the run is the same run as with tasks off. Any reward needs tasks on and an energy_influx to have a stock to pay into.",
+      "doc": "Instruction energy paid into a cell's stock, before that epoch's influx and never past energy_stock_cap, per unit of the tasks its tape is credited with at an assay, at or above task_floor; the arith ladder's units are 1, 2, 2, 4, 4, 8, 8 and 16, the logic ladder's 1, 1, 1, 2, 2, 4, 4, 8, 8 and 16, and a logic3 or logic4 rung of minimal NAND count d is worth the square root of 2^d rounded, 1, 1, 2, 3, 4, 6, 8, 11, 16, 23, 32, 45, 64 and 91 for d = 0 to 13, once per distinct rung. 0 pays nothing and runs no assay, so the run is the same run as with tasks off. Any reward needs tasks on and an energy_influx to have a stock to pay into.",
       "max": 1048576,
       "min": 0,
       "name": "task_reward",
@@ -137,7 +139,7 @@
     },
     {
       "default": "echo",
-      "doc": "The lowest rung of the task ladder that is paid. Every rung is still assayed, but those below this one earn nothing. It must name a rung of the ladder tasks chooses: echo, inc, dec, add, sub, not, double or mul under arith; echo, not, nand, and, orn, or, andn, nor, xor or equ under logic. echo is the first rung of both, so it pays every rung; with tasks off nothing else is accepted.",
+      "doc": "The lowest rung of the task ladder that is paid. Every rung is still assayed, but those below this one earn nothing. It must name a rung of the ladder tasks chooses: echo, inc, dec, add, sub, not, double or mul under arith; echo, not, nand, and, orn, or, andn, nor, xor or equ under logic. echo is the first rung of both, so it pays every rung; with tasks off, logic3 or logic4 nothing else is accepted.",
       "name": "task_floor",
       "type": "enum",
       "values": [
@@ -161,13 +163,21 @@
     },
     {
       "default": "in_place",
-      "doc": "What ~ writes in the logic assay. in_place writes the NAND of the bytes under the two heads under head0, the NAND every earlier logic run assayed with. stack writes it one byte left of head0, wrapping as < does, and moves head0 onto it, so both operands are kept and a chain of NANDs stacks its results leftward. Outside the logic assay ~ is a no-op either way. Only tasks = logic accepts anything but in_place.",
+      "doc": "What ~ writes in the logic assay. in_place writes the NAND of the bytes under the two heads under head0, the NAND every earlier logic run assayed with. stack writes it one byte left of head0, wrapping as < does, and moves head0 onto it, so both operands are kept and a chain of NANDs stacks its results leftward. Outside the logic assay ~ is a no-op either way. Only tasks logic, logic3 and logic4 accept anything but in_place.",
       "name": "logic_nand",
       "type": "enum",
       "values": [
         "in_place",
         "stack"
       ]
+    },
+    {
+      "default": 0,
+      "doc": "The deepest rung logic3 and logic4 pay as deep as it is: a rung whose minimal NAND count is above this is paid as a rung of this count. 0 caps nothing. Only tasks logic3 and logic4 accept anything but 0.",
+      "max": 13,
+      "min": 0,
+      "name": "task_depth_cap",
+      "type": "integer"
     },
     {
       "default": "<>{}+-.,[]",
@@ -236,7 +246,7 @@
     },
     {
       "default": 0,
-      "doc": "Bytes of each soup cell's metabolism tape: a second tape the soup never executes, which the logic assay reads instead of the replicating tape. It is copied whole from the initiator onto its partner whenever an interaction leaves the partner's tape a near copy of the initiator's, at least 90% of its bytes in either orientation, and mutates on its own at meta_rate. 0 turns it off, which is the substrate of DESIGN 1.1; any length needs tasks logic.",
+      "doc": "Bytes of each soup cell's metabolism tape: a second tape the soup never executes, which the logic assay reads instead of the replicating tape. It is copied whole from the initiator onto its partner whenever an interaction leaves the partner's tape a near copy of the initiator's, at least 90% of its bytes in either orientation, and mutates on its own at meta_rate. 0 turns it off, which is the substrate of DESIGN 1.1; any length needs tasks logic, logic3 or logic4.",
       "max": 1024,
       "min": 0,
       "name": "meta_len",
@@ -408,7 +418,32 @@
       "nand": "~"
     },
     "max_outputs": 4,
-    "steps": 4096
+    "steps": 4096,
+    "topless": {
+      "case_draws": 1024,
+      "cases": {
+        "logic3": 3,
+        "logic4": 6
+      },
+      "depth_floor": 13,
+      "depth_units": [
+        1,
+        1,
+        2,
+        3,
+        4,
+        6,
+        8,
+        11,
+        16,
+        23,
+        32,
+        45,
+        64,
+        91
+      ],
+      "reads_per_row": 3
+    }
   },
   "transition": {
     "baseline_epochs": 500,
