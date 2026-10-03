@@ -4731,3 +4731,19 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   sweep's page read it, labelled **interim** until the parent pool is terminal and every
   child of every qualifying parent has finished (`Experiments::DescendantSweepSettledService`),
   then **final**.
+
+- 2026-10-02 — **`research/landscape` reads the topless ladder: depth census and load-bearing
+  bytes (tooling only).** The tool slice the topless-rise entry (#297) demands before its
+  H-rise-code is read. `census` on a `logic3` or `logic4` run reads the topless assay under the
+  run's own instruction set and NAND on six fixed case sets (four inputs:
+  `topless::Cases::draw(Inputs::Four, ·)` six times off `rng::seeded(0xdee9, 4, 0)`; three
+  inputs: the same off stream 3, which no entry locks), frozen in `src/depth.rs` and held to
+  the draw by a test, and prints per depth the cells and commonest tape, the rungs held by a
+  tenth, the deepest solid rung and the dominant deepest solver as that entry defines them. A
+  new `loadbearing` subcommand counts the positions where at least 7 of the 13 other symbols
+  leave a tape credited no rung as deep, for a tape or a stored world's dominant solver, and
+  with `--first`, `--fifth` and `--last` prints a child's three stored worlds and the entry's
+  label, judged from the fifth-decile world to the last. Every shortest straight-line stack program of the logic ladder bears its depth on
+  every byte and none of its padding, on both ladders; the engine's compiled minimal-NAND
+  witnesses do too but for one spare head move in each four-input compile. Nothing in the
+  engine, the lab or the sweep changes.

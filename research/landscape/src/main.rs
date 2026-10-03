@@ -1,3 +1,6 @@
+use landscape::bearing::{load_bearing, rise_code};
+use landscape::depth::{depth_name, DepthScorer};
+use landscape::depth_census::{self, DepthCensus};
 use landscape::score::{assayed_len, rung_index, Rungs, Scorer, DEEP};
 use landscape::stored::{read_params, Stored};
 use landscape::{census, paths, plant, tape, trace};
@@ -7,12 +10,18 @@ use std::process::ExitCode;
 
 const USAGE: &str = "\
 landscape census   --snapshot WORLD.lsnp --params PARAMS.json [--top 8]
+landscape loadbearing TAPE --params PARAMS.json [--depth D]
+landscape loadbearing --snapshot WORLD.lsnp --params PARAMS.json
+landscape loadbearing --first W.lsnp --fifth W.lsnp --last W.lsnp --params PARAMS.json
 landscape distance A B --params PARAMS.json
 landscape paths    START --params PARAMS.json [--k 3] [--window LEN] [--rungs xor,equ] [--examples 4]
 landscape plant    --snapshot END.lsnp --params PARAMS.json --deep TAPE --rung xor|equ
                    [--source WORLD.lsnp | --replicating TAPE] [--seeds 2001,2002,2003]
                    [--epochs 2000] [--every 500] [--side 4]
 landscape trace    TAPE --params PARAMS.json --rung xor|equ [--lines 60]
+
+On a logic3 or logic4 run, `census` reads the topless ladder and ignores --top.
+`loadbearing` reads logic3 and logic4 runs only.
 
 A TAPE is `hex:` and two digits a byte, or the shown form (ops, `!`, `~`, `0` for a zero,
 `·` or `_` for a no-op), padded with zeros to the run's assayed length.";
@@ -75,6 +84,7 @@ fn main() -> ExitCode {
     let result = Args::parse(raw).and_then(|args| match command.as_str() {
         "census" => census(&args),
         "distance" => distance(&args),
+        "loadbearing" => loadbearing(&args),
         "paths" => paths(&args),
         "plant" => plant(&args),
         "trace" => trace(&args),
@@ -95,8 +105,79 @@ fn main() -> ExitCode {
 fn census(args: &Args) -> Result<String, String> {
     let stored = Stored::load(&args.path("snapshot")?, &args.path("params")?)?;
     let world = stored.world(0)?;
+    if let Some(scorer) = DepthScorer::for_params(&stored.params) {
+        return Ok(depth_census::census(&world, &scorer).render());
+    }
     let scorer = Scorer::for_params(&stored.params);
     Ok(census::census(&world, &scorer, args.number("top", 8)?).render())
+}
+
+fn depth_scorer(params: &life_engine::Params) -> Result<DepthScorer, String> {
+    DepthScorer::for_params(params).ok_or(
+        "loadbearing reads the topless ladder: the run's tasks are not logic3 or logic4".into(),
+    )
+}
+
+/// For a tape, its load-bearing bytes against `--depth`, its own depth by default. For a
+/// stored world, those of its dominant deepest solver against the world's deepest solid
+/// rung. For a child's three worlds (`--first`, `--fifth`, `--last`), each in turn and the
+/// entry's label, judged from the fifth-decile world to the last.
+fn loadbearing(args: &Args) -> Result<String, String> {
+    let worlds = ["first", "fifth", "last"];
+    if worlds.iter().any(|world| args.flags.contains_key(*world)) {
+        let params = args.path("params")?;
+        let mut reports = Vec::new();
+        for world in worlds {
+            let stored = Stored::load(&args.path(world)?, &params)?;
+            reports.push(world_bearing(&stored)?);
+        }
+        let label = rise_code(reports[1].0, reports[2].0);
+        return Ok(format!(
+            "first settled world\n{}\nfifth-decile world\n{}\nlast world\n{}\n\
+             H-rise-code, fifth-decile world to last: {label}\n",
+            reports[0].1, reports[1].1, reports[2].1
+        ));
+    }
+    if args.flags.contains_key("snapshot") {
+        let stored = Stored::load(&args.path("snapshot")?, &args.path("params")?)?;
+        return Ok(world_bearing(&stored)?.1);
+    }
+    let params = read_params(&args.path("params")?)?;
+    let scorer = depth_scorer(&params)?;
+    let tape = tape::parse(args.arg(0, "the tape")?, assayed_len(&params))?;
+    let own = scorer
+        .solid(&tape)
+        .depth()
+        .ok_or("the tape is credited no rung on all 6 sets")?;
+    let depth = args.number("depth", own)?;
+    if depth > own {
+        return Err(format!(
+            "the tape is credited depth {own} on all 6 sets, short of --depth {depth}"
+        ));
+    }
+    Ok(load_bearing(&tape, &scorer, depth).render())
+}
+
+/// A stored world's deepest solid rung and its dominant solver's load-bearing count, if it
+/// holds one, and its report.
+fn world_bearing(stored: &Stored) -> Result<(Option<(u32, usize)>, String), String> {
+    let scorer = depth_scorer(&stored.params)?;
+    let census: DepthCensus = depth_census::census(&stored.world(0)?, &scorer);
+    let Some(deepest) = &census.deepest else {
+        return Ok((
+            None,
+            format!("epoch {}: no rung held by a tenth\n", census.epoch),
+        ));
+    };
+    let bearing = load_bearing(&deepest.solver, &scorer, deepest.depth);
+    let report = format!(
+        "epoch {}: deepest solid rung {}, dominant deepest solver on {} cells\n{}",
+        census.epoch,
+        depth_name(deepest.depth),
+        deepest.solver_cells,
+        bearing.render()
+    );
+    Ok((Some((deepest.depth, bearing.count())), report))
 }
 
 fn distance(args: &Args) -> Result<String, String> {
