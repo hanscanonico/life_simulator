@@ -4747,3 +4747,20 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   every byte and none of its padding, on both ladders; the engine's compiled minimal-NAND
   witnesses do too but for one spare head move in each four-input compile. Nothing in the
   engine, the lab or the sweep changes.
+
+- 2026-10-03 — **A stored world counts as read only by its own static reading (bug fix,
+  relocks nothing).** `GET /api/experiments/:slug/corpus` named as read every epoch holding
+  any reading of an instrument, and `runner readings-corpus` skips those worlds. But the
+  pass also stores stepped readings, labelled at the next sample epoch with an earlier
+  `source_epoch`; where that epoch is itself a stored world (two worlds one sample apart),
+  the world was skipped and its own static reading (`epoch = source_epoch`) never taken,
+  while `Runs::OrientedSummariesService` counts only static readings. Such a run stayed
+  unmeasured for good: reach-cap128 runs 4369 (world 19000) and 4443 (10010) kept that
+  report interim at 268 of 270 counted. The endpoint now names only static readings'
+  epochs, so the next pass reads those worlds itself; its static row replaces the stepped
+  one on the `[run_id, instrument, epoch]` key. No engine change. A walk that steps into an
+  unread stored world still labels it stepped, so a fresh run with such a pair needs a
+  second pass to be measured. **The readings pass must be re-run** (`oriented_census/1`,
+  and `/2` where it was run) on every experiment the audit in the fix's PR finds affected,
+  and any reading taken off `OrientedSummary#measured?` there — `reach-cap128`, the oriented
+  arms report and CSV — is re-read after it.

@@ -5,7 +5,10 @@ module Api
   # hold which stored worlds, so the runner can re-measure a whole corpus without walking
   # the runs one request at a time. Each run also names the epochs each instrument has
   # already read, so a pass over stored worlds can skip the ones it has done; an
-  # `instrument` param narrows that to the one instrument the pass runs.
+  # `instrument` param narrows that to the one instrument the pass runs. A world counts as
+  # read only by its own static reading (`epoch = source_epoch`), the one
+  # Runs::OrientedSummariesService counts: a reading stepped onto a stored world's epoch
+  # from an earlier one leaves that world to be read again.
   class ExperimentsController < BaseController
     def corpus
       experiment = Experiment.find_by!(slug: params.fetch(:slug))
@@ -29,7 +32,7 @@ module Api
     end
 
     def read_epochs(runs)
-      readings = SnapshotReading.where(run: runs)
+      readings = SnapshotReading.where(run: runs).where("snapshot_readings.epoch = snapshot_readings.source_epoch")
       readings = readings.where(instrument: params[:instrument]) if params[:instrument].present?
       readings.order(:run_id, :instrument, :epoch).pluck(:run_id, :instrument, :epoch)
               .group_by(&:first).transform_values do |rows|

@@ -94,9 +94,9 @@ RSpec.describe "Api::Readings", type: :request do
 
   describe "GET /api/experiments/:slug/corpus" do
     before do
-      create(:snapshot_reading, run: run, instrument: "oriented_census/1", epoch: 205, source_epoch: 200)
-      create(:snapshot_reading, run: run, instrument: "oriented_census/1", epoch: 105, source_epoch: 100)
-      create(:snapshot_reading, run: run, instrument: "other_census/1", epoch: 105, source_epoch: 100)
+      create(:snapshot_reading, run: run, instrument: "oriented_census/1", epoch: 205, source_epoch: 205)
+      create(:snapshot_reading, run: run, instrument: "oriented_census/1", epoch: 105, source_epoch: 105)
+      create(:snapshot_reading, run: run, instrument: "other_census/1", epoch: 105, source_epoch: 105)
     end
 
     it "names the epochs each instrument has read" do
@@ -104,6 +104,36 @@ RSpec.describe "Api::Readings", type: :request do
 
       expect(response.parsed_body["runs"].sole["read_epochs"])
         .to eq("oriented_census/1" => [105, 205], "other_census/1" => [105])
+    end
+
+    context "with a stored world read only by a reading stepped onto it" do
+      before do
+        create(:snapshot, run: run, epoch: 300)
+        create(:snapshot, run: run, epoch: 310)
+        create(:snapshot_reading, run: run, instrument: "oriented_census/1", epoch: 300, source_epoch: 300)
+        create(:snapshot_reading, run: run, instrument: "oriented_census/1", epoch: 310, source_epoch: 300)
+      end
+
+      it "does not name that world's epoch as read" do
+        get corpus_api_experiment_path(experiment.slug, instrument: "oriented_census/1"), headers: headers
+
+        body = response.parsed_body["runs"].sole
+        expect(body["epochs"]).to include(310)
+        expect(body["read_epochs"]).to eq("oriented_census/1" => [105, 205, 300])
+      end
+    end
+
+    context "with a stored world read by its own static reading" do
+      before do
+        create(:snapshot, run: run, epoch: 310)
+        create(:snapshot_reading, run: run, instrument: "oriented_census/1", epoch: 310, source_epoch: 310)
+      end
+
+      it "names that world's epoch as read" do
+        get corpus_api_experiment_path(experiment.slug, instrument: "oriented_census/1"), headers: headers
+
+        expect(response.parsed_body["runs"].sole["read_epochs"]).to eq("oriented_census/1" => [105, 205, 310])
+      end
     end
 
     context "with an instrument named" do
