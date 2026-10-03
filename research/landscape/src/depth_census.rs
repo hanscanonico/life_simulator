@@ -39,6 +39,8 @@ pub struct DepthCensus {
     pub epoch: u64,
     pub cells: u64,
     pub inputs: Inputs,
+    /// The output slots assayed: the run's `task_max_outputs`.
+    pub slots: usize,
     pub carries_meta: bool,
     pub distinct_assayed: usize,
     pub depths: Vec<DepthRow>,
@@ -121,6 +123,7 @@ pub fn census(world: &World, scorer: &DepthScorer) -> DepthCensus {
         epoch: world.epoch(),
         cells: cell_count,
         inputs,
+        slots: scorer.slots(),
         carries_meta: params.carries_meta(),
         distinct_assayed: ranked.len(),
         depths: depths.into_values().rev().collect(),
@@ -143,8 +146,8 @@ impl DepthCensus {
         };
         let _ = writeln!(
             out,
-            "epoch {} cells {} ladder {ladder} distinct {assayed} tapes {}",
-            self.epoch, self.cells, self.distinct_assayed
+            "epoch {} cells {} ladder {ladder} slots {} distinct {assayed} tapes {}",
+            self.epoch, self.cells, self.slots, self.distinct_assayed
         );
         let _ = writeln!(
             out,
@@ -239,6 +242,7 @@ mod tests {
         let scorer = DepthScorer::for_params(&logic4_params()).unwrap();
         let census = census(&world, &scorer);
         assert_eq!(census.inputs, Inputs::Four);
+        assert_eq!(census.slots, 4);
         assert_eq!(census.distinct_assayed, 4);
         let depths: Vec<(u32, u64)> = census.depths.iter().map(|r| (r.depth, r.cells)).collect();
         assert_eq!(depths, [(5, 4), (4, 8)]);
@@ -250,6 +254,26 @@ mod tests {
             (stack_solver(8), 4)
         );
         assert!(census.render().contains("deepest solid rung: depth 4"));
+    }
+
+    /// An out-compute run's census reads its 16 slots: the planted XOR4 four slots read as
+    /// ECHO is held at depth 12.
+    #[test]
+    fn the_census_reads_the_runs_own_output_slots() {
+        let params = crate::depth::tests::out_compute_params();
+        let mut world = World::new(&params, 3).unwrap();
+        let mut tape = crate::depth::tests::echo_then_xor4();
+        tape.resize(params.meta_len as usize, 0);
+        for (x, y) in cells(&world).collect::<Vec<_>>() {
+            world.set_metabolism(x, y, &tape);
+        }
+        let census = census(&world, &DepthScorer::for_params(&params).unwrap());
+        assert_eq!(census.slots, 16);
+        assert_eq!(
+            census.deepest.as_ref().map(|deepest| deepest.depth),
+            Some(12)
+        );
+        assert!(census.render().contains("ladder logic4 slots 16 "));
     }
 
     #[test]
