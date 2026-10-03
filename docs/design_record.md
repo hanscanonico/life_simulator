@@ -5235,5 +5235,6 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   worlds side by side. `loadbearing` takes `--first` as optional, so H-code reads the
   fifth-decile and last worlds alone. Tests plant known worlds for the percentiles, hold the
   index rule, the all-six-sets definition and the unread case, and read the engine's planted
-  XOR4 tape at depth 12 over 16 slots and depth 0 over 4. Nothing in the engine, the lab or
+  XOR4 tape at depth 12 over 16 slots and depth 0 over 4, and a tape filling the sweep's 32
+  bytes at depth 3 over 16 slots and depth 0 over 4. Nothing in the engine, the lab or
   the sweep changes.

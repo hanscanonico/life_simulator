@@ -236,8 +236,11 @@ done
   --params child.json
 ```
 
-`mcshea` reads every child, the none arm's included: its silent share is the one the engine
-does not record there.
+`mcshea` reads every child, the none arm's included, where the engine records no
+`silent_share`. Its silent share and repertoire are not the engine's `silent_share` and
+`repertoire_mean`: those credit 256 sampled cells on one set of cases drawn that epoch, these
+credit every cell on all six fixed sets. Compare them across arms with each other, never with
+the engine's.
 
 ## What was dropped from the pilot tools
 

@@ -123,8 +123,11 @@ mod tests {
     use crate::score::tests::stack_solver;
 
     fn blank() -> World {
-        let params = out_compute_params();
-        let mut world = World::new(&params, 3).unwrap();
+        blank_under(&out_compute_params())
+    }
+
+    fn blank_under(params: &life_engine::Params) -> World {
+        let mut world = World::new(params, 3).unwrap();
         let zeros = vec![0u8; params.meta_len as usize];
         for (x, y) in cells(&world).collect::<Vec<_>>() {
             world.set_metabolism(x, y, &zeros);
@@ -253,6 +256,35 @@ mod tests {
         let four = DepthScorer::for_params(&life_engine::Params {
             task_max_outputs: 4,
             ..out_compute_params()
+        })
+        .unwrap();
+        assert_eq!(minimum(&world, &four).depths, [0]);
+    }
+
+    /// The same on the sweep's own 32-byte metabolism tape: x emitted four times, then the
+    /// three-NAND witness of class 0x00aa (`research/minnand`), filling the 32 bytes, its
+    /// fifth slot at depth 3.
+    #[test]
+    fn sixteen_slots_read_past_the_fourth_on_the_sweeps_32_byte_tape() {
+        let params = life_engine::Params {
+            meta_len: 32,
+            ..out_compute_params()
+        };
+        let mut tape = vec![life_engine::bff::HEAD0_LEFT];
+        tape.extend([life_engine::bff::EMIT; 4]);
+        tape.push(life_engine::bff::HEAD0_RIGHT);
+        tape.extend(crate::bearing::tests::compile(
+            life_engine::topless::Inputs::Four,
+            "6003455",
+        ));
+        assert_eq!(tape.len(), 32);
+        let mut world = blank_under(&params);
+        world.set_metabolism(0, 0, &tape);
+        let wide = minimum(&world, &DepthScorer::for_params(&params).unwrap());
+        assert_eq!(wide.depths, [3]);
+        let four = DepthScorer::for_params(&life_engine::Params {
+            task_max_outputs: 4,
+            ..params
         })
         .unwrap();
         assert_eq!(minimum(&world, &four).depths, [0]);
