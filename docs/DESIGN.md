@@ -195,6 +195,41 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   `0` length nothing is allocated, drawn or stored, and the soup is exactly the substrate
   above. The world, not the program, copies the metabolism tape: it imports a hereditary
   channel.
+- **Predation** (`predation`, default `off`; `predation_transfer`, default `0`;
+  `predation_loss`, default `0.5`; `predation_every`, default `8`; `predation_shadow_p`,
+  default `0.3`; `task_max_outputs`, default `4`; docs/design_record.md 2026-10-03,
+  Predation; `docs/studies/unassisted.md` §4): an interaction rule that reads what the
+  metabolism tapes compute and names no computation, in place of a paid ladder. Every epoch,
+  before the influx, every cell, in an order shuffled on the pass's own stream at (seed,
+  epoch), **acts with probability 1 in `predation_every`** and picks one partner by the
+  soup's own neighbour rule and `radius`. What a cell computes is the set of
+  input-permutation classes its metabolism tape is credited with by the topless assay of the
+  run's ladder (`logic3` or `logic4`, the run's `logic_nand`), over `task_max_outputs`
+  output slots, on cases drawn first off that stream every `predation_every` epochs and
+  shared by every cell; each distinct tape is read once until they are redrawn, and a tape
+  with no `!` computes nothing. Under `subset_class` the actor takes from a partner whose
+  every class it computes too: the empty set is a subset of every set, so a cell that
+  computes nothing is anyone's food, and two cells computing the same set are each other's.
+  Under `equal` it takes from a partner computing exactly its own set (the same transfers,
+  no ratchet); under `shadow` a coin at `predation_shadow_p` decides and no computation is
+  read (the same transfers, no selection on computing). A take is settled as a steal op of
+  `predation_transfer` at a loss of `predation_loss`: what the partner holds when that is
+  less, the actor's share rounded down, never past `energy_stock_cap`. The pass is
+  **asynchronous** because under the `initiator` payer a descended world's cells initiate in
+  lockstep: a pass run for every cell once a period meets them only when their stocks are
+  empty, and moves nothing (the study's pilot, §4.2). It writes the stocks and nothing else.
+  Predation needs a metabolism tape, an `energy_influx`, the `initiator` payer and a topless
+  ladder, and is refused with a `task_reward`: a run is either paid or predatory, never
+  both. `task_max_outputs` (4–16) is how many outputs a case of the topless assay may emit
+  before it stops, read by the pass, the depth readings and the logic readings alike; the
+  first four slots read what they always read, and anything above 4 is refused but on an
+  unpaid topless ladder, so no paid run reads it. At `off`, or a transfer of `0`, no stream
+  is drawn and nothing is read or moved. The parameters are dynamics: a descendant may set
+  them. Predation **imports a machine, not an objective**: the relation is unchanged under
+  any relabelling of the functions, and in a world where every cell computes the same set,
+  whatever that set, every cell's payoff is the same. The machine (the NAND, the emit op,
+  the inputs, the metabolism tape) and the rule itself are imported, so rung 4 on Soup stays
+  "not shown" whatever a predation run reads.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The
@@ -553,6 +588,24 @@ claim rests on it.
   streams and read the ladder's two-input rungs, each the class of its two-input form
   (AND is x∧y, x∧z or y∧z alike). They only read, so they move no byte, stock or other
   reading. Null on every other run, on the life substrate and on every earlier sample;
+  **live-only**. The run page draws them only for a run that has a reading of them. They
+  read every output slot `task_max_outputs` allows, the default 4 reading exactly what they
+  always read: a reading of four slots missed depths 5–6 that a full census of the study's
+  pilot worlds held (`docs/studies/unassisted.md` §4.3, point 7).
+- `predation_rate` / `predation_relation_rate` / `repertoire_mean` / `silent_share`: the
+  **predation readings** (docs/design_record.md 2026-10-03, Predation). `predation_rate` is
+  the share of the last pass's encounters (an acting cell meeting a partner other than
+  itself) that moved energy, counted in the pass and drawing nothing; null where that pass
+  met no partner, or none has run since a resume. `predation_relation_rate` is the share of
+  the same encounters whose relation held (under `shadow`, whose coin came up), whether or
+  not the partner had stock to give: the study pilot's eat rate, the one
+  `predation_shadow_p` is calibrated on, null exactly where `predation_rate` is.
+  `repertoire_mean` is the mean number of distinct classes the
+  metabolism tapes of 256 cells compute, drawn uniformly with replacement on cells and cases
+  of `STREAM_PREDATION | 1`'s own at `(seed, epoch)`, over `task_max_outputs` slots, each
+  distinct tape assayed once; `silent_share` is the share of those cells computing none.
+  They only read, so they move no byte, stock or other reading. Null on every run whose
+  predation pass does not run, on the life substrate and on every earlier sample;
   **live-only**. The run page draws them only for a run that has a reading of them.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <

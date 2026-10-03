@@ -4828,3 +4828,108 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   tapes; a concurrent control (the control ran 2026-09-18 to 09-26 under `aligned`, which
   moves no byte); rate as against speed inside 20 000 epochs; any mechanism. Nothing about
   the engine, the rules or any observable moves.
+- 2026-10-03 — **Predation: the out-compute rule, an endogenous pressure in place of the paid
+  ladder (engine slice).** This is the engine slice of "Out-compute", step 1 of the ablation
+  ladder in `docs/studies/unassisted.md` §2: it removes the imported objective **by
+  substitution**, replacing the paid ladder with an interaction rule that reads what the
+  tapes compute and names no computation. It adds a DESIGN §1.1 paragraph and three §1.2
+  readings. No sweep is pre-registered here, and nothing is relocked.
+
+  **Why.** Removing the objective bare is answered: every none arm collapses (Logic's,
+  Meta-stack's, topless-rise's interim, and the study's pilot of child 4845 at reward 0, its
+  depth held by a tenth 5 → 0 within 500 epochs). Removing the machine is answered or
+  predicted to fail (study §2.1). So the objective comes off first, replaced by something the
+  world generates. The study's literature reading (§3) points at a parasite keyed on the
+  host's **computed** function (Zaman et al. 2014), with three changes: no flat pay, subset
+  rather than intersection so dominance is transitive, and every cell both host and parasite.
+
+  **The rule** (DESIGN §1.1, "Predation"):
+  - `predation`: `off` (default), `subset_class`, `equal` or `shadow`; `predation_transfer`
+    (0 = no pass), `predation_loss` (0.5), `predation_every` (8), `predation_shadow_p`
+    (0.30, the out-compute arm's eat rate in both pilot worlds after their first 5 000
+    epochs, study §4.4; a parameter so a pre-registration locks it). All dynamics.
+  - What a cell computes: the input-permutation classes its metabolism tape is credited with
+    by the topless assay of the run's ladder (its draw, its slot refusals, three reads per
+    row), over `task_max_outputs` slots, under the run's `logic_nand`. Classes, not exact
+    functions: in the pilot, a superset race over exact functions was won by tapes echoing
+    the four inputs (study §4.3, point 4).
+  - `subset_class` takes from a partner whose every class the actor computes; `equal` from
+    one computing exactly the actor's set; `shadow` on a coin that reads nothing. A take is
+    settled as a steal op of `predation_transfer` at `predation_loss`.
+  - **Asynchronous**: each cell acts with probability 1/`predation_every` every epoch, in an
+    order shuffled on `STREAM_PREDATION` at (seed, epoch), partner by the soup's own
+    neighbour rule and reach; the cases are drawn first off that stream every
+    `predation_every` epochs, and each distinct tape's class set is memoised until they are
+    redrawn (a restored world redraws them from the period's first epoch, so a resume
+    continues the run). The pilot's first version ran the pass for every cell once per 8
+    epochs and met a descended world's lockstep initiators only when their stocks were
+    empty: nothing moved, and its arms were indistinguishable from drift (study §4.2).
+  - Refused without a metabolism tape, an `energy_influx`, the `initiator` payer or a
+    topless ladder, and with any `task_reward`: a run is either paid or predatory.
+  - `task_max_outputs` (default 4, the engine's rule; 4–16): how many outputs a case of the
+    topless assay may emit before it stops. It is read by the pass, the depth readings and
+    the logic readings alike; the first four slots read what they always read. Above 4 it is
+    accepted only on an unpaid topless ladder (`logic3` or `logic4` at reward 0), which
+    every predation run is and so is the none arm of a predation sweep, so its depth
+    readings read the same slots as its treatment arms; no paid run reads it.
+
+  **The label.** Predation **imports a machine, not an objective.** Relabel the functions a
+  tape can compute any way and the rule is unchanged; in a world where every cell computes
+  the same set, whatever it is, every cell covers every other and every payoff is the same.
+  It still imports the NAND and its stack semantics, the emit op, the input bytes, the
+  world-copied metabolism tape, the emit cap and the rule itself, so rung 4 on Soup stays
+  "not shown" whatever a predation run reads (study §2, step 4, is what would make the
+  machine the soup's own). A predation run is unpaid, so it carries no "imports an
+  objective" badge. It is not plain Soup either: the reward-0 arms of Meta-stack and
+  topless-rise carry a metabolism tape nothing reads into the dynamics, while a predation
+  run's energy moves by what its tapes compute. Whether its runs pool with plain Soup's in
+  the site's fitness-free aggregates (`Run.fitness_free`, which reads the reward alone and so
+  would count them today) and the "imports a machine" label they show are settled with the
+  out-compute sweep's pre-registration, before any predation run exists. A descendant
+  records no transition, so no transition or emergence survey would read one meanwhile.
+
+  **The readings** (live-only, null unless the pass runs): `predation_rate`, the share of
+  the last pass's encounters that moved energy; `predation_relation_rate`, the share whose
+  relation held (under `shadow`, whose coin came up), moved or not, which is the pilot's eat
+  rate and so the one a pre-registration sets `predation_shadow_p` against: on the pilot's
+  out-compute end world of 4381 the engine reads 0.32 for it and 0.29 for `predation_rate`,
+  since a related partner may hold nothing; `repertoire_mean`, the mean distinct classes
+  per cell of 256 sampled cells, and `silent_share`, the share of them computing none, both
+  on `STREAM_PREDATION | 1`. `logic_depth_max` and `logic_depth_classes` now read every slot
+  `task_max_outputs` allows: in the pilot the four-slot reading read 3 in both out-compute
+  worlds where the full census held 5–6 (study §4.3, point 7). At the default 4 they read
+  exactly what they read before.
+
+  **The pilot, labelled pilot** (one seed per arm and world, a throwaway engine copy at
+  `b30196a`; study §4.3): from two fitness-free reach-cap128 worlds (4381, 4428) whose
+  metabolism tapes computed nothing at descent, with nothing paid, out-compute at
+  `meta_rate` 8/8192 and a take of one whole initiation (8 192) put 92–94% of cells
+  computing, held 5–6 classes per cell, and held depth-5 and depth-6 functions by a tenth of
+  the world (EQU is 5) and depth 7 by a hundredth; drift held depth 0 with 88% of cells
+  silent, and `equal` held depth 0 with 36% silent. The climb came in the first ~10 000
+  epochs and then mostly stopped: by the topless-rise rule one world rose late by one NAND
+  on a flickering series and the other did not, and the 10th percentile of per-cell max
+  depth stayed at 1. At Meta-stack's ×32 rate and half the take the same rule held depth 1.
+  Pilot numbers, not findings.
+
+  **Verified.**
+  - Every existing pin is unmoved, and at `off` (or a transfer of 0) a run is byte-, stock-,
+    snapshot- and reading-identical to the run without the parameters; `task_max_outputs`
+    moves no byte.
+  - Determinism, with a resume mid-period, under each relation at `predation_every` 1 and 3;
+    a world restored mid-period holds the cases the uninterrupted run drew at the period's
+    first epoch, and `shadow` draws none.
+  - Every encounter of `subset_class` moves energy exactly when the actor covers the
+    partner (the empty set is everyone's prey; kin eat kin), `equal` exactly on equal sets,
+    and `shadow` at its coin whatever the tapes compute.
+  - A world of lockstep initiators, all stocks empty at epoch 0, is met at every one of the
+    eight phases of its cycle and sees transfers.
+  - Pins of each relation's run and readings; a 16-slot reading credits XOR4 past four
+    echoes where the 4-slot one reads ECHO alone.
+  - **Cost**, measured on the Mac under a load average of 44–68 (wall time per epoch, 300
+    epochs each, descended at seed 6001): on the pilot's out-compute end world of 4381 (40 000
+    epochs past descent), `subset_class` 28.4 ms, `equal` 28.0, `shadow` 17.5, `off` 18.9,
+    and topless-rise's rise arm (`logic4` at reward 512, `meta_rate` 32/8192) 27.3; on
+    Meta-stack child 4845's world the rise arm 34.1 ms and `subset_class` 29.5. An
+    out-compute child costs about what a topless-rise rise child costs on the same world,
+    and about 1.5 times a none child.

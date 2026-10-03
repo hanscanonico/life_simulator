@@ -209,6 +209,10 @@ mod tests {
             logic_capability_replicating: None,
             logic_depth_max: None,
             logic_depth_classes: None,
+            predation_rate: None,
+            predation_relation_rate: None,
+            repertoire_mean: None,
+            silent_share: None,
         }
     }
 

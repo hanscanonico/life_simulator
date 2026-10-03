@@ -180,6 +180,58 @@
       "type": "integer"
     },
     {
+      "default": 4,
+      "doc": "How many outputs a case of the logic3 or logic4 assay may emit before it stops, and so how many output slots are read for rungs: by the predation pass, the depth readings and the logic readings. The first four read what they always read, so a wider assay only adds rungs. Anything above 4 needs tasks logic3 or logic4 and a task_reward of 0: no paid run reads it.",
+      "max": 16,
+      "min": 4,
+      "name": "task_max_outputs",
+      "type": "integer"
+    },
+    {
+      "default": "off",
+      "doc": "An interaction rule that reads what metabolism tapes compute and names no computation. Every epoch, before the influx, each cell acts with probability 1 in predation_every, in an order of its own, and picks a partner by the soup's own neighbour rule; where the relation holds it takes up to predation_transfer of the partner's stock, predation_loss of what moves destroyed, never past energy_stock_cap. subset_class: every input-permutation class the partner's metabolism tape computes on the logic3 or logic4 assay, over task_max_outputs slots, is one the actor's computes too, so a tape computing nothing is everyone's prey and two tapes computing the same are each other's. equal: the two sets are the same. shadow: a coin at predation_shadow_p, reading nothing. The cases are drawn on the pass's own stream every predation_every epochs. off runs no pass, which is the substrate of DESIGN 1.1. Anything but off needs a metabolism tape, an energy_influx, energy_payer initiator, tasks logic3 or logic4, and a task_reward of 0.",
+      "name": "predation",
+      "type": "enum",
+      "values": [
+        "off",
+        "subset_class",
+        "equal",
+        "shadow"
+      ]
+    },
+    {
+      "default": 0,
+      "doc": "The most stock one predation takes out of its partner: what the partner holds when that is less. 0 moves nothing and runs no pass. Read only once predation is set.",
+      "max": 1048576,
+      "min": 0,
+      "name": "predation_transfer",
+      "type": "integer"
+    },
+    {
+      "default": 0.5,
+      "doc": "The share of what a predation moves that is destroyed in transit: the actor receives the rest, rounded down, as a steal op's thief does. Read only once predation is set.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "predation_loss",
+      "type": "float"
+    },
+    {
+      "default": 8,
+      "doc": "The predation pass's period: each cell acts with probability 1 in this every epoch, so stocks are met at every phase of the initiation cycle, and the cases computations are read on are redrawn every this many epochs. Read only once predation is set.",
+      "max": 1000000,
+      "min": 1,
+      "name": "predation_every",
+      "type": "integer"
+    },
+    {
+      "default": 0.3,
+      "doc": "The probability an encounter moves energy under predation shadow, a coin that reads no computation. Read only under predation shadow.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "predation_shadow_p",
+      "type": "float"
+    },
+    {
       "default": "<>{}+-.,[]",
       "doc": "The BFF instructions this run executes, as a string of distinct op bytes. A byte whose op is left out is a no-op, like any non-instruction byte.",
       "name": "ops",

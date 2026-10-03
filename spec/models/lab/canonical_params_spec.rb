@@ -65,6 +65,25 @@ RSpec.describe Lab::CanonicalParams do
       expect(described_class.for(rise)).not_to eq(described_class.for(rise.merge("tasks" => "logic3")))
     end
 
+    it "reads a run stored before predation existed as the run without it, at four slots" do
+      grown = %w[task_max_outputs predation predation_transfer predation_loss predation_every predation_shadow_p]
+      stored = Lab::Schema.run_defaults.except(*grown).merge("tasks" => "logic4", "task_reward" => 512)
+
+      expect(described_class.for(stored))
+        .to eq(described_class.for(stored.merge("task_max_outputs" => 4, "predation" => "off",
+                                                "predation_transfer" => 0, "predation_loss" => 0.5,
+                                                "predation_every" => 8, "predation_shadow_p" => 0.3)))
+    end
+
+    it "keeps each predation arm apart from the others and from the arm without it" do
+      none = { "tasks" => "logic4", "meta_len" => 32, "task_max_outputs" => 16, "predation_transfer" => 8192 }
+      arms = %w[off subset_class equal shadow].map { |rule| described_class.for(none.merge("predation" => rule)) }
+
+      expect(arms.uniq.size).to eq(4)
+      expect(described_class.for(none)).to eq(arms.first)
+      expect(described_class.for(none)).not_to eq(described_class.for(none.merge("task_max_outputs" => 4)))
+    end
+
     it "keeps a stack-NAND arm apart from its in-place twin" do
       full = { "tasks" => "logic", "task_reward" => 2048 }
 
