@@ -26,6 +26,11 @@ samples and their stored snapshots. The scripts run from one working folder `O`,
 `research/landscape` built into `$O/target/release/landscape`
 (`CARGO_TARGET_DIR=$O/target cargo build --release --locked` in `research/landscape/`).
 
+The scripts name the lab's production database directly: `experiment_id = 20` is the
+`topless-rise` experiment's id there, and `fetch.sh` reaches it over the `mini-pc-lan` SSH alias
+(DESIGN §4). The exact commands for steps 2 and 5, which have no script, are in `summary.txt`,
+COMMANDS.
+
 1. `method/worlds.sql`, run through `psql -At -F ,`, picks each child's three worlds into
    `worlds.csv`: the earliest stored world at or past the first settled sample, the last at or
    before the fifth decile's end, and the last. Every child resolves to 62 000, 110 000 and
