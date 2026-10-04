@@ -8782,6 +8782,31 @@ mod tests {
         assert_eq!(mean, f64::from(total) / 64.0);
     }
 
+    /// Run for real, inheritance and mutation included: a tape carried onto a longer one
+    /// leaves no stale byte past its own end, and the bounds hold epoch after epoch.
+    #[test]
+    fn a_stepped_growing_channel_keeps_its_bounds_and_zeroes_past_each_tape() {
+        let mut world = growing_world(0.5, 0.5);
+        let tape = replicator::handwritten_replicator();
+        for x in 0..8 {
+            world.set_cell(x, 0, &tape);
+        }
+        for cell in 0..64u32 {
+            let len = 12 + (cell * 7) % 53;
+            world.set_metabolism(cell % 8, cell / 8, &vec![b'!'; len as usize]);
+        }
+        let before = world.meta_lens.clone();
+        for _ in 0..40 {
+            world.step();
+            for (cell, len) in world.meta_lens.iter().enumerate() {
+                assert!((12..=64).contains(len), "{len}");
+                let slot = &world.meta[cell * 64..cell * 64 + 64];
+                assert!(slot[*len as usize..].iter().all(|byte| *byte == 0));
+            }
+        }
+        assert_ne!(world.meta_lens, before, "no tape was ever inherited");
+    }
+
     /// A duplication appends a copy of a segment of the tape at its end, cut at the cap;
     /// a deletion cuts a segment out and never goes below the floor.
     #[test]

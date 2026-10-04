@@ -1500,10 +1500,10 @@ pub(crate) mod tests {
 
     /// A gene is read alone: whatever follows it, a gene's credit is its own run on a
     /// buffer of twice its length, so a later gene can add classes to the tape and never
-    /// change or remove an earlier gene's.
+    /// change or remove an earlier gene's. The echo falls through into whatever follows it
+    /// when the tape is run whole, so a gene that read past its own bytes would show here.
     #[test]
     fn a_later_gene_cannot_change_an_earlier_genes_classes() {
-        let alone = laid(&[LOOP], 32);
         let mut rng = rng::seeded(9, 0, 0);
         let mut tails: Vec<Vec<u8>> = (0..64)
             .map(|_| {
@@ -1513,17 +1513,25 @@ pub(crate) mod tests {
             .collect();
         tails.push(laid(&[TANDEM, ECHO], 32));
         tails.push(b"]]]][[[[".to_vec());
-        let tapes: Vec<Vec<u8>> = tails
-            .iter()
-            .map(|tail| [alone.clone(), tail.clone()].concat())
-            .collect();
-        let mut memo = gene_memo(32);
-        let own = assay_upto(&alone, &memo.cases, OpSet::ALL, LogicNand::Stack, 16);
-        assert!(own.count() > 4);
-        for tape in &tapes {
-            let credits = memo.gene_credits(tape);
-            assert_eq!(credits[0], own);
-            assert!(memo.repertoire(tape).covers(&Repertoire::union([&own])));
+        tails.push(b"{<~!".to_vec());
+        for first in [LOOP, ECHO] {
+            let alone = laid(&[first], 32);
+            let tapes: Vec<Vec<u8>> = tails
+                .iter()
+                .map(|tail| [alone.clone(), tail.clone()].concat())
+                .collect();
+            let mut memo = gene_memo(32);
+            let own = assay_upto(&alone, &memo.cases, OpSet::ALL, LogicNand::Stack, 16);
+            assert!(own.count() > 0);
+            let mut read_whole_otherwise = false;
+            for tape in &tapes {
+                let whole = assay_upto(tape, &memo.cases, OpSet::ALL, LogicNand::Stack, 16);
+                read_whole_otherwise |= whole != own;
+                let credits = memo.gene_credits(tape);
+                assert_eq!(credits[0], own);
+                assert!(memo.repertoire(tape).covers(&Repertoire::union([&own])));
+            }
+            assert_eq!(read_whole_otherwise, first == ECHO);
         }
     }
 
