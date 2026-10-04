@@ -639,6 +639,71 @@ RSpec.describe Lab do
       end
     end
 
+    describe "the genes-rise sweep" do
+      let(:definition) { Lab::SWEEPS.fetch("genes_rise") }
+      let(:treatments) { definition[:param_grid].fetch("treatment") }
+      let(:reading) { Lab::GenesRiseReading }
+      let(:bundle) do
+        { "energy_payer" => "initiator", "energy_influx" => 1024, "energy_stock_cap" => 65_536, "steal_amount" => 0,
+          "tasks" => "logic4", "task_reward" => 0, "logic_nand" => "stack", "task_max_outputs" => 16,
+          "meta_len" => 32, "meta_min_len" => 8, "meta_dup" => 0.05, "meta_del" => 0.05, "meta_seg_max" => 16,
+          "meta_rate" => 8.0 / 8192, "meta_draw" => "isa", "meta_seed" => "own_tape", "meta_genes" => 32,
+          "meta_fid_max" => 16, "meta_fid_rate" => 0.05, "meta_fid_alpha" => 0.03,
+          "predation_transfer" => 8192, "predation_loss" => 0.5, "predation_every" => 8,
+          "predation_shadow_p" => 0.33, "sample_every" => 100, "snapshot_every" => 500 }
+      end
+
+      it "starts from the thirty eligible reach-cap128 parents past out-compute's fifty-four" do
+        expect(definition[:parents]).to eq(Lab::OutComputeReading::PARENTS.merge("skip_first" => 54, "first" => 30))
+      end
+
+      it "runs one seed per parent sixty thousand epochs past it at out-compute's priority" do
+        expect(definition.values_at(:seeds, :epochs, :priority)).to eq([[6201], 60_000, 40])
+        expect(definition[:priority]).to eq(Lab::SWEEPS.fetch("out_compute")[:priority])
+      end
+
+      it "runs count at an unreached cap, its capped twin, the shadow coin and drift over one bundle" do
+        expect(treatments).to eq([bundle.merge("predation" => "count", "meta_max_len" => 4096),
+                                  bundle.merge("predation" => "count", "meta_max_len" => 1024),
+                                  bundle.merge("predation" => "shadow", "meta_max_len" => 4096),
+                                  bundle.merge("predation" => "off", "meta_max_len" => 4096)])
+        expect(treatments.map { |arm| reading.treatment_key(arm) }).to eq(%i[count capped shadow drift])
+      end
+
+      it "sets only parameters the engine declares, each to a value it accepts" do
+        treatments.flat_map(&:to_a).each do |name, value|
+          field = Lab::Schema.field(name)
+          if field["values"]
+            expect(field["values"]).to include(value)
+          else
+            expect(value).to be_between(field["min"], field["max"])
+          end
+        end
+      end
+
+      it "changes no parameter that shapes the parent's world" do
+        expect(treatments.flat_map(&:keys) & Lab::CanonicalParams::STRUCTURAL_KEYS).to be_empty
+      end
+
+      it "pays no arm, and labels every arm as importing a machine, drift by its priced fidelity" do
+        expect(treatments.map { |arm| Lab::MetabolismReading.metabolism_run?(arm) }).to all(be(false))
+        expect(treatments.map { |arm| Lab::OutComputeReading.predatory_run?(arm) }).to eq([true, true, true, false])
+        expect(treatments.map { |arm| reading.priced_fidelity_run?(arm) }).to all(be(true))
+      end
+
+      it "reads the topless-rise entry's rules and observables the engine records" do
+        expect(%i[SETTLING_WINDOW PERSISTENCE_RUN RISE_STEP].map { |name| reading.const_get(name) })
+          .to eq([1_000, 5, 1])
+        expect(Sample::OBSERVABLES).to include(reading::CLASSES_KEY, reading::GENES_KEY, *reading::DESCRIPTIVE_KEYS)
+      end
+
+      it "names a seed no other sweep uses" do
+        other_seeds = Lab::SWEEPS.except("genes_rise").values.flat_map { |sweep| Array(sweep[:seeds]) }
+
+        expect(definition[:seeds] & other_seeds).to be_empty
+      end
+    end
+
     describe "the lineage-diversity sweep" do
       let(:definition) { Lab::SWEEPS.fetch("lineage_diversity") }
       let(:reading) { Lab::LineageDiversityReading }

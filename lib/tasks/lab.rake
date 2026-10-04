@@ -4,7 +4,7 @@ namespace :lab do
   desc "Build a sweep experiment from DESIGN.md 1.3 " \
        "(mutation_rate, world_size, radius, max_steps, ops, energy_per_epoch, " \
        "environmental_structure, max_tape_len, host_parasite, asymmetric_execution, from_emerged, metabolism, logic, " \
-       "meta_stack, topless_rise, out_compute)"
+       "meta_stack, topless_rise, out_compute, genes_rise)"
   task :sweep, [:sweep] => :environment do |_task, args|
     definition = Lab::SWEEPS[args[:sweep]]
     raise "Unknown sweep #{args[:sweep].inspect}. Known sweeps: #{Lab::SWEEPS.keys.join(', ')}" if definition.nil?
@@ -344,6 +344,20 @@ namespace :lab do
     raise "The out-compute sweep is not seeded." if experiment.nil?
 
     report = Experiments::OutComputeReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
+  desc "Read the genes-rise sweep as pre-registered: every child, every arm, H-rise, H-rise-genes, H-room, " \
+       "H-shadow and H-driven with their extinct-kept readings (FORMAT=csv for CSV; MINIMA=path for the offline " \
+       "minimum's CSV, run_id,fifth_minimum,last_minimum, without which H-driven reads no pairs); labelled interim " \
+       "until every child of every qualifying parent is terminal"
+  task genes_rise_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("genes_rise"))
+    raise "The genes-rise sweep is not seeded." if experiment.nil?
+
+    minima = ENV.fetch("MINIMA", nil)&.then { |path| Lab::GenesRiseReading::Minimum.parse(File.read(path)) }
+    report = Experiments::GenesRiseReadingService.call(experiment: experiment, minima: minima)
 
     print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end

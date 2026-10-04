@@ -1068,6 +1068,30 @@ sample.
     "Out-compute: does an endogenous rule make computing climb, and keep climbing, with
     nothing paid?", whose numbers live in `Lab::OutComputeReading`; `lab:out_compute_report`
     reads it.
+20. **Genes rise** — does held code keep rising late when nothing pays for it and the room to
+    grow is not used up? The machine the design study's pilots 3–8 assembled
+    (`docs/studies/unassisted.md` §8–§13): strict out-count (`predation: count`), the genes
+    assay (`meta_genes` 32), the growable metabolism channel and staged costly fidelity
+    (§1.1). A descendant sweep from **reach-cap128's eligible parents past out-compute's**
+    (the 54 lowest run ids set aside, `skip_first`, then the 30 lowest: none a pilot world),
+    each from its terminal world at epoch 20 000. Seeded only once the predation, genes and
+    fidelity engine slices, item 19's entry and this one are deployed, and after item 19's
+    sweep is seeded. Four arms over one bundle (out-compute's economy, ladder, NAND, 16
+    slots and pass; `meta_len` 32 growing by duplication and deletion of 1–16-byte segments
+    at 0.05 each, floor 8; `meta_rate` 8/8192; fidelity up to 16 at 0.05, price α 0.03;
+    `predation_shadow_p` 0.33; a sample every 100 epochs and a stored world every 500):
+    **count** (cap 4 096), **capped** (cap 1 024, the paired room control), **shadow** and
+    **drift** (`predation: off`), both at 4 096. Seed 6201, 60 000 epochs past the parent,
+    priority 40, 120 children. Read with topless-rise's machinery on
+    `logic_depth_classes` and `genes_essential_held`, a late rise needing the rise rule,
+    three persistent new maxima with the last in the final quarter, and a last-decile median
+    at least 1.2 times the bar. Five one-sided sign tests at p < 0.05, each re-read with the
+    extinct pairs kept: H-rise and H-rise-genes (count against drift), H-room (the
+    final-quarter gain, against capped), H-shadow (against shadow) and H-driven (the
+    offline minimum, against drift). Pre-registered in `docs/design_record.md`, 2026-10-04,
+    "Genes rise: does held code keep rising late, at a cap the run does not reach, with
+    nothing paid?", whose numbers live in `Lab::GenesRiseReading`; `lab:genes_rise_report`
+    reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -1143,6 +1167,18 @@ predation off is plain Soup carrying a tape nothing reads into its dynamics, as 
 arms of Meta-stack and Topless are, and pools as they do. Its sweep is §1.3 item 19,
 pre-registered in `docs/design_record.md`, 2026-10-03, "Out-compute: does an endogenous rule
 make computing climb, and keep climbing, with nothing paid?".
+
+**Genes rise** keeps Out-compute's terms and adds three pieces of machine: genes (the tape
+read as independent 32-byte pieces whose classes are united), a channel that grows and
+shrinks by duplication and deletion, and a heritable fidelity level whose initiator pays
+for it. None names a function or pays one, so the label is Out-compute's: **imports a
+machine, not an objective**. Its drift arm runs no predation and is still labelled: a
+priced fidelity level (`meta_fid_max` and `meta_fid_alpha` both positive) costs the
+initiator energy by a state the tape inherits, so selection acts on the imported menu, and
+the run is never pooled with plain Soup. An unpaid run with predation off and no priced
+level is plain Soup, as above, its channel and genes inert. Its sweep is §1.3 item 20,
+pre-registered in `docs/design_record.md`, 2026-10-04, "Genes rise: does held code keep
+rising late, at a cap the run does not reach, with nothing paid?".
 
 The design study behind each of the five is kept in `docs/studies/` (`metabolism.md`,
 `logic.md`, `meta-stack.md`, `topless.md`, `unassisted.md`); every number in them is pilot

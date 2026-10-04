@@ -513,6 +513,29 @@ module Lab
       epochs: OutComputeReading::EPOCHS,
       priority: OutComputeReading::PRIORITY
     },
+    "genes_rise" => {
+      name: "Genes rise",
+      description: "Does held code keep rising late when nothing pays for it and the room to grow is not used " \
+                   "up? Each run continues an emerged, never-paid world whose metabolism tape can grow, runs " \
+                   "as independent genes and carries a priced, heritable fidelity, under a rule by which a cell " \
+                   "takes energy from a neighbour computing fewer functions. Controls lower the cap, decide the " \
+                   "same transfers by a coin, or move nothing. A labelled substrate: it imports a machine, not " \
+                   "an objective.",
+      # §1.3 item 20 and §1.4, pre-registered on 2026-10-04, "Genes rise: does held code keep
+      # rising late, at a cap the run does not reach, with nothing paid?", whose numbers live in
+      # `Lab::GenesRiseReading`. Seeded only once the predation and genes engine slices, the
+      # out-compute entry and this one are deployed, and after the out-compute sweep is seeded.
+      # The parents are reach-cap128 runs past out-compute's, founding runs whose own seeds are
+      # 1–270.
+      parents: GenesRiseReading::PARENTS,
+      param_grid: {
+        "treatment" => [GenesRiseReading::COUNT_BUNDLE, GenesRiseReading::CAPPED_BUNDLE,
+                        GenesRiseReading::SHADOW_BUNDLE, GenesRiseReading::DRIFT_BUNDLE]
+      },
+      seeds: GenesRiseReading::SEEDS,
+      epochs: GenesRiseReading::EPOCHS,
+      priority: GenesRiseReading::PRIORITY
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

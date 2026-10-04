@@ -196,6 +196,34 @@ RSpec.describe Run, type: :model do
     end
   end
 
+  describe ".priced_fidelity, .machine, .labelled and .fitness_free" do
+    let(:defaults) { Lab::Schema.run_defaults }
+    let!(:count) { create(:run, params: defaults.merge(Lab::GenesRiseReading::COUNT_BUNDLE)) }
+    let!(:drift) { create(:run, params: defaults.merge(Lab::GenesRiseReading::DRIFT_BUNDLE)) }
+    let!(:free) { create(:run, params: defaults.merge(Lab::GenesRiseReading::DRIFT_BUNDLE, "meta_fid_alpha" => 0)) }
+    let!(:text_price) do
+      create(:run, params: defaults.merge(Lab::GenesRiseReading::DRIFT_BUNDLE, "meta_fid_alpha" => "0.03"))
+    end
+    let!(:none) { create(:run, params: defaults.merge(Lab::OutComputeReading::NONE_BUNDLE)) }
+
+    it "reads a priced fidelity level as importing a machine, predation or not" do
+      expect(described_class.priced_fidelity).to contain_exactly(count, drift)
+      expect(described_class.machine).to contain_exactly(count, drift)
+      expect(described_class.labelled).to contain_exactly(count, drift)
+    end
+
+    it "pools a free fidelity level, or none, as fitness-free" do
+      expect(described_class.fitness_free).to contain_exactly(free, text_price, none)
+    end
+
+    it "agrees with the reading's own rule on every run" do
+      [count, drift, free, text_price, none].each do |run|
+        expect(described_class.priced_fidelity.exists?(run.id))
+          .to eq(Lab::GenesRiseReading.priced_fidelity_run?(run.params))
+      end
+    end
+  end
+
   describe "a descendant in the transition surveys" do
     let!(:descendant) { create(:run, :descendant, status: "finished") }
 

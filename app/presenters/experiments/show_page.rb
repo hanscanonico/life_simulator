@@ -217,6 +217,11 @@ module Experiments
     # as the topless-rise reading is.
     def out_compute_reading = @out_compute_reading ||= settled_reading(OutComputeReadingService, "out_compute_reading")
 
+    # The genes-rise sweep's pre-registered reading, on that sweep only, cached and finalised as
+    # the out-compute reading is. H-driven reads no pairs here: its minimum is read offline and
+    # handed to `lab:genes_rise_report`.
+    def genes_rise_reading = @genes_rise_reading ||= settled_reading(GenesRiseReadingService, "genes_rise_reading")
+
     # A sweep holding a run paid for its tasks imports an objective (DESIGN.md §1.4), and its
     # page says so beside its substrate.
     def imports_objective?
@@ -225,19 +230,19 @@ module Experiments
       @imports_objective = experiment.runs.metabolism.exists?
     end
 
-    # A sweep holding a predatory run imports a machine, not an objective (DESIGN.md §1.4),
-    # and its page says so beside its substrate too.
+    # A sweep holding a predatory run, or one whose fidelity is priced, imports a machine, not
+    # an objective (DESIGN.md §1.4), and its page says so beside its substrate too.
     def imports_machine?
       return @imports_machine if defined?(@imports_machine)
 
-      @imports_machine = experiment.runs.predatory.exists?
+      @imports_machine = experiment.runs.machine.exists?
     end
 
     private
 
     def own_descendant_reading?
       [MetabolismReadingService, LogicReadingService, MetaStackReadingService, ToplessRiseReadingService,
-       OutComputeReadingService].any? { |reading| reading.applies_to?(experiment) }
+       OutComputeReadingService, GenesRiseReadingService].any? { |reading| reading.applies_to?(experiment) }
     end
 
     def own_emergence_rule?

@@ -109,6 +109,10 @@
   <%= render "experiments/out_compute_reading", reading: @show.out_compute_reading %>
 <% end %>
 
+<% if @show.genes_rise_reading %>
+  <%= render "experiments/genes_rise_reading", reading: @show.genes_rise_reading %>
+<% end %>
+
 <% if @show.lineage_diversity_reading %>
   <%= render "experiments/lineage_diversity_reading", reading: @show.lineage_diversity_reading %>
 <% end %>

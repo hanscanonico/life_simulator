@@ -36,8 +36,9 @@ module Findings
                         "Rung 4 on Soup is unaffected by it."
 
     MACHINE_MEANING = "Read from runs under predation, an interaction rule that moves energy by what the " \
-                      "tapes compute and names no computation: it imports a machine to compute with, not an " \
-                      "objective, and is never pooled with the fitness-free runs. Rung 4 on Soup is unaffected by it."
+                      "tapes compute and names no computation, or carrying a priced, heritable fidelity: it " \
+                      "imports a machine to compute with, not an objective, and is never pooled with the " \
+                      "fitness-free runs. Rung 4 on Soup is unaffected by it."
 
     # Neither label unless the entry states it.
     LABELS = { imports_objective: false, imports_machine: false }.freeze
