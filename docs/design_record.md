@@ -5864,3 +5864,22 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   qualifying parent has finished (`Experiments::DescendantSweepSettledService`), then
   **final**. The page reads no minimum, so H-driven reads no measured pairs there; its outcome
   is the report's with `MINIMA`.
+
+
+- 2026-10-03 — **`research/landscape` reads the out-compute child: McShea's minimum over the
+  run's own slots (tooling only).** The tool slice the out-compute entry demands before its
+  sweep is read. The topless readings (`census`, `loadbearing`) now assay over the run's
+  `task_max_outputs` output slots (`topless::assay_upto`): 16 on an out-compute child, the
+  engine's 4 on every earlier run, which so reads as before. A new `mcshea` subcommand applies
+  the entry's method exactly: every cell's metabolism tape assayed under the child's own
+  instruction set and NAND on the six fixed four-input sets, a cell computing where a class is
+  credited on all six and its max depth the deepest class so credited; it prints the
+  computing cells' max depth at sorted index ⌊(n − 1) × p / 100⌋ for p = 10 (the minimum),
+  25, 50 and 90, and the max, each unread where no cell computes, beside the computing count,
+  the silent share and the repertoire; with `--fifth` and `--last` it prints a child's two
+  worlds side by side. `loadbearing` takes `--first` as optional, so H-code reads the
+  fifth-decile and last worlds alone. Tests plant known worlds for the percentiles, hold the
+  index rule, the all-six-sets definition and the unread case, and read the engine's planted
+  XOR4 tape at depth 12 over 16 slots and depth 0 over 4, and a tape filling the sweep's 32
+  bytes at depth 3 over 16 slots and depth 0 over 4. Nothing in the engine, the lab or
+  the sweep changes.

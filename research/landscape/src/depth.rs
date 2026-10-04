@@ -1,6 +1,7 @@
 //! The topless assay as the readings apply it (`tasks = logic3 | logic4`): a run's own
-//! instruction set and NAND, on six fixed case sets, a tape credited a rung where every set
-//! credits it.
+//! instruction set and NAND, over its own `task_max_outputs` output slots (16 on an
+//! out-compute run, the engine's 4 elsewhere), on six fixed case sets, a tape credited a rung
+//! where every set credits it.
 
 use life_engine::params::LogicNand;
 use life_engine::topless::{self, Cases, Credit, Inputs, DEPTH_FLOOR, DEPTH_MAX_CASES};
@@ -191,6 +192,7 @@ pub struct DepthScorer {
     sets: Vec<Cases>,
     ops: OpSet,
     nand: LogicNand,
+    slots: usize,
 }
 
 impl DepthScorer {
@@ -202,6 +204,7 @@ impl DepthScorer {
             sets: fixed_sets(inputs),
             ops: params.op_set(),
             nand: params.logic_nand,
+            slots: params.assay_slots(),
         })
     }
 
@@ -209,8 +212,13 @@ impl DepthScorer {
         self.inputs
     }
 
+    /// The output slots the assay reads: the run's `task_max_outputs`.
+    pub fn slots(&self) -> usize {
+        self.slots
+    }
+
     pub fn on_set(&self, tape: &[u8], set: usize) -> Credit {
-        topless::assay(tape, &self.sets[set], self.ops, self.nand)
+        topless::assay_upto(tape, &self.sets[set], self.ops, self.nand, self.slots)
     }
 
     /// The rungs credited on all six sets: what the readings call a tape's credit.
@@ -287,6 +295,48 @@ pub(crate) mod tests {
             [Some(2), Some(2), Some(2), Some(2), Some(2), Some(1)]
         );
         assert_eq!(scorer.solid(&tape).depth(), Some(1));
+    }
+
+    /// The out-compute bundle (the engine's `predatory_params`) on the Meta-stack world: an
+    /// unpaid four-input ladder over 16 slots, its metabolism tape 128 bytes rather than the
+    /// sweep's 32 so `echo_then_xor4`'s 123 fit.
+    pub fn out_compute_params() -> Params {
+        Params {
+            tasks: Tasks::Logic4,
+            task_reward: 0,
+            task_max_outputs: 16,
+            meta_len: 128,
+            ..crate::score::tests::meta_stack_params()
+        }
+    }
+
+    /// The engine's wider-assay tape (`topless::tests`): x emitted four times, then XOR4's
+    /// minimal witness compiled, so its fifth slot holds a depth-12 class.
+    pub fn echo_then_xor4() -> Vec<u8> {
+        let mut tape = vec![bff::HEAD0_LEFT];
+        tape.extend([bff::EMIT; 4]);
+        tape.push(bff::HEAD0_RIGHT);
+        tape.extend(crate::bearing::tests::compile(
+            Inputs::Four,
+            "f0123041425356789abacbcde",
+        ));
+        tape
+    }
+
+    #[test]
+    fn an_out_compute_run_reads_its_sixteen_slots_past_the_fourth() {
+        let tape = echo_then_xor4();
+        let four = DepthScorer::for_params(&Params {
+            task_max_outputs: 4,
+            ..out_compute_params()
+        })
+        .unwrap();
+        let sixteen = DepthScorer::for_params(&out_compute_params()).unwrap();
+        assert_eq!((four.slots(), sixteen.slots()), (4, 16));
+        assert_eq!(four.solid(&tape).depth(), Some(0));
+        let wide = sixteen.solid(&tape);
+        assert_eq!(wide.depth(), Some(12));
+        assert!(wide.has(Inputs::Four.class_of(0x6996)));
     }
 
     #[test]
