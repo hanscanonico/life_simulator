@@ -253,8 +253,8 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   step budgets; the tape computes the **union** of its genes' classes, each distinct gene
   assayed once per reading. It applies wherever a metabolism tape is assayed: the predation
   pass under every relation, the depth, logic and repertoire readings. It is refused away
-  from an unpaid topless ladder, so it never touches pay. A cap at or below `meta_len`'s
-  value reads the fixed channel, the variation settings are refused where the channel
+  from an unpaid topless ladder, so it never touches pay. A cap of `0` or of `meta_len`
+  itself reads the fixed channel, one below `meta_len` is refused, the variation settings are refused where the channel
   cannot grow, and at the defaults the run is the run without them, byte for byte. Genes
   and the channel **import a machine, not an objective**: the gene length G, independence
   by construction (no gene reads or undoes another's result), the union as the phenotype
