@@ -4871,3 +4871,28 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     on their own: `lab:vacuum_snapshots` runs a plain `VACUUM (ANALYZE) snapshots` so Postgres
     reuses the space. Not `VACUUM FULL`: the disk has no room for its copy of the table, and
     it would lock the table for hours while the runners write.
+
+
+- 2026-10-03 — **The readings pass no longer walks into a stored world (runner fix,
+  relocks nothing; #300).** `runner readings-corpus` stepped a restored world W to its next
+  sample epoch and, when that epoch was an unread stored world W′, read W′ there as a
+  stepped row (`source_epoch = W`) and walked on. Since a world counts as read only by its
+  own static row (entry above), W′ waited for the next pass, and a chain of k worlds one
+  sample apart needed k passes. Now every stored world is a source: restored, read
+  statically, and stepped once to its next sample epoch E′ for the copy rates — unless E′ is
+  itself a stored world, read or not, in which case no step is taken and no row is written
+  at E′, so no stepped row can take a static row's place on `[run_id, instrument, epoch]`.
+  One pass reads every world; re-running it stays harmless and reads nothing new.
+  - **Cost.** A chain of k such worlds now costs k restores and one step in one pass,
+    against k restores over k passes and k(k+1)/2 steps before; in the test corpus (worlds
+    at 0, 4, 6, sampled every 2) a pass restores three worlds per run instead of two and
+    steps two samples instead of three. In production the extra restores per pass equal the
+    worlds that lie one sample after another; the 2026-10-03 audit found six across
+    lineage-diversity, locality-emergence and reach-cap128, and each of them saves the step
+    it replaces, which is what dominates a pass.
+  - **What changes in the data.** Copy rates for non-stored epochs read exactly as before;
+    the row past a chain now names the chain's last world as its `source_epoch`, not its
+    first, since that is the world it was stepped from. A stored world one sample after another no longer gains a stepped row with copy rates
+    at its own epoch; like every other stored world it has only its static row there.
+  - **Unchanged.** No engine rule, observable, param or default; no published reading,
+    since `OrientedSummary#measured?` and the reports read static rows only.

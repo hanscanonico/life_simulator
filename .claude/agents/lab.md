@@ -146,17 +146,18 @@ readings still could not be stored logs `event=error` and counts its worlds as `
 running the pass again stores them. Both skip the worlds an earlier pass already read, so an
 interrupted pass is resumed by running it again, and an `all` pass after a `latest` one
 does not read those worlds twice. A world counts as read only by its own static row
-(`source_epoch` = `epoch`). When a stored world lies one sample after another, the walk
-steps into it and gives it only a stepped row, so it is read on the *next* pass (#300).
-Run the pass again until `event=readings_done` reports `worlds=0`. A run is not measured
-until then. Run one experiment at a time and start small: first
+(`source_epoch` = `epoch`). Every stored world is restored and read where it stands, so one
+pass reads them all; a world is not stepped into the next stored world (#300). Running the
+pass again stays harmless: it reads only what is still unread, and should report
+`worlds=0`. Run one experiment at a time and start small: first
 `--dry-run --limit 5` (reads five worlds and stores nothing), then `bff-control`, then
 `max-tape-len`. Each run prints
 `event=readings run= worlds= rows= failed= skipped= stored=`, and the pass ends with
 `event=readings_done`. A world it cannot read logs `event=error`, and the pass carries on.
 Every stored world at epoch E gives a row at E (the census readings plus the engine's own
 `replicator_count`). The world is then stepped to the next sample epoch E′, and a row at
-E′ with `source_epoch` E carries both copy rates. For a run's last world E′ lies one sample
+E′ with `source_epoch` E carries both copy rates — unless E′ is itself a stored world,
+which has its own row there and so no copy rates. For a run's last world E′ lies one sample
 past the run's end: it reads the world the run stopped at, not a sample the run took, so
 the run's samples have no counterpart there. Spot-check a pass against the live record
 before trusting it: the `replicator_count` of a row at E must equal the run's own sample at E
