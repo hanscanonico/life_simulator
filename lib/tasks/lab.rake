@@ -402,6 +402,39 @@ namespace :lab do
     puts "pruned #{deleted} snapshots"
   end
 
+  desc "Delete the intermediate stored worlds of the founding runs that never crossed (#268): a dry run " \
+       "unless CONFIRM=yes; MAX_RUNS and TIME_LIMIT (seconds) bound one invocation, and the next resumes"
+  task thin_unemerged: :environment do
+    delete = ENV.fetch("CONFIRM", nil) == "yes" && ENV.fetch("DRY_RUN", "0").in?(["", "0"])
+    max_runs = ENV["MAX_RUNS"]&.then { |value| Integer(value, 10) }
+    time_limit = ENV["TIME_LIMIT"]&.then { |value| Float(value) }
+    raise "MAX_RUNS and TIME_LIMIT must be positive." if [max_runs, time_limit].compact.any? { |limit| limit <= 0 }
+
+    result = Runs::ThinUnemergedService.call(dry_run: !delete, max_runs: max_runs, time_limit: time_limit)
+    human = ActiveSupport::NumberHelper
+
+    result.by_experiment.each do |slug, tally|
+      puts "#{slug}: #{tally.runs} runs, #{tally.snapshots} snapshots, #{human.number_to_human_size(tally.bytes)}"
+    end
+    verb = delete ? "deleted" : "would delete"
+    total = result.total
+    puts "#{verb} #{total.snapshots} snapshots of #{total.runs} runs, " \
+         "#{human.number_to_human_size(total.bytes)} (#{total.bytes} bytes)"
+    puts "stopped at the batch limit: run it again to continue" unless result.complete
+    puts "dry run: CONFIRM=yes deletes" unless delete
+    if delete && total.snapshots.positive?
+      puts "then run lab:vacuum_snapshots (a plain VACUUM (ANALYZE) snapshots) so Postgres reuses the space"
+    end
+  end
+
+  desc "Run a plain VACUUM (ANALYZE) on snapshots, so the space a prune freed is reused. Never VACUUM FULL: " \
+       "it rewrites the table into a copy the disk has no room for, and locks it while the runners write"
+  task vacuum_snapshots: :environment do
+    ActiveRecord::Base.connection.execute("VACUUM (ANALYZE) snapshots")
+
+    puts "vacuumed snapshots"
+  end
+
   desc "Print the size of the lab database and of its two heaviest tables"
   task db_size: :environment do
     connection = ActiveRecord::Base.connection

@@ -4828,6 +4828,75 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   tapes; a concurrent control (the control ran 2026-09-18 to 09-26 under `aligned`, which
   moves no byte); rate as against speed inside 20 000 epochs; any mechanism. Nothing about
   the engine, the rules or any observable moves.
+- 2026-10-03 — **The founding runs that never crossed keep only their first and last stored
+  world (#268; the user approved it on 2026-10-03).** The mini-pc disk is at 85% and
+  `snapshots` holds about 180 GB of world blobs. Pruning at finish (`Runs::PruneSnapshotsService`)
+  already keeps a thinned gallery per terminal run; this entry permanently deletes the
+  intermediate worlds of the runs no rule ever flagged.
+  - **The rule** (`Runs::ThinUnemergedService`, run by `lab:thin_unemerged`). A run is thinned
+    only if it is terminal (`finished` or `failed`), founding (`parent_run_id` null), has no
+    `emergence_epoch`, no `transition_epoch` and no `transition_epoch_relative`, has no
+    descendant run, and its experiment is not in `EXCLUDED_EXPERIMENTS` (empty). Such a run
+    keeps its first and last restorable world, and every world some instrument that has read
+    anything in its experiment — `oriented_census/1` always — holds no static reading
+    (`epoch = source_epoch`) of. Every other world of it is deleted. No reading, sample or
+    rescore row is deleted.
+  - **The estimate** (read-only, production, 2026-10-03 about 16:30Z): 3 844 runs carrying
+    80 468 snapshots, 72 780 of them intermediate, about 135 GB. Unread worlds stay, so the
+    deleted count can come out lower.
+  - **Nothing read moves.** An unread world stays, so a thinned run's `Runs::OrientedSummary`
+    has the same readings and the same unread count, and its `measured?` is unchanged. The
+    readings the locked instruments and the reports read are rows that stay: reach-cap128's
+    emergence (a run with no `emergence_epoch` reads false before any world is looked at),
+    the oriented arms report and CSV, `ReadingsCsvService`, the rescore summary.
+    `DescendantParentsService` reads a candidate's last world, which stays, and a run with a
+    descendant is never thinned.
+  - **The exclusion audit.** No pre-registration reads the intermediate worlds of a founding
+    run that never crossed. The lineage-diversity, locality-emergence and reach-cap128
+    readings read emerged runs' samples and the corpus readings; from-emerged, metabolism,
+    logic, meta-stack and topless-rise read descendant runs, which are never thinned (topless
+    rise's offline mechanism reading of its children's fifth-decile and last worlds among
+    them); the snapshot audit reads only runs with a transition. The list starts empty.
+  - **What is lost.** A future instrument cannot re-read those middle worlds: a new census,
+    `oriented_census/2` on a run it has not read, a rescore at another `top_k`. Their first
+    and last worlds, and the runs' live samples, remain.
+  - **Why that is acceptable.** These are worlds no rule ever flagged. Every reading the
+    corpus pass has taken of them stays. And the orientation-aware reading of the whole corpus
+    (entry of 2026-09-25, finding (b)) found no run the detector passed over holding a kept
+    world that is half replicators. The two replicator worlds the confirmation left
+    unemerged there (runs 59 and 170) were flagged, so neither is thinned.
+  - **Operation.** A dry run by default; `CONFIRM=yes` deletes, run by run, each delete asking
+    the whole rule again in its own statement, and `MAX_RUNS` or `TIME_LIMIT` bound an
+    invocation that the next one resumes. Deleted rows return no disk
+    on their own: `lab:vacuum_snapshots` runs a plain `VACUUM (ANALYZE) snapshots` so Postgres
+    reuses the space. Not `VACUUM FULL`: the disk has no room for its copy of the table, and
+    it would lock the table for hours while the runners write.
+
+
+- 2026-10-03 — **The readings pass no longer walks into a stored world (runner fix,
+  relocks nothing; #300).** `runner readings-corpus` stepped a restored world W to its next
+  sample epoch and, when that epoch was an unread stored world W′, read W′ there as a
+  stepped row (`source_epoch = W`) and walked on. Since a world counts as read only by its
+  own static row (entry above), W′ waited for the next pass, and a chain of k worlds one
+  sample apart needed k passes. Now every stored world is a source: restored, read
+  statically, and stepped once to its next sample epoch E′ for the copy rates — unless E′ is
+  itself a stored world, read or not, in which case no step is taken and no row is written
+  at E′, so no stepped row can take a static row's place on `[run_id, instrument, epoch]`.
+  One pass reads every world; re-running it stays harmless and reads nothing new.
+  - **Cost.** A chain of k such worlds now costs k restores and one step in one pass,
+    against k restores over k passes and k(k+1)/2 steps before; in the test corpus (worlds
+    at 0, 4, 6, sampled every 2) a pass restores three worlds per run instead of two and
+    steps two samples instead of three. In production the extra restores per pass equal the
+    worlds that lie one sample after another; the 2026-10-03 audit found six across
+    lineage-diversity, locality-emergence and reach-cap128, and each of them saves the step
+    it replaces, which is what dominates a pass.
+  - **What changes in the data.** Copy rates for non-stored epochs read exactly as before;
+    the row past a chain now names the chain's last world as its `source_epoch`, not its
+    first, since that is the world it was stepped from. A stored world one sample after another no longer gains a stepped row with copy rates
+    at its own epoch; like every other stored world it has only its static row there.
+  - **Unchanged.** No engine rule, observable, param or default; no published reading,
+    since `OrientedSummary#measured?` and the reports read static rows only.
+
 - 2026-10-03 — **Predation: the out-compute rule, an endogenous pressure in place of the paid
   ladder (engine slice).** This is the engine slice of "Out-compute", step 1 of the ablation
   ladder in `docs/studies/unassisted.md` §2: it removes the imported objective **by
