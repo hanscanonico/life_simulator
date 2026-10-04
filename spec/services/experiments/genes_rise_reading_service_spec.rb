@@ -93,6 +93,7 @@ RSpec.describe Experiments::GenesRiseReadingService do
                                                      late_rise?: true)
       expect(count_child.classes.maxima.size).to eq(19)
       expect(count_child.classes.last_maximum_epoch).to eq(arms[:count].first.parent_epoch + 19_100)
+      expect(count_child.classes.final_quarter_epoch).to eq(arms[:count].first.parent_epoch + 15_300)
       expect(count_child.genes).to be_late_rise
     end
 

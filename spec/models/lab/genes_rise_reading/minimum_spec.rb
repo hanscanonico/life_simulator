@@ -11,6 +11,7 @@ RSpec.describe Lab::GenesRiseReading::Minimum do
   it "reads no late rise on a gain under a fifth, under a step, or a fall" do
     expect(described_class.new(fifth: 90, last: 107)).not_to be_late_rise
     expect(described_class.new(fifth: 3, last: 3)).not_to be_late_rise
+    expect(described_class.new(fifth: 0, last: 0)).not_to be_late_rise
     expect(described_class.new(fifth: 50, last: 40)).not_to be_late_rise
   end
 

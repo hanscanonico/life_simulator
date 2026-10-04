@@ -5524,8 +5524,8 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   both sides of the map: the function side (classes held by a tenth) and the program side
   (essential genes held by a tenth), against controls of clause 5. **What it cannot meet**:
   - **clause 6**: 60 000 epochs are about 4 500 generations at T_gen 12–14, against 10⁶ epochs;
-    the climb runs on length (about 45 bytes a thousand epochs) and cost grows with length, so
-    no affordable horizon on this machine reaches it (a 10⁶-epoch tape would be ~45 000 bytes);
+    the climb runs on length (about 60 bytes a thousand epochs) and cost grows with length, so
+    no affordable horizon on this machine reaches it (a 10⁶-epoch tape would be ~60 000 bytes);
   - **clause 1**: genes, the channel, the fidelity menu, the stack NAND and the emit op exist
     only in descendants; no emergence has been shown on this physics.
   The sweep can show "sustained to 60 000 epochs at an unreached cap", not open-endedness.
@@ -5564,17 +5564,21 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **Seed 6201**, one per parent, which no stored run uses (SELECT, 2026-10-04) and no other
     sweep names; **60 000 epochs** past the parent; **priority 40**: **120 children**.
   - **The cap, 4 096, checked against the pilot.** Pilot 8's longest tapes grew 56–65 bytes a
-    thousand epochs over the final quarter (the mean 37–50), not the 45 a summary would
-    suggest, and stood at 1 942–2 483 bytes at 30 000–35 000. Projected linearly to 60 000 the
-    longest tape reaches 3 690–3 860 bytes at α 0.03 (4381, 4428 and its second seed), 3 450
-    and 4 110 at α 0.01. So at the sweep's α the cap stays unreached in both pilot worlds, by
-    6–10%, and a faster parent may reach it in the last few thousand epochs. That risk is
-    taken, for two reasons. A late-reached cap biases H-rise, H-shadow and H-room toward
-    *not shown*, never toward shown; and the next step, 8 192, is the one #307's reviewer
+    thousand epochs over the final quarter (the mean length 54–65, a few per cent below the
+    longest), and stood at 1 942–2 483 bytes at 30 000–35 000. Projected linearly to 60 000
+    the longest tape reaches 3 690–3 860 bytes at α 0.03 (4381, 4428 and its second seed),
+    3 450 and 4 110 at α 0.01. So at the sweep's α the cap stays unreached in both pilot
+    worlds, by 6–10%, and a faster parent may reach it in the last few thousand epochs. That
+    risk is taken, for two reasons. A late-reached cap biases H-rise, H-shadow and H-room
+    toward *not shown* or *refuted*, never toward shown (it slows the count child alone; the
+    shadow and drift tapes stay short); and the next step, 8 192, is the one #307's reviewer
     flagged: about 340 MB a slot at 2 KB tapes, twelve slots near the runner's 5 GiB claim
-    guard and 6 GiB limit beside the other sweeps' children. A child whose last-decile median
-    mean length is at least 0.9 of its cap is counted **near the cap**, per arm, and printed;
-    it decides nothing (every capped child will be).
+    guard and 6 GiB limit beside the other sweeps' children. At 4 096 the runner measured here
+    (the count bundle on a fresh 128×128 world, peak resident memory) took 83 MB at 32-byte
+    tapes, 255 MB at 2 048 and 346 MB at 3 800, so even twelve count children at their
+    projected last length stay near 4.1 GB, under the claim guard. A child whose last-decile
+    median mean length is at least 0.9 of its cap is counted **near the cap**, per arm, and
+    printed; it decides nothing (every capped child will be).
   - **The shadow coin, 0.33.** `predation_relation_rate` is the study pilot's eat rate
     (DESIGN §1.2). Over pilot 8's three α 0.03 count lanes (4381, 4428 and its second seed,
     500-epoch census) its pooled lower median is 0.350 over the whole settled run (194 rows),
@@ -5588,8 +5592,14 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     calibrations depend on it: §5.4's persistence of five samples (2 500 epochs) and H-room's
     windows of five samples. At 10, five samples are 50 epochs, a new maximum held for four
     generations, and "the first five samples of the final quarter" 50 epochs. At 100 the
-    persistence run is 500 epochs and H-room's windows are set to 25 samples, 2 500 epochs, the
-    pilot's five rows. It also cuts the samples stored per child from 6 000 to 600, and the
+    persistence run is 500 epochs and H-room's windows are set to 25 samples, 2 500 epochs,
+    the pilot's five rows. The persistence run stays topless-rise's five samples, so it spans
+    a fifth of the pilot's 2 500 epochs: shorter excursions count as held, which raises the
+    bar (the magnitude is harder) and adds maxima (clause 4 is easier). Re-read with one
+    500-epoch row as the run, the nearest the pilot's census comes, the bar rises by 0–19
+    classes; five of the six count lanes still rise late on classes held (4428 at α 0.03 reads
+    1.18 times its bar at 35 000) and all six on essential genes, and no capped fork rises
+    late on classes. It also cuts the samples stored per child from 6 000 to 600, and the
     sampling cost: one sample of these worlds took 155–410 ms here (all the observables; Mac
     load 23–36), so sampling every 10 epochs would add 15–40 ms an epoch to children whose
     step costs 21–78. `sample_every` is not a run parameter (`Lab::Schema::NON_RUN_PARAMS`);
@@ -5609,15 +5619,16 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     length 38–40, its predation readings null.
   - **Cost, recomputed from §13.** A count lane cost about 40 Mac-ms an epoch at short tapes
     and 67 at 1 500–2 100 bytes (§13.3), so about 40 + 15 ms per kilobyte of mean length. The
-    mean length climbs at about 45 bytes a thousand epochs, so it averages about 1.35 KB over a
-    60 000-epoch child: about **60 Mac-ms** a count epoch averaged, 53 for capped (1 KB from
-    about 22 000 epochs), about 30 for shadow and 20 for drift (§13.11), sampling at 100 adding
-    2–4. At the study's 2.5–3.7 times on a mini-pc slot: count 2.5–3.7 h a child, capped
-    2.2–3.3, shadow 1.3–1.9, drift 0.8–1.2, **6.8–10 h a parent, 200–300 run-hours, 17–25 h of
-    the 12 slots**, the study's 16–24 h. **The timing rule, locked:** when the first count
-    child passes 10 000 epochs, its wall time from claim to its 10 000th epoch (SELECT on its
-    samples' `created_at`) is reported with the total rescaled from it. It decides nothing about
-    the sweep; it tells the lab what to expect.
+    mean length climbs at about 60 bytes a thousand epochs (pilot 8's α 0.03 lanes:
+    1 816–1 856 at 30 000), so it averages about 1.9 KB over a 60 000-epoch child: about **68
+    Mac-ms** a count epoch averaged, 53 for capped (1 KB from about 16 000 epochs), about 30
+    for shadow and 20 for drift (§13.11), sampling at 100 adding 2–4. At the study's 2.5–3.7
+    times on a mini-pc slot: count 2.8–4.2 h a child, capped 2.2–3.3, shadow 1.3–1.9, drift
+    0.8–1.2, **7.1–10.6 h a parent, 215–320 run-hours, 18–27 h of the 12 slots**, against the
+    study's 16–24 h, which extrapolated to 3 000 bytes. **The timing rule, locked:** when the
+    first count child passes 10 000 epochs, its wall time from claim to its 10 000th epoch
+    (SELECT on its samples' `created_at`) is reported with the total rescaled from it. It
+    decides nothing about the sweep; it tells the lab what to expect.
 
   **The readings, per child.** Topless-rise's machinery (`Lab::ToplessRiseReading`), unchanged:
   the settling window of 1 000 epochs; deciles cut by index over all settled samples with
@@ -5733,9 +5744,11 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **`sub` and U**: `sub`, the expected number of class-losing hits per `isa` draw on every
     byte (the sum over positions of the losing symbols, over 14); U_sub = the rate at the top
     tape's own cells' median level × `sub` × T_gen (the epochs per inheritance per cell over
-    the 2 000 epochs before the world, from samples); U_frame = `meta_del` × the share of the
-    engine's deletions (1 to `meta_seg_max` bytes at a uniform start, up to 64 evenly spaced
-    starts a length) that lose a class, plus the same for duplications × `meta_dup`.
+    the 2 000 epochs before the world; no stored world or sample holds it exactly, so it is
+    given to the tool per world, and U_sub is unread without it); U_frame = `meta_del` × the
+    share of the engine's deletions (1 to `meta_seg_max` bytes at a uniform start, up to 64
+    evenly spaced starts a length) that lose a class, plus the same for duplications ×
+    `meta_dup`.
   It is built and reviewed before the sweep is read; the methods are locked here.
 
   **What each outcome means.**
