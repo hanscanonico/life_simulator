@@ -1813,6 +1813,31 @@ RSpec.describe "Findings", type: :request do
         end
       end
 
+      context "before the out-compute and genes-rise sweeps are seeded" do
+        it "names them without links that would not resolve" do
+          get finding_path(topless)
+
+          expect(response.body.squish).to include("Out-compute (DESIGN §1.3 item 19)",
+                                                  "Genes rise (DESIGN §1.3 item 20")
+          %w[out_compute genes_rise].each do |sweep|
+            expect(response.parsed_body.at_css("a[href='#{experiment_path(Lab.slug_for(sweep))}']")).to be_nil
+          end
+        end
+      end
+
+      context "with the out-compute and genes-rise sweeps seeded" do
+        before { %w[out_compute genes_rise].each { |sweep| create(:experiment, slug: Lab.slug_for(sweep)) } }
+
+        it "links their pages" do
+          get finding_path(topless)
+
+          expect(response.parsed_body.at_css("a[href='#{experiment_path(Lab.slug_for('out_compute'))}']").text)
+            .to eq("Out-compute")
+          expect(response.parsed_body.at_css("a[href='#{experiment_path(Lab.slug_for('genes_rise'))}']").text)
+            .to eq("Genes rise")
+        end
+      end
+
       context "with none of its children in this database" do
         it "says so instead of reading" do
           get finding_path(topless)
