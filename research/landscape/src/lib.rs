@@ -8,6 +8,7 @@ pub mod bearing;
 pub mod census;
 pub mod depth;
 pub mod depth_census;
+pub mod genes;
 pub mod paths;
 pub mod plant;
 pub mod score;

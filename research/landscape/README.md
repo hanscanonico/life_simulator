@@ -2,7 +2,8 @@
 
 The offline readings the Meta-stack sweep locks to be measured after it reads
 (`docs/design_record.md`, 2026-10-02, "Meta-stack: … pre-registered", "Reported with each deep
-child"), and the topless-rise sweep's H-rise-code (below), on the lab's stored worlds. Ported
+child"), the topless-rise sweep's H-rise-code and the genes-rise sweep's gene-wise readings
+(below), on the lab's stored worlds. Ported
 from the design study's pilot tools (`docs/studies/meta-stack.md`, `dscape`;
 `docs/studies/logic.md`, `scape`; `docs/studies/topless.md`, `bearing`) onto the merged
 engine: the metabolism tape, `logic_nand`, the logic assay (`logic::assay_on`, `Cases`) and
@@ -30,6 +31,9 @@ cargo clean                    # afterwards: the target dir is about 500 MB
 | `loadbearing T --params P [--depth D]` | the topless ladder's load-bearing bytes of a tape against a depth, its own by default (H-rise-code below) |
 | `loadbearing --snapshot W --params P` | the same for a stored world's dominant deepest solver against its deepest solid rung |
 | `loadbearing --first W1 --fifth W5 --last W10 --params P` | a topless-rise child's three worlds, each as above, and the H-rise-code label from the fifth-decile world to the last |
+| `genes --snapshot W --params P` | a genes world's gene-wise census and its top solver's program side and load (the genes machine, below) |
+| `genes --fifth W5 --last W10 --params P` | a genes-rise child's fifth-decile and last worlds, each as above, then key by key |
+| `genes T --params P [--level F]` | one tape's solver reading under the run's genes machine, at fidelity level F (level 0's rate by default) |
 | `trace T --params P --rung R [--lines 60]` | (d) the traced stepper on x = 0x5a, y = 0x33 and the 6 fixed sets: the circuit behind the rung's output and what it fans out, descriptive |
 
 A tape is `hex:` and two digits a byte (what `census` prints), or its shown form (ops, `!`,
@@ -48,7 +52,9 @@ world; the world's deepest solid rung; and its dominant deepest solver. The four
 are the topless-rise entry's (`topless::Cases::draw(Inputs::Four, ·)` six times off
 `rng::seeded(0xdee9, 4, 0)`), the three-input ones the same rule off
 `rng::seeded(0xdee9, 3, 0)`, all frozen in `src/depth.rs`. `distance`, `paths`, `plant` and
-`trace` read the two-input ladder only.
+`trace` read the two-input ladder only. On a run that reads its metabolism tapes as genes
+(`meta_genes`), `census` prints `genes --snapshot`'s reading and `loadbearing` refuses: it
+reads a tape whole, which is not that run's machine. Every other run reads exactly as it did.
 
 ## Getting a stored world out of the lab
 
@@ -180,6 +186,80 @@ It prints each world's deepest solid rung, its dominant solver with the position
 it and how many of the 13 substitutes lose the depth at each, and the label. `census` on any
 of the three shows the tally behind it. Run it on every rise child that rises late and on
 its twins in the other arms.
+
+## The genes machine, per genes-rise child
+
+For the genes-rise sweep's offline keys, on worlds whose metabolism tapes grow, are read as
+genes and may carry fidelity levels (`meta_genes`, `meta_max_len`, `meta_fid_max`; snapshot
+versions 12 to 17). The definitions are the design study's (`docs/studies/unassisted.md`),
+applied as its pilots 5 to 8 applied them, with the engine's own gene split
+(`topless::genes`) and assay (`topless::assay_upto` at the run's `task_max_outputs` slots):
+- **a gene's classes** (§10.1): the gene, cut at offsets 0, G, 2G… and the last zero-padded
+  to G, run alone; its classes are those credited on all 6 fixed four-input sets. A cell's
+  classes are the union of its genes'. A gene holding no emit byte is never run;
+- **essential genes** (§10.1, the engine's `topless::essential_genes`): the genes grouped by
+  their class sets, copies being one group, a group counted where it computes a class no
+  other group of the tape computes. **Held by a tenth**: the most that at least a tenth of
+  all cells carry (1 639 of 16 384), the engine's `genes_essential_held` read over every
+  cell instead of 256 sampled;
+- **the census**, over all cells: silent cells and classes per cell; classes held by a
+  tenth and the deepest of them; classes per computing cell p10, p50, p90 and the most, and
+  per-cell max depth the same; **the minimum** (§13.4) is classes p10 and max depth p10;
+  essential genes per computing cell; live length; the fidelity levels, cells per level
+  and p10, p50, p90. Percentiles are at the nearest rank (the ⌈n·p/100⌉-th smallest), as
+  the engine reads `fidelity_p10` and the rest;
+- **the top solver** (§9's top-repertoire solver): the commonest tape among the cells whose
+  classes reach the computing cells' p90, ties broken by byte order;
+- **count-bearing bytes** (§10.1, `nbc`): positions where at least 7 of the 13 other
+  symbols of the 14-symbol alphabet leave the tape fewer classes (the mutant gene re-run,
+  the union re-taken). **Load-bearing genes** (§10.1, `bseg`): the genes holding a
+  count-bearing byte, with their distinct bodies (`bbod`: a core runs from a gene's first
+  count-bearing byte to its last);
+- **`sub`** (§11.1): over the live bytes, the share of the 14 draws of a substitution (the
+  byte's own symbol among them) that leave the tape fewer classes, summed; a byte whose 13
+  others all lose a class counts 13/14;
+- **U** (§11.1, §12.1): the solver's own rate, `meta_rate` · 2^(−f/2) (`fidelity::rate`) at
+  f the median level of the cells carrying it, times `sub`: the substitution load per epoch.
+  §11.1's U_sub per generation is that times the generation time T_gen, which no stored
+  world holds; §11.1's frameshift share U_frame is not read.
+
+The pilots took a gene's six-set credit as the functions every set credits, then their
+classes; the engine's credits hold classes, so here a class is credited where every set
+credits it. On the study's §10.1 checks the two agree: the loop `<<<<[!{~!~]` reads 12
+classes alone; two copies read one essential gene and no load-bearing one; beside its tandem
+variant `<<<<[!{~!{~!~]` it reads 26 classes, two essential genes, two load-bearing genes of
+11 and 14 count-bearing bytes.
+
+The worlds are the topless-rise entry's fifth-decile and last stored worlds (above): the
+settled samples are the child's above `parent_epoch` + 1 000, the fifth decile ends at the
+⌊n/2⌋-th, and the world read is the last stored at or before it. Under `snapshot_every` 500
+the cadence stores one every 500 epochs, so the fifth-decile world is within 500 epochs of
+the decile's end. SELECTs only. For a child run `$RUN`:
+
+```sh
+psql "$LAB_DATABASE_URL" -At -c "SELECT params FROM runs WHERE id = $RUN" > child.json
+read FIFTH LAST < <(psql "$LAB_DATABASE_URL" -At -F ' ' -c "
+  WITH r AS (SELECT id, parent_epoch FROM runs WHERE id = $RUN),
+  settled AS (
+    SELECT s.epoch, ROW_NUMBER() OVER (ORDER BY s.epoch) AS i, COUNT(*) OVER () AS n
+    FROM samples s JOIN r ON s.run_id = r.id WHERE s.epoch > r.parent_epoch + 1000),
+  bounds AS (SELECT MAX(epoch) FILTER (WHERE i <= 5 * n / 10) AS fifth_end FROM settled),
+  stored AS (
+    SELECT sn.epoch FROM snapshots sn JOIN r ON sn.run_id = r.id WHERE sn.blob IS NOT NULL)
+  SELECT (SELECT MAX(epoch) FROM stored, bounds WHERE epoch <= fifth_end),
+         (SELECT MAX(epoch) FROM stored)")
+for EPOCH in $FIFTH $LAST; do
+  psql "$LAB_DATABASE_URL" -At -c \
+    "SELECT encode(blob, 'hex') FROM snapshots WHERE run_id = $RUN AND epoch = $EPOCH" \
+    | xxd -r -p > e$EPOCH.lsnp
+done
+./target/release/landscape genes --fifth e$FIFTH.lsnp --last e$LAST.lsnp --params child.json
+```
+
+It prints each world's census and top solver (per gene: its classes, those no other gene
+computes, its count-bearing bytes and its bytes), then each key fifth-decile → last with the
+change. `genes --snapshot e$EPOCH.lsnp --params child.json` reads one world;
+`genes $TAPE --params child.json --level 12` reads one tape at a level.
 
 ## What was dropped from the pilot tools
 

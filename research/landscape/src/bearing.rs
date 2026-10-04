@@ -62,7 +62,7 @@ impl Bearing {
 
 /// The 13 symbols a position is substituted with: the alphabet but the byte's own symbol, a
 /// byte outside the alphabet read as the generic no-op it stands for.
-fn substitutes(byte: u8) -> impl Iterator<Item = u8> {
+pub(crate) fn substitutes(byte: u8) -> impl Iterator<Item = u8> {
     let own = if ALPHABET.contains(&byte) {
         byte
     } else {

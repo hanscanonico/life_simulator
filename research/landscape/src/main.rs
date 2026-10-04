@@ -1,6 +1,7 @@
 use landscape::bearing::{load_bearing, rise_code};
 use landscape::depth::{depth_name, DepthScorer};
 use landscape::depth_census::{self, DepthCensus};
+use landscape::genes::{self, GeneCensus, GeneScorer, Solver};
 use landscape::score::{assayed_len, rung_index, Rungs, Scorer, DEEP};
 use landscape::stored::{read_params, Stored};
 use landscape::{census, paths, plant, tape, trace};
@@ -14,14 +15,18 @@ landscape loadbearing TAPE --params PARAMS.json [--depth D]
 landscape loadbearing --snapshot WORLD.lsnp --params PARAMS.json
 landscape loadbearing --first W.lsnp --fifth W.lsnp --last W.lsnp --params PARAMS.json
 landscape distance A B --params PARAMS.json
+landscape genes    --snapshot WORLD.lsnp --params PARAMS.json
+landscape genes    --fifth W.lsnp --last W.lsnp --params PARAMS.json
+landscape genes    TAPE --params PARAMS.json [--level F]
 landscape paths    START --params PARAMS.json [--k 3] [--window LEN] [--rungs xor,equ] [--examples 4]
 landscape plant    --snapshot END.lsnp --params PARAMS.json --deep TAPE --rung xor|equ
                    [--source WORLD.lsnp | --replicating TAPE] [--seeds 2001,2002,2003]
                    [--epochs 2000] [--every 500] [--side 4]
 landscape trace    TAPE --params PARAMS.json --rung xor|equ [--lines 60]
 
-On a logic3 or logic4 run, `census` reads the topless ladder and ignores --top.
-`loadbearing` reads logic3 and logic4 runs only.
+On a logic3 or logic4 run, `census` reads the topless ladder and ignores --top; on one
+that reads genes (meta_genes), it reads them as `genes --snapshot` does.
+`loadbearing` reads logic3 and logic4 runs without genes only; `genes` those with genes.
 
 A TAPE is `hex:` and two digits a byte, or the shown form (ops, `!`, `~`, `0` for a zero,
 `·` or `_` for a no-op), padded with zeros to the run's assayed length.";
@@ -84,6 +89,7 @@ fn main() -> ExitCode {
     let result = Args::parse(raw).and_then(|args| match command.as_str() {
         "census" => census(&args),
         "distance" => distance(&args),
+        "genes" => genes(&args),
         "loadbearing" => loadbearing(&args),
         "paths" => paths(&args),
         "plant" => plant(&args),
@@ -105,6 +111,9 @@ fn main() -> ExitCode {
 fn census(args: &Args) -> Result<String, String> {
     let stored = Stored::load(&args.path("snapshot")?, &args.path("params")?)?;
     let world = stored.world(0)?;
+    if let Some(scorer) = GeneScorer::for_params(&stored.params) {
+        return Ok(GeneCensus::read(&world, &scorer).render());
+    }
     if let Some(scorer) = DepthScorer::for_params(&stored.params) {
         return Ok(depth_census::census(&world, &scorer).render());
     }
@@ -113,6 +122,11 @@ fn census(args: &Args) -> Result<String, String> {
 }
 
 fn depth_scorer(params: &life_engine::Params) -> Result<DepthScorer, String> {
+    if params.gene_len().is_some() {
+        return Err(
+            "loadbearing reads a tape whole: the run reads genes, which `genes` reads".into(),
+        );
+    }
     DepthScorer::for_params(params).ok_or(
         "loadbearing reads the topless ladder: the run's tasks are not logic3 or logic4".into(),
     )
@@ -178,6 +192,50 @@ fn world_bearing(stored: &Stored) -> Result<(Option<(u32, usize)>, String), Stri
         bearing.render()
     );
     Ok((Some((deepest.depth, bearing.count())), report))
+}
+
+fn gene_scorer(params: &life_engine::Params) -> Result<GeneScorer, String> {
+    GeneScorer::for_params(params)
+        .ok_or("genes reads a logic3 or logic4 run whose metabolism tapes are read as genes".into())
+}
+
+fn gene_census(stored: &Stored) -> Result<GeneCensus, String> {
+    Ok(GeneCensus::read(
+        &stored.world(0)?,
+        &gene_scorer(&stored.params)?,
+    ))
+}
+
+/// For a stored world, its gene-wise census and top solver; for a genes-rise child's
+/// fifth-decile and last worlds (`--fifth`, `--last`), each in turn and then key by key; for
+/// a tape, its solver reading at `--level`, the base rate's level 0 by default.
+fn genes(args: &Args) -> Result<String, String> {
+    let params = args.path("params")?;
+    if args.flags.contains_key("fifth") || args.flags.contains_key("last") {
+        let fifth = gene_census(&Stored::load(&args.path("fifth")?, &params)?)?;
+        let last = gene_census(&Stored::load(&args.path("last")?, &params)?)?;
+        return Ok(genes::compare(&fifth, &last));
+    }
+    if args.flags.contains_key("snapshot") {
+        return Ok(gene_census(&Stored::load(&args.path("snapshot")?, &params)?)?.render());
+    }
+    let params = read_params(&params)?;
+    let scorer = gene_scorer(&params)?;
+    let tape = tape::parse(args.arg(0, "the tape")?, 0)?;
+    let level = match args.flags.contains_key("level") {
+        false => None,
+        true if !params.carries_fidelity() => {
+            return Err("--level is read on a run that carries fidelity levels".into())
+        }
+        true => Some(args.number("level", 0u32)?),
+    };
+    if let Some(level) = level.filter(|level| *level > params.meta_fid_max) {
+        return Err(format!(
+            "--level {level} is past the run's meta_fid_max {}",
+            params.meta_fid_max
+        ));
+    }
+    Ok(Solver::read(&tape, 0, &scorer, &params, level).render())
 }
 
 fn distance(args: &Args) -> Result<String, String> {

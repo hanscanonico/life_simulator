@@ -5179,3 +5179,26 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     the tapes' mutation itself costs about 1.2–4.7 ms an epoch more at 32 bytes and nothing
     measurable at 512 and 2 048, against epochs of 35–170 ms whose spread is the load's and
     the price's (a costly world initiates less).
+
+- 2026-10-04 — **`research/landscape` reads the genes machine: the gene-wise census and the
+  top solver's load (tooling only).** For the genes-rise sweep's offline keys. On a run that
+  reads its metabolism tapes as genes (`meta_genes`; snapshot versions 12–17, levels where
+  carried), a new `genes` subcommand reads a stored world's gene-wise census over all cells:
+  a gene's classes are those credited on all six fixed four-input sets, run alone under the
+  engine's split (`topless::genes`) and assay (`topless::assay_upto` at the run's slots), a
+  cell's the union of its genes' (study §10.1); classes and essential genes held by a tenth,
+  the latter the engine's grouping over every cell rather than 256 sampled; classes and max
+  depth per computing cell p10/p50/p90, p10 being the minimum (§13.4); live length; and the
+  fidelity levels. Its top solver (§9's top-repertoire solver) gets its count-bearing bytes
+  and load-bearing genes (§10.1), `sub` (§11.1) and the load per epoch, rate × `sub`, at the
+  median level of the cells carrying it under the engine's rate law (§12.1); T_gen is not in
+  a stored world, so §11.1's per-generation U is that times T_gen. `--fifth` and `--last`
+  read a child's two worlds and compare them key by key. Judgement calls: a class is
+  credited where all six sets credit it (the engine's credits hold classes; the pilots
+  intersected functions), percentiles are at the engine's nearest rank, and the essential
+  grouping is applied to six-set class sets here, held by a test to
+  `topless::essential_genes` on one set's credits. The study's §10.1 checks read as the
+  pilot read them (12 classes; 26 with the tandem variant, 11 and 14 count-bearing bytes).
+  On a fixed-channel world `census` and `loadbearing` read exactly as before; on a genes
+  world `census` prints the genes reading and `loadbearing` refuses. Nothing in the engine,
+  the lab or any sweep changes.
