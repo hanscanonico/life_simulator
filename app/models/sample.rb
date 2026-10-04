@@ -18,7 +18,7 @@ class Sample < ApplicationRecord
     logic_share_andn logic_share_nor logic_share_xor logic_share_equ logic_capability logic_capability_deep
     dominant_logic_tasks dominant_logic_task_count meta_inherit_rate meta_diversity logic_capability_replicating
     logic_depth_max logic_depth_classes predation_rate predation_relation_rate repertoire_mean silent_share
-    meta_len_mean genes_essential_held
+    meta_len_mean genes_essential_held fidelity_p10 fidelity_p50 fidelity_p90
   ].freeze
 
   # The observables that are not numbers: exported like the rest, but there is no series a

@@ -37,9 +37,15 @@
 //! cell, the metabolism payload holds the live bytes end to end, and the lengths follow
 //! it, before the relative block. A world whose tapes cannot grow writes 9, 10 or 11 as
 //! before.
+//!
+//! Versions 15, 16 and 17 are versions 12, 13 and 14 for metabolism tapes that carry a
+//! fidelity level (`docs/design_record.md`, 2026-10-04, Genes slice B): a fourth
+//! metabolism field holds the length of a payload of one level byte per cell, which follows
+//! the live lengths. A world without levels writes 12, 13 or 14 as before, and a blob of
+//! those versions reads as a world without them.
 
 use crate::metrics::{self, PendingSample, RelativeState, TransitionState};
-use crate::params::{ParamError, Params, Substrate, META_LEN_MAX};
+use crate::params::{ParamError, Params, Substrate, META_FID_MAX, META_LEN_MAX};
 use flate2::read::ZlibDecoder;
 use std::fmt;
 use std::io::Read;
@@ -65,6 +71,10 @@ pub const VERSION_META_STOCKED: u8 = 11;
 pub const VERSION_META_GROWN: u8 = 12;
 pub const VERSION_META_GROWN_RAGGED: u8 = 13;
 pub const VERSION_META_GROWN_STOCKED: u8 = 14;
+/// The versions that carry a fidelity level per cell beside grown metabolism tapes.
+pub const VERSION_META_FID: u8 = 15;
+pub const VERSION_META_FID_RAGGED: u8 = 16;
+pub const VERSION_META_FID_STOCKED: u8 = 17;
 pub const HEADER_LEN: usize = 62;
 const HEADER_LEN_V4: usize = 74;
 const HEADER_LEN_V5: usize = 82;
@@ -87,6 +97,8 @@ pub const HEADER_LEN_RELATIVE: usize = HEADER_LEN + RELATIVE_FIELD_BYTES;
 const META_FIELD_BYTES: usize = 12;
 /// The `u64` a grown metabolism section adds to them: its live-length payload's length.
 const META_LENS_FIELD_BYTES: usize = 8;
+/// The `u64` a fidelity section adds after that: its level payload's length.
+const META_LEVELS_FIELD_BYTES: usize = 8;
 const WORD_BYTES: usize = 4;
 const NO_EPOCH: i64 = -1;
 
@@ -160,21 +172,25 @@ pub struct Restored {
 
 /// The metabolism tapes a blob carries: `len` bytes per cell, cell by cell — on a channel
 /// that grows, slots `len` (the cap) bytes wide holding each cell's live bytes, zero past
-/// them, and those live lengths in `lens`.
+/// them, and those live lengths in `lens`; where they carry fidelity, each cell's level in
+/// `levels`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Metabolism {
     pub len: u32,
     pub tapes: Vec<u8>,
     pub lens: Option<Vec<u32>>,
+    pub levels: Option<Vec<u8>>,
 }
 
-/// The metabolism tapes a world writes: `slot` bytes per cell, cell by cell, and where they
-/// can grow, each cell's live length in `lens`. Empty `slots` for a world without them.
+/// The metabolism tapes a world writes: `slot` bytes per cell, cell by cell, where they can
+/// grow each cell's live length in `lens`, and where they carry fidelity each cell's level
+/// in `levels`. Empty `slots` for a world without them.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MetaTapes<'a> {
     pub slots: &'a [u8],
     pub slot: usize,
     pub lens: &'a [u32],
+    pub levels: &'a [u8],
 }
 
 fn epoch_field(epoch: Option<u64>) -> i64 {
@@ -233,16 +249,20 @@ pub fn encode_compressed_with_meta(
     out.extend_from_slice(&MAGIC);
     let metabolic = !meta.slots.is_empty();
     let grown = metabolic && !meta.lens.is_empty();
-    out.push(match (stocked, ragged, metabolic, grown) {
-        (true, _, false, _) => VERSION_RELATIVE_STOCKED,
-        (false, true, false, _) => VERSION_RELATIVE_RAGGED,
-        (false, false, false, _) => VERSION_RELATIVE,
-        (true, _, true, false) => VERSION_META_STOCKED,
-        (false, true, true, false) => VERSION_META_RAGGED,
-        (false, false, true, false) => VERSION_META,
-        (true, _, true, true) => VERSION_META_GROWN_STOCKED,
-        (false, true, true, true) => VERSION_META_GROWN_RAGGED,
-        (false, false, true, true) => VERSION_META_GROWN,
+    let faithful = grown && !meta.levels.is_empty();
+    out.push(match (stocked, ragged, metabolic, grown, faithful) {
+        (true, _, false, _, _) => VERSION_RELATIVE_STOCKED,
+        (false, true, false, _, _) => VERSION_RELATIVE_RAGGED,
+        (false, false, false, _, _) => VERSION_RELATIVE,
+        (true, _, true, false, _) => VERSION_META_STOCKED,
+        (false, true, true, false, _) => VERSION_META_RAGGED,
+        (false, false, true, false, _) => VERSION_META,
+        (true, _, true, true, false) => VERSION_META_GROWN_STOCKED,
+        (false, true, true, true, false) => VERSION_META_GROWN_RAGGED,
+        (false, false, true, true, false) => VERSION_META_GROWN,
+        (true, _, true, true, true) => VERSION_META_FID_STOCKED,
+        (false, true, true, true, true) => VERSION_META_FID_RAGGED,
+        (false, false, true, true, true) => VERSION_META_FID,
     });
     out.push(substrate_byte(header.substrate));
     out.extend_from_slice(&header.width.to_le_bytes());
@@ -275,8 +295,15 @@ pub fn encode_compressed_with_meta(
         out.extend_from_slice(&(tapes.len() as u64).to_le_bytes());
         out.extend_from_slice(&(meta.slot as u32).to_le_bytes());
     }
+    let levels = match faithful {
+        true => metrics::compress(meta.levels),
+        false => Vec::new(),
+    };
     if grown {
         out.extend_from_slice(&(meta_lens.len() as u64).to_le_bytes());
+    }
+    if faithful {
+        out.extend_from_slice(&(levels.len() as u64).to_le_bytes());
     }
     out.extend_from_slice(payload);
     out.extend_from_slice(&tags);
@@ -288,6 +315,7 @@ pub fn encode_compressed_with_meta(
     }
     out.extend_from_slice(&tapes);
     out.extend_from_slice(&meta_lens);
+    out.extend_from_slice(&levels);
     out.extend_from_slice(&relative);
     out
 }
@@ -420,11 +448,12 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
         VERSION_META => (HEADER_LEN, true, true, false),
         VERSION_META_RAGGED => (HEADER_LEN_V4, true, true, false),
         VERSION_META_STOCKED => (HEADER_LEN_V5, true, true, false),
-        VERSION_META_GROWN => (HEADER_LEN, true, true, true),
-        VERSION_META_GROWN_RAGGED => (HEADER_LEN_V4, true, true, true),
-        VERSION_META_GROWN_STOCKED => (HEADER_LEN_V5, true, true, true),
+        VERSION_META_GROWN | VERSION_META_FID => (HEADER_LEN, true, true, true),
+        VERSION_META_GROWN_RAGGED | VERSION_META_FID_RAGGED => (HEADER_LEN_V4, true, true, true),
+        VERSION_META_GROWN_STOCKED | VERSION_META_FID_STOCKED => (HEADER_LEN_V5, true, true, true),
         version => return Err(SnapshotError::UnsupportedVersion(version)),
     };
+    let meta_faithful = (VERSION_META_FID..=VERSION_META_FID_STOCKED).contains(&bytes[4]);
     let header_len = shape
         + if carries_relative {
             RELATIVE_FIELD_BYTES
@@ -432,7 +461,12 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
             0
         }
         + if carries_meta { META_FIELD_BYTES } else { 0 }
-        + if meta_grown { META_LENS_FIELD_BYTES } else { 0 };
+        + if meta_grown { META_LENS_FIELD_BYTES } else { 0 }
+        + if meta_faithful {
+            META_LEVELS_FIELD_BYTES
+        } else {
+            0
+        };
     if bytes.len() < header_len {
         return Err(SnapshotError::Truncated);
     }
@@ -473,9 +507,20 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
         }
         false => 0,
     };
+    let meta_levels_len = match meta_faithful {
+        true => {
+            let at = shape + RELATIVE_FIELD_BYTES + META_FIELD_BYTES + META_LENS_FIELD_BYTES;
+            usize::try_from(u64::from_le_bytes(
+                bytes[at..at + 8].try_into().expect("eight bytes"),
+            ))
+            .map_err(|_| SnapshotError::Truncated)?
+        }
+        false => 0,
+    };
     let trailer_len = relative_len
         .checked_add(meta_payload_len)
         .and_then(|so_far| so_far.checked_add(meta_lens_len))
+        .and_then(|so_far| so_far.checked_add(meta_levels_len))
         .ok_or(SnapshotError::Truncated)?;
     if bytes.len() - header_len < trailer_len {
         return Err(SnapshotError::Truncated);
@@ -607,16 +652,24 @@ fn decode_within(params: &Params, bytes: &[u8], stock_cap: u32) -> Result<Restor
         .map(|payload| decode_stock(params, payload, stock_cap))
         .transpose()?;
     let meta_lens_at = payloads_end + meta_payload_len;
+    let meta_levels_at = meta_lens_at + meta_lens_len;
     let meta = carries_meta
         .then(|| {
             decode_meta(
                 params,
                 &bytes[payloads_end..meta_lens_at],
                 meta_len,
-                meta_grown.then(|| &bytes[meta_lens_at..relative_at]),
+                meta_grown.then(|| &bytes[meta_lens_at..meta_levels_at]),
             )
         })
         .transpose()?;
+    let meta = match (meta, meta_faithful) {
+        (Some(meta), true) => Some(Metabolism {
+            levels: Some(decode_levels(params, &bytes[meta_levels_at..relative_at])?),
+            ..meta
+        }),
+        (meta, _) => meta,
+    };
     Ok(Restored {
         header,
         cells,
@@ -727,7 +780,30 @@ fn decode_meta(
         Some(lens) => into_slots(&live, lens, len as usize),
         None => live,
     };
-    Ok(Metabolism { len, tapes, lens })
+    Ok(Metabolism {
+        len,
+        tapes,
+        lens,
+        levels: None,
+    })
+}
+
+/// The fidelity levels, refused unless there is one per cell and none above
+/// `META_FID_MAX`. Whether they fit the params' own range is the world's to judge.
+fn decode_levels(params: &Params, payload: &[u8]) -> Result<Vec<u8>, SnapshotError> {
+    let expected = params.cell_count();
+    let levels = inflate_bounded(payload, expected)?;
+    if levels.len() != expected {
+        return Err(SnapshotError::Mismatch {
+            field: "cell count",
+        });
+    }
+    if levels.iter().any(|level| u32::from(*level) > META_FID_MAX) {
+        return Err(SnapshotError::Mismatch {
+            field: "meta_fid_max",
+        });
+    }
+    Ok(levels)
 }
 
 fn decode_lineages(params: &Params, payload: &[u8]) -> Result<Vec<u64>, SnapshotError> {
@@ -1273,10 +1349,10 @@ mod tests {
         ));
 
         let mut future = bytes.clone();
-        future[4] = VERSION_META_GROWN_STOCKED + 1;
+        future[4] = VERSION_META_FID_STOCKED + 1;
         assert!(matches!(
             decode(&params, &future),
-            Err(SnapshotError::UnsupportedVersion(15))
+            Err(SnapshotError::UnsupportedVersion(18))
         ));
     }
 
@@ -1292,12 +1368,14 @@ mod tests {
             slots,
             slot: len,
             lens: &[],
+            levels: &[],
         }
     }
 
     /// Versions 12 to 14: grown metabolism tapes travel beside every payload shape as their
     /// live bytes and lengths, and come back laid into slots as wide as the cap, zero past
-    /// each tape, as the world holds them.
+    /// each tape, as the world holds them; versions 15 to 17 carry a fidelity level per
+    /// cell after them.
     #[test]
     fn round_trips_grown_metabolism_tapes_in_every_payload_shape() {
         let fixed_cells = params();
@@ -1313,11 +1391,20 @@ mod tests {
         let lens = vec![9u32; ragged.cell_count()];
         let stock = vec![5u32; stocked.cell_count()];
         let cap = 40usize;
-        for (params, lens, stock, version) in [
+        for ((params, lens, stock, version), faithful) in [
             (&fixed_cells, &[][..], &[][..], VERSION_META_GROWN),
             (&ragged, &lens[..], &[][..], VERSION_META_GROWN_RAGGED),
             (&stocked, &[][..], &stock[..], VERSION_META_GROWN_STOCKED),
-        ] {
+        ]
+        .into_iter()
+        .flat_map(|shape| [(shape, false), (shape, true)])
+        {
+            let levels: Vec<u8> = match faithful {
+                true => (0..params.cell_count())
+                    .map(|cell| (cell % 17) as u8)
+                    .collect(),
+                false => Vec::new(),
+            };
             let live = match lens.is_empty() {
                 true => params.cell_count() * params.stride(),
                 false => lens.iter().sum::<u32>() as usize,
@@ -1342,10 +1429,11 @@ mod tests {
                     slots: &slots,
                     slot: cap,
                     lens: &meta_lens,
+                    levels: &levels,
                 },
             );
 
-            assert_eq!(bytes[4], version);
+            assert_eq!(bytes[4], version + if faithful { 3 } else { 0 });
             let restored = decode(params, &bytes).unwrap();
             assert_eq!(
                 restored.meta,
@@ -1353,11 +1441,56 @@ mod tests {
                     len: cap as u32,
                     tapes: slots,
                     lens: Some(meta_lens),
+                    levels: faithful.then_some(levels),
                 })
             );
             assert_eq!(restored.lineages, Some(lineages(params)));
             assert_eq!(restored.lens.is_some(), !lens.is_empty());
             assert_eq!(restored.stock.is_some(), !stock.is_empty());
+        }
+    }
+
+    /// Fidelity levels that do not count the cells, or that climb past the top of any
+    /// range, are not this world's.
+    #[test]
+    fn rejects_fidelity_levels_that_do_not_fit() {
+        let params = params();
+        let cells = vec![0u8; params.cell_count() * params.stride()];
+        let slots = vec![1u8; params.cell_count() * 16];
+        let meta_lens = vec![4u32; params.cell_count()];
+        let write = |levels: &[u8]| {
+            encode_compressed_with_meta(
+                &header(&params, 0),
+                &metrics::compress(&cells),
+                &lineages(&params),
+                &[],
+                &[],
+                MetaTapes {
+                    slots: &slots,
+                    slot: 16,
+                    lens: &meta_lens,
+                    levels,
+                },
+            )
+        };
+        let top = vec![META_FID_MAX as u8; params.cell_count()];
+        let read = decode(&params, &write(&top)).unwrap();
+        assert_eq!(read.meta.unwrap().levels, Some(top));
+        for (levels, field) in [
+            (vec![0; params.cell_count() - 1], "cell count"),
+            (vec![0; params.cell_count() + 1], "cell count"),
+            (
+                vec![META_FID_MAX as u8 + 1; params.cell_count()],
+                "meta_fid_max",
+            ),
+        ] {
+            assert!(
+                matches!(
+                    decode(&params, &write(&levels)),
+                    Err(SnapshotError::Mismatch { field: f }) if f == field
+                ),
+                "{field}"
+            );
         }
     }
 
@@ -1380,6 +1513,7 @@ mod tests {
                     slots: &slots,
                     slot: cap,
                     lens: &vec![live as u32; params.cell_count()],
+                    levels: &[],
                 },
             );
             let fields = HEADER_LEN + RELATIVE_FIELD_BYTES;
@@ -1459,6 +1593,7 @@ mod tests {
                     len: 24,
                     tapes: meta,
                     lens: None,
+                    levels: None,
                 })
             );
             assert_eq!(restored.header.epoch, 40);

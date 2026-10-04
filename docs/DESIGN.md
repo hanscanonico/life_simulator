@@ -260,6 +260,38 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   by construction (no gene reads or undoes another's result), the union as the phenotype
   (additions are free to keep), and the channel's variation operators are the engine's,
   not the organisms'; none names a function or grades one.
+- **Fidelity** (`meta_fid_max`, default `0` = off, at most 16; `meta_fid_rate`, default `0`;
+  `meta_fid_alpha`, default `0` = free; docs/design_record.md 2026-10-04, Genes slice B;
+  `docs/studies/unassisted.md` §12–§13). On a channel that grows, each cell's metabolism
+  tape carries a heritable integer **level** f from 0, the base machine every cell starts
+  at, to `meta_fid_max`. Its live bytes are offered one draw an epoch at
+  `meta_rate` × 2^(−f/2): each level is a factor of √2, so 16 levels reach 1/256 of the
+  base rate. The level is inherited whenever the tape is, under the same near-copy rule, and
+  at each inheritance it moves one step, up or down on a fair coin, with probability
+  `meta_fid_rate`, never past 0 or the top, on a stream of its own (`STREAM_META | 2`) in the
+  order the epoch's inheritances happen. Under the initiator economy and `meta_fid_alpha` =
+  α > 0 the level has a **price**: a cell initiates only when its stock holds
+  P(f) = `max_steps` × 2^(α·f/2) = `max_steps` × (rate(0)/rate(f))^α, and is debited P(f);
+  the interaction's step budget stays `max_steps`. The power law is the one cost with no
+  preferred rate: each halving of the error rate costs the same share of a copy wherever a
+  lineage sits, which is kinetic proofreading's arithmetic (each stage multiplies accuracy
+  by a constant and discards a constant share). The range is **staged**, f ≥ 0, because a
+  symmetric range lets sloppiness below the base machine be cheaper than computing pays,
+  and every pilot world on one gave up its code for the discount (the study's §12.5). Both
+  laws are computed without a float transcendental, so native and wasm agree: the rate is
+  `meta_rate` scaled by a power of two and, at an odd level, the constant 1/√2; the price is
+  integer fixed-point arithmetic (α read to 2^−32, 2^x built from integer square roots of
+  2), rounded to the nearest integer. The levels are state: hashed after the metabolism
+  lengths and carried in the snapshot container's versions 15–17, one byte per cell. A
+  resume refuses params that disagree with a blob about the levels; a descendant carries
+  its parent's levels with its tapes, clamped to its own range, and starts every cell at 0
+  where the parent carried none. It is refused on a channel that cannot grow, the price
+  without the initiator economy, and a rate or α without levels; at the defaults the run is
+  the run without them, byte for byte, and a run whose levels never leave 0 is that run at
+  every cell, tape and reading. Fidelity **imports a machine, not an objective**: a
+  heritable heredity knob with a fixed menu (√2 steps from the base machine) and, when
+  priced, an exchange rate α between fidelity and reproduction. It reads no tape, names no
+  function, class or depth, and pays for no output.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The
@@ -651,6 +683,11 @@ claim rests on it.
   them, or that computes none, counts nothing (the study's §10.1). Null unless the run reads
   genes. Both only read; **live-only**; the run page draws each only for a run that has a
   reading of it.
+- `fidelity_p10` / `fidelity_p50` / `fidelity_p90`: the **fidelity readings**
+  (docs/design_record.md 2026-10-04, Genes slice B): the levels of 256 cells drawn on a
+  stream of their own, sorted, read at the nearest rank (the 26th, 128th and 231st). Null
+  unless the run carries levels. They only read; **live-only**; the run page draws them
+  only for a run that has a reading of them.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard

@@ -134,6 +134,10 @@ pub const META_LEN_MAX: u32 = 8192;
 const META_MIN_LEN_DEFAULT: u32 = 8;
 /// `meta_seg_max`'s default, the study's 1..=16-byte duplicated and deleted segments.
 const META_SEG_MAX_DEFAULT: u32 = 16;
+/// The top of the staged fidelity range: `meta_fid_max` may not exceed it, so the slowest
+/// metabolism tape mutates at 1/256 of `meta_rate` (`docs/design_record.md`, 2026-10-04,
+/// Genes slice B).
+pub const META_FID_MAX: u32 = 16;
 
 /// What the NAND byte `~` writes inside the logic assay (`docs/DESIGN.md` §1.1; the
 /// 2026-10-02 design-record entry on the stack NAND). `InPlace` is the default and the NAND
@@ -346,6 +350,17 @@ pub struct Params {
     /// The gene length the topless assay splits a metabolism tape into, each gene run alone
     /// and the tape credited the union; `0` (the default) runs the tape whole.
     pub meta_genes: u32,
+    /// The top fidelity level a metabolism tape may carry: each cell holds a heritable
+    /// level from 0 (the base machine) to this, which divides its tape's `meta_rate` by
+    /// √2 a level. `0` (the default) carries none.
+    pub meta_fid_max: u32,
+    /// The probability, per inheritance of a metabolism tape, that the level it carries
+    /// moves one step up or down. Read only once `meta_fid_max` is set.
+    pub meta_fid_rate: f64,
+    /// The cost exponent of fidelity: under the initiator economy a cell at level f pays
+    /// `max_steps` × 2^(α·f/2) to initiate. `0` (the default) makes fidelity free. Read
+    /// only once `meta_fid_max` is set.
+    pub meta_fid_alpha: f64,
     pub init: Init,
     pub sample_every: u32,
     pub top_k: u32,
@@ -396,6 +411,9 @@ impl Default for Params {
             meta_del: 0.0,
             meta_seg_max: META_SEG_MAX_DEFAULT,
             meta_genes: 0,
+            meta_fid_max: 0,
+            meta_fid_rate: 0.0,
+            meta_fid_alpha: 0.0,
             init: Init::Random,
             sample_every: 10,
             top_k: 16,
@@ -837,6 +855,36 @@ const FIELDS: &[Field] = &[
               the tape whole.",
     },
     Field {
+        name: "meta_fid_max",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: META_FID_MAX as f64,
+        },
+        doc: "The top fidelity level of a metabolism tape. Each cell carries a heritable \
+              level f from 0, the base machine every cell starts at, to this; its tape \
+              mutates at meta_rate × 2^(−f/2), so each level is a factor of √2. The level \
+              is inherited with the tape and moves at meta_fid_rate. 0 carries no level. \
+              Needs a channel that grows (meta_max_len above meta_len).",
+    },
+    Field {
+        name: "meta_fid_rate",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The probability, per inheritance of a metabolism tape, that the inherited \
+              level moves one step, up or down with equal odds, never past 0 or \
+              meta_fid_max. Drawn on a stream of its own. Read only once meta_fid_max is \
+              set.",
+    },
+    Field {
+        name: "meta_fid_alpha",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The cost exponent α of fidelity: a cell at level f initiates only when its \
+              stock holds max_steps × 2^(α·f/2), and is debited that, so each halving of \
+              its tape's error rate multiplies the price of a copy attempt by 2^α. The \
+              interaction's step budget stays max_steps. 0 makes fidelity free. Needs the \
+              initiator economy (an energy_influx and energy_payer initiator). Read only \
+              once meta_fid_max is set.",
+    },
+    Field {
         name: "init",
         kind: Kind::Choice(&["random", "zero"]),
         doc: "Initial world state: uniformly random bytes, or all zero (the control).",
@@ -985,6 +1033,14 @@ pub enum ParamError {
     },
     /// Genes split what the topless assay reads, and must never change what is paid.
     GenesNeeds {
+        needs: &'static str,
+    },
+    /// A fidelity setting with no level to apply it to is silently inert.
+    FidelityWithoutLevels {
+        field: &'static str,
+    },
+    /// Fidelity rides a channel that grows, and its price is an initiation's.
+    FidelityNeeds {
         needs: &'static str,
     },
 }
@@ -1140,6 +1196,15 @@ impl fmt::Display for ParamError {
                 f,
                 "meta_genes is set without {needs}: genes split the logic3 or logic4 assay \
                  of an unpaid run's metabolism tapes"
+            ),
+            Self::FidelityWithoutLevels { field } => write!(
+                f,
+                "{field} is set with meta_fid_max 0: there is no fidelity level to apply it to"
+            ),
+            Self::FidelityNeeds { needs } => write!(
+                f,
+                "fidelity is set without {needs}: the level rides a metabolism tape that \
+                 grows, and its price is what an initiator pays"
             ),
         }
     }
@@ -1303,7 +1368,8 @@ impl Params {
                 });
             }
             self.validate_meta_channel()?;
-            return self.validate_genes();
+            self.validate_genes()?;
+            return self.validate_fidelity();
         }
         let defaults = Params::default();
         let stray = [
@@ -1316,6 +1382,15 @@ impl Params {
             ("meta_del", self.meta_del != defaults.meta_del),
             ("meta_seg_max", self.meta_seg_max != defaults.meta_seg_max),
             ("meta_genes", self.meta_genes != defaults.meta_genes),
+            ("meta_fid_max", self.meta_fid_max != defaults.meta_fid_max),
+            (
+                "meta_fid_rate",
+                self.meta_fid_rate != defaults.meta_fid_rate,
+            ),
+            (
+                "meta_fid_alpha",
+                self.meta_fid_alpha != defaults.meta_fid_alpha,
+            ),
         ];
         match stray.into_iter().find(|(_, set)| *set) {
             Some((field, _)) => Err(ParamError::MetaParamWithoutTape { field }),
@@ -1361,6 +1436,42 @@ impl Params {
         ];
         match missing.into_iter().find(|(missing, _)| *missing) {
             Some((_, needs)) => Err(ParamError::GenesNeeds { needs }),
+            None => Ok(()),
+        }
+    }
+
+    fn validate_fidelity(&self) -> Result<(), ParamError> {
+        if self.meta_fid_max == 0 {
+            let defaults = Params::default();
+            let inert = [
+                (
+                    "meta_fid_rate",
+                    self.meta_fid_rate != defaults.meta_fid_rate,
+                ),
+                (
+                    "meta_fid_alpha",
+                    self.meta_fid_alpha != defaults.meta_fid_alpha,
+                ),
+            ];
+            return match inert.into_iter().find(|(_, set)| *set) {
+                Some((field, _)) => Err(ParamError::FidelityWithoutLevels { field }),
+                None => Ok(()),
+            };
+        }
+        let initiator = self.stocked() && self.energy_payer == EnergyPayer::Initiator;
+        let missing = [
+            (
+                !self.meta_grows(),
+                "a metabolism channel that grows (meta_max_len above meta_len)",
+            ),
+            (
+                self.meta_fid_alpha > 0.0 && !initiator,
+                "the initiator economy a price needs (energy_influx above 0, energy_payer \
+                 initiator)",
+            ),
+        ];
+        match missing.into_iter().find(|(missing, _)| *missing) {
+            Some((_, needs)) => Err(ParamError::FidelityNeeds { needs }),
             None => Ok(()),
         }
     }
@@ -1541,6 +1652,19 @@ impl Params {
     /// runs the tape whole.
     pub fn gene_len(&self) -> Option<usize> {
         (self.carries_meta() && self.meta_genes > 0).then_some(self.meta_genes as usize)
+    }
+
+    /// Whether this run's metabolism tapes carry a heritable fidelity level.
+    pub fn carries_fidelity(&self) -> bool {
+        self.meta_grows() && self.meta_fid_max > 0
+    }
+
+    /// Whether a cell's fidelity level sets the price it initiates at.
+    pub fn prices_fidelity(&self) -> bool {
+        self.carries_fidelity()
+            && self.meta_fid_alpha > 0.0
+            && self.stocked()
+            && self.energy_payer == EnergyPayer::Initiator
     }
 
     /// Whether this run's predation pass runs at all: a relation chosen and a transfer to
@@ -1992,7 +2116,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 45);
+        assert_eq!(fields.len(), 48);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -3239,6 +3363,201 @@ mod tests {
                 "meta_seg_max",
                 "meta_genes"
             ]
+        );
+    }
+
+    /// The study's §13.11 bundle, slice B: the genes bundle with staged costly fidelity.
+    fn fidelity_params() -> Params {
+        Params {
+            meta_fid_max: 16,
+            meta_fid_rate: 0.05,
+            meta_fid_alpha: 0.03,
+            ..genes_params()
+        }
+    }
+
+    /// Fidelity is off by default, so a stored run reads as the run it was.
+    #[test]
+    fn fidelity_is_off_by_default() {
+        let params = Params::default();
+        assert_eq!(
+            (
+                params.meta_fid_max,
+                params.meta_fid_rate,
+                params.meta_fid_alpha
+            ),
+            (0, 0.0, 0.0)
+        );
+        assert!(!genes_params().carries_fidelity());
+        let stored: Params = serde_json::from_str(
+            r#"{"tasks": "logic4", "meta_len": 32, "meta_max_len": 64, "meta_dup": 0.05}"#,
+        )
+        .unwrap();
+        assert_eq!(stored.validate(), Ok(()));
+        assert!(!stored.carries_fidelity() && !stored.prices_fidelity());
+    }
+
+    #[test]
+    fn the_fidelity_bundle_validates_and_prices() {
+        let params = fidelity_params();
+        assert_eq!(params.validate(), Ok(()));
+        assert!(params.carries_fidelity() && params.prices_fidelity());
+        let free = Params {
+            meta_fid_alpha: 0.0,
+            ..fidelity_params()
+        };
+        assert_eq!(free.validate(), Ok(()));
+        assert!(free.carries_fidelity() && !free.prices_fidelity());
+        let drift = Params {
+            predation: Predation::Off,
+            ..fidelity_params()
+        };
+        assert_eq!(
+            drift.validate(),
+            Ok(()),
+            "drift carries fidelity without a pass"
+        );
+        let unpriced = Params {
+            meta_fid_alpha: 0.0,
+            energy_payer: EnergyPayer::Pair,
+            predation: Predation::Off,
+            ..fidelity_params()
+        };
+        assert_eq!(
+            unpriced.validate(),
+            Ok(()),
+            "free fidelity needs no economy"
+        );
+        for (params, field) in [
+            (
+                Params {
+                    meta_fid_max: META_FID_MAX + 1,
+                    ..fidelity_params()
+                },
+                "meta_fid_max",
+            ),
+            (
+                Params {
+                    meta_fid_rate: 1.5,
+                    ..fidelity_params()
+                },
+                "meta_fid_rate",
+            ),
+            (
+                Params {
+                    meta_fid_alpha: -0.1,
+                    ..fidelity_params()
+                },
+                "meta_fid_alpha",
+            ),
+        ] {
+            assert!(
+                matches!(params.validate(), Err(ParamError::OutOfRange { field: f, .. }) if f == field),
+                "{field}"
+            );
+        }
+    }
+
+    /// A fidelity setting with no level, a level on a channel that cannot grow, and a
+    /// price with no initiator to pay it are each refused.
+    #[test]
+    fn fidelity_is_refused_where_it_would_be_inert_or_unpriceable() {
+        for (params, field) in [
+            (
+                Params {
+                    meta_fid_rate: 0.05,
+                    ..genes_params()
+                },
+                "meta_fid_rate",
+            ),
+            (
+                Params {
+                    meta_fid_alpha: 0.03,
+                    ..genes_params()
+                },
+                "meta_fid_alpha",
+            ),
+        ] {
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::FidelityWithoutLevels { field })
+            );
+        }
+        let fixed = Params {
+            meta_max_len: 0,
+            meta_dup: 0.0,
+            meta_del: 0.0,
+            ..fidelity_params()
+        };
+        assert_eq!(
+            fixed.validate(),
+            Err(ParamError::FidelityNeeds {
+                needs: "a metabolism channel that grows (meta_max_len above meta_len)"
+            })
+        );
+        let pair = Params {
+            energy_payer: EnergyPayer::Pair,
+            predation: Predation::Off,
+            ..fidelity_params()
+        };
+        assert_eq!(
+            pair.validate(),
+            Err(ParamError::FidelityNeeds {
+                needs: "the initiator economy a price needs (energy_influx above 0, \
+                        energy_payer initiator)"
+            })
+        );
+        assert_eq!(
+            pair.validate().unwrap_err().to_string(),
+            "fidelity is set without the initiator economy a price needs (energy_influx \
+             above 0, energy_payer initiator): the level rides a metabolism tape that grows, \
+             and its price is what an initiator pays"
+        );
+        let untaped = Params {
+            meta_len: 0,
+            meta_draw: MetaDraw::Uniform,
+            meta_seed: MetaSeed::Zeros,
+            predation: Predation::Off,
+            ..Params::default()
+        };
+        for (params, field) in [
+            (
+                Params {
+                    meta_fid_max: 4,
+                    ..untaped.clone()
+                },
+                "meta_fid_max",
+            ),
+            (
+                Params {
+                    meta_fid_alpha: 0.1,
+                    ..untaped.clone()
+                },
+                "meta_fid_alpha",
+            ),
+        ] {
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::MetaParamWithoutTape { field })
+            );
+        }
+    }
+
+    #[test]
+    fn schema_carries_fidelity() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        let fields = schema["fields"].as_array().unwrap();
+        let field = |name: &str| fields.iter().find(|f| f["name"] == name).unwrap().clone();
+        assert_eq!(field("meta_fid_max")["default"], 0);
+        assert_eq!(field("meta_fid_max")["max"], 16);
+        assert_eq!(field("meta_fid_rate")["type"], "float");
+        assert_eq!(field("meta_fid_alpha")["default"], 0.0);
+        assert_eq!(field("meta_fid_alpha")["max"], 1.0);
+        let names: Vec<&str> = fields.iter().map(|f| f["name"].as_str().unwrap()).collect();
+        let at = names.iter().position(|name| *name == "meta_genes").unwrap();
+        assert_eq!(
+            names[at + 1..at + 4],
+            ["meta_fid_max", "meta_fid_rate", "meta_fid_alpha"]
         );
     }
 }

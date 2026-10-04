@@ -5,6 +5,7 @@
 //! browser viewer, and a run is fully determined by `(params, seed)` on both.
 
 pub mod bff;
+pub mod fidelity;
 pub mod hash;
 pub mod logic;
 pub mod metrics;

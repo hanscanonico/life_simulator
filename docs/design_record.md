@@ -5052,3 +5052,127 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     bytes and 74–348 at 2 048. Peak memory 335 MB. The pilot (pilot 8, loaded Mac, its own
     fidelity included) measured 51–62 CPU-ms an epoch averaged over 35 000 epochs and about
     67 at 1 500–2 100 bytes, within this range.
+- 2026-10-04 — **Genes, engine slice B: heritable staged fidelity with a scale-free cost.**
+  This is engine slice B of "Genes", the staged costly fidelity the design study's pilots 7
+  and 8 ran on top of slice A's machine (`docs/studies/unassisted.md` §12–§13, recommended in
+  §12.8 and §13.11). It adds a DESIGN §1.1 paragraph ("Fidelity") and three §1.2 readings. No
+  sweep is pre-registered here, it imports no objective, and nothing is relocked.
+
+  **Why.** Pilot 6 found the plateau of held code is Eigen's threshold: at any fixed rate the
+  load per generation reaches ln σ and code stops there (§11). Pilot 7 let lineages carry and
+  mutate their own copying fidelity, and held code rose past every fixed rate until the
+  channel's cap bound; pilot 8's late climb at an unreached cap ran on that machine. This
+  slice puts the fidelity knob into the engine so a sweep can test it.
+
+  **The import: heritable fidelity with a scale-free cost.** Each cell's metabolism tape
+  carries a heritable integer level f from 0, the base machine, to `meta_fid_max` (at most
+  16). The tape's substitution rate is `meta_rate` × 2^(−f/2), a factor of √2 a level. The
+  level rides the tape: it is inherited whenever the tape is, under the same near-copy rule,
+  and at each inheritance it moves ±1 on a fair coin with probability `meta_fid_rate`,
+  clamped to the range, on a new stream `STREAM_META | 2` in the order the epoch's
+  inheritances happen. Under the initiator economy with `meta_fid_alpha` = α > 0, a cell
+  initiates only when its stock holds P(f) = `max_steps` × 2^(α·f/2) = `max_steps` ×
+  (rate(0)/rate(f))^α, and is debited P(f); the step budget stays `max_steps`, as in the
+  pilot. The power law is the one family with no preferred rate (kinetic proofreading with
+  discard: each stage multiplies accuracy by a constant and the cost of a completed copy by a
+  constant), so it imports an exchange rate α between fidelity and reproduction and no
+  target rate. The level reads no tape and names no function, class or depth: relabelling
+  the functions leaves the rate and the price untouched, and in a monoculture of any set at
+  any level every cell pays the same. It imports a machine, not an objective.
+
+  **Why staged.** On a range symmetric about the base machine (§12.1's first arms, f from −16
+  to 16), levels below 0 are cheaper than the base by the same law, and a lineage that gives
+  up its code saves more by sloppiness (2^(8α): 1.74 times the births at α = 0.1, 8 at
+  α = 0.4) than computing pays (σ ≈ 1.3–1.5). Every costly arm on that range collapsed within
+  500–1 000 epochs, at both α, with or without a 5 000-epoch burn-in, and so did drift at
+  α = 0.1: the refuge is a property of the cost's range, not its slope (§12.5). The staged
+  range counts proofreading stages above the base machine, which is the sloppiest and
+  cheapest level, so there is no refuge. Free fidelity is a setting (α = 0), not the
+  recommended arm: it runs to the floor and a near-monoculture (§12.4).
+
+  **Determinism.** Neither law uses a float transcendental. The rate is `meta_rate` scaled by
+  a power of two and, at an odd level, by the constant 1/√2, one rounded product. The price
+  is integer fixed-point arithmetic: α is read to 2^−32, α·f/2 split into its whole and
+  fractional parts, 2^fraction the product, in Q62, of the roots 2^(2^−k) its bits name, each
+  root the integer square root of the one before, then rounded to the nearest integer (a half
+  up). At 8 192 steps and α = 0.03 the table over f = 0…16 is 8192, 8278, 8364, 8452, 8540,
+  8629, 8719, 8810, 8903, 8996, 9090, 9185, 9281, 9378, 9476, 9575, 9675, pinned in a test
+  beside the α = 0.1 and 0.01 tables. Mutation finds each cell's hits by `rng::Gaps` at its
+  own level's rate; where the level changes from one cell to the next, the pending gap is
+  dropped and one drawn afresh at the new rate (a gap is memoryless, so the law is each
+  byte's own chance), and a world of one level everywhere draws exactly what a world without
+  levels draws.
+
+  **State.** The levels are hashed after the metabolism lengths and carried by snapshot
+  versions 15–17 (versions 12–14 with one level byte per cell after the lengths). A resume
+  refuses a blob that disagrees with its params about levels, as it refuses a stock or a
+  tape; a descendant carries its parent's levels with its tapes, clamped to its range, and
+  starts every cell at 0 where the parent carried none or its tapes are switched on afresh.
+
+  **The readings** (live-only, null when off, on `STREAM_FIDELITY_READ`, pinned in their own
+  digest): `fidelity_p10`, `fidelity_p50` and `fidelity_p90`, the nearest-rank percentiles of
+  the levels of 256 sampled cells.
+
+  **The pilots, labelled pilot** (throwaway engine copies at `b30196a`, one seed per arm, two
+  worlds, 4381 and 4428, out-count, genes, cap 512 in pilot 7 and 4 096 in pilot 8): free
+  fidelity moved the median rate from ×8 to ×0.044 in 12 500 epochs in both worlds while
+  drift wandered (×4–×90), and held code doubled past fixed ×2 until the cap bound (§12.4).
+  Staged, the top solver's substitution load settled at the cost exponent: 0.02–0.045 a
+  generation at α = 0.03, 0.06–0.20 at α = 0.1, and at α = 0.4 the level never left 0 (§12.5).
+  α = 0.03 held the most repertoire of any arm, 40 and 80 classes by a tenth at 12 000 and
+  15 000 epochs against free fidelity's 32–34 and 54, by keeping the rate off the floor and
+  the population diverse. In pilot 8 the top lineage's load at α = 0.03 stayed near α
+  (median 0.036) while its code doubled, and its tape reached f = 16 at 21 500–28 000 epochs
+  (α = 0.01: 6 000–10 000) (§13.10). Pilot numbers, not findings.
+
+  **Judgement calls.**
+  - Fidelity is refused on a channel that cannot grow. The pilots ran it only there (§12.8
+    recommends exactly that), and the fixed channel's mutation and snapshot shapes would need
+    a second set of versions for a combination nothing has read.
+  - The price needs the initiator economy; free fidelity (α = 0) needs none, so a drift or
+    pair-economy arm can carry levels.
+  - `meta_fid_max` is capped at 16 (1/256 of the base rate), the study's range; α at 1.
+  - A price above every stock is not clamped to the cap, as the pilot did: a cell that cannot
+    pay is passed over either way.
+  - No burn-in (`--fid-start`) and no per-level rate counters: the pilots' instruments, not
+    the machine. The optional `top_fidelity` reading is left out.
+  - The level's move draws its coin only when it moves (`chance`, then `below(2)`), as the
+    pilot did.
+
+  **Differences from the pilot.** The pilot read the rate and the price with `powf` and found
+  hits by a logarithm's cumulative hazard; the engine's laws are exact and its gaps
+  multiplication-only, so the draws differ and the laws do not. The pilot's levels were an
+  `i8` that a symmetric range could take below 0; the engine's are staged only. The pilot
+  reported the rate's distribution over every cell; the engine reports the level's over 256
+  sampled cells.
+
+  **Verified.**
+  - Every existing pin and digest is unmoved; at the defaults the run is byte-, snapshot- and
+    reading-identical to the run without the settings, and a world whose levels never leave
+    0 is the run without levels at every cell, tape, stock and reading, at α 0, 0.03 and 0.4.
+  - A resume harness: snapshots written by `origin/main`'s engine (versions 6–11), by #303's
+    (its three relations) and by #307's (versions 13–14: count, drift, a growing channel read
+    whole and a ragged one) restore in this engine, re-encode byte for byte, and continue for
+    200 epochs with the same hash, transitions and readings every 10 epochs, the new readings
+    null.
+  - Determinism with a mid-run resume under `count` and `off`, at α 0, 0.03 and 0.4; a world
+    carrying levels resumes reading for reading and blob for blob and refuses params that
+    drop, mint or narrow its levels; descent carries, clamps or zeroes them.
+  - The rate law exactly, and in the world: levels 1 and 4 take √2 and 4 times fewer hits
+    than level 0 on the same live bytes. The price tables; α = 0 costs `max_steps` at every
+    level; a cell holding the base price but not its level's is passed over as initiator and
+    keeps its stock, while a base-level cell pays.
+  - Moves and the clamp: every level steps ±1 at rate 1, never past 0 or the top, at 0.05 per
+    inheritance about 5% move, evenly up and down; a level rides the tape it is inherited
+    with.
+  - A sanity check, not a result: on four planted 16×16 out-count worlds over 200 epochs,
+    free fidelity's mean level climbs to 4.8 against 2.4 for the same walk where tapes do not
+    mutate (the levels doing nothing), and α = 0.4 holds it at 0.75.
+  - Pins of a genes, count, growable and fidelity world (and its drift twin) and their
+    readings.
+  - **Cost**, on this Mac under a load average of 24–27, the slice's bundle descended from
+    the study's 4381 and 4428 worlds at epoch 20 000, tapes tiled to a length, levels spread
+    over the whole range (so the mutation redraws a gap at almost every cell, the worst case):
+    the tapes' mutation itself costs about 1.2–4.7 ms an epoch more at 32 bytes and nothing
+    measurable at 512 and 2 048, against epochs of 35–170 ms whose spread is the load's and
+    the price's (a costly world initiates less).

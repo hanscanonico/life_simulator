@@ -616,12 +616,14 @@ fn report(event: &str, url: &str, since: Instant, attempts: u32, failure: &str) 
 
 /// What a snapshot answer of a world described by `params` is allowed to weigh: the
 /// uncompressed world, its metabolism tapes included at their cap with their lengths where
-/// they grow, twice over plus slack. A compressed blob is always well under it, and a
-/// runner resuming twelve slots at once can afford this where a flat limit of hundreds of
-/// megabytes per slot is what exhausted the mini-pc's swap.
+/// they grow and their levels where they carry fidelity, twice over plus slack. A
+/// compressed blob is always well under it, and a runner resuming twelve slots at once can
+/// afford this where a flat limit of hundreds of megabytes per slot is what exhausted the
+/// mini-pc's swap.
 fn snapshot_body_limit(params: &Params) -> u64 {
     let meta_lens = if params.meta_grows() { 4 } else { 0 };
-    let per_cell = params.stride() as u64 + u64::from(params.meta_cap()) + meta_lens;
+    let levels = u64::from(params.carries_fidelity());
+    let per_cell = params.stride() as u64 + u64::from(params.meta_cap()) + meta_lens + levels;
     (params.cell_count() as u64) * per_cell * 2 + SNAPSHOT_SLACK
 }
 

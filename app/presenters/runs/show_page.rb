@@ -17,20 +17,21 @@ module Runs
     # The readings of a run whose predation pass runs: null at every sample of any other run.
     PREDATION = %w[predation_rate predation_relation_rate repertoire_mean silent_share].freeze
 
-    # The reading of a metabolism channel that grows, and the reading of genes: each null
-    # at every sample of a run without it.
+    # The reading of a metabolism channel that grows, the reading of genes and the readings
+    # of fidelity levels: each null at every sample of a run without it.
     GROWTH = %w[meta_len_mean].freeze
     GENES = %w[genes_essential_held].freeze
+    FIDELITY = %w[fidelity_p10 fidelity_p50 fidelity_p90].freeze
 
     # The readings of one task ladder are null at every sample of a run not assayed on it
     # (DESIGN §1.2), so a ladder's charts are drawn only for a run that has a reading of it,
     # rather than as a block of empty charts on every other run. The metabolism, depth,
-    # predation, growth and genes readings are drawn by the same rule.
+    # predation, growth, genes and fidelity readings are drawn by the same rule.
     LADDERS = [
       METRICS.keys.grep(/\A(dominant_)?task_/),
       METRICS.keys.grep(/\A(dominant_)?logic_/) - METABOLISM - DEPTH
     ].freeze
-    GATED = (LADDERS + [METABOLISM, DEPTH, PREDATION, GROWTH, GENES]).freeze
+    GATED = (LADDERS + [METABOLISM, DEPTH, PREDATION, GROWTH, GENES, FIDELITY]).freeze
 
     COMPRESSIBILITY_TITLE = "Compressed over raw length of the dominant tape"
     TURNOVER_TITLE = "Dominant tape turnover (1 = a different tape than the sample before)"

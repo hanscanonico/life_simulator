@@ -271,6 +271,12 @@ pub struct Metrics {
     /// they compute, a group counted when it computes a class no other group of the tape
     /// does (`topless::essential_genes`). `None` unless the run reads genes.
     pub genes_essential_held: Option<u32>,
+    /// The fidelity levels of `task::TASK_SAMPLE_CELLS` cells drawn on a stream of their
+    /// own (`docs/design_record.md`, 2026-10-04, Genes slice B), by nearest rank: the 10th,
+    /// 50th and 90th percentiles. `None` unless the run carries fidelity levels.
+    pub fidelity_p10: Option<u32>,
+    pub fidelity_p50: Option<u32>,
+    pub fidelity_p90: Option<u32>,
 }
 
 impl Metrics {
@@ -1811,6 +1817,9 @@ mod tests {
             silent_share: None,
             meta_len_mean: None,
             genes_essential_held: None,
+            fidelity_p10: None,
+            fidelity_p50: None,
+            fidelity_p90: None,
         }
     }
 

@@ -54,7 +54,7 @@ RSpec.describe Lab::Schema do
                 predation_every predation_shadow_p ops
                 mutation_rate structure structure_amplitude
                 interaction lineage_rule meta_len meta_rate meta_draw meta_seed meta_max_len meta_min_len
-                meta_dup meta_del meta_seg_max meta_genes init top_k])
+                meta_dup meta_del meta_seg_max meta_genes meta_fid_max meta_fid_rate meta_fid_alpha init top_k])
   end
 
   # Pinned by value rather than derived from the schema: an engine default moving under
@@ -70,7 +70,8 @@ RSpec.describe Lab::Schema do
       "structure" => "uniform", "structure_amplitude" => 0.5, "interaction" => "concat",
       "lineage_rule" => "aligned", "meta_len" => 0, "meta_rate" => 32.0 / 8192, "meta_draw" => "uniform",
       "meta_seed" => "zeros", "meta_max_len" => 0, "meta_min_len" => 8, "meta_dup" => 0.0, "meta_del" => 0.0,
-      "meta_seg_max" => 16, "meta_genes" => 0, "init" => "random", "top_k" => 16
+      "meta_seg_max" => 16, "meta_genes" => 0, "meta_fid_max" => 0, "meta_fid_rate" => 0.0,
+      "meta_fid_alpha" => 0.0, "init" => "random", "top_k" => 16
     )
   end
 

@@ -468,6 +468,16 @@
       without genes.
     </dd>
 
+    <dt class="mono">fidelity_p10</dt>
+    <dt class="mono">fidelity_p50</dt>
+    <dt class="mono">fidelity_p90</dt>
+    <dd>
+      Under <span class="mono">meta_fid_max</span>, the 10th, 50th and 90th percentiles of
+      the fidelity levels of 256 sampled cells. Level 0 is the base machine; each level
+      above it halves the metabolism tape's error rate every two steps. Null on every run
+      whose tapes carry no level.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which
@@ -554,6 +564,18 @@
       length, the independence and the union are a machine the engine imposes, not
       anything the organisms evolved, and they name no function: they import a machine,
       not an objective.
+    </dd>
+
+    <dt>fidelity</dt>
+    <dd>
+      Under <span class="mono">meta_fid_max</span>, a heritable level each cell's metabolism
+      tape carries, from 0, the base machine, up to that top: each level divides the tape's
+      error rate by √2. It is inherited with the tape and moves one step up or down now and
+      then. Under <span class="mono">meta_fid_alpha</span> it has a price: a copy attempt
+      costs <span class="mono">max_steps</span> × 2<sup>α·f/2</sup>, so each halving of the
+      error rate costs the same share of a copy wherever a lineage sits. The base machine
+      is the cheapest level, so no lineage can buy sloppiness below it. It reads no tape and
+      names no function: it imports a machine, not an objective.
     </dd>
 
     <dt>arm</dt>

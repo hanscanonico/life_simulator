@@ -70,7 +70,10 @@ module Runs
       "repertoire_mean" => "Classes a metabolism tape computes, per cell",
       "silent_share" => "Share of cells whose metabolism tape computes nothing",
       "meta_len_mean" => "Mean metabolism-tape length (bytes)",
-      "genes_essential_held" => "Essential genes a tenth of the cells hold"
+      "genes_essential_held" => "Essential genes a tenth of the cells hold",
+      "fidelity_p10" => "Fidelity level, 10th percentile of the cells",
+      "fidelity_p50" => "Fidelity level, median of the cells",
+      "fidelity_p90" => "Fidelity level, 90th percentile of the cells"
     }.freeze
   end
 end

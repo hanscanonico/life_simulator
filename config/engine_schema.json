@@ -382,6 +382,30 @@
       "type": "integer"
     },
     {
+      "default": 0,
+      "doc": "The top fidelity level of a metabolism tape. Each cell carries a heritable level f from 0, the base machine every cell starts at, to this; its tape mutates at meta_rate × 2^(−f/2), so each level is a factor of √2. The level is inherited with the tape and moves at meta_fid_rate. 0 carries no level. Needs a channel that grows (meta_max_len above meta_len).",
+      "max": 16,
+      "min": 0,
+      "name": "meta_fid_max",
+      "type": "integer"
+    },
+    {
+      "default": 0.0,
+      "doc": "The probability, per inheritance of a metabolism tape, that the inherited level moves one step, up or down with equal odds, never past 0 or meta_fid_max. Drawn on a stream of its own. Read only once meta_fid_max is set.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "meta_fid_rate",
+      "type": "float"
+    },
+    {
+      "default": 0.0,
+      "doc": "The cost exponent α of fidelity: a cell at level f initiates only when its stock holds max_steps × 2^(α·f/2), and is debited that, so each halving of its tape's error rate multiplies the price of a copy attempt by 2^α. The interaction's step budget stays max_steps. 0 makes fidelity free. Needs the initiator economy (an energy_influx and energy_payer initiator). Read only once meta_fid_max is set.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "meta_fid_alpha",
+      "type": "float"
+    },
+    {
       "default": "random",
       "doc": "Initial world state: uniformly random bytes, or all zero (the control).",
       "name": "init",
