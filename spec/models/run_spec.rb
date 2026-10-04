@@ -165,6 +165,65 @@ RSpec.describe Run, type: :model do
     end
   end
 
+  describe ".predatory, .labelled and .fitness_free" do
+    let(:defaults) { Lab::Schema.run_defaults }
+    let!(:out_compute) { create(:run, :predatory) }
+    let!(:equal) { create(:run, params: defaults.merge(Lab::OutComputeReading::EQUAL_BUNDLE)) }
+    let!(:shadow) { create(:run, params: defaults.merge(Lab::OutComputeReading::SHADOW_BUNDLE)) }
+    let!(:none) { create(:run, params: defaults.merge(Lab::OutComputeReading::NONE_BUNDLE)) }
+    let!(:no_transfer) do
+      create(:run, params: defaults.merge(Lab::OutComputeReading::OUT_COMPUTE_BUNDLE, "predation_transfer" => 0))
+    end
+    let!(:text_transfer) do
+      create(:run, params: defaults.merge(Lab::OutComputeReading::OUT_COMPUTE_BUNDLE, "predation_transfer" => "8192"))
+    end
+    let!(:predating) { create(:run, params: defaults.except("predation", "predation_transfer")) }
+    let!(:paid) { create(:run, :metabolism) }
+
+    it "reads a relation with a transfer to move as predatory, whatever the relation" do
+      expect(described_class.predatory).to contain_exactly(out_compute, equal, shadow)
+    end
+
+    it "labels the paid and the predatory runs, and pools the rest as fitness-free" do
+      expect(described_class.labelled).to contain_exactly(out_compute, equal, shadow, paid)
+      expect(described_class.fitness_free).to contain_exactly(none, no_transfer, text_transfer, predating)
+    end
+
+    it "agrees with the reading's own rule on every run" do
+      [out_compute, equal, shadow, none, no_transfer, text_transfer, predating, paid].each do |run|
+        expect(described_class.predatory.exists?(run.id)).to eq(Lab::OutComputeReading.predatory_run?(run.params))
+      end
+    end
+  end
+
+  describe ".priced_fidelity, .machine, .labelled and .fitness_free" do
+    let(:defaults) { Lab::Schema.run_defaults }
+    let!(:count) { create(:run, params: defaults.merge(Lab::GenesRiseReading::COUNT_BUNDLE)) }
+    let!(:drift) { create(:run, params: defaults.merge(Lab::GenesRiseReading::DRIFT_BUNDLE)) }
+    let!(:free) { create(:run, params: defaults.merge(Lab::GenesRiseReading::DRIFT_BUNDLE, "meta_fid_alpha" => 0)) }
+    let!(:text_price) do
+      create(:run, params: defaults.merge(Lab::GenesRiseReading::DRIFT_BUNDLE, "meta_fid_alpha" => "0.03"))
+    end
+    let!(:none) { create(:run, params: defaults.merge(Lab::OutComputeReading::NONE_BUNDLE)) }
+
+    it "reads a priced fidelity level as importing a machine, predation or not" do
+      expect(described_class.priced_fidelity).to contain_exactly(count, drift)
+      expect(described_class.machine).to contain_exactly(count, drift)
+      expect(described_class.labelled).to contain_exactly(count, drift)
+    end
+
+    it "pools a free fidelity level, or none, as fitness-free" do
+      expect(described_class.fitness_free).to contain_exactly(free, text_price, none)
+    end
+
+    it "agrees with the reading's own rule on every run" do
+      [count, drift, free, text_price, none].each do |run|
+        expect(described_class.priced_fidelity.exists?(run.id))
+          .to eq(Lab::GenesRiseReading.priced_fidelity_run?(run.params))
+      end
+    end
+  end
+
   describe "a descendant in the transition surveys" do
     let!(:descendant) { create(:run, :descendant, status: "finished") }
 
@@ -222,6 +281,37 @@ RSpec.describe Run, type: :model do
       expect(descendant(params: parent.params.merge("energy_influx" => 2**10, "energy_stock_cap" => 2**16,
                                                     "tasks" => "logic4", "task_reward" => 2**10,
                                                     "task_depth_cap" => 5))).to be_valid
+    end
+
+    it "accepts a child that switches predation on and reads every output slot" do
+      expect(descendant(params: parent.params.merge("energy_influx" => 2**10, "energy_stock_cap" => 2**16,
+                                                    "energy_payer" => "initiator", "tasks" => "logic4",
+                                                    "logic_nand" => "stack", "meta_len" => 32,
+                                                    "meta_seed" => "own_tape", "task_max_outputs" => 16,
+                                                    "predation" => "subset_class", "predation_transfer" => 2**13,
+                                                    "predation_loss" => 0.5, "predation_every" => 8,
+                                                    "predation_shadow_p" => 0.3))).to be_valid
+    end
+
+    it "accepts a child under out-count whose metabolism tape grows and is read as genes" do
+      expect(descendant(params: parent.params.merge("energy_influx" => 2**10, "energy_stock_cap" => 2**16,
+                                                    "energy_payer" => "initiator", "tasks" => "logic4",
+                                                    "logic_nand" => "stack", "meta_len" => 32,
+                                                    "meta_seed" => "own_tape", "task_max_outputs" => 16,
+                                                    "predation" => "count", "predation_transfer" => 2**13,
+                                                    "meta_max_len" => 2**13, "meta_dup" => 0.05, "meta_del" => 0.05,
+                                                    "meta_genes" => 32))).to be_valid
+    end
+
+    it "accepts a child whose growing metabolism tapes carry staged costly fidelity" do
+      expect(descendant(params: parent.params.merge("energy_influx" => 2**10, "energy_stock_cap" => 2**16,
+                                                    "energy_payer" => "initiator", "tasks" => "logic4",
+                                                    "logic_nand" => "stack", "meta_len" => 32,
+                                                    "meta_seed" => "own_tape", "task_max_outputs" => 16,
+                                                    "predation" => "count", "predation_transfer" => 2**13,
+                                                    "meta_max_len" => 2**13, "meta_dup" => 0.05, "meta_del" => 0.05,
+                                                    "meta_genes" => 32, "meta_fid_max" => 16,
+                                                    "meta_fid_rate" => 0.05, "meta_fid_alpha" => 0.03))).to be_valid
     end
 
     it "accepts the parent's params and seed, the exact continuation" do

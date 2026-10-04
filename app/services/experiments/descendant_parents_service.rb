@@ -8,7 +8,12 @@ module Experiments
   #
   # The candidates are the source experiment's founding runs, or its descendants where the
   # rule says `"descendants" => true`. A rule naming no `instrument` qualifies every finished
-  # candidate that kept a world at its last epoch, with no reading of that world.
+  # candidate that kept a world at its last epoch, with no reading of that world. A rule with
+  # `"emerged" => true` qualifies only a candidate with a confirmed emergence (Run#emerged?),
+  # and one with `"first" => n` only the n qualifying candidates with the lowest run ids, the
+  # rest skipped as past it. `"skip_first" => m` sets aside the m qualifying candidates with
+  # the lowest run ids before `first` is counted, so two sweeps can draw disjoint parents
+  # from one pool in id order.
   class DescendantParentsService
     include Callable
 
@@ -25,11 +30,24 @@ module Experiments
         skipped[reason] << run.id if reason
         reason.nil?
       end
+      qualifying = take(qualifying, "skip_first", skipped, :before_skip, keep: :after)
+      qualifying = take(qualifying, "first", skipped, :past_first, keep: :before)
 
       Pool.new(candidates: candidates, qualifying: qualifying, skipped: skipped.to_h)
     end
 
     private
+
+    # The qualifying candidates on one side of the rule's count under `key`, in id order: the
+    # count `before` it or those `after` it, the others skipped for `reason`.
+    def take(qualifying, key, skipped, reason, keep:)
+      return qualifying unless @rule.key?(key)
+
+      before, after = qualifying.partition.with_index { |_, index| index < @rule.fetch(key) }
+      kept, set_aside = keep == :before ? [before, after] : [after, before]
+      skipped[reason].concat(set_aside.map(&:id)) if set_aside.any?
+      kept
+    end
 
     def candidates
       @candidates ||= begin
@@ -49,6 +67,7 @@ module Experiments
     def skip_reason(run)
       return :unfinished unless run.finished?
       return :no_terminal_world unless terminal_worlds.include?(run.id)
+      return :not_emerged if @rule["emerged"] && !run.emerged?
       return unless @rule.key?("instrument")
 
       share = terminal_shares[run.id]

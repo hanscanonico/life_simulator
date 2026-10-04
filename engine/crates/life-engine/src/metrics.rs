@@ -247,6 +247,36 @@ pub struct Metrics {
     /// How many of the topless ladder's rungs at least a tenth of those cells are credited
     /// with.
     pub logic_depth_classes: Option<u32>,
+    /// The share of the last predation pass's encounters, an actor meeting a partner other
+    /// than itself, that moved energy (`docs/design_record.md`, 2026-10-03, predation).
+    /// This and the two readings below are `None` unless the run's predation pass runs;
+    /// this one also until a pass has met a partner, as after a resume.
+    pub predation_rate: Option<f64>,
+    /// The share of those encounters whose relation held (under `predation = shadow`, whose
+    /// coin came up), whether or not the partner had stock to give: the eat rate the
+    /// study's pilot read and `predation_shadow_p` is calibrated on, where `predation_rate`
+    /// counts only the encounters that moved energy.
+    pub predation_relation_rate: Option<f64>,
+    /// The mean number of distinct classes the metabolism tapes of
+    /// `task::TASK_SAMPLE_CELLS` sampled cells compute, over the run's `task_max_outputs`
+    /// slots, on cells and cases of its own.
+    pub repertoire_mean: Option<f64>,
+    /// The share of those cells whose metabolism tapes compute no class at all.
+    pub silent_share: Option<f64>,
+    /// The mean length of the metabolism tapes over every cell (`docs/design_record.md`,
+    /// 2026-10-04, Genes slice A): `None` unless the channel grows.
+    pub meta_len_mean: Option<f64>,
+    /// The most essential genes at least a tenth of `task::TASK_SAMPLE_CELLS` sampled
+    /// cells hold, on cells and cases of its own: a cell's genes grouped by the classes
+    /// they compute, a group counted when it computes a class no other group of the tape
+    /// does (`topless::essential_genes`). `None` unless the run reads genes.
+    pub genes_essential_held: Option<u32>,
+    /// The fidelity levels of `task::TASK_SAMPLE_CELLS` cells drawn on a stream of their
+    /// own (`docs/design_record.md`, 2026-10-04, Genes slice B), by nearest rank: the 10th,
+    /// 50th and 90th percentiles. `None` unless the run carries fidelity levels.
+    pub fidelity_p10: Option<u32>,
+    pub fidelity_p50: Option<u32>,
+    pub fidelity_p90: Option<u32>,
 }
 
 impl Metrics {
@@ -1781,6 +1811,15 @@ mod tests {
             logic_capability_replicating: None,
             logic_depth_max: None,
             logic_depth_classes: None,
+            predation_rate: None,
+            predation_relation_rate: None,
+            repertoire_mean: None,
+            silent_share: None,
+            meta_len_mean: None,
+            genes_essential_held: None,
+            fidelity_p10: None,
+            fidelity_p50: None,
+            fidelity_p90: None,
         }
     }
 

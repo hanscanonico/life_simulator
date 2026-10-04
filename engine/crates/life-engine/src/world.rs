@@ -4,12 +4,13 @@
 //! exactly as the uninterrupted run would have.
 
 use crate::bff;
+use crate::fidelity;
 use crate::hash::{fnv1a64, fnv1a64_of};
 use crate::logic;
 use crate::metrics::{self, Metrics, TransitionTracker};
 use crate::params::{
-    EnergyPayer, Init, Interaction, LineageRule, MetaDraw, MetaSeed, ParamError, Params, Substrate,
-    Tasks,
+    EnergyPayer, Init, Interaction, LineageRule, MetaDraw, MetaSeed, ParamError, Params, Predation,
+    Substrate, Tasks,
 };
 use crate::render;
 use crate::replicator;
@@ -17,6 +18,7 @@ use crate::rng::{self, Rng};
 use crate::snapshot::{self, SnapshotError};
 use crate::task;
 use crate::topless::{self, Inputs};
+use std::collections::HashMap;
 
 const STREAM_INIT: u64 = 0;
 const STREAM_STEP: u64 = 1;
@@ -65,6 +67,28 @@ const STREAM_LOGIC_DEPTH: u64 = STREAM_TASK | 6;
 /// above, so the tapes' mutation moves no draw the run, the assay or any observable makes
 /// (`docs/design_record.md`, 2026-10-02, Meta-stack slice B).
 const STREAM_META: u64 = 0x4d45_5441_0000_0000;
+/// The stream a growing metabolism channel's duplications and deletions draw on, once per
+/// epoch, in the order the epoch's inheritances happen: beside the tapes' mutation, so a
+/// channel that grows moves no draw of the run, the assay, the pass or any observable
+/// (`docs/design_record.md`, 2026-10-04, Genes slice A).
+const STREAM_META_GROW: u64 = STREAM_META | 1;
+/// The stream the fidelity levels move on, once per epoch, in the order the epoch's
+/// inheritances happen: beside the channel's growth, so a level's move draws nothing the
+/// run, the growth, the assay, the pass or any observable draws (`docs/design_record.md`,
+/// 2026-10-04, Genes slice B).
+const STREAM_META_FID: u64 = STREAM_META | 2;
+/// The fidelity readings' own cells, `fidelity_p10`, `fidelity_p50` and `fidelity_p90`.
+const STREAM_FIDELITY_READ: u64 = 0x4649_4445_0000_0000;
+/// `genes_essential_held`'s own cells and cases.
+const STREAM_GENES_READ: u64 = 0x4745_4e45_0000_0000;
+/// The stream the predation pass draws on, once per epoch: the cases first, at an epoch
+/// that redraws them, then the order cells act in, whether each acts, its partner and,
+/// under `shadow`, its coin. Its own, far from every id above, so the pass moves no draw
+/// the run, the assay or any observable makes (`docs/design_record.md`, 2026-10-03,
+/// predation).
+const STREAM_PREDATION: u64 = 0x5052_4544_0000_0000;
+/// The predation readings' own cells and cases, `repertoire_mean` and `silent_share`.
+const STREAM_PREDATION_READ: u64 = STREAM_PREDATION | 1;
 /// The 13 values an `isa` draw names outright, each at 1/14; the fourteenth fourteenth is
 /// one of the 243 other bytes, the no-ops.
 const META_ISA: [u8; 13] = [
@@ -126,6 +150,25 @@ pub struct World {
     /// on a near copy and mutated on `STREAM_META`. State of the world, so it is hashed,
     /// snapshotted and restored. Empty — and never read — unless the run carries one.
     meta: Vec<u8>,
+    /// The live length of each cell's metabolism tape, whose slot in `meta` is `meta_cap`
+    /// bytes wide. Empty — and every tape fills its slot — unless the channel grows, so a
+    /// fixed channel is read, hashed and snapshotted exactly as it was before lengths.
+    meta_lens: Vec<u32>,
+    /// The fidelity level each cell's metabolism tape carries, from 0 to `meta_fid_max`:
+    /// inherited with the tape, it sets the tape's substitution rate and, where fidelity is
+    /// priced, what the cell pays to initiate. State of the world, hashed and snapshotted.
+    /// Empty — and every tape at the base machine's rate — unless the run carries levels.
+    meta_fid: Vec<u8>,
+    /// The `predation_rate` of the last pass: `None` until a pass has met a partner, and
+    /// again after one that met none.
+    predation_rate: Option<f64>,
+    /// The share of the last pass's encounters whose relation held (under `shadow`, whose
+    /// coin came up), whether or not the partner had anything to give: the rate
+    /// `predation_shadow_p` is calibrated on. `None` exactly when `predation_rate` is.
+    predation_relation_rate: Option<f64>,
+    /// The classes the predation pass has read since its cases were last drawn. Never
+    /// state: a pure function of `(seed, epoch)` and the tapes, rebuilt after a restore.
+    predation_memo: PredationMemo,
 }
 
 impl World {
@@ -146,6 +189,11 @@ impl World {
             lens: fresh_lens(params),
             stock: fresh_stock(params),
             meta: Vec::new(),
+            meta_lens: Vec::new(),
+            meta_fid: fresh_fidelity(params),
+            predation_rate: None,
+            predation_relation_rate: None,
+            predation_memo: PredationMemo::default(),
         };
         if params.init == Init::Random {
             let mut rng = rng::seeded(seed, STREAM_INIT, 0);
@@ -158,7 +206,7 @@ impl World {
                 }
             }
         }
-        world.meta = world.switched_on_meta();
+        (world.meta, world.meta_lens) = world.switched_on_meta();
         Ok(world)
     }
 
@@ -201,16 +249,51 @@ impl World {
             .then(|| self.meta_of(self.index(x, y)))
     }
 
-    /// Panics unless `bytes` fits one metabolism tape of a world that carries them.
+    /// Panics unless `bytes` fits one metabolism tape of a world that carries them:
+    /// exactly `meta_len` bytes on a fixed channel, and one byte up to the cap on one that
+    /// grows.
     pub fn set_metabolism(&mut self, x: u32, y: u32, bytes: &[u8]) {
-        let len = self.params.meta_len as usize;
         assert!(
             self.params.carries_meta(),
             "this world carries no metabolism tapes"
         );
-        assert_eq!(bytes.len(), len, "a metabolism tape holds {len} bytes");
-        let at = self.index(x, y) * len;
-        self.meta[at..at + len].copy_from_slice(bytes);
+        let slot = self.params.meta_cap() as usize;
+        if self.meta_lens.is_empty() {
+            assert_eq!(bytes.len(), slot, "a metabolism tape holds {slot} bytes");
+        } else {
+            assert!(
+                (1..=slot).contains(&bytes.len()),
+                "a metabolism tape holds 1 to {slot} bytes"
+            );
+        }
+        let cell = self.index(x, y);
+        let at = cell * slot;
+        self.meta[at..at + slot].fill(0);
+        self.meta[at..at + bytes.len()].copy_from_slice(bytes);
+        if let Some(len) = self.meta_lens.get_mut(cell) {
+            *len = bytes.len() as u32;
+        }
+    }
+
+    /// The fidelity level of one cell's metabolism tape, or `None` on a world that carries
+    /// no levels.
+    pub fn fidelity(&self, x: u32, y: u32) -> Option<u8> {
+        self.meta_fid.get(self.index(x, y)).copied()
+    }
+
+    /// Panics unless the world carries fidelity levels and `level` is in its range.
+    pub fn set_fidelity(&mut self, x: u32, y: u32, level: u8) {
+        assert!(
+            self.params.carries_fidelity(),
+            "this world carries no fidelity levels"
+        );
+        assert!(
+            u32::from(level) <= self.params.meta_fid_max,
+            "a level runs from 0 to {}",
+            self.params.meta_fid_max
+        );
+        let cell = self.index(x, y);
+        self.meta_fid[cell] = level;
     }
 
     /// Panics unless `bytes` fits one cell: exactly the slot on a world whose tapes cannot
@@ -272,7 +355,7 @@ impl World {
                 &self.lineages,
                 &self.lens,
                 &self.stock,
-                &self.meta,
+                self.meta_tapes(),
             ),
         )
     }
@@ -292,17 +375,21 @@ impl World {
     /// tapes can grow, the lengths, and where cells hold energy, the stocks: the same bytes
     /// under two different sets of lengths, or two different stocks, are two different
     /// worlds. A world with neither hashes the bytes alone, as it always did. Where cells
-    /// carry metabolism tapes, those follow last.
+    /// carry metabolism tapes, those follow, where those can grow their lengths, and where
+    /// they carry fidelity the levels last.
     pub fn world_hash(&self) -> u64 {
         if self.meta.is_empty() {
             return self.soup_hash();
         }
         let (lens, stock) = (words(&self.lens), words(&self.stock));
+        let meta_lens = words(&self.meta_lens);
         fnv1a64_of([
             self.cells.as_slice(),
             lens.as_slice(),
             stock.as_slice(),
             self.meta.as_slice(),
+            meta_lens.as_slice(),
+            self.meta_fid.as_slice(),
         ])
     }
 
@@ -323,8 +410,18 @@ impl World {
             &self.lineages,
             &self.lens,
             &self.stock,
-            &self.meta,
+            self.meta_tapes(),
         )
+    }
+
+    /// The metabolism tapes as the snapshot writes them.
+    fn meta_tapes(&self) -> snapshot::MetaTapes<'_> {
+        snapshot::MetaTapes {
+            slots: &self.meta,
+            slot: self.params.meta_cap() as usize,
+            lens: &self.meta_lens,
+            levels: &self.meta_fid,
+        }
     }
 
     /// The world's cells read as tapes: the flat array of slots, and the live lengths
@@ -339,8 +436,9 @@ impl World {
     }
 
     fn meta_of(&self, cell: usize) -> &[u8] {
-        let len = self.params.meta_len as usize;
-        &self.meta[cell * len..cell * len + len]
+        let slot = self.params.meta_cap() as usize;
+        let live = self.meta_lens.get(cell).map_or(slot, |len| *len as usize);
+        &self.meta[cell * slot..cell * slot + live]
     }
 
     /// The tape the logic assay reads for one cell: its metabolism tape where the run
@@ -355,21 +453,38 @@ impl World {
     /// The metabolism tapes a world holds the moment they are switched on — at epoch 0 of
     /// a founding run, or at descent from a parent that carried none — read off the
     /// cells' tapes as they stand: zeros, or each cell's first `meta_len` bytes, zero
-    /// padded past a shorter tape. Empty on a world that carries none.
-    fn switched_on_meta(&self) -> Vec<u8> {
+    /// padded past a shorter tape. Every tape is `meta_len` bytes long, in a slot as wide
+    /// as the channel's cap, and on a channel that grows its length is held beside it.
+    /// Empty on a world that carries none.
+    fn switched_on_meta(&self) -> (Vec<u8>, Vec<u32>) {
         if !self.params.carries_meta() {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         }
-        let len = self.params.meta_len as usize;
-        let mut meta = vec![0; self.params.cell_count() * len];
+        let (len, slot) = (
+            self.params.meta_len as usize,
+            self.params.meta_cap() as usize,
+        );
+        let mut meta = vec![0; self.params.cell_count() * slot];
         if self.params.meta_seed == MetaSeed::OwnTape {
-            for (cell, slot) in meta.chunks_mut(len).enumerate() {
+            for (cell, slot) in meta.chunks_mut(slot).enumerate() {
                 let tape = self.tape(cell);
                 let seeded = tape.len().min(len);
                 slot[..seeded].copy_from_slice(&tape[..seeded]);
             }
         }
-        meta
+        let lens = match self.params.meta_grows() {
+            true => vec![self.params.meta_len; self.params.cell_count()],
+            false => Vec::new(),
+        };
+        (meta, lens)
+    }
+
+    /// The fidelity level of one cell's metabolism tape: 0, the base machine, on a world
+    /// that carries no levels.
+    fn level(&self, cell: usize) -> usize {
+        self.meta_fid
+            .get(cell)
+            .map_or(0, |level| usize::from(*level))
     }
 
     fn live_len(&self, cell: usize) -> usize {
@@ -396,7 +511,8 @@ impl World {
     /// lineage observables read a world younger than it is.
     pub fn from_snapshot(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
         let restored = snapshot::decode(params, bytes)?;
-        let meta = restored_meta(params, restored.meta)?;
+        let meta_fid = restored_fidelity(params, restored.meta.as_ref())?;
+        let (meta, meta_lens) = restored_meta(params, restored.meta)?;
         Ok(Self {
             params: params.clone(),
             seed,
@@ -412,6 +528,11 @@ impl World {
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: restored_stock(params, restored.stock)?,
             meta,
+            meta_lens,
+            meta_fid,
+            predation_rate: None,
+            predation_relation_rate: None,
+            predation_memo: PredationMemo::default(),
         })
     }
 
@@ -429,9 +550,13 @@ impl World {
     /// Under the parent's own params and seed the descendant is the parent continued,
     /// byte for byte: the RNG is keyed by seed, stream and epoch and holds no state.
     ///
-    /// A parent's metabolism tapes carry over to a child whose tapes have their length;
-    /// otherwise a child that carries them switches them on here, seeded off the parent's
-    /// tapes as `switched_on_meta` reads them, and a child that carries none drops them.
+    /// A parent's metabolism tapes carry over to a child whose channel holds them: on a
+    /// fixed channel every tape `meta_len` bytes long, and on one that grows every tape at
+    /// most its cap; otherwise a child that carries them switches them on here, seeded off
+    /// the parent's tapes as `switched_on_meta` reads them, and a child that carries none
+    /// drops them. Fidelity levels carry over with the tapes, each clamped to the child's
+    /// range; a parent without them, or tapes switched on afresh, start every cell of a
+    /// child that carries levels at 0, the base machine.
     ///
     /// A descendant is a new run, so its params are validated as `World::new` validates
     /// them. `from_snapshot` does not validate: it resumes a run already under way, which
@@ -458,9 +583,23 @@ impl World {
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: descended_stock(params, restored.stock)?,
             meta: Vec::new(),
+            meta_lens: Vec::new(),
+            meta_fid: fresh_fidelity(params),
+            predation_rate: None,
+            predation_relation_rate: None,
+            predation_memo: PredationMemo::default(),
         };
-        world.meta = match restored.meta {
-            Some(meta) if params.carries_meta() && meta.len == params.meta_len => meta.tapes,
+        (world.meta, world.meta_lens) = match restored.meta {
+            Some(meta) if params.carries_meta() => {
+                let levels = meta.levels.clone();
+                match carried_meta(params, meta) {
+                    Some(carried) => {
+                        world.meta_fid = carried_fidelity(params, levels);
+                        carried
+                    }
+                    None => world.switched_on_meta(),
+                }
+            }
             _ => world.switched_on_meta(),
         };
         Ok(world)
@@ -507,6 +646,7 @@ impl World {
         if self.assays_tasks() {
             self.pay_tasks();
         }
+        self.predate();
         let mut energy = Energy::recharged(&self.params, std::mem::take(&mut self.stock));
         let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
         rng::shuffle(&mut order, rng);
@@ -518,12 +658,15 @@ impl World {
         let mut reversed_copies: u64 = 0;
         let mut thefts: u64 = 0;
         let mut inherits: u64 = 0;
+        let mut grow = MetaGrowth::of(&self.params, self.seed, self.epoch);
+        let mut moves = FidelityMoves::of(&self.params, self.seed, self.epoch);
         for cell in &order {
             let a = *cell as usize;
             let b = self.pick_partner(a, rng);
             #[cfg(test)]
             DRAWN.with_borrow_mut(|drawn| drawn.push((a, b)));
-            if a == b || energy.passed_over(a, b) {
+            let level = self.level(a);
+            if a == b || energy.passed_over(a, b, level) {
                 continue;
             }
             let (live_a, live_b) = (self.live_len(a), self.live_len(b));
@@ -545,7 +688,7 @@ impl World {
                 code_len,
             };
             let outcome = bff::run_stealing(&mut pair, bounds, Theft::stealing(theft, live_a));
-            energy.spend(a, b, outcome.steps);
+            energy.spend(a, b, outcome.steps, level);
             if let Some(theft) = theft {
                 energy.settle(a, b, outcome.steals, &theft);
             }
@@ -582,6 +725,12 @@ impl World {
             }
             self.inherit_lineages(a, b, &pair, &before, live_a);
             let inherited = self.inherit_meta(a, b, &pair, &before, live_a);
+            if let Some(grow) = grow.as_mut().filter(|_| inherited) {
+                self.vary_meta(b, grow);
+            }
+            if let Some(moves) = moves.as_mut().filter(|_| inherited) {
+                self.meta_fid[b] = moves.inherit(self.meta_fid[a]);
+            }
             if counting {
                 inherits += u64::from(inherited);
             }
@@ -597,6 +746,166 @@ impl World {
             self.reverse_copy_rate = share(reversed_copies);
             self.meta_inherit_rate = (interactions > 0).then(|| share(inherits));
         }
+    }
+
+    /// The predation pass (`docs/DESIGN.md` §1.1, "Predation"), before the epoch's influx.
+    /// Every cell, in an order shuffled on `STREAM_PREDATION` at this epoch, acts with
+    /// probability 1 in `predation_every`: a pass that ran for every cell once a period
+    /// would meet a world whose cells initiate in lockstep only when its stocks are empty.
+    /// An actor picks a partner by the soup's own rule and, where `predation` relates the
+    /// two, takes of the partner's stock what a steal op of `predation_transfer` would, and
+    /// is settled as one. It writes the stocks and nothing else.
+    fn predate(&mut self) {
+        if !self.params.predates() {
+            return;
+        }
+        let mut rng = rng::seeded(self.seed, STREAM_PREDATION, self.epoch);
+        let rule = self.params.predation;
+        let mut memo = std::mem::take(&mut self.predation_memo);
+        if rule != Predation::Shadow {
+            memo.redraw(&self.params, self.seed, self.epoch, &mut rng);
+        }
+        let theft = Theft {
+            amount: self.params.predation_transfer,
+            loss: self.params.predation_loss,
+            cap: self.params.energy_stock_cap,
+        };
+        let acts = 1.0 / f64::from(self.params.predation_every);
+        let mut order: Vec<u32> = (0..self.params.cell_count() as u32).collect();
+        rng::shuffle(&mut order, &mut rng);
+        let (mut encounters, mut related, mut moves) = (0u64, 0u64, 0u64);
+        for cell in order {
+            if !rng::chance(&mut rng, acts) {
+                continue;
+            }
+            let a = cell as usize;
+            let b = self.pick_partner(a, &mut rng);
+            if a == b {
+                continue;
+            }
+            encounters += 1;
+            let preys = match rule {
+                Predation::Off => false,
+                Predation::Shadow => rng::chance(&mut rng, self.params.predation_shadow_p),
+                Predation::SubsetClass => memo
+                    .repertoire(self.assayed_tape(a), &self.params)
+                    .covers(&memo.repertoire(self.assayed_tape(b), &self.params)),
+                Predation::Equal => {
+                    memo.repertoire(self.assayed_tape(a), &self.params)
+                        == memo.repertoire(self.assayed_tape(b), &self.params)
+                }
+                Predation::Count => {
+                    memo.repertoire(self.assayed_tape(a), &self.params).count()
+                        > memo.repertoire(self.assayed_tape(b), &self.params).count()
+                }
+            };
+            let moved = match preys {
+                true => theft.takes(self.stock[b]),
+                false => 0,
+            };
+            #[cfg(test)]
+            PREYED.with_borrow_mut(|preyed| preyed.push((a, b, preys, moved)));
+            self.stock[b] -= moved;
+            self.stock[a] = self.stock[a]
+                .saturating_add(theft.delivers(moved))
+                .min(theft.cap);
+            related += u64::from(preys);
+            moves += u64::from(moved > 0);
+        }
+        self.predation_memo = memo;
+        let share = |count: u64| (encounters > 0).then(|| count as f64 / encounters as f64);
+        self.predation_rate = share(moves);
+        self.predation_relation_rate = share(related);
+    }
+
+    /// The predation readings' tally: `task::TASK_SAMPLE_CELLS` cells drawn uniformly with
+    /// replacement on cases and cells of `STREAM_PREDATION_READ`'s own, each distinct
+    /// metabolism tape assayed once over `task_max_outputs` slots, each distinct gene under
+    /// `meta_genes`: the classes credited per cell, summed, and how many cells were
+    /// credited none. It writes nothing.
+    fn repertoire(&self) -> Option<(u64, u64)> {
+        let inputs = self
+            .params
+            .tasks
+            .depth_inputs()
+            .filter(|_| self.params.predates())?;
+        let mut rng = rng::seeded(self.seed, STREAM_PREDATION_READ, self.epoch);
+        let cases = topless::Cases::draw(inputs, &mut rng);
+        let mut memo = self.meta_memo(cases);
+        let cells = self.params.cell_count() as u64;
+        let (mut classes, mut silent) = (0u64, 0u64);
+        for _ in 0..task::TASK_SAMPLE_CELLS {
+            let cell = rng::below(&mut rng, cells) as usize;
+            let count = memo.repertoire(self.assayed_tape(cell)).count();
+            classes += u64::from(count);
+            silent += u64::from(count == 0);
+        }
+        Some((classes, silent))
+    }
+
+    /// The topless assay's memo on `cases`, reading the run's own `task_max_outputs` slots.
+    fn topless_memo<'a>(&self, cases: topless::Cases) -> topless::Memo<'a> {
+        topless::Memo::upto(
+            cases,
+            self.params.op_set(),
+            self.params.logic_nand,
+            self.params.assay_slots(),
+        )
+    }
+
+    /// The same memo reading the assayed tapes as the run's genes, where it has any. Never
+    /// what pays: `meta_genes` is refused on a paid run.
+    fn meta_memo<'a>(&self, cases: topless::Cases) -> topless::Memo<'a> {
+        self.topless_memo(cases).genes(self.params.gene_len())
+    }
+
+    /// `genes_essential_held`: `task::TASK_SAMPLE_CELLS` cells drawn uniformly with
+    /// replacement on cases and cells of `STREAM_GENES_READ`'s own, each distinct gene
+    /// assayed once, and the most essential genes (`topless::essential_genes`) at least a
+    /// tenth of them hold, 26 of 256 compared as integers: 0 where fewer than a tenth hold
+    /// one. `None` unless the run reads genes. It writes nothing.
+    fn genes_essential_held(&self) -> Option<u32> {
+        let inputs = self.params.tasks.depth_inputs();
+        let inputs = inputs.filter(|_| self.params.gene_len().is_some())?;
+        let mut rng = rng::seeded(self.seed, STREAM_GENES_READ, self.epoch);
+        let mut memo = self.meta_memo(topless::Cases::draw(inputs, &mut rng));
+        let cells = self.params.cell_count() as u64;
+        let mut held: Vec<u32> = (0..task::TASK_SAMPLE_CELLS)
+            .map(|_| {
+                let cell = rng::below(&mut rng, cells) as usize;
+                topless::essential_genes(&memo.gene_credits(self.assayed_tape(cell)))
+            })
+            .collect();
+        held.sort_unstable_by(|a, b| b.cmp(a));
+        let tenth = task::TASK_SAMPLE_CELLS.div_ceil(task::TASK_CAPABILITY_DENOMINATOR);
+        Some(held[tenth as usize - 1])
+    }
+
+    /// `fidelity_p10`, `fidelity_p50` and `fidelity_p90`: the levels of
+    /// `task::TASK_SAMPLE_CELLS` cells drawn uniformly with replacement on
+    /// `STREAM_FIDELITY_READ`'s own, sorted, read at the nearest rank (the 26th, 128th and
+    /// 231st of 256). `None` unless the run carries levels. It writes nothing.
+    fn fidelity_percentiles(&self) -> Option<[u32; 3]> {
+        if self.meta_fid.is_empty() {
+            return None;
+        }
+        let mut rng = rng::seeded(self.seed, STREAM_FIDELITY_READ, self.epoch);
+        let cells = self.meta_fid.len() as u64;
+        let mut levels: Vec<u32> = (0..task::TASK_SAMPLE_CELLS)
+            .map(|_| u32::from(self.meta_fid[rng::below(&mut rng, cells) as usize]))
+            .collect();
+        levels.sort_unstable();
+        Some([10, 50, 90].map(|percent| nearest_rank(&levels, percent)))
+    }
+
+    /// The mean live length of the metabolism tapes, over every cell: `None` unless the
+    /// channel grows. It draws nothing.
+    fn meta_len_mean(&self) -> Option<f64> {
+        if self.meta_lens.is_empty() {
+            return None;
+        }
+        let total: u64 = self.meta_lens.iter().map(|len| u64::from(*len)).sum();
+        Some(total as f64 / self.meta_lens.len() as f64)
     }
 
     /// Whether this epoch opens with a task assay: a run that pays for tasks, at a multiple
@@ -644,8 +953,7 @@ impl World {
     /// off `rng`: each distinct rung credited once, by its depth, capped at the run's
     /// `task_depth_cap`.
     fn depth_units(&self, inputs: Inputs, rng: &mut Rng) -> Vec<u32> {
-        let cases = topless::Cases::draw(inputs, rng);
-        let mut memo = topless::Memo::new(cases, self.params.op_set(), self.params.logic_nand);
+        let mut memo = self.topless_memo(topless::Cases::draw(inputs, rng));
         let cap = self.params.depth_cap();
         (0..self.params.cell_count())
             .map(|cell| memo.credit(self.assayed_tape(cell)).units(cap))
@@ -685,24 +993,102 @@ impl World {
         if self.meta.is_empty() || !near_copy(&pair[split..], &before[..split], &before[split..]) {
             return false;
         }
-        let len = self.params.meta_len as usize;
-        self.meta.copy_within(a * len..a * len + len, b * len);
+        let slot = self.params.meta_cap() as usize;
+        if self.meta_lens.is_empty() {
+            self.meta.copy_within(a * slot..a * slot + slot, b * slot);
+            return true;
+        }
+        let (carried, held) = (self.meta_lens[a] as usize, self.meta_lens[b] as usize);
+        self.meta
+            .copy_within(a * slot..a * slot + carried, b * slot);
+        if held > carried {
+            self.meta[b * slot + carried..b * slot + held].fill(0);
+        }
+        self.meta_lens[b] = carried as u32;
         true
+    }
+
+    /// The variation of an inherited metabolism tape on a channel that grows, the design
+    /// study's (§7–§8): with probability `meta_dup` a copy of a random segment of 1 to
+    /// `meta_seg_max` bytes is appended at its end, cut at the cap; then with probability
+    /// `meta_del` a random segment of 1 to `meta_seg_max` bytes is cut out, never below
+    /// `meta_min_len`. A tape at its cap draws no duplicate, one at its floor no deletion.
+    /// Every byte past the live length stays zero.
+    fn vary_meta(&mut self, cell: usize, grow: &mut MetaGrowth) {
+        let slot = self.params.meta_cap() as usize;
+        let mut live = self.meta_lens[cell] as usize;
+        let tape = &mut self.meta[cell * slot..cell * slot + slot];
+        let rng = &mut grow.rng;
+        if rng::chance(rng, grow.dup) && live < slot {
+            let len = 1 + rng::below(rng, grow.seg_max.min(live) as u64) as usize;
+            let from = rng::below(rng, (live - len + 1) as u64) as usize;
+            let appended = len.min(slot - live);
+            tape.copy_within(from..from + appended, live);
+            live += appended;
+        }
+        if rng::chance(rng, grow.del) && live > grow.min {
+            let len = 1 + rng::below(rng, grow.seg_max.min(live - grow.min) as u64) as usize;
+            let from = rng::below(rng, (live - len + 1) as u64) as usize;
+            tape.copy_within(from + len..live, from);
+            tape[live - len..live].fill(0);
+            live -= len;
+        }
+        self.meta_lens[cell] = live as u32;
     }
 
     /// Every metabolism-tape byte offered one draw at `meta_rate`, in cell order, on
     /// `STREAM_META` at this epoch, and redrawn by `meta_draw` where it hits. No other
     /// stream is touched, so the tapes' mutation moves no byte, stock or draw of the soup.
+    /// On a channel that grows only the live bytes are offered, and the hits are found by
+    /// the gaps between them (`rng::Gaps`), the same law at one draw a hit rather than one
+    /// a byte: a slot of thousands of bytes a cell would otherwise cost an epoch thousands
+    /// of draws a cell. Where the tapes carry fidelity, each cell's bytes are offered at its
+    /// own level's rate (`fidelity::rate`).
     fn mutate_meta(&mut self) {
         if self.meta.is_empty() || self.params.meta_rate <= 0.0 {
             return;
         }
         let mut rng = rng::seeded(self.seed, STREAM_META, self.epoch);
         let (rate, draw) = (self.params.meta_rate, self.params.meta_draw);
+        if !self.meta_lens.is_empty() {
+            return self.mutate_live_meta(&mut rng, rate, draw);
+        }
         for byte in &mut self.meta {
             if rng::chance(&mut rng, rate) {
                 *byte = draw_meta_byte(&mut rng, draw);
             }
+        }
+    }
+
+    /// The gaps run on across cells of one level. Where the level changes the pending gap
+    /// is dropped and a fresh one drawn at the new rate from the cell's first byte: a gap
+    /// is memoryless, so what is left of it past a boundary is a fresh gap at its own rate,
+    /// and every byte is still hit independently at its own cell's rate. A world of one
+    /// level everywhere draws exactly what a world without levels draws.
+    fn mutate_live_meta(&mut self, rng: &mut Rng, rate: f64, draw: MetaDraw) {
+        let slot = self.params.meta_cap() as usize;
+        let gaps: Vec<rng::Gaps> = match self.meta_fid.is_empty() {
+            true => vec![rng::Gaps::new(rate)],
+            false => (0..=self.params.meta_fid_max)
+                .map(|level| rng::Gaps::new(fidelity::rate(rate, level)))
+                .collect(),
+        };
+        let level_of = |cell: usize| self.meta_fid.get(cell).map_or(0, |level| *level as usize);
+        let mut level = level_of(0);
+        let mut at = gaps[level].draw(rng);
+        let mut start = 0u64;
+        for (cell, len) in self.meta_lens.iter().enumerate() {
+            let own = level_of(cell);
+            if own != level {
+                level = own;
+                at = start.saturating_add(gaps[level].draw(rng));
+            }
+            let end = start + u64::from(*len);
+            while at < end {
+                self.meta[cell * slot + (at - start) as usize] = draw_meta_byte(rng, draw);
+                at = at.saturating_add(1).saturating_add(gaps[level].draw(rng));
+            }
+            start = end;
         }
     }
 
@@ -832,6 +1218,9 @@ impl World {
         let logic_share = |task: usize| logic.map(|tally| tally.share(task));
         let ranked_meta = self.ranked_meta();
         let depth = self.depth_tally();
+        let repertoire = self.repertoire();
+        let fidelity = self.fidelity_percentiles();
+        let per_sampled = |count: u64| count as f64 / task::TASK_SAMPLE_CELLS as f64;
         let dominant_logic = match self.meta.is_empty() {
             true => census.dominant_logic_tasks,
             false => self.dominant_logic_credit(ranked_meta.first().map(|(tape, _)| *tape)),
@@ -909,6 +1298,17 @@ impl World {
                 .map(|tally| tally.capability()),
             logic_depth_max: depth.as_ref().map(|tally| tally.depth_max()),
             logic_depth_classes: depth.as_ref().map(|tally| tally.classes()),
+            predation_rate: self.predation_rate.filter(|_| self.params.predates()),
+            predation_relation_rate: self
+                .predation_relation_rate
+                .filter(|_| self.params.predates()),
+            repertoire_mean: repertoire.map(|(classes, _)| per_sampled(classes)),
+            silent_share: repertoire.map(|(_, silent)| per_sampled(silent)),
+            meta_len_mean: self.meta_len_mean(),
+            genes_essential_held: self.genes_essential_held(),
+            fidelity_p10: fidelity.map(|[p10, _, _]| p10),
+            fidelity_p50: fidelity.map(|[_, p50, _]| p50),
+            fidelity_p90: fidelity.map(|[_, _, p90]| p90),
         }
     }
 
@@ -957,13 +1357,12 @@ impl World {
             .depth_inputs()
             .filter(|_| self.params.substrate == Substrate::Soup)?;
         let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DEPTH, self.epoch);
-        let cases = topless::Cases::draw(inputs, &mut rng);
-        let mut memo = topless::Memo::new(cases, self.params.op_set(), self.params.logic_nand);
+        let mut memo = self.meta_memo(topless::Cases::draw(inputs, &mut rng));
         let cells = self.params.cell_count() as u64;
         let mut tally = topless::DepthTally::new(inputs);
         for _ in 0..task::TASK_SAMPLE_CELLS {
             let cell = rng::below(&mut rng, cells) as usize;
-            tally.add(&memo.credit(self.assayed_tape(cell)));
+            tally.add(memo.repertoire(self.assayed_tape(cell)).classes());
         }
         Some(tally)
     }
@@ -975,7 +1374,11 @@ impl World {
         if !self.reads_logic() {
             return None;
         }
-        Some(self.logic_tally_on(STREAM_LOGIC_SHARE, |cell| self.assayed_tape(cell)))
+        Some(
+            self.logic_tally_on(STREAM_LOGIC_SHARE, self.params.gene_len(), |cell| {
+                self.assayed_tape(cell)
+            }),
+        )
     }
 
     /// The same tally of the replicating tapes, where the assay reads the metabolism tapes
@@ -985,16 +1388,19 @@ impl World {
         if !self.reads_logic() || self.meta.is_empty() {
             return None;
         }
-        Some(self.logic_tally_on(STREAM_LOGIC_REPLICATING, |cell| self.tape(cell)))
+        Some(self.logic_tally_on(STREAM_LOGIC_REPLICATING, None, |cell| self.tape(cell)))
     }
 
+    /// One logic tally on `stream`, reading `tape` of each sampled cell, as genes of
+    /// `gene_len` bytes where it is set.
     fn logic_tally_on<'a>(
         &'a self,
         stream: u64,
+        gene_len: Option<usize>,
         tape: impl Fn(usize) -> &'a [u8],
     ) -> logic::LogicTally {
         let mut rng = rng::seeded(self.seed, stream, self.epoch);
-        let mut memo = LogicReader::draw(&self.params, &mut rng);
+        let mut memo = LogicReader::draw(&self.params, &mut rng, gene_len);
         let cells = self.params.cell_count() as u64;
         let mut tally = logic::LogicTally::default();
         for _ in 0..task::TASK_SAMPLE_CELLS {
@@ -1010,9 +1416,10 @@ impl World {
         if self.meta.is_empty() {
             return Vec::new();
         }
-        metrics::ranked_tapes(metrics::Tapes::uniform(
+        metrics::ranked_tapes(metrics::Tapes::ragged(
             &self.meta,
-            self.params.meta_len as usize,
+            self.params.meta_cap() as usize,
+            &self.meta_lens,
         ))
     }
 
@@ -1022,7 +1429,7 @@ impl World {
     fn dominant_logic_credit(&self, tape: Option<&[u8]>) -> Option<logic::Credit> {
         let tape = tape.filter(|_| self.reads_logic())?;
         let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DOMINANT, self.epoch);
-        Some(LogicReader::draw(&self.params, &mut rng).credit(tape))
+        Some(LogicReader::draw(&self.params, &mut rng, self.params.gene_len()).credit(tape))
     }
 
     /// The orientation-aware companion of the census: `SELF_REP_SAMPLE_CELLS` cells drawn
@@ -1239,6 +1646,11 @@ thread_local! {
     static DRAWN: std::cell::RefCell<Vec<(usize, usize)>> = const {
         std::cell::RefCell::new(Vec::new())
     };
+    /// Every encounter the predation pass has met on this thread: the actor, its partner,
+    /// whether the relation held, and what the partner gave up.
+    static PREYED: std::cell::RefCell<Vec<(usize, usize, bool, u32)>> = const {
+        std::cell::RefCell::new(Vec::new())
+    };
 }
 
 /// What the epoch's cells may spend on instructions, out of the two economies the
@@ -1248,13 +1660,17 @@ thread_local! {
 /// an empty purse is what off means: nothing is allocated and nothing bounds an
 /// interaction but `max_steps`. Who pays out of the stock is the run's `energy_payer`:
 /// both cells what ran, or — at `initiator`, which validation keeps apart from the
-/// allowance — the initiator alone the fixed `price`.
+/// allowance — the initiator alone the fixed `price`, or under priced fidelity its own
+/// level's price.
 struct Energy {
     allowance: Vec<u32>,
     stock: Vec<u32>,
     /// The price one interaction costs its initiator; `None` under the pair rule, and with
     /// no stock to pay it from, where the initiator rule is inert as the steal op is.
     price: Option<u32>,
+    /// The price of each fidelity level, 0 to `meta_fid_max` (`fidelity::prices`), in
+    /// place of `price`; empty unless fidelity is priced. The step budget stays `price`.
+    level_prices: Vec<u32>,
 }
 
 impl Energy {
@@ -1274,7 +1690,17 @@ impl Energy {
             stock,
             price: (params.stocked() && params.energy_payer == EnergyPayer::Initiator)
                 .then_some(params.max_steps),
+            level_prices: match params.prices_fidelity() {
+                true => fidelity::prices(params),
+                false => Vec::new(),
+            },
         }
+    }
+
+    /// What an initiator at fidelity `level` pays, under the initiator rule.
+    fn price_at(&self, level: usize) -> Option<u32> {
+        self.price
+            .map(|price| self.level_prices.get(level).copied().unwrap_or(price))
     }
 
     /// How many instructions one interaction may execute: what the poorer of the two cells
@@ -1302,21 +1728,21 @@ impl Energy {
     }
 
     /// Whether the pair `a` opens is skipped this turn: under the pair rule when either
-    /// stock is empty, under the initiator rule when `a` cannot pay the price. The
-    /// initiator's partner is never gated, so a poor cell is still drawn and executed as
-    /// one.
-    fn passed_over(&self, a: usize, b: usize) -> bool {
-        match self.price {
+    /// stock is empty, under the initiator rule when `a` cannot pay the price of its
+    /// fidelity `level`. The initiator's partner is never gated, so a poor cell is still
+    /// drawn and executed as one.
+    fn passed_over(&self, a: usize, b: usize, level: usize) -> bool {
+        match self.price_at(level) {
             Some(price) => self.stock[a] < price,
             None => self.starved(a, b),
         }
     }
 
     /// Debits an interaction: under the pair rule both cells with the instructions it
-    /// executed; under the initiator rule the initiator alone with the full price, however
-    /// few ran, so a copier that halts early saves nothing by it.
-    fn spend(&mut self, a: usize, b: usize, steps: u32) {
-        if let Some(price) = self.price {
+    /// executed; under the initiator rule the initiator alone with the full price of its
+    /// fidelity `level`, however few ran, so a copier that halts early saves nothing by it.
+    fn spend(&mut self, a: usize, b: usize, steps: u32, level: usize) {
+        if let Some(price) = self.price_at(level) {
             self.stock[a] -= price;
             return;
         }
@@ -1497,11 +1923,217 @@ fn near_copy(result: &[u8], source: &[u8], arrived: &[u8]) -> bool {
 fn restored_meta(
     params: &Params,
     meta: Option<snapshot::Metabolism>,
-) -> Result<Vec<u8>, SnapshotError> {
+) -> Result<(Vec<u8>, Vec<u32>), SnapshotError> {
     match (meta, params.carries_meta()) {
-        (None, false) => Ok(Vec::new()),
-        (Some(meta), true) if meta.len == params.meta_len => Ok(meta.tapes),
+        (None, false) => Ok((Vec::new(), Vec::new())),
+        (Some(meta), true) => match (meta.lens, params.meta_grows()) {
+            (None, false) if meta.len == params.meta_len => Ok((meta.tapes, Vec::new())),
+            (Some(lens), true) if meta.len == params.meta_cap() => Ok((meta.tapes, lens)),
+            _ => Err(SnapshotError::Mismatch { field: "meta_len" }),
+        },
         _ => Err(SnapshotError::Mismatch { field: "meta_len" }),
+    }
+}
+
+/// A parent's metabolism tapes as a descendant's channel holds them, `None` where it
+/// cannot: on a fixed channel each tape must be `meta_len` bytes long, and on one that
+/// grows at most its cap, laid into slots as wide as that cap.
+fn carried_meta(params: &Params, meta: snapshot::Metabolism) -> Option<(Vec<u8>, Vec<u32>)> {
+    let slot = params.meta_cap() as usize;
+    let lens = meta
+        .lens
+        .unwrap_or_else(|| vec![meta.len; params.cell_count()]);
+    let fits = |len: &u32| match params.meta_grows() {
+        true => *len as usize <= slot,
+        false => *len == params.meta_len,
+    };
+    if !lens.iter().all(fits) {
+        return None;
+    }
+    let from = meta.len as usize;
+    let mut tapes = vec![0; params.cell_count() * slot];
+    for (cell, len) in lens.iter().enumerate() {
+        let len = *len as usize;
+        tapes[cell * slot..cell * slot + len]
+            .copy_from_slice(&meta.tapes[cell * from..cell * from + len]);
+    }
+    let lens = match params.meta_grows() {
+        true => lens,
+        false => Vec::new(),
+    };
+    Some((tapes, lens))
+}
+
+/// A growing metabolism channel's variation operators for one epoch, drawing on
+/// `STREAM_META_GROW` at that epoch in the order the epoch's inheritances happen.
+struct MetaGrowth {
+    rng: Rng,
+    dup: f64,
+    del: f64,
+    seg_max: usize,
+    min: usize,
+}
+
+impl MetaGrowth {
+    /// `None` on a channel that cannot grow, which draws nothing.
+    fn of(params: &Params, seed: u64, epoch: u64) -> Option<Self> {
+        params.meta_grows().then(|| Self {
+            rng: rng::seeded(seed, STREAM_META_GROW, epoch),
+            dup: params.meta_dup,
+            del: params.meta_del,
+            seg_max: params.meta_seg_max as usize,
+            min: params.meta_min_len as usize,
+        })
+    }
+}
+
+/// The `percent`th percentile of `sorted` by nearest rank: the value at rank
+/// ⌈`percent` × n / 100⌉, counted from 1.
+fn nearest_rank(sorted: &[u32], percent: u32) -> u32 {
+    let rank = (sorted.len() * percent as usize).div_ceil(100);
+    sorted[rank - 1]
+}
+
+/// The levels of a world that carries fidelity at its start: every cell at 0, the base
+/// machine. Empty on a world that carries none.
+fn fresh_fidelity(params: &Params) -> Vec<u8> {
+    match params.carries_fidelity() {
+        true => vec![0; params.cell_count()],
+        false => Vec::new(),
+    }
+}
+
+/// The resumed run's fidelity levels. Like its metabolism tapes they are state the run
+/// spent epochs arriving at, so params that carry them meeting a blob without them — or
+/// the reverse, or a level past the params' range — are refused rather than minted or
+/// dropped.
+fn restored_fidelity(
+    params: &Params,
+    meta: Option<&snapshot::Metabolism>,
+) -> Result<Vec<u8>, SnapshotError> {
+    let levels = meta.and_then(|meta| meta.levels.clone());
+    match (levels, params.carries_fidelity()) {
+        (None, false) => Ok(Vec::new()),
+        (Some(levels), true)
+            if levels
+                .iter()
+                .all(|level| u32::from(*level) <= params.meta_fid_max) =>
+        {
+            Ok(levels)
+        }
+        _ => Err(SnapshotError::Mismatch {
+            field: "meta_fid_max",
+        }),
+    }
+}
+
+/// A parent's fidelity levels as a descendant carries them with its tapes: each clamped to
+/// the child's range, every cell at 0 where the parent carried none, and none at all where
+/// the child carries no levels.
+fn carried_fidelity(params: &Params, levels: Option<Vec<u8>>) -> Vec<u8> {
+    let top = params.meta_fid_max.min(u32::from(u8::MAX)) as u8;
+    match (levels, params.carries_fidelity()) {
+        (Some(levels), true) => levels.into_iter().map(|level| level.min(top)).collect(),
+        (None, true) => fresh_fidelity(params),
+        (_, false) => Vec::new(),
+    }
+}
+
+/// The epoch's moves of inherited fidelity levels: with probability `meta_fid_rate` a
+/// level steps one up or one down, on a fair coin, never past 0 or `meta_fid_max`.
+/// Drawn on `STREAM_META_FID` at that epoch in the order the epoch's inheritances happen.
+struct FidelityMoves {
+    rng: Rng,
+    rate: f64,
+    top: u8,
+}
+
+impl FidelityMoves {
+    /// `None` on a world that carries no levels, which draws nothing.
+    fn of(params: &Params, seed: u64, epoch: u64) -> Option<Self> {
+        params.carries_fidelity().then(|| Self {
+            rng: rng::seeded(seed, STREAM_META_FID, epoch),
+            rate: params.meta_fid_rate,
+            top: params.meta_fid_max as u8,
+        })
+    }
+
+    /// The level a tape inherited at `level` arrives with.
+    fn inherit(&mut self, level: u8) -> u8 {
+        if !rng::chance(&mut self.rng, self.rate) {
+            return level;
+        }
+        match rng::below(&mut self.rng, 2) {
+            1 => level.saturating_add(1).min(self.top),
+            _ => level.saturating_sub(1),
+        }
+    }
+}
+
+/// The predation pass's reading of what each metabolism tape computes: the cases of the
+/// period under way and the credit of every distinct tape read on them so far.
+#[derive(Debug, Clone, Default)]
+struct PredationMemo {
+    drawn: Option<(u64, topless::Cases)>,
+    seen: HashMap<Vec<u8>, topless::Credit>,
+}
+
+impl PredationMemo {
+    /// Holds the cases of the period `epoch` falls in, drawn first off that period's first
+    /// epoch's `STREAM_PREDATION`: off `rng` itself at that epoch, and off a fresh copy of
+    /// that epoch's stream at any later one the memo does not yet hold them for, which is
+    /// how a restored world reads the cases the uninterrupted run read.
+    fn redraw(&mut self, params: &Params, seed: u64, epoch: u64, rng: &mut Rng) {
+        let Some(inputs) = params.tasks.depth_inputs() else {
+            return;
+        };
+        let drawn_at = epoch - epoch % u64::from(params.predation_every);
+        let cases = if epoch == drawn_at {
+            topless::Cases::draw(inputs, rng)
+        } else if self.drawn.is_some_and(|(at, _)| at == drawn_at) {
+            return;
+        } else {
+            topless::Cases::draw(inputs, &mut rng::seeded(seed, STREAM_PREDATION, drawn_at))
+        };
+        self.drawn = Some((drawn_at, cases));
+        self.seen.clear();
+    }
+
+    /// The classes `tape` computes on the period's cases: its credit, or under `meta_genes`
+    /// the union of its genes', each distinct gene assayed once a period.
+    fn repertoire(&mut self, tape: &[u8], params: &Params) -> topless::Repertoire {
+        match params.gene_len() {
+            None => topless::Repertoire::union([&self.credit(tape, params)]),
+            Some(gene_len) => {
+                let credits: Vec<topless::Credit> = topless::genes(tape, gene_len)
+                    .map(|gene| self.credit(&gene, params))
+                    .collect();
+                topless::Repertoire::union(&credits)
+            }
+        }
+    }
+
+    /// The classes `tape` computes on the period's cases, over the run's
+    /// `task_max_outputs` slots; a tape holding no emit byte computes none.
+    fn credit(&mut self, tape: &[u8], params: &Params) -> topless::Credit {
+        let (_, cases) = self
+            .drawn
+            .expect("the cases are drawn before a credit is read");
+        if !tape.contains(&bff::EMIT) {
+            return topless::Credit::none(cases.inputs());
+        }
+        if let Some(credit) = self.seen.get(tape) {
+            return *credit;
+        }
+        let credit = topless::assay_upto(
+            tape,
+            &cases,
+            params.op_set(),
+            params.logic_nand,
+            params.assay_slots(),
+        );
+        self.seen.insert(tape.to_vec(), credit);
+        credit
     }
 }
 
@@ -1515,13 +2147,19 @@ enum LogicReader<'a> {
 
 impl<'a> LogicReader<'a> {
     /// The reader of `params`' ladder, its cases drawn off `rng` as that ladder's payment
-    /// draws them.
-    fn draw(params: &Params, rng: &mut Rng) -> Self {
+    /// draws them, reading a tape as genes of `gene_len` bytes where it is set.
+    fn draw(params: &Params, rng: &mut Rng, gene_len: Option<usize>) -> Self {
         let (ops, nand) = (params.op_set(), params.logic_nand);
         match params.tasks.depth_inputs() {
             None => Self::Two(logic::Memo::new(logic::Cases::draw(rng), ops, nand)),
             Some(inputs) => Self::Topless(
-                topless::Memo::new(topless::Cases::draw(inputs, rng), ops, nand),
+                topless::Memo::upto(
+                    topless::Cases::draw(inputs, rng),
+                    ops,
+                    nand,
+                    params.assay_slots(),
+                )
+                .genes(gene_len),
                 inputs.two_input_rungs(),
             ),
         }
@@ -1530,7 +2168,7 @@ impl<'a> LogicReader<'a> {
     fn credit(&mut self, tape: &'a [u8]) -> logic::Credit {
         match self {
             Self::Two(memo) => memo.credit(tape),
-            Self::Topless(memo, rungs) => memo.credit(tape).two_input(rungs),
+            Self::Topless(memo, rungs) => memo.repertoire(tape).two_input(rungs),
         }
     }
 }
@@ -2868,7 +3506,7 @@ mod tests {
         assert!(!energy.starved(0, 1));
         assert_eq!(energy.budget(0, 1, 64), 4, "the poorer of the two stocks");
 
-        energy.spend(0, 1, 4);
+        energy.spend(0, 1, 4, 0);
         assert!(
             energy.starved(0, 1),
             "a cell that spent its last instruction was executed again"
@@ -3115,6 +3753,7 @@ mod tests {
             allowance: Vec::new(),
             stock,
             price: None,
+            level_prices: Vec::new(),
         }
     }
 
@@ -5321,9 +5960,12 @@ mod tests {
         });
         let mut energy = Energy::recharged(&params, vec![0, 64, 60, 64]);
         assert_eq!(energy.stock, vec![8, 64, 64, 64]);
-        assert!(energy.passed_over(0, 1), "a cell below the price initiated");
         assert!(
-            !energy.passed_over(1, 0),
+            energy.passed_over(0, 1, 0),
+            "a cell below the price initiated"
+        );
+        assert!(
+            !energy.passed_over(1, 0, 0),
             "a poor partner gated a rich initiator"
         );
         assert_eq!(
@@ -5332,7 +5974,7 @@ mod tests {
             "the poorer stock set the budget"
         );
 
-        energy.spend(1, 0, 3);
+        energy.spend(1, 0, 3, 0);
         assert_eq!(
             energy.stock,
             vec![8, 0, 64, 64],
@@ -5351,7 +5993,7 @@ mod tests {
             ..soup(4, 4)
         });
         let mut energy = Energy::recharged(&params, vec![100, 20, 0, 0]);
-        energy.spend(0, 1, 5);
+        energy.spend(0, 1, 5, 0);
         energy.settle(0, 1, [1, 1], &theft(10, 0.5, 128));
         assert_eq!(energy.stock[..2], [44 - 10 + 5, 28 - 10 + 5]);
     }
@@ -7685,6 +8327,1742 @@ mod tests {
             }
             let sample = started.elapsed().as_secs_f64() * 1000.0 / 24.0;
             println!("{tasks:?}: {per_epoch:.2} ms an assay epoch, {sample:.3} ms the sample readings, {distinct} distinct tapes");
+        }
+    }
+
+    /// The out-compute bundle of the design study (§4.4) on `rewarded_params`' economy: an
+    /// unpaid four-input ladder on 32-byte metabolism tapes seeded from each cell's own
+    /// tape, every slot of 16 read, a whole initiation taken at a loss of half.
+    fn predation_params(predation: Predation) -> Params {
+        Params {
+            tasks: Tasks::Logic4,
+            task_reward: 0,
+            logic_nand: LogicNand::Stack,
+            meta_len: 32,
+            meta_rate: 8.0 / 8192.0,
+            meta_draw: MetaDraw::Isa,
+            meta_seed: MetaSeed::OwnTape,
+            task_max_outputs: 16,
+            predation,
+            predation_transfer: 8192,
+            ..rewarded_params()
+        }
+    }
+
+    const PREDATORY: [Predation; 3] = [Predation::SubsetClass, Predation::Equal, Predation::Shadow];
+
+    fn without_predation(params: &Params) -> Params {
+        let defaults = Params::default();
+        Params {
+            predation: defaults.predation,
+            predation_transfer: defaults.predation_transfer,
+            predation_loss: defaults.predation_loss,
+            predation_every: defaults.predation_every,
+            predation_shadow_p: defaults.predation_shadow_p,
+            ..params.clone()
+        }
+    }
+
+    fn predation_digest(measured: &Metrics) -> String {
+        format!(
+            "predation_rate={:?} predation_relation_rate={:?} repertoire_mean={:?} \
+             silent_share={:?}",
+            measured.predation_rate,
+            measured.predation_relation_rate,
+            measured.repertoire_mean,
+            measured.silent_share
+        )
+    }
+
+    const UNREAD_PREDATION: &str = "predation_rate=None predation_relation_rate=None \
+         repertoire_mean=None silent_share=None";
+
+    /// Kinds of metabolism tape, each 256 bytes: one computing nothing, one ECHO, one XOR4,
+    /// and one emitting x four times and then XOR4, so it computes ECHO and XOR4 on more
+    /// than four slots.
+    fn prey_tapes() -> [Vec<u8>; 4] {
+        let xor4 = depth_solver(Inputs::Four, 0x6996, LogicNand::Stack);
+        let mut wide = vec![bff::HEAD0_LEFT];
+        wide.extend([bff::EMIT; task::TASK_MAX_OUTPUTS]);
+        wide.push(bff::HEAD0_RIGHT);
+        wide.extend(&xor4);
+        [Vec::new(), b"<!".to_vec(), xor4, wide].map(|mut tape| {
+            tape.resize(256, 0);
+            tape
+        })
+    }
+
+    /// Whether a cell of kind `a` of `prey_tapes` covers one of kind `b`: silence is
+    /// covered by everything, the wide tape covers everything, and each kind itself.
+    fn covers(a: usize, b: usize) -> bool {
+        a == b || b == 0 || a == 3
+    }
+
+    /// A still 8×8 world of `prey_tapes` laid by `kind`, every cell acting every epoch and
+    /// holding 1 000, so every take is the whole transfer of 100.
+    fn prey_world(predation: Predation, kind: impl Fn(u32, u32) -> usize) -> World {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            meta_len: 256,
+            meta_rate: 0.0,
+            meta_seed: MetaSeed::Zeros,
+            predation_every: 1,
+            predation_transfer: 100,
+            width: 8,
+            height: 8,
+            ..predation_params(predation)
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let tapes = prey_tapes();
+        for y in 0..8 {
+            for x in 0..8 {
+                world.set_metabolism(x, y, &tapes[kind(x, y)]);
+            }
+        }
+        world.stock.fill(1000);
+        world
+    }
+
+    fn mixed_kind(x: u32, y: u32) -> usize {
+        ((x + 3 * y) % 4) as usize
+    }
+
+    /// Runs `passes` predation passes alone, one epoch apart, and returns every encounter.
+    fn preyed(world: &mut World, passes: u64) -> Vec<(usize, usize, bool, u32)> {
+        PREYED.take();
+        for _ in 0..passes {
+            world.predate();
+            world.epoch += 1;
+        }
+        PREYED.take()
+    }
+
+    /// Under `subset_class` an actor takes from a partner exactly when it computes every
+    /// class the partner does: a silent partner is everyone's prey, kin eat kin, the wide
+    /// tape eats everything and nothing eats it but its own kind; each take is the
+    /// transfer, half of it destroyed.
+    #[test]
+    fn subset_class_moves_energy_only_where_the_actor_covers_the_partner() {
+        let mut world = prey_world(Predation::SubsetClass, mixed_kind);
+        let before: u64 = world.stock.iter().map(|held| u64::from(*held)).sum();
+        let kind = |cell: usize| mixed_kind(cell as u32 % 8, cell as u32 / 8);
+        let encounters = preyed(&mut world, 4);
+        assert!(encounters.len() > 200);
+        for (a, b, preys, moved) in &encounters {
+            assert_eq!(*preys, covers(kind(*a), kind(*b)), "{a} on {b}");
+            assert_eq!(*moved, if *preys { 100 } else { 0 });
+        }
+        let seen = |a: usize, b: usize, preys: bool| {
+            encounters
+                .iter()
+                .any(|(x, y, p, _)| kind(*x) == a && kind(*y) == b && *p == preys)
+        };
+        assert!(
+            seen(0, 0, true),
+            "the empty set is prey even to the empty set"
+        );
+        assert!(seen(1, 0, true) && seen(2, 0, true));
+        assert!(seen(1, 1, true) && seen(2, 2, true), "kin eat kin");
+        assert!(seen(3, 1, true) && seen(3, 2, true));
+        assert!(seen(1, 2, false) && seen(2, 1, false) && seen(0, 1, false));
+        assert!(seen(1, 3, false) && seen(2, 3, false));
+        let moved: u64 = encounters.iter().map(|(_, _, _, m)| u64::from(*m)).sum();
+        let after: u64 = world.stock.iter().map(|held| u64::from(*held)).sum();
+        assert_eq!(after, before - moved / 2);
+    }
+
+    /// Under `equal` an actor takes only from a partner computing exactly what it does.
+    #[test]
+    fn equal_moves_energy_only_between_equal_sets() {
+        let mut world = prey_world(Predation::Equal, mixed_kind);
+        let kind = |cell: usize| mixed_kind(cell as u32 % 8, cell as u32 / 8);
+        let encounters = preyed(&mut world, 4);
+        for (a, b, preys, _) in &encounters {
+            assert_eq!(*preys, kind(*a) == kind(*b), "{a} on {b}");
+        }
+        assert!(encounters.iter().any(|(_, _, preys, _)| *preys));
+        assert!(encounters
+            .iter()
+            .any(|(a, b, preys, _)| kind(*b) == 0 && kind(*a) != 0 && !preys));
+    }
+
+    /// Under `shadow` a coin at `predation_shadow_p` decides, reading no computation: the
+    /// same draws whatever the tapes compute, and a share of encounters near the coin.
+    #[test]
+    fn shadow_moves_energy_at_its_rate_and_reads_no_computation() {
+        let mut silent = prey_world(Predation::Shadow, |_, _| 0);
+        let mut wide = prey_world(Predation::Shadow, |_, _| 3);
+        let (read, other) = (preyed(&mut silent, 8), preyed(&mut wide, 8));
+        assert_eq!(read, other);
+        let rate = read.iter().filter(|(_, _, preys, _)| *preys).count() as f64 / read.len() as f64;
+        assert!((rate - 0.3).abs() < 0.07, "{rate}");
+        let mut sure = prey_world(Predation::Shadow, |_, _| 0);
+        sure.params.predation_shadow_p = 1.0;
+        assert!(preyed(&mut sure, 2).iter().all(|(_, _, preys, _)| *preys));
+        let mut never = prey_world(Predation::Shadow, |_, _| 0);
+        never.params.predation_shadow_p = 0.0;
+        assert!(preyed(&mut never, 2).iter().all(|(_, _, preys, _)| !preys));
+    }
+
+    /// A partner poorer than the transfer gives up what it holds, and an actor's take never
+    /// passes the cap.
+    #[test]
+    fn a_predation_settles_as_a_steal_op_does() {
+        let mut world = prey_world(Predation::SubsetClass, |_, _| 0);
+        world.stock.fill(30);
+        let met = preyed(&mut world, 1);
+        assert_eq!(met[0].3, 30, "the first take is all the partner holds");
+        // A cell holds at most 30 and half of what it takes, so under 60.
+        assert!(met.iter().all(|(_, _, preys, moved)| *preys && *moved < 60));
+        let mut full = prey_world(Predation::SubsetClass, |_, _| 0);
+        full.params.energy_stock_cap = 1000;
+        preyed(&mut full, 1);
+        assert!(full.stock.iter().all(|held| *held <= 1000));
+    }
+
+    /// The trap the study's pilot fell into: cells that initiate in lockstep hold empty
+    /// stocks at one phase of their cycle, where a pass run once a period would move
+    /// nothing, ever. The asynchronous pass acts at every phase, so the world still sees
+    /// transfers; at epoch 0, where every stock is empty, it moves nothing.
+    #[test]
+    fn the_pass_meets_a_lockstep_world_at_every_phase_of_its_cycle() {
+        let params = Params {
+            init: Init::Zero,
+            mutation_rate: 0.0,
+            meta_rate: 0.0,
+            max_steps: 64,
+            energy_influx: 8,
+            energy_stock_cap: 256,
+            predation_transfer: 64,
+            ..predation_params(Predation::SubsetClass)
+        };
+        let mut world = World::new(&params, 11).unwrap();
+        world.stock.fill(0);
+        let mut phases = BTreeSet::new();
+        let mut moved = 0;
+        for epoch in 0..24 {
+            PREYED.take();
+            world.step();
+            let met = PREYED.take();
+            assert!(met.iter().all(|(_, _, preys, _)| *preys), "silence is prey");
+            if !met.is_empty() {
+                phases.insert(epoch % 8);
+            }
+            let taken: u32 = met.iter().map(|(_, _, _, m)| *m).sum();
+            if epoch == 0 {
+                assert_eq!(taken, 0);
+            }
+            moved += taken;
+        }
+        assert_eq!(phases.len(), 8);
+        assert!(moved > 0);
+    }
+
+    /// At `off`, or at a transfer of 0, the pass draws nothing and moves nothing: the run
+    /// is the run without predation, byte for byte and reading for reading, however the
+    /// other predation settings stand.
+    #[test]
+    fn predation_off_is_the_run_without_predation() {
+        let narrow = Params {
+            task_max_outputs: 4,
+            ..predation_params(Predation::Off)
+        };
+        let still = Params {
+            predation_transfer: 0,
+            ..predation_params(Predation::SubsetClass)
+        };
+        for params in [narrow, still] {
+            let mut off = World::new(&params, 42).unwrap();
+            let mut plain = World::new(&without_predation(&params), 42).unwrap();
+            for _ in 0..4 {
+                for _ in 0..5 {
+                    off.step();
+                    plain.step();
+                }
+                let measured = off.metrics();
+                assert_eq!(predation_digest(&measured), UNREAD_PREDATION);
+                assert_eq!(measured, plain.metrics());
+            }
+            assert_eq!(off.world_hash(), plain.world_hash());
+            assert_eq!(off.snapshot(), plain.snapshot());
+        }
+        let wide = stepped_world(
+            World::new(&predation_params(Predation::Off), 42).unwrap(),
+            20,
+        );
+        let narrow = Params {
+            task_max_outputs: 4,
+            ..predation_params(Predation::Off)
+        };
+        let twin = stepped_world(World::new(&narrow, 42).unwrap(), 20);
+        assert_eq!(
+            wide.world_hash(),
+            twin.world_hash(),
+            "the slots read move no byte"
+        );
+    }
+
+    #[test]
+    fn determinism_holds_under_predation() {
+        for (seed, predation) in [7, 8, 9].into_iter().zip(PREDATORY) {
+            for predation_every in [1, 3] {
+                assert_deterministic(
+                    &Params {
+                        max_steps: 64,
+                        energy_influx: 8,
+                        energy_stock_cap: 256,
+                        predation_transfer: 48,
+                        predation_every,
+                        width: 16,
+                        height: 16,
+                        ..predation_params(predation)
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// A world restored mid-period reads its encounters on the cases the uninterrupted run
+    /// drew at the period's first epoch, not on a draw of its own. The hash test above
+    /// cannot see this on a random soup, whose tapes compute next to nothing on any cases,
+    /// so the cases are compared outright; and `shadow`, reading no computation, draws none.
+    #[test]
+    fn a_world_restored_mid_period_reads_the_cases_of_the_period() {
+        let params = predation_params(Predation::SubsetClass);
+        assert_eq!(params.predation_every, 8);
+        let mut whole = stepped_world(World::new(&params, 42).unwrap(), 11);
+        let mut restored = World::from_snapshot(&params, 42, &whole.snapshot()).unwrap();
+        for _ in 0..2 {
+            whole.step();
+            restored.step();
+        }
+        let drawn = whole.predation_memo.drawn;
+        assert_eq!(drawn.map(|(at, _)| at), Some(8));
+        assert_eq!(restored.predation_memo.drawn, drawn);
+        let inputs = params.tasks.depth_inputs().unwrap();
+        let own = topless::Cases::draw(inputs, &mut rng::seeded(42, STREAM_PREDATION, 11));
+        assert_ne!(drawn.map(|(_, cases)| cases), Some(own));
+        let shadow = stepped_world(
+            World::new(&predation_params(Predation::Shadow), 42).unwrap(),
+            13,
+        );
+        assert_eq!(shadow.predation_memo.drawn, None);
+    }
+
+    /// The predation runs' own pins: `predation_params` on a 32×32 random soup, seed 42,
+    /// after 40 epochs, one per relation, each apart from the run without predation.
+    const PINNED_PREDATION_HASHES: [u64; 3] = [
+        0x32ac_4fdb_4f91_8468,
+        0x675b_25a4_3073_6116,
+        0xbbf3_170c_125b_d800,
+    ];
+
+    #[test]
+    fn the_predation_runs_are_pinned() {
+        let plain = stepped_world(
+            World::new(&without_predation(&predation_params(Predation::Off)), 42).unwrap(),
+            40,
+        );
+        for (predation, pin) in PREDATORY.into_iter().zip(PINNED_PREDATION_HASHES) {
+            let run = stepped_world(World::new(&predation_params(predation), 42).unwrap(), 40);
+            assert_eq!(run.world_hash(), pin, "{predation:?}");
+            assert_ne!(run.world_hash(), plain.world_hash());
+        }
+    }
+
+    /// The predation readings of those runs at epoch 40, pinned apart from every digest
+    /// above. A random soup's own first 32 bytes compute next to nothing.
+    const PINNED_PREDATION_READINGS: [&str; 3] = [
+        "predation_rate=Some(0.8809523809523809) predation_relation_rate=Some(0.9761904761904762) \
+         repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
+        "predation_rate=Some(0.8650793650793651) predation_relation_rate=Some(0.9523809523809523) \
+         repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
+        "predation_rate=Some(0.3) predation_relation_rate=Some(0.3230769230769231) \
+         repertoire_mean=Some(0.00390625) silent_share=Some(0.99609375)",
+    ];
+
+    #[test]
+    fn the_predation_readings_of_a_fixed_seed_are_pinned() {
+        for (predation, pin) in PREDATORY.into_iter().zip(PINNED_PREDATION_READINGS) {
+            let mut run = stepped_world(World::new(&predation_params(predation), 42).unwrap(), 40);
+            assert_eq!(predation_digest(&run.metrics()), pin, "{predation:?}");
+        }
+    }
+
+    /// The rate is the share of the last pass's encounters that moved energy; the
+    /// repertoire readings count the classes of the sampled cells' metabolism tapes.
+    #[test]
+    fn the_predation_readings_read_the_last_pass_and_the_sampled_tapes() {
+        let mut world = prey_world(Predation::SubsetClass, |x, _| if x < 4 { 0 } else { 3 });
+        world.stock.iter_mut().step_by(2).for_each(|held| *held = 0);
+        let met = preyed(&mut world, 1);
+        let moving = met.iter().filter(|(_, _, _, moved)| *moved > 0).count();
+        assert!(moving > 0 && moving < met.len());
+        let measured = world.metrics();
+        assert_eq!(
+            measured.predation_rate,
+            Some(moving as f64 / met.len() as f64)
+        );
+        let related = met.iter().filter(|(_, _, preys, _)| *preys).count();
+        assert!(
+            moving < related && related < met.len(),
+            "an empty partner is still prey, and gives nothing"
+        );
+        assert_eq!(
+            measured.predation_relation_rate,
+            Some(related as f64 / met.len() as f64)
+        );
+        let silent = measured.silent_share.unwrap();
+        assert!(silent > 0.3 && silent < 0.7, "{silent}");
+        assert_eq!(measured.repertoire_mean, Some((1.0 - silent) * 2.0));
+        let mut all_wide = prey_world(Predation::SubsetClass, |_, _| 3);
+        let measured = all_wide.metrics();
+        assert_eq!(
+            (
+                measured.predation_rate,
+                measured.predation_relation_rate,
+                measured.repertoire_mean,
+                measured.silent_share
+            ),
+            (None, None, Some(2.0), Some(0.0)),
+            "no pass has run yet"
+        );
+    }
+
+    /// The readings only read, on a stream of their own: reading every sample moves no
+    /// byte or stock, a sample read twice or after a restore reads the same repertoire,
+    /// and neither of the pass's streams is one anything else draws on.
+    #[test]
+    fn the_predation_readings_move_nothing_and_draw_on_a_stream_of_their_own() {
+        let params = predation_params(Predation::SubsetClass);
+        let mut read = World::new(&params, 42).unwrap();
+        let mut unread = World::new(&params, 42).unwrap();
+        for _ in 0..4 {
+            assert!(read.metrics().repertoire_mean.is_some());
+            for _ in 0..5 {
+                read.step();
+                unread.step();
+            }
+        }
+        assert_eq!(read.world_hash(), unread.world_hash());
+        let first = read.metrics();
+        assert_eq!(read.metrics(), first);
+        let mut restored =
+            World::from_snapshot(read.params(), read.seed(), &read.snapshot()).unwrap();
+        let resumed = restored.metrics();
+        assert_eq!(
+            (
+                resumed.repertoire_mean,
+                resumed.silent_share,
+                resumed.predation_rate
+            ),
+            (first.repertoire_mean, first.silent_share, None)
+        );
+
+        let taken = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+            STREAM_TASK_SHARE,
+            STREAM_TASK_DOMINANT,
+            STREAM_LOGIC_SHARE,
+            STREAM_LOGIC_DOMINANT,
+            STREAM_LOGIC_REPLICATING,
+            STREAM_LOGIC_DEPTH,
+            STREAM_META,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        for stream in [STREAM_PREDATION, STREAM_PREDATION_READ] {
+            assert!(!taken.contains(&stream) && !draws.contains(&stream));
+        }
+    }
+
+    /// The depth readings read every slot `task_max_outputs` allows: four slots of the
+    /// wide tape read ECHO alone, sixteen read XOR4's twelve NANDs too, and at the default
+    /// they read what they always did.
+    #[test]
+    fn the_depth_readings_read_every_slot_the_run_allows() {
+        let mut wide = prey_world(Predation::SubsetClass, |_, _| 3);
+        assert_eq!(
+            depth_digest(&wide.metrics()),
+            "logic_depth_max=Some(12) logic_depth_classes=Some(2)"
+        );
+        wide.params.task_max_outputs = 4;
+        assert_eq!(
+            depth_digest(&wide.metrics()),
+            "logic_depth_max=Some(0) logic_depth_classes=Some(1)"
+        );
+        assert_eq!(wide.metrics().repertoire_mean, Some(1.0));
+    }
+
+    /// The cost of a predation epoch against the run without one, on demand, on the
+    /// study's bundle over a 128×128 random soup. `cargo test --release -p life-engine
+    /// --lib -- --ignored the_predation_cost --nocapture`.
+    #[test]
+    #[ignore]
+    fn the_predation_cost() {
+        for predation in [Predation::Off, Predation::SubsetClass] {
+            let params = Params {
+                width: 128,
+                height: 128,
+                ..predation_params(predation)
+            };
+            let mut world = stepped_world(World::new(&params, 7).unwrap(), 8);
+            let started = std::time::Instant::now();
+            for _ in 0..40 {
+                world.step();
+            }
+            let per_epoch = started.elapsed().as_secs_f64() * 1000.0 / 40.0;
+            println!("{predation:?}: {per_epoch:.2} ms an epoch");
+        }
+    }
+
+    /// Under `count` an actor takes from a partner exactly when the partner computes
+    /// strictly fewer classes: silence is prey to every computing cell, a tie is no prey
+    /// whether kin or strangers, and two silent cells leave each other alone.
+    #[test]
+    fn count_moves_energy_only_to_the_cell_computing_more_classes() {
+        let mut world = prey_world(Predation::Count, mixed_kind);
+        let kind = |cell: usize| mixed_kind(cell as u32 % 8, cell as u32 / 8);
+        let encounters = preyed(&mut world, 4);
+        let params = world.params.clone();
+        let counts =
+            prey_tapes().map(|tape| world.predation_memo.repertoire(&tape, &params).count());
+        assert_eq!(counts, [0, 1, 1, 2]);
+        assert!(encounters.len() > 200);
+        for (a, b, preys, moved) in &encounters {
+            assert_eq!(*preys, counts[kind(*a)] > counts[kind(*b)], "{a} on {b}");
+            assert_eq!(*moved, if *preys { 100 } else { 0 });
+        }
+        let seen = |a: usize, b: usize, preys: bool| {
+            encounters
+                .iter()
+                .any(|(x, y, p, _)| kind(*x) == a && kind(*y) == b && *p == preys)
+        };
+        assert!(
+            seen(1, 0, true) && seen(2, 0, true) && seen(3, 0, true),
+            "silence is prey"
+        );
+        assert!(seen(0, 0, false), "two silent cells tie");
+        assert!(seen(1, 1, false) && seen(3, 3, false), "kin tie");
+        assert!(
+            seen(1, 2, false) && seen(2, 1, false),
+            "equal-count strangers tie"
+        );
+        assert!(seen(3, 1, true) && seen(3, 2, true) && seen(1, 3, false));
+    }
+
+    /// The genes bundle on `predation_params`' economy: strict out-count on the union of
+    /// 32-byte genes, the channel growing from 32 bytes to 256 by duplication and deletion
+    /// at the study's rate.
+    fn genes_params() -> Params {
+        Params {
+            meta_max_len: 256,
+            meta_dup: 0.05,
+            meta_del: 0.05,
+            meta_genes: 32,
+            ..predation_params(Predation::Count)
+        }
+    }
+
+    fn without_genes(params: &Params) -> Params {
+        let defaults = Params::default();
+        Params {
+            meta_max_len: defaults.meta_max_len,
+            meta_min_len: defaults.meta_min_len,
+            meta_dup: defaults.meta_dup,
+            meta_del: defaults.meta_del,
+            meta_seg_max: defaults.meta_seg_max,
+            meta_genes: defaults.meta_genes,
+            ..params.clone()
+        }
+    }
+
+    fn genes_digest(measured: &Metrics) -> String {
+        format!(
+            "meta_len_mean={:?} genes_essential_held={:?}",
+            measured.meta_len_mean, measured.genes_essential_held
+        )
+    }
+
+    /// A cap equal to `meta_len` is the fixed channel, and growth settings at their
+    /// defaults change nothing: the run is the run without them, byte for byte and reading
+    /// for reading, and it writes the snapshot it always wrote.
+    #[test]
+    fn a_fixed_channel_read_whole_is_the_run_without_the_new_settings() {
+        let plain = predation_params(Predation::SubsetClass);
+        let capped = Params {
+            meta_max_len: plain.meta_len,
+            ..plain.clone()
+        };
+        let mut run = World::new(&capped, 42).unwrap();
+        let mut twin = World::new(&plain, 42).unwrap();
+        for _ in 0..3 {
+            for _ in 0..5 {
+                run.step();
+                twin.step();
+            }
+            let measured = run.metrics();
+            assert_eq!(
+                genes_digest(&measured),
+                "meta_len_mean=None genes_essential_held=None"
+            );
+            assert_eq!(measured, twin.metrics());
+        }
+        assert_eq!(run.world_hash(), twin.world_hash());
+        assert_eq!(run.snapshot(), twin.snapshot());
+        assert_eq!(run.snapshot()[4], snapshot::VERSION_META_STOCKED);
+        assert!(run.meta_lens.is_empty());
+    }
+
+    /// Genes at a gene length the whole tape fits in read what the whole tape reads: one
+    /// gene of 32 bytes on a buffer of 64 is the tape itself.
+    #[test]
+    fn one_gene_the_length_of_the_tape_reads_the_tape() {
+        let whole = predation_params(Predation::Count);
+        let one = Params {
+            meta_genes: 32,
+            ..whole.clone()
+        };
+        let mut run = stepped_world(World::new(&one, 42).unwrap(), 12);
+        let mut twin = stepped_world(World::new(&whole, 42).unwrap(), 12);
+        assert_eq!(run.world_hash(), twin.world_hash());
+        let (read, plain) = (run.metrics(), twin.metrics());
+        assert_eq!(predation_digest(&read), predation_digest(&plain));
+        assert_eq!(depth_digest(&read), depth_digest(&plain));
+        assert_eq!(read.genes_essential_held, Some(0));
+        assert_eq!(plain.genes_essential_held, None);
+    }
+
+    /// A growing world: an 8×8 soup on a channel from 32 bytes to 64 read as genes.
+    fn growing_world(dup: f64, del: f64) -> World {
+        let params = Params {
+            tasks: Tasks::Logic4,
+            meta_len: 32,
+            meta_rate: 1.0 / 64.0,
+            meta_max_len: 64,
+            meta_min_len: 12,
+            meta_dup: dup,
+            meta_del: del,
+            meta_seg_max: 16,
+            meta_genes: 32,
+            ..colony_params()
+        };
+        World::new(&params, 5).unwrap()
+    }
+
+    /// Over thousands of variations every tape stays within its floor and cap, every byte
+    /// past a tape's live length stays zero, and lengths move both ways.
+    #[test]
+    fn a_growing_channel_keeps_every_tape_within_its_floor_and_cap() {
+        let mut world = growing_world(0.5, 0.5);
+        let mut grow = MetaGrowth::of(&world.params, 5, 0).unwrap();
+        let (mut longer, mut shorter) = (false, false);
+        for round in 0..40 {
+            for cell in 0..64 {
+                if (cell + round) % 3 > 0 {
+                    world.vary_meta(cell, &mut grow);
+                }
+            }
+            assert_eq!(world.meta_lens.len(), 64);
+            for (cell, len) in world.meta_lens.iter().enumerate() {
+                assert!((12..=64).contains(len), "{len}");
+                let slot = &world.meta[cell * 64..cell * 64 + 64];
+                assert!(slot[*len as usize..].iter().all(|byte| *byte == 0));
+                longer |= *len > 32;
+                shorter |= *len < 32;
+            }
+        }
+        assert!(longer && shorter);
+        let mean = world.metrics().meta_len_mean.unwrap();
+        let total: u32 = world.meta_lens.iter().sum();
+        assert_eq!(mean, f64::from(total) / 64.0);
+    }
+
+    /// Run for real, inheritance and mutation included: a tape carried onto a longer one
+    /// leaves no stale byte past its own end, and the bounds hold epoch after epoch.
+    #[test]
+    fn a_stepped_growing_channel_keeps_its_bounds_and_zeroes_past_each_tape() {
+        let mut world = growing_world(0.5, 0.5);
+        let tape = replicator::handwritten_replicator();
+        for x in 0..8 {
+            world.set_cell(x, 0, &tape);
+        }
+        for cell in 0..64u32 {
+            let len = 12 + (cell * 7) % 53;
+            world.set_metabolism(cell % 8, cell / 8, &vec![b'!'; len as usize]);
+        }
+        let before = world.meta_lens.clone();
+        for _ in 0..40 {
+            world.step();
+            for (cell, len) in world.meta_lens.iter().enumerate() {
+                assert!((12..=64).contains(len), "{len}");
+                let slot = &world.meta[cell * 64..cell * 64 + 64];
+                assert!(slot[*len as usize..].iter().all(|byte| *byte == 0));
+            }
+        }
+        assert_ne!(world.meta_lens, before, "no tape was ever inherited");
+    }
+
+    /// A duplication appends a copy of a segment of the tape at its end, cut at the cap;
+    /// a deletion cuts a segment out and never goes below the floor.
+    #[test]
+    fn the_variation_operators_append_a_copy_and_cut_a_segment() {
+        let mut world = growing_world(1.0, 0.0);
+        let tape: Vec<u8> = (1..=40).collect();
+        world.set_metabolism(0, 0, &tape);
+        let mut grow = MetaGrowth::of(&world.params, 5, 0).unwrap();
+        world.vary_meta(0, &mut grow);
+        let grown = world.metabolism(0, 0).unwrap().to_vec();
+        assert!(grown.len() > 40 && grown.len() <= 56, "{}", grown.len());
+        assert_eq!(grown[..40], tape[..]);
+        assert!(tape.windows(grown.len() - 40).any(|w| w == &grown[40..]));
+        for _ in 0..8 {
+            world.vary_meta(0, &mut grow);
+        }
+        assert_eq!(world.metabolism(0, 0).unwrap().len(), 64, "cut at the cap");
+
+        let mut world = growing_world(0.0, 1.0);
+        world.set_metabolism(0, 0, &tape);
+        let mut grow = MetaGrowth::of(&world.params, 5, 0).unwrap();
+        world.vary_meta(0, &mut grow);
+        let cut = world.metabolism(0, 0).unwrap().to_vec();
+        let gone = 40 - cut.len();
+        assert!((1..=16).contains(&gone));
+        let from = cut.iter().zip(&tape).take_while(|(a, b)| a == b).count();
+        assert_eq!(cut[from..], tape[from + gone..]);
+        for _ in 0..8 {
+            world.vary_meta(0, &mut grow);
+        }
+        assert_eq!(
+            world.metabolism(0, 0).unwrap().len(),
+            12,
+            "never below the floor"
+        );
+        assert!(world.meta[12..64].iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn determinism_holds_on_a_growing_channel_read_as_genes() {
+        for (seed, predation) in [
+            (7, Predation::Count),
+            (8, Predation::SubsetClass),
+            (9, Predation::Off),
+        ] {
+            for meta_genes in [0, 16] {
+                assert_deterministic(
+                    &Params {
+                        width: 16,
+                        height: 16,
+                        meta_max_len: 96,
+                        meta_dup: 0.3,
+                        meta_del: 0.3,
+                        meta_genes,
+                        meta_rate: 1.0 / 64.0,
+                        predation,
+                        ..genes_params()
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// A grown world's snapshot carries its lengths, and the run it resumes reads and
+    /// writes what the uninterrupted one does, reading for reading and blob for blob.
+    #[test]
+    fn a_grown_world_resumes_byte_for_byte() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            meta_dup: 0.5,
+            meta_del: 0.3,
+            ..genes_params()
+        };
+        let mut whole = stepped_world(World::new(&params, 42).unwrap(), 13);
+        let blob = whole.snapshot();
+        assert_eq!(blob[4], snapshot::VERSION_META_GROWN_STOCKED);
+        let mut restored = World::from_snapshot(&params, 42, &blob).unwrap();
+        assert_eq!(restored.snapshot(), blob);
+        assert_eq!(
+            (&restored.meta, &restored.meta_lens),
+            (&whole.meta, &whole.meta_lens)
+        );
+        for _ in 0..11 {
+            whole.step();
+            restored.step();
+        }
+        let (read, resumed) = (whole.metrics(), restored.metrics());
+        assert_eq!(genes_digest(&read), genes_digest(&resumed));
+        assert_eq!(depth_digest(&read), depth_digest(&resumed));
+        assert_eq!(read.repertoire_mean, resumed.repertoire_mean);
+        assert_eq!(whole.snapshot(), restored.snapshot());
+        let fixed = without_genes(&params);
+        assert!(matches!(
+            World::from_snapshot(&fixed, 42, &blob),
+            Err(SnapshotError::Mismatch { field: "meta_len" })
+        ));
+        let other_cap = Params {
+            meta_max_len: 128,
+            ..params.clone()
+        };
+        assert!(matches!(
+            World::from_snapshot(&other_cap, 42, &blob),
+            Err(SnapshotError::Mismatch { field: "meta_len" })
+        ));
+        let fixed_blob = stepped(&fixed, 42, 3).snapshot();
+        assert!(matches!(
+            World::from_snapshot(&params, 42, &fixed_blob),
+            Err(SnapshotError::Mismatch { field: "meta_len" })
+        ));
+    }
+
+    /// A child carries its parent's metabolism tapes where its channel holds them: a fixed
+    /// parent's into a channel that grows from that length, a grown parent's into a wide
+    /// enough cap; otherwise it switches its own on.
+    #[test]
+    fn a_descendant_carries_the_tapes_its_channel_holds() {
+        let fixed = Params {
+            width: 16,
+            height: 16,
+            ..predation_params(Predation::Count)
+        };
+        let grows = Params {
+            meta_max_len: 256,
+            meta_dup: 1.0,
+            meta_del: 0.0,
+            meta_genes: 32,
+            ..fixed.clone()
+        };
+        let parent = stepped(&fixed, 42, 1_001);
+        let child = World::descend(&grows, 9, &parent.snapshot()).unwrap();
+        assert_eq!(child.meta_lens, vec![32; 256]);
+        for cell in 0..256 {
+            assert_eq!(child.meta_of(cell), parent.meta_of(cell));
+        }
+        let mut grown = World::descend(&grows, 9, &parent.snapshot()).unwrap();
+        grown.set_metabolism(3, 0, &[7; 200]);
+        grown.set_metabolism(4, 0, &[9; 20]);
+        let blob = grown.snapshot();
+        let wide = World::descend(&grows, 9, &blob).unwrap();
+        assert_eq!(
+            (&wide.meta, &wide.meta_lens),
+            (&grown.meta, &grown.meta_lens)
+        );
+        let narrow = Params {
+            meta_max_len: 33,
+            ..grows.clone()
+        };
+        let switched = World::descend(&narrow, 9, &blob).unwrap();
+        assert_eq!(switched.meta_lens, vec![32; 256], "switched on afresh");
+        let back = World::descend(&fixed, 9, &blob).unwrap();
+        assert!(back.meta_lens.is_empty());
+        assert_eq!(back.meta.len(), 256 * 32);
+    }
+
+    /// `genes_essential_held` reads the most essential genes a tenth of the sampled cells
+    /// hold, and the depth and repertoire readings read the union.
+    #[test]
+    fn the_genes_readings_read_the_union_and_the_essential_genes() {
+        let mut world = prey_world(Predation::Count, |_, _| 0);
+        world.params.meta_genes = 128;
+        let tapes = prey_tapes();
+        let echo_xor = [&tapes[1][..128], &tapes[2][..128]].concat();
+        for y in 0..8 {
+            for x in 0..8 {
+                let tape = match (x + y) % 4 {
+                    0 => echo_xor.to_vec(),
+                    1 => tapes[1].clone(),
+                    _ => tapes[0].clone(),
+                };
+                world.set_metabolism(x, y, &tape);
+            }
+        }
+        let measured = world.metrics();
+        assert_eq!(measured.genes_essential_held, Some(2));
+        assert_eq!(
+            depth_digest(&measured),
+            "logic_depth_max=Some(12) logic_depth_classes=Some(2)"
+        );
+        let mut whole = prey_world(Predation::Count, |_, _| 0);
+        whole.params.meta_genes = 0;
+        whole.meta.clone_from(&world.meta);
+        assert_eq!(whole.metrics().genes_essential_held, None);
+        for y in 0..8 {
+            for x in 0..8 {
+                world.set_metabolism(x, y, &tapes[1]);
+            }
+        }
+        let echo = world.metrics();
+        assert_eq!(echo.genes_essential_held, Some(1));
+        assert_eq!(echo.repertoire_mean, Some(1.0));
+    }
+
+    /// The genes readings only read, each on a stream of its own, and the growth draws on
+    /// one no other draw shares.
+    #[test]
+    fn the_genes_readings_move_nothing_and_the_streams_are_their_own() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            ..genes_params()
+        };
+        let mut read = World::new(&params, 42).unwrap();
+        let mut unread = World::new(&params, 42).unwrap();
+        for _ in 0..3 {
+            assert!(read.metrics().meta_len_mean.is_some());
+            for _ in 0..5 {
+                read.step();
+                unread.step();
+            }
+        }
+        assert_eq!(read.world_hash(), unread.world_hash());
+        let first = read.metrics();
+        assert_eq!(read.metrics(), first);
+
+        let streams = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+            STREAM_TASK_SHARE,
+            STREAM_TASK_DOMINANT,
+            STREAM_LOGIC_SHARE,
+            STREAM_LOGIC_DOMINANT,
+            STREAM_LOGIC_REPLICATING,
+            STREAM_LOGIC_DEPTH,
+            STREAM_META,
+            STREAM_PREDATION,
+            STREAM_PREDATION_READ,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        for stream in [STREAM_META_GROW, STREAM_GENES_READ] {
+            assert!(!streams.contains(&stream) && !draws.contains(&stream));
+        }
+        assert_ne!(STREAM_META_GROW, STREAM_GENES_READ);
+    }
+
+    /// The genes runs' own pins: `genes_params` on a 32×32 random soup whose top quarter
+    /// holds the handwritten replicator carrying a two-gene metabolism tape, seed 42, after
+    /// 40 epochs, under out-count and without a pass, and their readings, apart from every
+    /// digest above.
+    const PINNED_GENES_HASHES: [u64; 2] = [0x9897_6cd5_0fee_2dc1, 0x52b0_b1ad_9b0a_f85e];
+    const PINNED_GENES_READINGS: [&str; 2] = [
+        "meta_len_mean=Some(59.869140625) genes_essential_held=Some(2) \
+         predation_rate=Some(0.2619047619047619) predation_relation_rate=Some(0.2857142857142857) \
+         repertoire_mean=Some(15.3515625) silent_share=Some(0.1875) logic_depth_max=Some(8) \
+         logic_depth_classes=Some(26)",
+        "meta_len_mean=Some(57.111328125) genes_essential_held=Some(2) predation_rate=None \
+         predation_relation_rate=None repertoire_mean=None silent_share=None \
+         logic_depth_max=Some(8) logic_depth_classes=Some(26)",
+    ];
+
+    #[test]
+    fn the_genes_runs_are_pinned() {
+        for (predation, (hash, readings)) in [Predation::Count, Predation::Off]
+            .into_iter()
+            .zip(PINNED_GENES_HASHES.into_iter().zip(PINNED_GENES_READINGS))
+        {
+            let params = Params {
+                predation,
+                tape_len: replicator::handwritten_replicator().len() as u32,
+                ..genes_params()
+            };
+            let mut run = World::new(&params, 42).unwrap();
+            let tape = replicator::handwritten_replicator();
+            let genes = topless::tests::laid(&[topless::tests::LOOP, topless::tests::TANDEM], 32);
+            for y in 0..params.height / 4 {
+                for x in 0..params.width {
+                    run.set_cell(x, y, &tape);
+                    run.set_metabolism(x, y, &genes);
+                }
+            }
+            let mut run = stepped_world(run, 40);
+            let measured = run.metrics();
+            let read = format!(
+                "{} {} {}",
+                genes_digest(&measured),
+                predation_digest(&measured),
+                depth_digest(&measured)
+            );
+            assert_eq!(run.world_hash(), hash, "{predation:?}");
+            assert_eq!(read, readings, "{predation:?}");
+            assert!(
+                run.meta_lens.iter().any(|len| *len != 32),
+                "the channel never moved"
+            );
+        }
+    }
+
+    /// The cost of an epoch of the genes bundle on a restored world of the study, at three
+    /// tape lengths, on demand: `LIFE_GENES_WORLD=<lsnp> LIFE_GENES_PARAMS=<json> cargo test
+    /// --release -p life-engine --lib -- --ignored the_genes_cost --nocapture`.
+    #[test]
+    #[ignore]
+    fn the_genes_cost() {
+        let (Ok(world), Ok(params)) = (
+            std::env::var("LIFE_GENES_WORLD"),
+            std::env::var("LIFE_GENES_PARAMS"),
+        ) else {
+            return;
+        };
+        let parent: Params =
+            serde_json::from_str(&std::fs::read_to_string(params).unwrap()).unwrap();
+        let blob = std::fs::read(world).unwrap();
+        for (len, fill) in [32u32, 512, 2048]
+            .into_iter()
+            .flat_map(|len| [(len, "tiled"), (len, "random")])
+        {
+            let params = Params {
+                energy_payer: EnergyPayer::Initiator,
+                energy_influx: parent.energy_influx.max(1024),
+                energy_stock_cap: parent.energy_stock_cap.max(65_536),
+                tasks: Tasks::Logic4,
+                task_reward: 0,
+                logic_nand: LogicNand::Stack,
+                meta_len: 32,
+                meta_rate: 8.0 / 8192.0,
+                meta_draw: MetaDraw::Isa,
+                meta_seed: MetaSeed::OwnTape,
+                task_max_outputs: 16,
+                predation: Predation::Count,
+                predation_transfer: 8192,
+                meta_max_len: 8192,
+                meta_dup: 0.05,
+                meta_del: 0.05,
+                meta_genes: 32,
+                ..parent.clone()
+            };
+            let mut world = World::descend(&params, 6201, &blob).unwrap();
+            let mut rng = rng::seeded(1, 0, 0);
+            for cell in 0..params.cell_count() {
+                let own = world.meta_of(cell).to_vec();
+                let tape: Vec<u8> = match fill {
+                    "tiled" => own.iter().copied().cycle().take(len as usize).collect(),
+                    _ => (0..len)
+                        .map(|_| draw_meta_byte(&mut rng, MetaDraw::Isa))
+                        .collect(),
+                };
+                let (x, y) = (cell as u32 % params.width, cell as u32 / params.width);
+                world.set_metabolism(x, y, &tape);
+            }
+            world.step();
+            let started = std::time::Instant::now();
+            for _ in 0..16 {
+                world.step();
+            }
+            let per_epoch = started.elapsed().as_secs_f64() * 1000.0 / 16.0;
+            let started = std::time::Instant::now();
+            let measured = world.metrics();
+            let sample = started.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "length {len} {fill}: {per_epoch:.1} ms an epoch, {sample:.0} ms a sample, {}",
+                genes_digest(&measured)
+            );
+        }
+    }
+
+    /// The genes bundle with the study's staged costly fidelity (§13.11): levels 0 to 16,
+    /// a step at 0.05 per inheritance, α = 0.03.
+    fn fidelity_params() -> Params {
+        Params {
+            meta_fid_max: 16,
+            meta_fid_rate: 0.05,
+            meta_fid_alpha: 0.03,
+            ..genes_params()
+        }
+    }
+
+    fn fidelity_digest(measured: &Metrics) -> String {
+        format!(
+            "fidelity_p10={:?} fidelity_p50={:?} fidelity_p90={:?}",
+            measured.fidelity_p10, measured.fidelity_p50, measured.fidelity_p90
+        )
+    }
+
+    /// Off is no level at all: nothing allocated, hashed, snapshotted or read.
+    #[test]
+    fn a_world_without_fidelity_carries_no_levels() {
+        let mut world = stepped(&genes_params(), 42, 3);
+        assert!(world.meta_fid.is_empty());
+        assert_eq!(world.fidelity(0, 0), None);
+        assert_eq!(
+            fidelity_digest(&world.metrics()),
+            "fidelity_p10=None fidelity_p50=None fidelity_p90=None"
+        );
+        assert_eq!(world.snapshot()[4], snapshot::VERSION_META_GROWN_STOCKED);
+        let carried = World::new(&fidelity_params(), 42).unwrap();
+        assert_eq!(carried.meta_fid, vec![0; 32 * 32]);
+        assert_eq!(carried.fidelity(3, 4), Some(0));
+    }
+
+    /// Levels that never leave 0 are the base machine: the tapes mutate as they do without
+    /// levels and every initiator pays `max_steps`, so the run is the run without them,
+    /// cell for cell, tape for tape and reading for reading, at any α.
+    #[test]
+    fn levels_that_never_move_are_the_run_without_levels() {
+        for alpha in [0.0, 0.03, 0.4] {
+            let still = Params {
+                meta_fid_rate: 0.0,
+                meta_fid_alpha: alpha,
+                ..fidelity_params()
+            };
+            let mut run = World::new(&still, 42).unwrap();
+            let mut twin = World::new(&genes_params(), 42).unwrap();
+            for _ in 0..3 {
+                for _ in 0..5 {
+                    run.step();
+                    twin.step();
+                }
+                let (mut read, plain) = (run.metrics(), twin.metrics());
+                assert_eq!(
+                    fidelity_digest(&read),
+                    "fidelity_p10=Some(0) fidelity_p50=Some(0) fidelity_p90=Some(0)"
+                );
+                (read.fidelity_p10, read.fidelity_p50, read.fidelity_p90) = (None, None, None);
+                assert_eq!(read, plain);
+            }
+            assert_eq!(
+                (&run.cells, &run.lens, &run.stock, &run.meta, &run.meta_lens),
+                (
+                    &twin.cells,
+                    &twin.lens,
+                    &twin.stock,
+                    &twin.meta,
+                    &twin.meta_lens
+                )
+            );
+            assert!(run.meta_fid.iter().all(|level| *level == 0));
+            assert_ne!(run.world_hash(), twin.world_hash(), "the levels are state");
+        }
+    }
+
+    /// A level moves at `meta_fid_rate` per inheritance, one step up or down on a fair
+    /// coin, and never past 0 or `meta_fid_max`.
+    #[test]
+    fn an_inherited_level_moves_one_step_at_its_rate_within_its_range() {
+        let params = Params {
+            meta_fid_max: 4,
+            meta_fid_rate: 1.0,
+            ..fidelity_params()
+        };
+        let mut moves = FidelityMoves::of(&params, 5, 0).unwrap();
+        let mut seen = BTreeSet::new();
+        for _ in 0..400 {
+            for level in 0..=4u8 {
+                let moved = moves.inherit(level);
+                seen.insert((level, moved));
+                assert!(
+                    moved.abs_diff(level) <= 1 && moved <= 4,
+                    "{level} → {moved}"
+                );
+            }
+        }
+        let expected: BTreeSet<(u8, u8)> = [
+            (0, 0),
+            (0, 1),
+            (1, 0),
+            (1, 2),
+            (2, 1),
+            (2, 3),
+            (3, 2),
+            (3, 4),
+            (4, 3),
+            (4, 4),
+        ]
+        .into();
+        assert_eq!(seen, expected, "every move clamped, and every level moved");
+
+        let still = Params {
+            meta_fid_rate: 0.0,
+            ..params.clone()
+        };
+        let mut moves = FidelityMoves::of(&still, 5, 0).unwrap();
+        assert!((0..1000).all(|_| moves.inherit(2) == 2));
+
+        let mut moves = FidelityMoves::of(&fidelity_params(), 5, 0).unwrap();
+        let (mut up, mut down) = (0u32, 0u32);
+        for _ in 0..40_000 {
+            match moves.inherit(8) {
+                9 => up += 1,
+                7 => down += 1,
+                _ => {}
+            }
+        }
+        assert!((1_800..2_200).contains(&(up + down)), "{up} + {down}");
+        assert!(up.abs_diff(down) < 200, "{up} against {down}");
+        assert!(FidelityMoves::of(&genes_params(), 5, 0).is_none());
+    }
+
+    /// The level rides its tape: with the tapes' own mutation and growth off and the levels
+    /// still, every cell ends holding a tape and a level that some cell started with
+    /// together, though tapes have moved between cells.
+    #[test]
+    fn a_level_rides_the_tape_it_is_inherited_with() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            meta_rate: 0.0,
+            meta_dup: 0.0,
+            meta_del: 0.0,
+            meta_fid_rate: 0.0,
+            predation: Predation::Off,
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            ..fidelity_params()
+        };
+        let mut world = World::new(&params, 9).unwrap();
+        let mut pairs = BTreeSet::new();
+        for y in 0..16 {
+            for x in 0..16 {
+                let cell = (y * 16 + x) as u8;
+                world.set_cell(x, y, &replicator::handwritten_replicator());
+                let tape = vec![cell; 32];
+                let level = cell % 17;
+                world.set_metabolism(x, y, &tape);
+                world.set_fidelity(x, y, level);
+                pairs.insert((tape, level));
+            }
+        }
+        let mut moved = 0;
+        for _ in 0..30 {
+            world.step();
+        }
+        for y in 0..16 {
+            for x in 0..16 {
+                let tape = world.metabolism(x, y).unwrap().to_vec();
+                moved += usize::from(tape[0] != (y * 16 + x) as u8);
+                let level = world.fidelity(x, y).unwrap();
+                assert!(pairs.contains(&(tape, level)), "({x}, {y}) at {level}");
+            }
+        }
+        assert!(moved > 20, "only {moved} tapes were inherited");
+    }
+
+    /// Each cell's tape mutates at its own level's rate, `meta_rate` × 2^(−f/2): levels 1
+    /// and 4 take √2 and 4 times fewer hits than level 0 over the same live bytes.
+    #[test]
+    fn each_level_mutates_its_tape_at_its_own_rate() {
+        let params = Params {
+            width: 24,
+            height: 24,
+            meta_rate: 1.0 / 16.0,
+            meta_draw: MetaDraw::Uniform,
+            ..fidelity_params()
+        };
+        let mut world = World::new(&params, 3).unwrap();
+        let level = |cell: usize| [0u8, 1, 4][cell % 3];
+        for cell in 0..params.cell_count() {
+            world.meta_fid[cell] = level(cell);
+        }
+        let mut hits = [0f64; 3];
+        for epoch in 0..60 {
+            world.epoch = epoch;
+            let before = world.meta.clone();
+            world.mutate_meta();
+            for (cell, (was, now)) in before.chunks(256).zip(world.meta.chunks(256)).enumerate() {
+                let changed = was.iter().zip(now).filter(|(a, b)| a != b).count();
+                hits[cell % 3] += changed as f64;
+            }
+        }
+        let expected = 192.0 * 32.0 * 60.0 / 16.0 * 255.0 / 256.0;
+        assert!((hits[0] / expected - 1.0).abs() < 0.04, "{hits:?}");
+        let root = hits[0] / hits[1];
+        assert!((root - std::f64::consts::SQRT_2).abs() < 0.08, "{root}");
+        let quarter = hits[0] / hits[2];
+        assert!((quarter - 4.0).abs() < 0.3, "{quarter}");
+        assert!(world.meta_lens.iter().all(|len| *len == 32));
+    }
+
+    /// Under priced fidelity a cell pays its own level's price, `max_steps` × 2^(α·f/2),
+    /// to initiate, and below it is passed over; at α = 0 every level pays `max_steps`.
+    #[test]
+    fn an_initiator_pays_its_own_levels_price() {
+        let params = fidelity_params();
+        let energy = Energy::recharged(&params, vec![9_674 - 1_024, 9_675 - 1_024, 0, 0]);
+        assert_eq!(energy.price_at(0), Some(8192));
+        assert_eq!(energy.price_at(16), Some(9675));
+        assert!(energy.passed_over(0, 1, 16), "short of its level's price");
+        assert!(!energy.passed_over(1, 0, 16));
+        assert!(!energy.passed_over(0, 1, 15));
+        assert_eq!(
+            energy.budget(1, 0, 8192),
+            8192,
+            "the step budget stays max_steps"
+        );
+        let mut energy = energy;
+        energy.spend(1, 0, 3, 16);
+        energy.spend(0, 1, 3, 0);
+        assert_eq!(energy.into_stock()[..2], [9_674 - 8_192, 0]);
+
+        let free = Params {
+            meta_fid_alpha: 0.0,
+            ..fidelity_params()
+        };
+        let energy = Energy::recharged(&free, vec![8192 - 1024, 0]);
+        assert!(energy.level_prices.is_empty());
+        assert_eq!(energy.price_at(16), Some(8192));
+        assert!(!energy.passed_over(0, 1, 16), "free fidelity costs nothing");
+        assert_eq!(energy.budget(0, 1, 8192), 8192);
+    }
+
+    /// A cell holding the base price but not its own level's is passed over as an
+    /// initiator and keeps its stock, while a base-level cell holding the same initiates
+    /// and pays it; a cell holding its own level's price initiates and pays exactly that.
+    #[test]
+    fn a_poor_cell_at_a_high_level_is_passed_over_as_initiator() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            predation: Predation::Off,
+            ..fidelity_params()
+        };
+        let mut world = World::new(&params, 4).unwrap();
+        let high = |cell: usize| (cell % 16 + cell / 16) % 2 == 1;
+        for cell in 0..params.cell_count() {
+            world.stock[cell] = 8192 - params.energy_influx;
+            if high(cell) {
+                world.meta_fid[cell] = 16;
+            }
+        }
+        DRAWN.take();
+        world.step();
+        let drawn = DRAWN.take();
+        assert!(drawn.iter().any(|(a, b)| high(*a) && a != b));
+        for (cell, held) in world.stock.iter().enumerate() {
+            match high(cell) {
+                true => assert_eq!(*held, 8192, "high cell {cell} initiated"),
+                false => assert_eq!(*held, 0, "base cell {cell} did not pay the base price"),
+            }
+        }
+        let free = Params {
+            meta_fid_alpha: 0.0,
+            ..params.clone()
+        };
+        let mut world = World::new(&free, 4).unwrap();
+        for cell in 0..free.cell_count() {
+            world.stock[cell] = 8192 - free.energy_influx;
+            world.meta_fid[cell] = if high(cell) { 16 } else { 0 };
+        }
+        world.step();
+        assert!(
+            world.stock.iter().all(|held| *held == 0),
+            "free fidelity priced"
+        );
+
+        let mut world = World::new(&params, 4).unwrap();
+        for cell in 0..params.cell_count() {
+            world.stock[cell] = 9675 - params.energy_influx;
+            world.meta_fid[cell] = if high(cell) { 16 } else { 0 };
+        }
+        world.step();
+        for (cell, held) in world.stock.iter().enumerate() {
+            match high(cell) {
+                true => assert_eq!(
+                    *held, 0,
+                    "high cell {cell} paid less than its level's price"
+                ),
+                false => assert_eq!(
+                    *held,
+                    9675 - 8192,
+                    "base cell {cell} paid past the base price"
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn determinism_holds_with_fidelity() {
+        for (seed, predation, alpha) in [
+            (7, Predation::Count, 0.03),
+            (8, Predation::Count, 0.0),
+            (9, Predation::Off, 0.4),
+        ] {
+            assert_deterministic(
+                &Params {
+                    width: 16,
+                    height: 16,
+                    meta_max_len: 96,
+                    meta_dup: 0.3,
+                    meta_del: 0.3,
+                    meta_rate: 1.0 / 64.0,
+                    meta_fid_rate: 0.5,
+                    meta_fid_alpha: alpha,
+                    predation,
+                    ..fidelity_params()
+                },
+                seed,
+            );
+        }
+    }
+
+    /// A world carrying levels snapshots them, and the run it resumes reads and writes
+    /// what the uninterrupted one does; params that disagree about the levels are refused.
+    #[test]
+    fn a_world_carrying_levels_resumes_byte_for_byte() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            meta_dup: 0.5,
+            meta_del: 0.3,
+            meta_fid_rate: 0.5,
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            ..fidelity_params()
+        };
+        let mut whole = stepped_world(planted_fidelity_world(&params), 13);
+        assert!(whole.meta_fid.iter().any(|level| *level > 0));
+        let blob = whole.snapshot();
+        assert_eq!(blob[4], snapshot::VERSION_META_FID_STOCKED);
+        let mut restored = World::from_snapshot(&params, 42, &blob).unwrap();
+        assert_eq!(restored.snapshot(), blob);
+        assert_eq!(restored.meta_fid, whole.meta_fid);
+        for _ in 0..11 {
+            whole.step();
+            restored.step();
+        }
+        let (read, resumed) = (whole.metrics(), restored.metrics());
+        assert_eq!(read, resumed);
+        assert_eq!(whole.snapshot(), restored.snapshot());
+        assert_eq!(whole.world_hash(), restored.world_hash());
+
+        let refused = |params: &Params, blob: &[u8]| {
+            matches!(
+                World::from_snapshot(params, 42, blob),
+                Err(SnapshotError::Mismatch {
+                    field: "meta_fid_max"
+                })
+            )
+        };
+        let without = Params {
+            meta_fid_max: 0,
+            meta_fid_rate: 0.0,
+            meta_fid_alpha: 0.0,
+            ..params.clone()
+        };
+        assert!(refused(&without, &blob), "levels dropped");
+        let genes_blob = stepped(&without, 42, 3).snapshot();
+        assert!(refused(&params, &genes_blob), "levels minted");
+        let narrow = Params {
+            meta_fid_max: 1,
+            ..params.clone()
+        };
+        assert!(refused(&narrow, &blob), "levels past the range");
+    }
+
+    /// A child carries its parent's levels with its tapes, clamped to its own range; a
+    /// parent without levels hands a child that carries them the base machine, and a child
+    /// without levels drops them.
+    #[test]
+    fn a_descendant_carries_its_parents_levels_with_the_tapes() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            meta_fid_rate: 1.0,
+            ..fidelity_params()
+        };
+        let mut parent = World::new(&params, 42).unwrap();
+        for cell in 0..params.cell_count() {
+            parent.meta_fid[cell] = (cell % 17) as u8;
+        }
+        let parent = stepped_world(parent, 1_001);
+        let blob = parent.snapshot();
+        let child = World::descend(&params, 9, &blob).unwrap();
+        assert_eq!(child.meta_fid, parent.meta_fid);
+        let narrow = Params {
+            meta_fid_max: 3,
+            ..params.clone()
+        };
+        let clamped = World::descend(&narrow, 9, &blob).unwrap();
+        let expected: Vec<u8> = parent.meta_fid.iter().map(|level| *level.min(&3)).collect();
+        assert_eq!(clamped.meta_fid, expected);
+        assert_eq!(clamped.meta, parent.meta);
+        let without = Params {
+            meta_fid_max: 0,
+            meta_fid_rate: 0.0,
+            meta_fid_alpha: 0.0,
+            ..params.clone()
+        };
+        let dropped = World::descend(&without, 9, &blob).unwrap();
+        assert!(dropped.meta_fid.is_empty());
+        assert_eq!(dropped.meta, parent.meta);
+        let genes_parent = stepped(&without, 42, 1_001);
+        let based = World::descend(&params, 9, &genes_parent.snapshot()).unwrap();
+        assert_eq!(based.meta_fid, vec![0; 256]);
+        assert_eq!(based.meta, genes_parent.meta);
+    }
+
+    /// The fidelity readings are the sampled levels' nearest-rank percentiles; they only
+    /// read, and on a stream no other draw shares.
+    #[test]
+    fn the_fidelity_readings_read_the_sampled_levels_and_move_nothing() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            ..fidelity_params()
+        };
+        let mut world = World::new(&params, 42).unwrap();
+        world.meta_fid.fill(5);
+        assert_eq!(
+            fidelity_digest(&world.metrics()),
+            "fidelity_p10=Some(5) fidelity_p50=Some(5) fidelity_p90=Some(5)"
+        );
+        for cell in 0..256 {
+            world.meta_fid[cell] = match cell % 10 {
+                0 => 0,
+                9 => 16,
+                _ => 8,
+            };
+        }
+        let measured = world.metrics();
+        assert_eq!(measured.fidelity_p50, Some(8));
+        assert!(measured.fidelity_p10 <= Some(8) && measured.fidelity_p90 >= Some(8));
+        world.meta_fid.fill(0);
+        world.meta_fid[..128].fill(1);
+        let halves = world.metrics();
+        assert_eq!(
+            (halves.fidelity_p10, halves.fidelity_p90),
+            (Some(0), Some(1))
+        );
+        let ranks: Vec<u32> = (1..=256).collect();
+        assert_eq!(
+            [10, 50, 90].map(|percent| nearest_rank(&ranks, percent)),
+            [26, 128, 231],
+            "the 26th, 128th and 231st of 256"
+        );
+
+        let mut read = World::new(&params, 42).unwrap();
+        let mut unread = World::new(&params, 42).unwrap();
+        for _ in 0..3 {
+            read.metrics();
+            for _ in 0..5 {
+                read.step();
+                unread.step();
+            }
+        }
+        assert_eq!(read.world_hash(), unread.world_hash());
+        let first = read.metrics();
+        assert_eq!(read.metrics(), first);
+
+        let streams = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+            STREAM_TASK_SHARE,
+            STREAM_TASK_DOMINANT,
+            STREAM_LOGIC_SHARE,
+            STREAM_LOGIC_DOMINANT,
+            STREAM_LOGIC_REPLICATING,
+            STREAM_LOGIC_DEPTH,
+            STREAM_META,
+            STREAM_META_GROW,
+            STREAM_GENES_READ,
+            STREAM_PREDATION,
+            STREAM_PREDATION_READ,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        for stream in [STREAM_META_FID, STREAM_FIDELITY_READ] {
+            assert!(!streams.contains(&stream) && !draws.contains(&stream));
+        }
+        assert_ne!(STREAM_META_FID, STREAM_FIDELITY_READ);
+    }
+
+    /// The fidelity run's own pin: `fidelity_params` at a step of 0.5 per inheritance on
+    /// the planted world of `the_genes_runs_are_pinned`, seed 42, after 40 epochs, under
+    /// out-count and without a pass, and their readings, apart from every digest above.
+    const PINNED_FIDELITY_HASHES: [u64; 2] = [0xe1ed_70c5_798a_b8d3, 0x56b7_7a77_0f4c_db73];
+    const PINNED_FIDELITY_READINGS: [&str; 2] = [
+        "fidelity_p10=Some(0) fidelity_p50=Some(0) fidelity_p90=Some(2) \
+         meta_len_mean=Some(58.0244140625) genes_essential_held=Some(2) \
+         predation_rate=Some(0.24603174603174602) \
+         predation_relation_rate=Some(0.2619047619047619) repertoire_mean=Some(15.62890625) \
+         silent_share=Some(0.19921875) logic_depth_max=Some(8) logic_depth_classes=Some(26)",
+        "fidelity_p10=Some(0) fidelity_p50=Some(0) fidelity_p90=Some(2) \
+         meta_len_mean=Some(55.7822265625) genes_essential_held=Some(2) predation_rate=None \
+         predation_relation_rate=None repertoire_mean=None silent_share=None \
+         logic_depth_max=Some(8) logic_depth_classes=Some(26)",
+    ];
+
+    fn planted_fidelity_world(params: &Params) -> World {
+        let mut run = World::new(params, 42).unwrap();
+        let tape = replicator::handwritten_replicator();
+        let genes = topless::tests::laid(&[topless::tests::LOOP, topless::tests::TANDEM], 32);
+        for y in 0..params.height / 4 {
+            for x in 0..params.width {
+                run.set_cell(x, y, &tape);
+                run.set_metabolism(x, y, &genes);
+            }
+        }
+        run
+    }
+
+    #[test]
+    fn the_fidelity_runs_are_pinned() {
+        for (predation, (hash, readings)) in [Predation::Count, Predation::Off].into_iter().zip(
+            PINNED_FIDELITY_HASHES
+                .into_iter()
+                .zip(PINNED_FIDELITY_READINGS),
+        ) {
+            let params = Params {
+                predation,
+                meta_fid_rate: 0.5,
+                tape_len: replicator::handwritten_replicator().len() as u32,
+                ..fidelity_params()
+            };
+            let mut run = stepped_world(planted_fidelity_world(&params), 40);
+            let measured = run.metrics();
+            let read = format!(
+                "{} {} {} {}",
+                fidelity_digest(&measured),
+                genes_digest(&measured),
+                predation_digest(&measured),
+                depth_digest(&measured)
+            );
+            assert_eq!(run.world_hash(), hash, "{predation:?}");
+            assert_eq!(read, readings, "{predation:?}");
+            assert!(
+                run.meta_fid.iter().any(|level| *level > 1),
+                "no level climbed"
+            );
+        }
+    }
+
+    /// The mean level of four planted 16×16 out-count worlds, seeds 1 to 4, after 200
+    /// epochs, their tapes mutating at `meta_rate`, their levels stepping at 0.5 an
+    /// inheritance.
+    fn planted_mean_level(meta_rate: f64, alpha: f64) -> f64 {
+        let params = Params {
+            width: 16,
+            height: 16,
+            meta_rate,
+            meta_fid_rate: 0.5,
+            meta_fid_alpha: alpha,
+            tape_len: replicator::handwritten_replicator().len() as u32,
+            ..fidelity_params()
+        };
+        let total: u32 = (1..=4)
+            .map(|seed| {
+                let mut planted = planted_fidelity_world(&params);
+                planted.seed = seed;
+                let run = stepped_world(planted, 200);
+                run.meta_fid
+                    .iter()
+                    .map(|level| u32::from(*level))
+                    .sum::<u32>()
+            })
+            .sum();
+        f64::from(total) / (4.0 * 256.0)
+    }
+
+    /// A sanity check, not a result: in a short planted out-count world whose tapes
+    /// mutate fast, free fidelity climbs above the walk the same levels take where they
+    /// do nothing (no mutation to resist), and a steep price holds them near the base.
+    #[test]
+    fn free_fidelity_climbs_under_selection_and_a_price_holds_it_down() {
+        let fast = 64.0 / 8192.0;
+        let free = planted_mean_level(fast, 0.0);
+        let neutral = planted_mean_level(0.0, 0.0);
+        let dear = planted_mean_level(fast, 0.4);
+        assert!(
+            free > neutral + 1.0,
+            "free {free} against neutral {neutral}"
+        );
+        assert!(dear < neutral, "dear {dear} against neutral {neutral}");
+    }
+
+    /// The overhead of fidelity on an epoch of the genes bundle, on a restored world of
+    /// the study, at three tape lengths, the levels spread over the whole range so the
+    /// mutation redraws a gap at almost every cell, on demand:
+    /// `LIFE_GENES_WORLD=<lsnp> LIFE_GENES_PARAMS=<json> cargo test --release -p
+    /// life-engine --lib -- --ignored the_fidelity_cost --nocapture`.
+    #[test]
+    #[ignore]
+    fn the_fidelity_cost() {
+        let (Ok(world), Ok(params)) = (
+            std::env::var("LIFE_GENES_WORLD"),
+            std::env::var("LIFE_GENES_PARAMS"),
+        ) else {
+            return;
+        };
+        let parent: Params =
+            serde_json::from_str(&std::fs::read_to_string(params).unwrap()).unwrap();
+        let blob = std::fs::read(world).unwrap();
+        let bundle = Params {
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: parent.energy_influx.max(1024),
+            energy_stock_cap: parent.energy_stock_cap.max(65_536),
+            tasks: Tasks::Logic4,
+            task_reward: 0,
+            logic_nand: LogicNand::Stack,
+            meta_len: 32,
+            meta_rate: 8.0 / 8192.0,
+            meta_draw: MetaDraw::Isa,
+            meta_seed: MetaSeed::OwnTape,
+            task_max_outputs: 16,
+            predation: Predation::Count,
+            predation_transfer: 8192,
+            meta_max_len: 8192,
+            meta_dup: 0.05,
+            meta_del: 0.05,
+            meta_genes: 32,
+            ..parent.clone()
+        };
+        let free = Params {
+            meta_fid_max: 16,
+            meta_fid_rate: 0.05,
+            ..bundle.clone()
+        };
+        let costly = Params {
+            meta_fid_alpha: 0.03,
+            ..free.clone()
+        };
+        for len in [32usize, 512, 2048] {
+            let (mut epochs, mut mutations) = (Vec::new(), Vec::new());
+            for params in [&bundle, &free, &costly] {
+                let mut world = World::descend(params, 6201, &blob).unwrap();
+                for cell in 0..params.cell_count() {
+                    let tape: Vec<u8> = world
+                        .meta_of(cell)
+                        .iter()
+                        .copied()
+                        .cycle()
+                        .take(len)
+                        .collect();
+                    let (x, y) = (cell as u32 % params.width, cell as u32 / params.width);
+                    world.set_metabolism(x, y, &tape);
+                    if let Some(level) = world.meta_fid.get_mut(cell) {
+                        *level = (cell % 17) as u8;
+                    }
+                }
+                world.step();
+                let started = std::time::Instant::now();
+                for _ in 0..16 {
+                    world.step();
+                }
+                epochs.push(started.elapsed().as_secs_f64() * 1000.0 / 16.0);
+                let started = std::time::Instant::now();
+                for _ in 0..64 {
+                    world.mutate_meta();
+                    world.epoch += 1;
+                }
+                mutations.push(started.elapsed().as_secs_f64() * 1000.0 / 64.0);
+            }
+            println!(
+                "length {len}: ms an epoch without levels, free, costly: {:.1} {:.1} {:.1}; \
+                 of which the tapes' mutation: {:.2} {:.2} {:.2}",
+                epochs[0], epochs[1], epochs[2], mutations[0], mutations[1], mutations[2]
+            );
         }
     }
 }

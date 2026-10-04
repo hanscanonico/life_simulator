@@ -12,7 +12,8 @@ use crate::replicator::{
     SELF_REP_SAMPLE_CELLS, SELF_REP_TRIALS,
 };
 use crate::task::{
-    TASKS, TASK_CASES, TASK_CASE_DRAWS, TASK_INPUT_RANGE, TASK_MAX_OUTPUTS, TASK_STEPS,
+    TASKS, TASK_CASES, TASK_CASE_DRAWS, TASK_INPUT_RANGE, TASK_MAX_OUTPUTS, TASK_MAX_OUTPUTS_LIMIT,
+    TASK_STEPS,
 };
 use crate::topless::{Inputs, DEPTH_CASE_DRAWS, DEPTH_FLOOR, DEPTH_UNITS, READS_PER_ROW};
 use serde::{Deserialize, Serialize};
@@ -125,9 +126,18 @@ impl Tasks {
 /// `meta_rate`'s default, the design study's 32 × the replicating tape's 1/8192 of the
 /// Logic sweep (`docs/design_record.md`, 2026-10-02, Meta-stack slice B).
 const META_RATE_DEFAULT: f64 = 32.0 / 8192.0;
-/// The longest metabolism tape a run may carry, which also bounds what a snapshot may
-/// claim to hold.
-pub const META_LEN_MAX: u32 = 1024;
+/// The longest metabolism tape a run may carry, at the start or grown, which also bounds
+/// what a snapshot may claim to hold. Room the design study's pilot 8 did not reach
+/// (`docs/design_record.md`, 2026-10-04, Genes slice A).
+pub const META_LEN_MAX: u32 = 8192;
+/// `meta_min_len`'s default, the floor the design study's growable channel deleted to.
+const META_MIN_LEN_DEFAULT: u32 = 8;
+/// `meta_seg_max`'s default, the study's 1..=16-byte duplicated and deleted segments.
+const META_SEG_MAX_DEFAULT: u32 = 16;
+/// The top of the staged fidelity range: `meta_fid_max` may not exceed it, so the slowest
+/// metabolism tape mutates at 1/256 of `meta_rate` (`docs/design_record.md`, 2026-10-04,
+/// Genes slice B).
+pub const META_FID_MAX: u32 = 16;
 
 /// What the NAND byte `~` writes inside the logic assay (`docs/DESIGN.md` §1.1; the
 /// 2026-10-02 design-record entry on the stack NAND). `InPlace` is the default and the NAND
@@ -149,6 +159,25 @@ impl LogicNand {
             Self::Stack => AssayOps::EmitStackNand,
         }
     }
+}
+
+/// Which relation between two cells' computations lets one take energy from the other
+/// (`docs/DESIGN.md` §1.1, "Predation"; the 2026-10-03 design-record entry). `Off` is the
+/// default and the soup every earlier run lived in. Under the other three a cell that acts
+/// picks a partner by the soup's own rule and, where the relation holds, takes up to
+/// `predation_transfer` of its stock: `SubsetClass` when every input-permutation class the
+/// partner's metabolism tape computes is one the actor's computes too, `Equal` when the two
+/// sets are the same, `Shadow` on a coin at `predation_shadow_p` that reads no
+/// computation at all, and `Count` when the partner computes strictly fewer classes than
+/// the actor, whichever they are (out-count, 2026-10-04).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Predation {
+    Off,
+    SubsetClass,
+    Equal,
+    Shadow,
+    Count,
 }
 
 /// Every name `task_floor` may take, the arithmetic ladder's rungs then the logic ladder's
@@ -255,6 +284,23 @@ pub struct Params {
     /// is paid as a rung of this depth. `0` (the default) caps nothing. Refused away from
     /// `tasks = logic3` and `logic4`.
     pub task_depth_cap: u32,
+    /// How many output slots the topless assay reads: `TASK_MAX_OUTPUTS` (the default, the
+    /// engine's rule) up to `TASK_MAX_OUTPUTS_LIMIT`. Refused above the default anywhere
+    /// but an unpaid topless ladder, so no paid run reads a wider assay.
+    pub task_max_outputs: u32,
+    /// The interaction rule that reads what tapes compute: none (`off`, the default), or
+    /// one of the relations of `Predation`.
+    pub predation: Predation,
+    /// The most stock one predation moves out of the partner; `0` (the default) moves
+    /// nothing, and the pass does not run.
+    pub predation_transfer: u32,
+    /// The share of what a predation moves that is destroyed in transit, as `steal_loss`.
+    pub predation_loss: f64,
+    /// The predation pass's period: each cell acts with probability 1 in this every epoch,
+    /// and the cases a cell's computation is read on are redrawn every this many epochs.
+    pub predation_every: u32,
+    /// The coin `predation = shadow` decides an encounter by.
+    pub predation_shadow_p: f64,
     /// The enabled instruction set: the ops a run executes, as a subset of the ten BFF
     /// bytes. A byte whose op is not enabled is a no-op (DESIGN §1.3, sweep 5).
     pub ops: String,
@@ -286,6 +332,35 @@ pub struct Params {
     /// What a metabolism tape holds when it is switched on. Read only once `meta_len` is
     /// set.
     pub meta_seed: MetaSeed,
+    /// The longest a metabolism tape may grow to, from `meta_len`; `0` (the default) and
+    /// `meta_len` itself keep every tape `meta_len` bytes for the whole run.
+    pub meta_max_len: u32,
+    /// The shortest a deletion may leave a metabolism tape. Read only on a channel that
+    /// grows.
+    pub meta_min_len: u32,
+    /// The probability an inherited metabolism tape has a duplicate of one of its segments
+    /// appended. Read only on a channel that grows.
+    pub meta_dup: f64,
+    /// The probability an inherited metabolism tape loses one of its segments, after any
+    /// duplication. Read only on a channel that grows.
+    pub meta_del: f64,
+    /// The longest segment a duplication or deletion moves. Read only on a channel that
+    /// grows.
+    pub meta_seg_max: u32,
+    /// The gene length the topless assay splits a metabolism tape into, each gene run alone
+    /// and the tape credited the union; `0` (the default) runs the tape whole.
+    pub meta_genes: u32,
+    /// The top fidelity level a metabolism tape may carry: each cell holds a heritable
+    /// level from 0 (the base machine) to this, which divides its tape's `meta_rate` by
+    /// √2 a level. `0` (the default) carries none.
+    pub meta_fid_max: u32,
+    /// The probability, per inheritance of a metabolism tape, that the level it carries
+    /// moves one step up or down. Read only once `meta_fid_max` is set.
+    pub meta_fid_rate: f64,
+    /// The cost exponent of fidelity: under the initiator economy a cell at level f pays
+    /// `max_steps` × 2^(α·f/2) to initiate. `0` (the default) makes fidelity free. Read
+    /// only once `meta_fid_max` is set.
+    pub meta_fid_alpha: f64,
     pub init: Init,
     pub sample_every: u32,
     pub top_k: u32,
@@ -314,6 +389,12 @@ impl Default for Params {
             task_floor: TASK_FLOORS[0].to_string(),
             logic_nand: LogicNand::InPlace,
             task_depth_cap: 0,
+            task_max_outputs: TASK_MAX_OUTPUTS as u32,
+            predation: Predation::Off,
+            predation_transfer: 0,
+            predation_loss: 0.5,
+            predation_every: 8,
+            predation_shadow_p: 0.3,
             ops: crate::bff::OPS.iter().map(|op| *op as char).collect(),
             mutation_rate: 1.0 / 4096.0,
             structure: Structure::Uniform,
@@ -324,6 +405,15 @@ impl Default for Params {
             meta_rate: META_RATE_DEFAULT,
             meta_draw: MetaDraw::Uniform,
             meta_seed: MetaSeed::Zeros,
+            meta_max_len: 0,
+            meta_min_len: META_MIN_LEN_DEFAULT,
+            meta_dup: 0.0,
+            meta_del: 0.0,
+            meta_seg_max: META_SEG_MAX_DEFAULT,
+            meta_genes: 0,
+            meta_fid_max: 0,
+            meta_fid_rate: 0.0,
+            meta_fid_alpha: 0.0,
             init: Init::Random,
             sample_every: 10,
             top_k: 16,
@@ -556,6 +646,72 @@ const FIELDS: &[Field] = &[
               Only tasks logic3 and logic4 accept anything but 0.",
     },
     Field {
+        name: "task_max_outputs",
+        kind: Kind::Integer {
+            min: TASK_MAX_OUTPUTS as f64,
+            max: TASK_MAX_OUTPUTS_LIMIT as f64,
+        },
+        doc: "How many outputs a case of the logic3 or logic4 assay may emit before it \
+              stops, and so how many output slots are read for rungs: by the predation \
+              pass, the depth readings and the logic readings. The first four read what \
+              they always read, so a wider assay only adds rungs. Anything above 4 needs \
+              tasks logic3 or logic4 and a task_reward of 0: no paid run reads it.",
+    },
+    Field {
+        name: "predation",
+        kind: Kind::Choice(&["off", "subset_class", "equal", "shadow", "count"]),
+        doc: "An interaction rule that reads what metabolism tapes compute and names no \
+              computation. Every epoch, before the influx, each cell acts with probability \
+              1 in predation_every, in an order of its own, and picks a partner by the soup's \
+              own neighbour rule; where the relation holds it takes up to predation_transfer \
+              of the partner's stock, predation_loss of what moves destroyed, never past \
+              energy_stock_cap. subset_class: every input-permutation class the partner's \
+              metabolism tape computes on the logic3 or logic4 assay, over task_max_outputs \
+              slots, is one the actor's computes too, so a tape computing nothing is \
+              everyone's prey and two tapes computing the same are each other's. equal: the \
+              two sets are the same. shadow: a coin at predation_shadow_p, reading nothing. \
+              count: the partner computes strictly fewer classes than the actor, whichever \
+              they are, so silence is prey and two tapes computing as many are not. Under \
+              meta_genes every relation reads the union of the genes' classes. The cases are drawn on the pass's own stream every predation_every epochs. \
+              off runs no pass, which is the substrate of DESIGN 1.1. Anything but off needs \
+              a metabolism tape, an energy_influx, energy_payer initiator, tasks logic3 or \
+              logic4, and a task_reward of 0.",
+    },
+    Field {
+        name: "predation_transfer",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: 1_048_576.0,
+        },
+        doc: "The most stock one predation takes out of its partner: what the partner holds \
+              when that is less. 0 moves nothing and runs no pass. Read only once predation \
+              is set.",
+    },
+    Field {
+        name: "predation_loss",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The share of what a predation moves that is destroyed in transit: the actor \
+              receives the rest, rounded down, as a steal op's thief does. Read only once \
+              predation is set.",
+    },
+    Field {
+        name: "predation_every",
+        kind: Kind::Integer {
+            min: 1.0,
+            max: 1_000_000.0,
+        },
+        doc: "The predation pass's period: each cell acts with probability 1 in this every \
+              epoch, so stocks are met at every phase of the initiation cycle, and the cases \
+              computations are read on are redrawn every this many epochs. Read only once \
+              predation is set.",
+    },
+    Field {
+        name: "predation_shadow_p",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The probability an encounter moves energy under predation shadow, a coin that \
+              reads no computation. Read only under predation shadow.",
+    },
+    Field {
         name: "ops",
         kind: Kind::Subset(&["<", ">", "{", "}", "+", "-", ".", ",", "[", "]"]),
         doc: "The BFF instructions this run executes, as a string of distinct op bytes. \
@@ -636,6 +792,97 @@ const FIELDS: &[Field] = &[
               epoch 0 or at descent from a parent that carried none: zeros, or the first \
               meta_len bytes of the cell's own replicating tape. Read only once meta_len \
               is set.",
+    },
+    Field {
+        name: "meta_max_len",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: META_LEN_MAX as f64,
+        },
+        doc: "The longest a metabolism tape may grow to. Every tape starts at meta_len \
+              bytes; at each inheritance, the inherited copy has a duplicate of one of its \
+              segments appended with probability meta_dup, never past this length, then \
+              loses one of its segments with probability meta_del, never below meta_min_len. \
+              0 keeps the channel fixed at meta_len, and so does meta_len itself; below \
+              meta_len it is refused. Read only once meta_len is set.",
+    },
+    Field {
+        name: "meta_min_len",
+        kind: Kind::Integer {
+            min: 1.0,
+            max: META_LEN_MAX as f64,
+        },
+        doc: "The shortest a deletion may leave a metabolism tape, at most meta_len. Read \
+              only on a channel that grows (meta_max_len above meta_len).",
+    },
+    Field {
+        name: "meta_dup",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The probability, per inheritance, that the inherited metabolism tape has a \
+              copy of one of its segments, 1 to meta_seg_max bytes from a random place, \
+              appended at its end, cut at meta_max_len. Drawn on a stream of its own. Read \
+              only on a channel that grows.",
+    },
+    Field {
+        name: "meta_del",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The probability, per inheritance and after any duplication, that the \
+              inherited metabolism tape loses a segment of 1 to meta_seg_max bytes from a \
+              random place, never below meta_min_len. Read only on a channel that grows.",
+    },
+    Field {
+        name: "meta_seg_max",
+        kind: Kind::Integer {
+            min: 1.0,
+            max: META_LEN_MAX as f64,
+        },
+        doc: "The longest segment a duplication or deletion of a metabolism tape moves. \
+              Read only on a channel that grows.",
+    },
+    Field {
+        name: "meta_genes",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: META_LEN_MAX as f64,
+        },
+        doc: "The gene length G of the topless assay of a metabolism tape: the tape is cut \
+              at offsets 0, G, 2G and so on, the last piece zero-padded to G, and each gene \
+              is run alone on a buffer of 2G bytes with the inputs at its end, under the \
+              assay's own emit and step budgets; the tape computes the union of its genes' \
+              classes. No gene can read or undo another's result. It applies wherever a \
+              metabolism tape is assayed, the predation pass and the readings, and needs \
+              tasks logic3 or logic4 and a task_reward of 0, so it is never paid. 0 runs \
+              the tape whole.",
+    },
+    Field {
+        name: "meta_fid_max",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: META_FID_MAX as f64,
+        },
+        doc: "The top fidelity level of a metabolism tape. Each cell carries a heritable \
+              level f from 0, the base machine every cell starts at, to this; its tape \
+              mutates at meta_rate × 2^(−f/2), so each level is a factor of √2. The level \
+              is inherited with the tape and moves at meta_fid_rate. 0 carries no level. \
+              Needs a channel that grows (meta_max_len above meta_len).",
+    },
+    Field {
+        name: "meta_fid_rate",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The probability, per inheritance of a metabolism tape, that the inherited \
+              level moves one step, up or down with equal odds, never past 0 or \
+              meta_fid_max. Drawn on a stream of its own. Read only once meta_fid_max is \
+              set.",
+    },
+    Field {
+        name: "meta_fid_alpha",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The cost exponent α of fidelity: a cell at level f initiates only when its \
+              stock holds max_steps × 2^(α·f/2), and is debited that, so each halving of \
+              its tape's error rate multiplies the price of a copy attempt by 2^α. The \
+              interaction's step budget stays max_steps. 0 makes fidelity free. Needs the \
+              initiator economy (an energy_influx and energy_payer initiator). Read only \
+              once meta_fid_max is set.",
     },
     Field {
         name: "init",
@@ -758,6 +1005,44 @@ pub enum ParamError {
         task_depth_cap: u32,
         tasks: Tasks,
     },
+    /// Predation reads the topless assay's classes off the metabolism tape and moves stock
+    /// an initiator lives on: without any of those it reads or moves nothing it means to.
+    PredationNeeds {
+        needs: &'static str,
+    },
+    /// A run is either paid or predatory, never both, so the label of what it imports
+    /// stays clean.
+    PredationPaid {
+        task_reward: u32,
+    },
+    /// A wider assay on a paid run, or one with no topless ladder, would change what is
+    /// paid or read nothing.
+    WideAssayOutsideUnpaidTopless {
+        task_max_outputs: u32,
+    },
+    /// A metabolism channel whose cap sits below the length every tape starts at, or whose
+    /// floor sits above it, is not a channel the engine can build.
+    MetaBounds {
+        meta_len: u32,
+        meta_min_len: u32,
+        meta_max_len: u32,
+    },
+    /// A variation operator of a channel that cannot grow is silently inert.
+    MetaGrowthWithoutRoom {
+        field: &'static str,
+    },
+    /// Genes split what the topless assay reads, and must never change what is paid.
+    GenesNeeds {
+        needs: &'static str,
+    },
+    /// A fidelity setting with no level to apply it to is silently inert.
+    FidelityWithoutLevels {
+        field: &'static str,
+    },
+    /// Fidelity rides a channel that grows, and its price is an initiation's.
+    FidelityNeeds {
+        needs: &'static str,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -877,6 +1162,50 @@ impl fmt::Display for ParamError {
                  rungs are paid by depth",
                 tasks.name()
             ),
+            Self::PredationNeeds { needs } => write!(
+                f,
+                "predation is set without {needs}: the pass reads the logic3 or logic4 \
+                 classes of metabolism tapes and moves the stock an initiator pays from"
+            ),
+            Self::PredationPaid { task_reward } => write!(
+                f,
+                "predation is set with a task_reward of {task_reward}: a run is either paid \
+                 or predatory, never both"
+            ),
+            Self::WideAssayOutsideUnpaidTopless { task_max_outputs } => write!(
+                f,
+                "task_max_outputs is {task_max_outputs}: above {TASK_MAX_OUTPUTS} it needs \
+                 tasks logic3 or logic4 and a task_reward of 0"
+            ),
+            Self::MetaBounds {
+                meta_len,
+                meta_min_len,
+                meta_max_len,
+            } => write!(
+                f,
+                "meta_len is {meta_len} with meta_min_len {meta_min_len} and meta_max_len \
+                 {meta_max_len}: a tape starts at meta_len, so the cap may not sit below it \
+                 (0 keeps the channel fixed) nor, on a channel that grows, the floor above it"
+            ),
+            Self::MetaGrowthWithoutRoom { field } => write!(
+                f,
+                "{field} is set on a metabolism channel that cannot grow: meta_max_len must \
+                 be above meta_len for it to be read"
+            ),
+            Self::GenesNeeds { needs } => write!(
+                f,
+                "meta_genes is set without {needs}: genes split the logic3 or logic4 assay \
+                 of an unpaid run's metabolism tapes"
+            ),
+            Self::FidelityWithoutLevels { field } => write!(
+                f,
+                "{field} is set with meta_fid_max 0: there is no fidelity level to apply it to"
+            ),
+            Self::FidelityNeeds { needs } => write!(
+                f,
+                "fidelity is set without {needs}: the level rides a metabolism tape that \
+                 grows, and its price is what an initiator pays"
+            ),
         }
     }
 }
@@ -932,6 +1261,7 @@ impl Params {
         }
         self.validate_tasks()?;
         self.validate_meta()?;
+        self.validate_predation()?;
         if self.radius > 0 && 2 * self.radius + 1 > self.width.min(self.height) {
             return Err(ParamError::RadiusTooWide {
                 radius: self.radius,
@@ -993,6 +1323,42 @@ impl Params {
         Ok(())
     }
 
+    fn validate_predation(&self) -> Result<(), ParamError> {
+        let unpaid_topless = self.tasks.depth_inputs().is_some() && self.task_reward == 0;
+        if self.task_max_outputs as usize > TASK_MAX_OUTPUTS && !unpaid_topless {
+            return Err(ParamError::WideAssayOutsideUnpaidTopless {
+                task_max_outputs: self.task_max_outputs,
+            });
+        }
+        if self.predation == Predation::Off {
+            return Ok(());
+        }
+        let missing = [
+            (self.meta_len == 0, "a metabolism tape (meta_len above 0)"),
+            (
+                self.energy_influx == 0,
+                "an energy stock (energy_influx above 0)",
+            ),
+            (
+                self.energy_payer != EnergyPayer::Initiator,
+                "the initiator payer (energy_payer initiator)",
+            ),
+            (
+                self.tasks.depth_inputs().is_none(),
+                "a topless ladder (tasks logic3 or logic4)",
+            ),
+        ];
+        if let Some((_, needs)) = missing.into_iter().find(|(missing, _)| *missing) {
+            return Err(ParamError::PredationNeeds { needs });
+        }
+        if self.task_reward > 0 {
+            return Err(ParamError::PredationPaid {
+                task_reward: self.task_reward,
+            });
+        }
+        Ok(())
+    }
+
     fn validate_meta(&self) -> Result<(), ParamError> {
         if self.meta_len > 0 {
             if !self.tasks.is_logic() {
@@ -1001,16 +1367,111 @@ impl Params {
                     tasks: self.tasks,
                 });
             }
-            return Ok(());
+            self.validate_meta_channel()?;
+            self.validate_genes()?;
+            return self.validate_fidelity();
         }
         let defaults = Params::default();
         let stray = [
             ("meta_rate", self.meta_rate != defaults.meta_rate),
             ("meta_draw", self.meta_draw != defaults.meta_draw),
             ("meta_seed", self.meta_seed != defaults.meta_seed),
+            ("meta_max_len", self.meta_max_len != defaults.meta_max_len),
+            ("meta_min_len", self.meta_min_len != defaults.meta_min_len),
+            ("meta_dup", self.meta_dup != defaults.meta_dup),
+            ("meta_del", self.meta_del != defaults.meta_del),
+            ("meta_seg_max", self.meta_seg_max != defaults.meta_seg_max),
+            ("meta_genes", self.meta_genes != defaults.meta_genes),
+            ("meta_fid_max", self.meta_fid_max != defaults.meta_fid_max),
+            (
+                "meta_fid_rate",
+                self.meta_fid_rate != defaults.meta_fid_rate,
+            ),
+            (
+                "meta_fid_alpha",
+                self.meta_fid_alpha != defaults.meta_fid_alpha,
+            ),
         ];
         match stray.into_iter().find(|(_, set)| *set) {
             Some((field, _)) => Err(ParamError::MetaParamWithoutTape { field }),
+            None => Ok(()),
+        }
+    }
+
+    fn validate_meta_channel(&self) -> Result<(), ParamError> {
+        let below_len = self.meta_max_len != 0 && self.meta_max_len < self.meta_len;
+        if below_len || (self.meta_grows() && self.meta_min_len > self.meta_len) {
+            return Err(ParamError::MetaBounds {
+                meta_len: self.meta_len,
+                meta_min_len: self.meta_min_len,
+                meta_max_len: self.meta_max_len,
+            });
+        }
+        if self.meta_grows() {
+            return Ok(());
+        }
+        let defaults = Params::default();
+        let inert = [
+            ("meta_min_len", self.meta_min_len != defaults.meta_min_len),
+            ("meta_dup", self.meta_dup != defaults.meta_dup),
+            ("meta_del", self.meta_del != defaults.meta_del),
+            ("meta_seg_max", self.meta_seg_max != defaults.meta_seg_max),
+        ];
+        match inert.into_iter().find(|(_, set)| *set) {
+            Some((field, _)) => Err(ParamError::MetaGrowthWithoutRoom { field }),
+            None => Ok(()),
+        }
+    }
+
+    fn validate_genes(&self) -> Result<(), ParamError> {
+        if self.meta_genes == 0 {
+            return Ok(());
+        }
+        let missing = [
+            (
+                self.tasks.depth_inputs().is_none(),
+                "a topless ladder (tasks logic3 or logic4)",
+            ),
+            (self.task_reward > 0, "an unpaid run (task_reward 0)"),
+        ];
+        match missing.into_iter().find(|(missing, _)| *missing) {
+            Some((_, needs)) => Err(ParamError::GenesNeeds { needs }),
+            None => Ok(()),
+        }
+    }
+
+    fn validate_fidelity(&self) -> Result<(), ParamError> {
+        if self.meta_fid_max == 0 {
+            let defaults = Params::default();
+            let inert = [
+                (
+                    "meta_fid_rate",
+                    self.meta_fid_rate != defaults.meta_fid_rate,
+                ),
+                (
+                    "meta_fid_alpha",
+                    self.meta_fid_alpha != defaults.meta_fid_alpha,
+                ),
+            ];
+            return match inert.into_iter().find(|(_, set)| *set) {
+                Some((field, _)) => Err(ParamError::FidelityWithoutLevels { field }),
+                None => Ok(()),
+            };
+        }
+        let initiator = self.stocked() && self.energy_payer == EnergyPayer::Initiator;
+        let missing = [
+            (
+                !self.meta_grows(),
+                "a metabolism channel that grows (meta_max_len above meta_len)",
+            ),
+            (
+                self.meta_fid_alpha > 0.0 && !initiator,
+                "the initiator economy a price needs (energy_influx above 0, energy_payer \
+                 initiator)",
+            ),
+        ];
+        match missing.into_iter().find(|(missing, _)| *missing) {
+            Some((_, needs)) => Err(ParamError::FidelityNeeds { needs }),
             None => Ok(()),
         }
     }
@@ -1170,6 +1631,56 @@ impl Params {
     /// at 0 none is allocated, drawn, inherited or snapshotted.
     pub fn carries_meta(&self) -> bool {
         self.substrate == Substrate::Soup && self.meta_len > 0
+    }
+
+    /// The longest a metabolism tape of this run may be: `meta_max_len` where it is set,
+    /// and the length every tape starts and stays at where it is not.
+    pub fn meta_cap(&self) -> u32 {
+        match self.meta_max_len {
+            0 => self.meta_len,
+            cap => cap,
+        }
+    }
+
+    /// Whether this run's metabolism tapes may change length at all. A cap equal to
+    /// `meta_len` is the fixed channel, exactly as `meta_max_len` 0 is.
+    pub fn meta_grows(&self) -> bool {
+        self.carries_meta() && self.meta_cap() > self.meta_len
+    }
+
+    /// The gene length the topless assay splits a metabolism tape into, `None` where it
+    /// runs the tape whole.
+    pub fn gene_len(&self) -> Option<usize> {
+        (self.carries_meta() && self.meta_genes > 0).then_some(self.meta_genes as usize)
+    }
+
+    /// Whether this run's metabolism tapes carry a heritable fidelity level.
+    pub fn carries_fidelity(&self) -> bool {
+        self.meta_grows() && self.meta_fid_max > 0
+    }
+
+    /// Whether a cell's fidelity level sets the price it initiates at.
+    pub fn prices_fidelity(&self) -> bool {
+        self.carries_fidelity()
+            && self.meta_fid_alpha > 0.0
+            && self.stocked()
+            && self.energy_payer == EnergyPayer::Initiator
+    }
+
+    /// Whether this run's predation pass runs at all: a relation chosen and a transfer to
+    /// move, on a soup whose cells hold a stock and a metabolism tape and sit on a topless
+    /// ladder. At `off` or a transfer of 0 nothing is drawn, read or moved.
+    pub fn predates(&self) -> bool {
+        self.predation != Predation::Off
+            && self.predation_transfer > 0
+            && self.stocked()
+            && self.carries_meta()
+            && self.tasks.depth_inputs().is_some()
+    }
+
+    /// The output slots the topless assay reads, never past `TASK_MAX_OUTPUTS_LIMIT`.
+    pub fn assay_slots(&self) -> usize {
+        (self.task_max_outputs as usize).clamp(TASK_MAX_OUTPUTS, TASK_MAX_OUTPUTS_LIMIT)
     }
 
     /// The depth the topless ladder pays a deeper rung as, `None` where it caps nothing.
@@ -1605,7 +2116,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 33);
+        assert_eq!(fields.len(), 48);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -2377,5 +2888,676 @@ mod tests {
             0
         );
         assert_eq!(Params::default().task_depth_cap, 0);
+    }
+
+    /// The out-compute bundle of the design study (§4.4): an unpaid topless ladder on a
+    /// metabolism tape, under the initiator economy.
+    fn predatory_params() -> Params {
+        Params {
+            energy_payer: EnergyPayer::Initiator,
+            energy_influx: 1024,
+            energy_stock_cap: 65_536,
+            tasks: Tasks::Logic4,
+            task_reward: 0,
+            logic_nand: LogicNand::Stack,
+            meta_len: 32,
+            meta_draw: MetaDraw::Isa,
+            meta_seed: MetaSeed::OwnTape,
+            task_max_outputs: 16,
+            predation: Predation::SubsetClass,
+            predation_transfer: 8192,
+            ..Params::default()
+        }
+    }
+
+    /// Predation is off by default, every relation is read by name, and a stored run that
+    /// predates the parameters reads as the run it was.
+    #[test]
+    fn predation_is_off_by_default() {
+        let params = Params::default();
+        assert_eq!(
+            (
+                params.predation,
+                params.predation_transfer,
+                params.predation_loss,
+                params.predation_every,
+                params.predation_shadow_p,
+                params.task_max_outputs,
+            ),
+            (Predation::Off, 0, 0.5, 8, 0.3, 4)
+        );
+        assert!(!params.predates());
+        assert_eq!(params.assay_slots(), TASK_MAX_OUTPUTS);
+        let stored = serde_json::from_str::<Params>(r#"{"tasks": "logic4"}"#).unwrap();
+        assert_eq!(stored.predation, Predation::Off);
+        assert_eq!(stored.task_max_outputs, 4);
+        for (name, rule) in [
+            ("off", Predation::Off),
+            ("subset_class", Predation::SubsetClass),
+            ("equal", Predation::Equal),
+            ("shadow", Predation::Shadow),
+            ("count", Predation::Count),
+        ] {
+            let read =
+                serde_json::from_str::<Params>(&format!(r#"{{"predation": "{name}"}}"#)).unwrap();
+            assert_eq!(read.predation, rule);
+        }
+        assert!(serde_json::from_str::<Params>(r#"{"predation": "subset"}"#).is_err());
+    }
+
+    #[test]
+    fn the_out_compute_bundle_validates_and_predates() {
+        let params = predatory_params();
+        assert_eq!(params.validate(), Ok(()));
+        assert!(params.predates());
+        assert_eq!(params.assay_slots(), 16);
+        for predation in [Predation::Equal, Predation::Shadow, Predation::Count] {
+            assert_eq!(
+                Params {
+                    predation,
+                    ..predatory_params()
+                }
+                .validate(),
+                Ok(())
+            );
+        }
+        let none = Params {
+            predation: Predation::Off,
+            ..predatory_params()
+        };
+        assert_eq!(none.validate(), Ok(()), "the none arm reads the same slots");
+        assert!(!none.predates());
+        let still = Params {
+            predation_transfer: 0,
+            ..predatory_params()
+        };
+        assert_eq!(still.validate(), Ok(()));
+        assert!(!still.predates(), "a transfer of 0 runs no pass");
+    }
+
+    #[test]
+    fn predation_is_refused_without_what_it_reads_and_moves() {
+        let refused = |params: Params, needs: &'static str| {
+            assert_eq!(params.validate(), Err(ParamError::PredationNeeds { needs }));
+        };
+        refused(
+            Params {
+                meta_len: 0,
+                meta_draw: MetaDraw::Uniform,
+                meta_seed: MetaSeed::Zeros,
+                ..predatory_params()
+            },
+            "a metabolism tape (meta_len above 0)",
+        );
+        refused(
+            Params {
+                energy_influx: 0,
+                energy_payer: EnergyPayer::Pair,
+                ..predatory_params()
+            },
+            "an energy stock (energy_influx above 0)",
+        );
+        refused(
+            Params {
+                energy_payer: EnergyPayer::Pair,
+                ..predatory_params()
+            },
+            "the initiator payer (energy_payer initiator)",
+        );
+        refused(
+            Params {
+                tasks: Tasks::Logic,
+                task_max_outputs: 4,
+                ..predatory_params()
+            },
+            "a topless ladder (tasks logic3 or logic4)",
+        );
+        assert_eq!(
+            Params {
+                tasks: Tasks::Logic3,
+                ..predatory_params()
+            }
+            .validate(),
+            Ok(())
+        );
+        let paid = Params {
+            task_reward: 1024,
+            task_max_outputs: 4,
+            ..predatory_params()
+        };
+        assert_eq!(
+            paid.validate(),
+            Err(ParamError::PredationPaid { task_reward: 1024 })
+        );
+        assert_eq!(
+            paid.validate().unwrap_err().to_string(),
+            "predation is set with a task_reward of 1024: a run is either paid or predatory, \
+             never both"
+        );
+    }
+
+    /// A wider assay is accepted on an unpaid topless ladder alone, so no paid run reads
+    /// it, and never past `TASK_MAX_OUTPUTS_LIMIT`.
+    #[test]
+    fn a_wider_assay_is_refused_outside_an_unpaid_topless_ladder() {
+        let wide = |params: Params| Params {
+            task_max_outputs: 16,
+            predation: Predation::Off,
+            ..params
+        };
+        assert_eq!(wide(predatory_params()).validate(), Ok(()));
+        for tasks in [Tasks::Off, Tasks::Arith, Tasks::Logic] {
+            let params = wide(Params {
+                tasks,
+                meta_len: 0,
+                meta_draw: MetaDraw::Uniform,
+                meta_seed: MetaSeed::Zeros,
+                logic_nand: LogicNand::InPlace,
+                ..predatory_params()
+            });
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::WideAssayOutsideUnpaidTopless {
+                    task_max_outputs: 16
+                }),
+                "{tasks:?}"
+            );
+        }
+        assert_eq!(
+            wide(Params {
+                task_reward: 1024,
+                ..predatory_params()
+            })
+            .validate(),
+            Err(ParamError::WideAssayOutsideUnpaidTopless {
+                task_max_outputs: 16
+            })
+        );
+        for task_max_outputs in [3, 17] {
+            assert!(matches!(
+                Params {
+                    task_max_outputs,
+                    ..predatory_params()
+                }
+                .validate(),
+                Err(ParamError::OutOfRange {
+                    field: "task_max_outputs",
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn schema_carries_predation() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        let fields = schema["fields"].as_array().unwrap();
+        let field = |name: &str| fields.iter().find(|f| f["name"] == name).unwrap().clone();
+        assert_eq!(
+            field("predation")["values"],
+            serde_json::json!(["off", "subset_class", "equal", "shadow", "count"])
+        );
+        assert_eq!(field("predation")["default"], "off");
+        assert_eq!(field("predation_transfer")["default"], 0);
+        assert_eq!(field("predation_loss")["default"], 0.5);
+        assert_eq!(field("predation_every")["min"], 1);
+        assert_eq!(field("predation_shadow_p")["default"], 0.3);
+        assert_eq!(
+            (
+                field("task_max_outputs")["default"].as_i64(),
+                field("task_max_outputs")["min"].as_i64(),
+                field("task_max_outputs")["max"].as_i64()
+            ),
+            (Some(4), Some(4), Some(16))
+        );
+    }
+
+    /// The design study's §13.11 bundle, slice A: strict out-count on the union of 32-byte
+    /// genes, a channel growing from 32 bytes to 8 192 by duplication and deletion.
+    fn genes_params() -> Params {
+        Params {
+            predation: Predation::Count,
+            meta_max_len: 8192,
+            meta_dup: 0.05,
+            meta_del: 0.05,
+            meta_genes: 32,
+            ..predatory_params()
+        }
+    }
+
+    /// Every new field is off by default, so a stored run reads as the run it was: a fixed
+    /// channel of `meta_len` bytes, read whole.
+    #[test]
+    fn the_growable_channel_and_genes_are_off_by_default() {
+        let params = Params::default();
+        assert_eq!(
+            (
+                params.meta_max_len,
+                params.meta_min_len,
+                params.meta_dup,
+                params.meta_del,
+                params.meta_seg_max,
+                params.meta_genes,
+            ),
+            (0, 8, 0.0, 0.0, 16, 0)
+        );
+        let stored: Params =
+            serde_json::from_str(r#"{"tasks": "logic4", "meta_len": 32}"#).unwrap();
+        assert_eq!(stored.validate(), Ok(()));
+        assert_eq!(stored.meta_cap(), 32);
+        assert!(!stored.meta_grows());
+        assert_eq!(stored.gene_len(), None);
+        let fixed = Params {
+            meta_max_len: 32,
+            ..predatory_params()
+        };
+        assert_eq!(fixed.validate(), Ok(()));
+        assert!(
+            !fixed.meta_grows(),
+            "a cap of meta_len is the fixed channel"
+        );
+    }
+
+    #[test]
+    fn the_genes_bundle_validates_and_grows() {
+        let params = genes_params();
+        assert_eq!(params.validate(), Ok(()));
+        assert!(params.meta_grows());
+        assert_eq!(params.meta_cap(), 8192);
+        assert_eq!(params.gene_len(), Some(32));
+        assert!(params.predates());
+        let drift = Params {
+            predation: Predation::Off,
+            ..genes_params()
+        };
+        assert_eq!(drift.validate(), Ok(()), "drift reads genes without a pass");
+        assert_eq!(
+            Params {
+                meta_genes: 0,
+                ..genes_params()
+            }
+            .validate(),
+            Ok(())
+        );
+        assert!(matches!(
+            Params {
+                meta_max_len: META_LEN_MAX + 1,
+                ..genes_params()
+            }
+            .validate(),
+            Err(ParamError::OutOfRange {
+                field: "meta_max_len",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_channel_is_refused_bounds_it_cannot_start_inside() {
+        let bounds = |meta_min_len, meta_max_len| {
+            Params {
+                meta_min_len,
+                meta_max_len,
+                ..genes_params()
+            }
+            .validate()
+        };
+        assert_eq!(
+            bounds(8, 16),
+            Err(ParamError::MetaBounds {
+                meta_len: 32,
+                meta_min_len: 8,
+                meta_max_len: 16
+            })
+        );
+        assert_eq!(
+            bounds(33, 64),
+            Err(ParamError::MetaBounds {
+                meta_len: 32,
+                meta_min_len: 33,
+                meta_max_len: 64
+            })
+        );
+        assert_eq!(bounds(32, 64), Ok(()));
+        assert_eq!(
+            bounds(8, 16).unwrap_err().to_string(),
+            "meta_len is 32 with meta_min_len 8 and meta_max_len 16: a tape starts at \
+             meta_len, so the cap may not sit below it (0 keeps the channel fixed) nor, on a \
+             channel that grows, the floor above it"
+        );
+    }
+
+    /// A variation operator of a channel that cannot grow would be silently inert, and a
+    /// channel setting with no tape at all more so.
+    #[test]
+    fn growth_settings_are_refused_where_they_would_be_inert() {
+        let fixed = |params: Params| Params {
+            meta_max_len: 0,
+            ..params
+        };
+        for (params, field) in [
+            (
+                Params {
+                    meta_min_len: 4,
+                    ..fixed(genes_params())
+                },
+                "meta_min_len",
+            ),
+            (fixed(genes_params()), "meta_dup"),
+            (
+                Params {
+                    meta_dup: 0.0,
+                    ..fixed(genes_params())
+                },
+                "meta_del",
+            ),
+            (
+                Params {
+                    meta_dup: 0.0,
+                    meta_del: 0.0,
+                    meta_seg_max: 4,
+                    ..fixed(genes_params())
+                },
+                "meta_seg_max",
+            ),
+        ] {
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::MetaGrowthWithoutRoom { field })
+            );
+        }
+        let untaped = Params {
+            meta_len: 0,
+            meta_draw: MetaDraw::Uniform,
+            meta_seed: MetaSeed::Zeros,
+            predation: Predation::Off,
+            ..Params::default()
+        };
+        for (params, field) in [
+            (
+                Params {
+                    meta_max_len: 64,
+                    ..untaped.clone()
+                },
+                "meta_max_len",
+            ),
+            (
+                Params {
+                    meta_genes: 32,
+                    ..untaped.clone()
+                },
+                "meta_genes",
+            ),
+            (
+                Params {
+                    meta_del: 0.1,
+                    ..untaped.clone()
+                },
+                "meta_del",
+            ),
+        ] {
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::MetaParamWithoutTape { field })
+            );
+        }
+    }
+
+    /// Genes split the topless assay of an unpaid run alone, so they never touch pay.
+    #[test]
+    fn genes_are_refused_off_an_unpaid_topless_ladder() {
+        let two_input = Params {
+            tasks: Tasks::Logic,
+            task_max_outputs: 4,
+            predation: Predation::Off,
+            ..genes_params()
+        };
+        assert_eq!(
+            two_input.validate(),
+            Err(ParamError::GenesNeeds {
+                needs: "a topless ladder (tasks logic3 or logic4)"
+            })
+        );
+        let paid = Params {
+            predation: Predation::Off,
+            task_max_outputs: 4,
+            task_reward: 1024,
+            ..genes_params()
+        };
+        assert_eq!(
+            paid.validate(),
+            Err(ParamError::GenesNeeds {
+                needs: "an unpaid run (task_reward 0)"
+            })
+        );
+        assert_eq!(
+            paid.validate().unwrap_err().to_string(),
+            "meta_genes is set without an unpaid run (task_reward 0): genes split the logic3 \
+             or logic4 assay of an unpaid run's metabolism tapes"
+        );
+    }
+
+    #[test]
+    fn schema_carries_the_growable_channel_and_genes() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        let fields = schema["fields"].as_array().unwrap();
+        let field = |name: &str| fields.iter().find(|f| f["name"] == name).unwrap().clone();
+        assert_eq!(field("meta_len")["max"], 8192);
+        assert_eq!(field("meta_max_len")["default"], 0);
+        assert_eq!(field("meta_max_len")["max"], 8192);
+        assert_eq!(field("meta_min_len")["default"], 8);
+        assert_eq!(field("meta_min_len")["min"], 1);
+        assert_eq!(field("meta_dup")["default"], 0.0);
+        assert_eq!(field("meta_del")["type"], "float");
+        assert_eq!(field("meta_seg_max")["default"], 16);
+        assert_eq!(field("meta_genes")["default"], 0);
+        let names: Vec<&str> = fields.iter().map(|f| f["name"].as_str().unwrap()).collect();
+        let at = names.iter().position(|name| *name == "meta_seed").unwrap();
+        assert_eq!(
+            names[at + 1..at + 7],
+            [
+                "meta_max_len",
+                "meta_min_len",
+                "meta_dup",
+                "meta_del",
+                "meta_seg_max",
+                "meta_genes"
+            ]
+        );
+    }
+
+    /// The study's §13.11 bundle, slice B: the genes bundle with staged costly fidelity.
+    fn fidelity_params() -> Params {
+        Params {
+            meta_fid_max: 16,
+            meta_fid_rate: 0.05,
+            meta_fid_alpha: 0.03,
+            ..genes_params()
+        }
+    }
+
+    /// Fidelity is off by default, so a stored run reads as the run it was.
+    #[test]
+    fn fidelity_is_off_by_default() {
+        let params = Params::default();
+        assert_eq!(
+            (
+                params.meta_fid_max,
+                params.meta_fid_rate,
+                params.meta_fid_alpha
+            ),
+            (0, 0.0, 0.0)
+        );
+        assert!(!genes_params().carries_fidelity());
+        let stored: Params = serde_json::from_str(
+            r#"{"tasks": "logic4", "meta_len": 32, "meta_max_len": 64, "meta_dup": 0.05}"#,
+        )
+        .unwrap();
+        assert_eq!(stored.validate(), Ok(()));
+        assert!(!stored.carries_fidelity() && !stored.prices_fidelity());
+    }
+
+    #[test]
+    fn the_fidelity_bundle_validates_and_prices() {
+        let params = fidelity_params();
+        assert_eq!(params.validate(), Ok(()));
+        assert!(params.carries_fidelity() && params.prices_fidelity());
+        let free = Params {
+            meta_fid_alpha: 0.0,
+            ..fidelity_params()
+        };
+        assert_eq!(free.validate(), Ok(()));
+        assert!(free.carries_fidelity() && !free.prices_fidelity());
+        let drift = Params {
+            predation: Predation::Off,
+            ..fidelity_params()
+        };
+        assert_eq!(
+            drift.validate(),
+            Ok(()),
+            "drift carries fidelity without a pass"
+        );
+        let unpriced = Params {
+            meta_fid_alpha: 0.0,
+            energy_payer: EnergyPayer::Pair,
+            predation: Predation::Off,
+            ..fidelity_params()
+        };
+        assert_eq!(
+            unpriced.validate(),
+            Ok(()),
+            "free fidelity needs no economy"
+        );
+        for (params, field) in [
+            (
+                Params {
+                    meta_fid_max: META_FID_MAX + 1,
+                    ..fidelity_params()
+                },
+                "meta_fid_max",
+            ),
+            (
+                Params {
+                    meta_fid_rate: 1.5,
+                    ..fidelity_params()
+                },
+                "meta_fid_rate",
+            ),
+            (
+                Params {
+                    meta_fid_alpha: -0.1,
+                    ..fidelity_params()
+                },
+                "meta_fid_alpha",
+            ),
+        ] {
+            assert!(
+                matches!(params.validate(), Err(ParamError::OutOfRange { field: f, .. }) if f == field),
+                "{field}"
+            );
+        }
+    }
+
+    /// A fidelity setting with no level, a level on a channel that cannot grow, and a
+    /// price with no initiator to pay it are each refused.
+    #[test]
+    fn fidelity_is_refused_where_it_would_be_inert_or_unpriceable() {
+        for (params, field) in [
+            (
+                Params {
+                    meta_fid_rate: 0.05,
+                    ..genes_params()
+                },
+                "meta_fid_rate",
+            ),
+            (
+                Params {
+                    meta_fid_alpha: 0.03,
+                    ..genes_params()
+                },
+                "meta_fid_alpha",
+            ),
+        ] {
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::FidelityWithoutLevels { field })
+            );
+        }
+        let fixed = Params {
+            meta_max_len: 0,
+            meta_dup: 0.0,
+            meta_del: 0.0,
+            ..fidelity_params()
+        };
+        assert_eq!(
+            fixed.validate(),
+            Err(ParamError::FidelityNeeds {
+                needs: "a metabolism channel that grows (meta_max_len above meta_len)"
+            })
+        );
+        let pair = Params {
+            energy_payer: EnergyPayer::Pair,
+            predation: Predation::Off,
+            ..fidelity_params()
+        };
+        assert_eq!(
+            pair.validate(),
+            Err(ParamError::FidelityNeeds {
+                needs: "the initiator economy a price needs (energy_influx above 0, \
+                        energy_payer initiator)"
+            })
+        );
+        assert_eq!(
+            pair.validate().unwrap_err().to_string(),
+            "fidelity is set without the initiator economy a price needs (energy_influx \
+             above 0, energy_payer initiator): the level rides a metabolism tape that grows, \
+             and its price is what an initiator pays"
+        );
+        let untaped = Params {
+            meta_len: 0,
+            meta_draw: MetaDraw::Uniform,
+            meta_seed: MetaSeed::Zeros,
+            predation: Predation::Off,
+            ..Params::default()
+        };
+        for (params, field) in [
+            (
+                Params {
+                    meta_fid_max: 4,
+                    ..untaped.clone()
+                },
+                "meta_fid_max",
+            ),
+            (
+                Params {
+                    meta_fid_alpha: 0.1,
+                    ..untaped.clone()
+                },
+                "meta_fid_alpha",
+            ),
+        ] {
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::MetaParamWithoutTape { field })
+            );
+        }
+    }
+
+    #[test]
+    fn schema_carries_fidelity() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        let fields = schema["fields"].as_array().unwrap();
+        let field = |name: &str| fields.iter().find(|f| f["name"] == name).unwrap().clone();
+        assert_eq!(field("meta_fid_max")["default"], 0);
+        assert_eq!(field("meta_fid_max")["max"], 16);
+        assert_eq!(field("meta_fid_rate")["type"], "float");
+        assert_eq!(field("meta_fid_alpha")["default"], 0.0);
+        assert_eq!(field("meta_fid_alpha")["max"], 1.0);
+        let names: Vec<&str> = fields.iter().map(|f| f["name"].as_str().unwrap()).collect();
+        let at = names.iter().position(|name| *name == "meta_genes").unwrap();
+        assert_eq!(
+            names[at + 1..at + 4],
+            ["meta_fid_max", "meta_fid_rate", "meta_fid_alpha"]
+        );
     }
 }

@@ -4896,3 +4896,971 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     at its own epoch; like every other stored world it has only its static row there.
   - **Unchanged.** No engine rule, observable, param or default; no published reading,
     since `OrientedSummary#measured?` and the reports read static rows only.
+
+- 2026-10-03 — **Predation: the out-compute rule, an endogenous pressure in place of the paid
+  ladder (engine slice).** This is the engine slice of "Out-compute", step 1 of the ablation
+  ladder in `docs/studies/unassisted.md` §2: it removes the imported objective **by
+  substitution**, replacing the paid ladder with an interaction rule that reads what the
+  tapes compute and names no computation. It adds a DESIGN §1.1 paragraph and three §1.2
+  readings. No sweep is pre-registered here, and nothing is relocked.
+
+  **Why.** Removing the objective bare is answered: every none arm collapses (Logic's,
+  Meta-stack's, topless-rise's interim, and the study's pilot of child 4845 at reward 0, its
+  depth held by a tenth 5 → 0 within 500 epochs). Removing the machine is answered or
+  predicted to fail (study §2.1). So the objective comes off first, replaced by something the
+  world generates. The study's literature reading (§3) points at a parasite keyed on the
+  host's **computed** function (Zaman et al. 2014), with three changes: no flat pay, subset
+  rather than intersection so dominance is transitive, and every cell both host and parasite.
+
+  **The rule** (DESIGN §1.1, "Predation"):
+  - `predation`: `off` (default), `subset_class`, `equal` or `shadow`; `predation_transfer`
+    (0 = no pass), `predation_loss` (0.5), `predation_every` (8), `predation_shadow_p`
+    (0.30, the out-compute arm's eat rate in both pilot worlds after their first 5 000
+    epochs, study §4.4; a parameter so a pre-registration locks it). All dynamics.
+  - What a cell computes: the input-permutation classes its metabolism tape is credited with
+    by the topless assay of the run's ladder (its draw, its slot refusals, three reads per
+    row), over `task_max_outputs` slots, under the run's `logic_nand`. Classes, not exact
+    functions: in the pilot, a superset race over exact functions was won by tapes echoing
+    the four inputs (study §4.3, point 4).
+  - `subset_class` takes from a partner whose every class the actor computes; `equal` from
+    one computing exactly the actor's set; `shadow` on a coin that reads nothing. A take is
+    settled as a steal op of `predation_transfer` at `predation_loss`.
+  - **Asynchronous**: each cell acts with probability 1/`predation_every` every epoch, in an
+    order shuffled on `STREAM_PREDATION` at (seed, epoch), partner by the soup's own
+    neighbour rule and reach; the cases are drawn first off that stream every
+    `predation_every` epochs, and each distinct tape's class set is memoised until they are
+    redrawn (a restored world redraws them from the period's first epoch, so a resume
+    continues the run). The pilot's first version ran the pass for every cell once per 8
+    epochs and met a descended world's lockstep initiators only when their stocks were
+    empty: nothing moved, and its arms were indistinguishable from drift (study §4.2).
+  - Refused without a metabolism tape, an `energy_influx`, the `initiator` payer or a
+    topless ladder, and with any `task_reward`: a run is either paid or predatory.
+  - `task_max_outputs` (default 4, the engine's rule; 4–16): how many outputs a case of the
+    topless assay may emit before it stops. It is read by the pass, the depth readings and
+    the logic readings alike; the first four slots read what they always read. Above 4 it is
+    accepted only on an unpaid topless ladder (`logic3` or `logic4` at reward 0), which
+    every predation run is and so is the none arm of a predation sweep, so its depth
+    readings read the same slots as its treatment arms; no paid run reads it.
+
+  **The label.** Predation **imports a machine, not an objective.** Relabel the functions a
+  tape can compute any way and the rule is unchanged; in a world where every cell computes
+  the same set, whatever it is, every cell covers every other and every payoff is the same.
+  It still imports the NAND and its stack semantics, the emit op, the input bytes, the
+  world-copied metabolism tape, the emit cap and the rule itself, so rung 4 on Soup stays
+  "not shown" whatever a predation run reads (study §2, step 4, is what would make the
+  machine the soup's own). A predation run is unpaid, so it carries no "imports an
+  objective" badge. It is not plain Soup either: the reward-0 arms of Meta-stack and
+  topless-rise carry a metabolism tape nothing reads into the dynamics, while a predation
+  run's energy moves by what its tapes compute. Whether its runs pool with plain Soup's in
+  the site's fitness-free aggregates (`Run.fitness_free`, which reads the reward alone and so
+  would count them today) and the "imports a machine" label they show are settled with the
+  out-compute sweep's pre-registration, before any predation run exists. A descendant
+  records no transition, so no transition or emergence survey would read one meanwhile.
+
+  **The readings** (live-only, null unless the pass runs): `predation_rate`, the share of
+  the last pass's encounters that moved energy; `predation_relation_rate`, the share whose
+  relation held (under `shadow`, whose coin came up), moved or not, which is the pilot's eat
+  rate and so the one a pre-registration sets `predation_shadow_p` against: on the pilot's
+  out-compute end world of 4381 the engine reads 0.32 for it and 0.29 for `predation_rate`,
+  since a related partner may hold nothing; `repertoire_mean`, the mean distinct classes
+  per cell of 256 sampled cells, and `silent_share`, the share of them computing none, both
+  on `STREAM_PREDATION | 1`. `logic_depth_max` and `logic_depth_classes` now read every slot
+  `task_max_outputs` allows: in the pilot the four-slot reading read 3 in both out-compute
+  worlds where the full census held 5–6 (study §4.3, point 7). At the default 4 they read
+  exactly what they read before.
+
+  **The pilot, labelled pilot** (one seed per arm and world, a throwaway engine copy at
+  `b30196a`; study §4.3): from two fitness-free reach-cap128 worlds (4381, 4428) whose
+  metabolism tapes computed nothing at descent, with nothing paid, out-compute at
+  `meta_rate` 8/8192 and a take of one whole initiation (8 192) put 92–94% of cells
+  computing, held 5–6 classes per cell, and held depth-5 and depth-6 functions by a tenth of
+  the world (EQU is 5) and depth 7 by a hundredth; drift held depth 0 with 88% of cells
+  silent, and `equal` held depth 0 with 36% silent. The climb came in the first ~10 000
+  epochs and then mostly stopped: by the topless-rise rule one world rose late by one NAND
+  on a flickering series and the other did not, and the 10th percentile of per-cell max
+  depth stayed at 1. At Meta-stack's ×32 rate and half the take the same rule held depth 1.
+  Pilot numbers, not findings.
+
+  **Verified.**
+  - Every existing pin is unmoved, and at `off` (or a transfer of 0) a run is byte-, stock-,
+    snapshot- and reading-identical to the run without the parameters; `task_max_outputs`
+    moves no byte.
+  - Determinism, with a resume mid-period, under each relation at `predation_every` 1 and 3;
+    a world restored mid-period holds the cases the uninterrupted run drew at the period's
+    first epoch, and `shadow` draws none.
+  - Every encounter of `subset_class` moves energy exactly when the actor covers the
+    partner (the empty set is everyone's prey; kin eat kin), `equal` exactly on equal sets,
+    and `shadow` at its coin whatever the tapes compute.
+  - A world of lockstep initiators, all stocks empty at epoch 0, is met at every one of the
+    eight phases of its cycle and sees transfers.
+  - Pins of each relation's run and readings; a 16-slot reading credits XOR4 past four
+    echoes where the 4-slot one reads ECHO alone.
+  - **Cost**, measured on the Mac under a load average of 44–68 (wall time per epoch, 300
+    epochs each, descended at seed 6001): on the pilot's out-compute end world of 4381 (40 000
+    epochs past descent), `subset_class` 28.4 ms, `equal` 28.0, `shadow` 17.5, `off` 18.9,
+    and topless-rise's rise arm (`logic4` at reward 512, `meta_rate` 32/8192) 27.3; on
+    Meta-stack child 4845's world the rise arm 34.1 ms and `subset_class` 29.5. An
+    out-compute child costs about what a topless-rise rise child costs on the same world,
+    and about 1.5 times a none child.
+- 2026-10-03 — **Out-compute: does an endogenous rule make computing climb, and keep climbing,
+  with nothing paid?** Pre-registration of §1.3 item 19, the Out-compute variant of §1.4 (a
+  DESIGN paragraph added), on the predation slice of the entry above. Nothing here is a
+  finding; every number under "What was seen" is pilot.
+
+  **The choice, and why.**
+  - **The ablation ladder** (`docs/studies/unassisted.md` §2). Meta-stack's claim imports four
+    things: the objective (O, the paid ladder), the primitive (P, the NAND byte), the channel
+    (C, the metabolism tape) and the semantics (S, the stack NAND). S is known load-bearing (a
+    finding, H-stack), P is load-bearing by construction (BFF has no two-input data op), and C
+    is predicted to fail for two measured reasons, the copier valley and the error threshold.
+    O removed bare is answered: every none arm collapses. The study orders the ladder O, then
+    P and S made native, then C made the program's.
+  - **This is step 1.** It removes O by **substitution**, not bare: the paid ladder is
+    replaced by predation, an interaction rule that reads what the tapes compute and names no
+    computation. P, C and S are kept, so the sweep changes exactly one import.
+  - **Why it imports no objective.** The relation is set inclusion between the class sets two
+    tapes are credited with. It is **relabelling-invariant**: permute the functions any way
+    and every comparison comes out the same. It is **relational**: in a world where every cell
+    computes the same set, whatever it is, every cell covers every other and every payoff is
+    the same. No depth table, no units and no ladder lie on its code path; the predation
+    slice's reviewer checked that path. What it does import is listed under "The label".
+  - **The instruction.** The user's instruction for the programme is "continue, don't stop
+    until life exists". Rung 4 on Soup is not shown, and every paid substrate stopped.
+    Removing the objective is the step the honest bar (study §5, clause 2) asks for first.
+
+  **What was seen** (pilot, one seed per arm and world, a throwaway engine copy at `b30196a`).
+  - **Study §4.3.** From reach-cap128 worlds 4381 and 4428, whose metabolism tapes computed
+    nothing at descent, with nothing paid: out-compute at `meta_rate` 8/8192 and a take of
+    8 192 held depth 5 and 6 by a tenth of the world, depth 7 by a hundredth, and 5–6 classes
+    per cell. Every control held depth 0: drift left 88% of cells silent and `equal` 36%.
+    Most of the climb came in the first 8 000–10 000 epochs, then it flattened. By the
+    topless-rise rule one world rose late by one NAND on a series flickering between 5 and 6,
+    and the other did not. The 10th percentile of per-cell max depth among computing cells
+    stayed at 1 throughout: **the minimum did not rise**. At Meta-stack's ×32 rate with half
+    the take, the same rule held depth 1.
+  - **Study §7, the growable channel (pilot 2, negative).** A metabolism tape growing from 32
+    up to 256 bytes, with segment duplication and deletion at 0.05 per inheritance, ran under
+    out-compute for 60 000 epochs on both worlds. It reached one NAND deeper and one or two
+    more classes per cell than the fixed channel within 15 000 epochs, then stood still. The
+    minimum stayed at 1. Neither growable run met the study's §5.4 (the one pass was a fixed
+    arm, by one NAND).
+    - **Why it did not climb late.** The tapes grew to ~210 bytes, but every load-bearing byte
+      sat in the first 16. One stack-NAND loop spends the whole emit budget, so code appended
+      after it is never read. A changed loop changes its whole orbit and replaces its classes
+      rather than adding to them, so the subset ratchet does not pay it. A tandem-duplication
+      probe did no better.
+    - **So the plateau is the loop's orbit, not the channel's length.** The study recommends
+      **no growable arm**, and this sweep has none: it would cost ~1.6 times a fixed arm, and
+      the pilot predicts it ties the fixed arm on the rise rule.
+  - **Topless-rise, interim** (`lab:topless_rise_report` on the lab, 2026-10-03 15:49Z,
+    "interim"; not the sweep's final reading). 68 of 162 children had finished. Last-decile
+    medians of `logic_depth_max` over the finished children: rise 10 (23 children, 16 of them
+    at 10), capped 7–8, none 0. H-rise read 0 to 0 with 26 ties and H-rise-paid 1 to 4, both
+    refuted so far. So even under pay, on the ladder built without a near top, the deepest
+    rung held so far jumps early and stands still at the mode of the depth scale.
+  - **The predation slice's reproduction on the engine.** On the pilot's out-compute end
+    world of 4381 the engine reads `predation_relation_rate` 0.32, against the 0.30 coin
+    `predation_shadow_p` sets for shadow, and `predation_rate` 0.29. An out-compute child costs
+    about what a topless-rise rise child costs on the same world.
+
+  **The label: "imports a machine, not an objective"** (`Lab::OutComputeReading::LABEL`).
+  - **The machine** is the NAND primitive, its stack semantics, the world-copied metabolism
+    tape, the emit op and its cap of 16, the input bytes and the predation rule itself. No
+    objective: nothing says which computation is wanted.
+  - **Rung 4 on Soup stays "not shown"** whatever this sweep reads; the study's §2 step 4
+    (P and S made soup instructions, emergence re-shown on them) is what would make the
+    machine native.
+  - **Pooling**, settled here as the predation entry left it. `Run.predatory` is the runs
+    whose pass runs: `predation` a string other than `off` and `predation_transfer` a
+    positive JSON number, the engine's own `predation_active`. `Lab::OutComputeReading.
+    predatory_run?` is the same rule on a params hash.
+    - `Run.fitness_free` now excludes them beside the paid runs, and `Run.labelled` (paid or
+      predatory) is what `Programme::Status#peak_replicator_count` leaves out. Every
+      aggregate already on `fitness_free` follows: the status strip's seeds transitioned, the
+      lab-wide surveys and their index denominator, the lab-wide detector baseline and the
+      oriented corpus total.
+    - **The none arm (`predation: off`) is not predatory** and pools as plain Soup: a
+      metabolism tape nothing reads into the dynamics. That is the predation reviewer's ruling
+      on Meta-stack's and topless-rise's reward-0 arms, which do not change.
+    - Today no stored run carries the key (SELECT, 2026-10-03: 0 of 5 126), so no number on
+      the site moves now. Once the sweep is seeded, its 162 predatory children leave every
+      fitness-free aggregate, and its 54 none children stay in.
+  - **The badge.** A finding carries the flag as `imports_objective` is carried
+    (`Findings::Finding#imports_machine`, stated in its registry entry). The registry spec
+    holds every finding resting on this sweep to it, and no other. The badge sits beside the
+    finding's status wherever that renders, on this sweep's page beside its substrate and
+    over its reading, and it links to a new glossary entry.
+
+  **The sweep** (`out-compute`, a descendant sweep).
+  - **Parents.** The rule `Lab::OutComputeReading::PARENTS`, read by
+    `Experiments::DescendantParentsService`, extended as data with two keys:
+    - `emerged`: only a candidate with a confirmed emergence epoch;
+    - `first: 54`: the first 54 qualifying candidates by run id, the rest skipped as past
+      it.
+    The candidates are reach-cap128's founding runs at radius 4, qualified on the oriented
+    census of the terminal world (`oriented_census/1`, `replicator_share` ≥ 0.5). With a
+    confirmed emergence and a terminal share ≥ 0.5 at the terminal world, that is reach-cap128's
+    own emergence rule.
+    - SELECT, 2026-10-03: 270 runs. 113 read a terminal share ≥ 0.5, and 5 of those (4368,
+      4373, 4420, 4433, 4485) never emerged, which leaves **108**, the finding's eligible
+      parents.
+    - The 54 lowest ids run 4306–4430, each from its terminal world at epoch 20 000. They
+      include the pilot's two start worlds, 4381 and 4428. Their children are not replays of
+      the pilot (another seed, the real engine), so the tests keep them; each test is re-read
+      without them, as Logic and Meta-stack re-read theirs (below).
+    - Fitness-free history: none of them was ever paid.
+  - **The bundle**, merged over each parent's params, every value named:
+    - the economy: `energy_payer: initiator`, `energy_influx` 1 024, `energy_stock_cap`
+      65 536, `steal_amount` 0;
+    - the assay, unpaid: `tasks: logic4`, `task_reward` 0, `logic_nand: stack`;
+    - the metabolism tape: `meta_len` 32, `meta_rate` 0.0009765625 (8/8192, the pilot's ×8, a
+      quarter of Meta-stack's 32/8192: the study's §4.4 and the record's predation entry
+      agree on 8/8192), `meta_draw: isa`, `meta_seed: own_tape`;
+    - the slots: `task_max_outputs` 16;
+    - the pass: `predation_transfer` 8 192, `predation_loss` 0.5, `predation_every` 8,
+      `predation_shadow_p` 0.3;
+    - the cadence: `snapshot_every` 500 (below).
+  - **The arms.**
+    - **out-compute**: `predation: subset_class`;
+    - **equal**: `predation: equal`, the same transfers with no ratchet;
+    - **shadow**: `predation: shadow`, the same transfers on a coin;
+    - **none**: `predation: off`. It keeps `task_max_outputs` 16 so its depth readings read
+      the slots the treatment arms read, which the predation slice accepts on any unpaid
+      topless run.
+  - **Seed 6001**, one per parent, which no stored run uses (SELECT, 2026-10-03) and no other
+    sweep names. **100 000 epochs** past the parent, **priority 40**: **216 children**.
+  - **The cadence, for disk** (issue #268; the mini-pc's disk stood at 85% on 2026-10-03).
+    Every arm stores a world every **500** epochs, not the runner's default 100, through the
+    grid (as `mutation_rate_long` and `bff_control` do). `Runs::PruneSnapshotsService` then
+    keeps one world in 10 (`KEEP_FACTOR`), every **5 000** epochs, plus the first and last.
+    - **Disk.** A finished child keeps 22 worlds instead of about 101: at about 1.4 MB a world
+      that is **about 6.7 GB for the 216 children instead of about 30 GB**. While a child runs,
+      its unpruned worlds peak at about 280 MB instead of 1.4 GB, so 12 running slots hold
+      about 3.4 GB rather than 17 GB.
+    - **The offline readings.** McShea's minimum and H-code read "the last stored world at or
+      before" the fifth decile's end, the earliest at or past the first settled sample, and the
+      last world. At this cadence the first two lie within 5 000 epochs of those boundaries,
+      and the last world is always kept. No live reading moves: samples are taken at the
+      runner's `sample_every` whatever the cadence.
+    - **Resuming.** A runner restart redoes up to 500 epochs of a child instead of up to 100.
+      A resume is deterministic, so this costs time and not results.
+    - `snapshot_every` is not a run parameter of the engine's dynamics
+      (`Lab::Schema::NON_RUN_PARAMS`). On the grid it enters each child's params, and so its
+      canonical identity, the same way in every arm.
+  - **Validated in the engine.** Each of the four bundles was merged over the params of 4381
+    and of 4428 and descended from their stored terminal worlds with `World::descend`. That
+    path runs `Params::validate`, the paid-or-predatory refusal and the structure check. All
+    eight were accepted, at seed 6001, on the merged engine, for 1 000 epochs; with the
+    cadence added they were accepted again. At 1 000 epochs:
+    - out-compute held depth 2 and 4 classes, with 5–8% of sampled cells silent,
+      `predation_rate` 0.36 and `predation_relation_rate` 0.40;
+    - equal held depth 1, with 48–56% silent;
+    - shadow held nothing (−1), with 87–88% silent and a relation rate of 0.29–0.31 against
+      its coin of 0.30;
+    - none held ECHO or nothing, its predation readings null;
+    - `replicator_share` read 0.76–0.92 everywhere.
+  - **Cost.** On the mini-pc, finished topless-rise children took 59 s per 1 000 epochs
+    (rise) and 39 s (none), wall time from claim to finish under the full 12-slot load
+    (SELECT, 2026-10-03). The predation entry measured, on one climbed world, out-compute and
+    equal at about 1.04 times a rise child, and shadow and off at about two-thirds of it.
+    Taking out-compute and equal at 61 s and shadow and none at 39 s:
+    54 × 100 × (61 + 61 + 39 + 39) s ≈ 1.08 M run-seconds ≈ **25 h of the 12 slots**. At the
+    study's more cautious 80 s and 45 s it is 36 h.
+  - **The builder.** It is idempotent, adds nothing to reach-cap128 or any earlier sweep,
+    gives each child of a parent its own canonical params, and so collides with no stored
+    run.
+
+  **The readings, per child.** Topless-rise's machinery, unchanged (`Lab::ToplessRiseReading`):
+  - the **settling window** of 1 000 epochs;
+  - **deciles** cut by index over all settled samples, with **lower-middle medians**, and a
+    decile unread under 10 numbers;
+  - **extinct** where the last-decile median `replicator_share` is below 0.1, and a **settled
+    relapse** as before;
+  - **the rise rule with the bar**: a child rises late where its last-decile median is at
+    least the bar + 1. The bar is the largest of its fifth-decile median, its value at
+    descent and every value held under the persistence rule (**k = 5**) up to the fifth
+    decile's end.
+  - **On two keys, both read over 16 slots.** It reads `logic_depth_max`, −1 entering as
+    itself, ceilinged at 13 as there. It reads `logic_depth_classes` (the classes held by a
+    tenth) with **no ceiling**: no reading can reach the 3 982 classes.
+  - The only change to the module is that its child reading takes the key and the ceiling as
+    arguments, defaulting to topless-rise's, which reads as before.
+
+  **The tests.** One-sided sign tests over the discordant pairs at p < 0.05, Logic's
+  machinery and outcome rules:
+  - **shown** at p < 0.05;
+  - **refuted** where the pairs favouring the control are at least as many as those favouring
+    out-compute, ties included;
+  - **not shown** otherwise;
+  - **no measured pairs** where none is measured on both sides.
+  A pair is the out-compute child and the control child of the same parent. Each test carries
+  the per-parent agreement and the leave-one-or-two-parents-out rule, and two sensitivity
+  readings that decide no outcome: **extinct kept**, with the extinct pairs kept, and
+  **unpiloted**, without the pairs of the two parents the pilot started from, **4381 and
+  4428** (`Lab::OutComputeReading::PILOT_PARENTS`). With a control at no rise,
+  a rise test needs 5 discordant pairs (p = 1/32), and 7 to survive leaving out any two
+  parents. **Power**, over 54 measured pairs against a control that never rises: a rise test
+  is shown with probability 0.13 at a late-rise rate of 0.05 per out-compute child, 0.64 at
+  0.1, 0.92 at 0.15 and 0.99 at 0.2. The pilot's one barely late rise in two worlds bounds
+  nothing about 54. A level test with 60% of pairs favouring out-compute and 20% the control
+  is shown with probability 0.95; the pilot's depth 5–6 against 0, in both worlds, predicts
+  more.
+  - **H-endogenous** (out-compute against none): the last-decile median `logic_depth_max`, as a
+    level. A pair is measured where both medians are read and neither child is extinct, and it
+    favours the higher median. Pilot prediction: **shown**.
+  - **H-ratchet** (out-compute against equal): the same key. Prediction: **shown**.
+  - **H-driven** (out-compute against shadow): the same key. Not piloted. Prediction:
+    **shown**, since shadow moves energy without reading computation; the validation above saw
+    it hold nothing. A tie would mean the climb is passive.
+  - **H-rise-unassisted** (out-compute against none): the rise rule on `logic_depth_max`, the
+    rung-4 question. Prediction: **not shown, or refuted**. The pilot made its climb in the
+    first 10 000 epochs, so a 100 000-epoch child's bar is set by its fifth decile at the
+    plateau.
+  - **H-repertoire** (out-compute against none): the rise rule on `logic_depth_classes`.
+    Predicted the same way.
+
+  **Descriptive and offline** (tested nowhere).
+  - **McShea's minimum.** The 10th percentile of per-cell max depth among the cells computing
+    anything, on the fifth-decile and the last stored worlds of every child. A driven trend
+    raises it; a passive one need not. The method, as the pilot read it:
+    - **the worlds**: the last stored world at or before the fifth decile's end, and the last
+      stored world (the cadence below);
+    - **the cells**: every cell of the world, 16 384, each metabolism tape assayed once
+      under the child's own instruction set and NAND, over 16 slots, on topless-rise's six
+      fixed case sets;
+    - **computing**: a cell whose tape is credited at least one class on all six sets; its
+      **max depth** is the deepest class so credited;
+    - **the percentile**: the max depths of the computing cells sorted ascending, the value at
+      index ⌊(n − 1) × 0.1⌋, counting from 0 (the pilot's rule); unread where no cell
+      computes. The share of cells not computing prints beside it.
+  - **H-code**, topless-rise's method: the load-bearing bytes of the dominant deepest solver,
+    the fifth-decile world against the last, over 16 slots, on every out-compute child that
+    rises late and on its twins, with the same labels.
+  - **Last-decile medians** of `repertoire_mean`, `silent_share`, `predation_rate`,
+    `predation_relation_rate` and `replicator_share`, printed per child. The engine records
+    the first four only where predation runs, so the none children print them blank; the
+    share of none's cells not computing is read offline, beside McShea's minimum. The depths first
+    held in the second half print beside them, for the study's §5.4.
+  - **A tool slice comes first.** `research/landscape` reads the topless assay over four
+    slots (`topless::assay`) and prints no per-cell percentile. A slice reading
+    `task_max_outputs` slots (`topless::assay_upto`) and printing the percentile above lands
+    before the sweep is read. The method is locked here.
+
+  **What each outcome means** (study §4.4).
+  - **The three level tests shown and H-rise-unassisted shown.** On a machine that imports no
+    objective, computing climbs and keeps climbing late, driven by what neighbours compute.
+    That is rung 4 with an endogenous objective, on an imported machine.
+  - **The level tests shown, H-rise-unassisted refuted or not shown.** An endogenous rule makes
+    computing pay and builds depth and repertoire, then stops. Study §7 diagnoses why, as a
+    pilot: one stack-NAND loop spends the emit budget, so later code is never read, and a
+    variant loop replaces its classes instead of adding to them, so the ratchet cannot pay
+    it. The next levers are **the emit budget** (an assay that reads code past a loop, a
+    change to the machine) and **a variation that preserves supersets** (insertions that
+    leave a loop's laps intact). The channel's length is not one: pilot 2 refuted it.
+  - **H-ratchet not shown.** Being different is enough; transitivity adds nothing.
+  - **H-driven not shown.** The level is reached by energy flow, not by selection on what is
+    computed: passive.
+  - **H-endogenous refuted.** The pilot was a fluke of two worlds.
+
+  **What is not claimed.**
+  - **The machine is imported** (above), and the predation rule with it.
+  - It is **one substrate**, one budget and one seed a parent.
+  - **The honest "life exists" bar** (study §5) is not met by this sweep alone. Of its six
+    clauses:
+    - it addresses **clause 2** (no imported objective: the rule passes both checks);
+    - it addresses **clause 5** in part: drift, no-ratchet and shadow controls, with McShea's
+      minimum read descriptively;
+    - it addresses **clause 3** in part: depth and repertoire on the function side, and
+      load-bearing bytes offline on the program side, but on four inputs and a fixed 32-byte
+      channel, which has a near top;
+    - it does **not** meet **clause 1** (the stack NAND, the emit op and the metabolism tape
+      exist only in descendants), **clause 4** (it reads the rise rule, not three persistent
+      new maxima with the last in the final quarter; those are printed only), or **clause 6**
+      (100 000 epochs, not 10⁶; one seed a parent).
+  - Every constant above lives in `Lab::OutComputeReading`.
+
+  **Seeding rule.** `lab:sweep[out_compute]` is run **only after** the predation slice (#303)
+  and this entry are deployed, **and after the topless-rise sweep has finished**: the deploy
+  restarts the runner, and the topless-rise children must not be interrupted. If the
+  readings-walk PR (#302) is still pending then, deploy it in the same batch. It should create
+  216 runs.
+
+  **When it is read.** `lab:out_compute_report` (text, or CSV with `FORMAT=csv`) and the
+  sweep's page read it, cached as the topless-rise reading is. It is labelled **interim**
+  until the parent pool is terminal and every child of every qualifying parent has finished
+  (`Experiments::DescendantSweepSettledService`), then **final**.
+- 2026-10-04 — **Genes, engine slice A: a growable metabolism channel, the genes assay and the
+  out-count relation.** This is engine slice A of "Genes", the machine the design study's
+  pilots 3–8 assembled (`docs/studies/unassisted.md` §8–§13, recommended in §13.11); staged
+  fidelity is a separate slice B. It adds a DESIGN §1.1 paragraph, a fourth predation
+  relation and two §1.2 readings. No sweep is pre-registered here, it imports no objective,
+  and nothing is relocked.
+
+  **Why.** Out-compute's climb stopped within ~10 000 epochs (study §4.3). The pilots that
+  followed traced the stop to the machine and the channel: one stack-NAND loop spends the
+  whole emit budget and a changed loop swaps its classes rather than adding to them (§7.3), so
+  room alone does not help; under out-count the program side composes only when the tape's
+  pieces are run apart (§10, two or three load-bearing genes held); and with the cap out of
+  reach the climb goes on late in every count lane (§13). This slice puts that machine,
+  minus fidelity, into the engine so a sweep can test it.
+
+  **The machine** (DESIGN §1.1, "Genes and a growable metabolism channel"; all dynamics,
+  every one off by default):
+  - The **growable channel**: `meta_max_len` (0 = the fixed channel, and so is `meta_len`
+    itself; `META_LEN_MAX` lifted from 1 024 to 8 192), `meta_min_len` (8), `meta_dup` and
+    `meta_del` (0, per inheritance) and `meta_seg_max` (16). At each inheritance the copy has,
+    with probability `meta_dup`, a duplicate of a random segment of 1 to `meta_seg_max` bytes
+    appended, cut at the cap, then with probability `meta_del` a random segment of 1 to
+    `meta_seg_max` bytes cut out, never below `meta_min_len`; a tape at its cap draws no
+    duplicate and one at its floor no deletion (the study's operator, §7–§8). The draws are on
+    a new stream, `STREAM_META | 1`, seeded per epoch and read in the order the epoch's
+    inheritances happen. Every tape starts at `meta_len`; the floor must not exceed it and the
+    cap must not sit below it; the variation settings are refused on a channel that cannot
+    grow. Mutation offers each live byte one draw at `meta_rate` on `STREAM_META` as before,
+    but finds the hits by the gaps between them: one draw a hit, not a byte, read off powers
+    of (1 − rate) built by multiplication alone, so the law is a per-byte chance's and the
+    draws are the same on every platform (the pilots used a logarithm, whose last bit is the
+    platform's). Lengths are state: hashed after the tapes, and carried by snapshot versions
+    12–14 (the live bytes end to end and one length per cell). A descendant carries its
+    parent's tapes where its channel holds them (each `meta_len` long on a fixed channel, each
+    within the cap on one that grows) and switches its own on otherwise.
+  - The **genes assay**, `meta_genes` = G (0 = off): the metabolism tape is cut at offsets 0,
+    G, 2G…, the last piece zero-padded to G; each gene runs alone as a G-byte tape on a fresh
+    2G-byte buffer with the inputs at its end, `task_max_outputs` emits and the assay's step
+    budget; the tape's classes are the union over its genes, each distinct gene assayed once
+    per reading (and once per predation period). It applies wherever a metabolism tape is
+    assayed: the predation pass under every relation, `logic_depth_max`,
+    `logic_depth_classes`, `repertoire_mean`, `silent_share` and the logic readings of the
+    metabolism tapes. It is refused off an unpaid topless ladder, so it never touches pay.
+  - **Out-count**, `predation: count` (strict): a cell takes from a partner computing strictly
+    fewer input-permutation classes, counted on the union under genes. Ties are not prey, kin
+    or stranger; the empty set is prey to every computing cell, and two silent cells leave
+    each other alone (study §8.2: the faithful kin rule is built in the pilot but not run, and
+    ties-as-prey moved 50% more energy for no consistent gain). `subset_class`, `equal`,
+    `shadow` and `off` are unchanged.
+
+  **The label.** Genes and the channel **import a machine, not an objective**, as predation
+  does. Named: the **gene length G**, boundaries the organisms do not place; **independence
+  by construction**, each gene on its own buffer, so no gene reads or undoes another's result
+  (which also forbids composition between genes); the **union phenotype**, a tape computes
+  whatever any gene computes, so additions are free to keep, a choice that favours
+  accumulation without saying which additions; and the **growable channel and its variation
+  operators**, duplication and deletion of segments, which the world performs at
+  inheritance. Out-count reads two sizes: it is unchanged under any relabelling of the
+  functions, even one applied differently to each cell, and in a world where every cell
+  computes a set of one size no encounter moves energy. None of these names a function, a
+  class or a depth, or pays one.
+
+  **The readings** (live-only, null when off, each on a stream of its own, pinned in their own
+  digest): `meta_len_mean`, the mean live length over every cell, null unless the channel
+  grows; `genes_essential_held`, the most essential genes at least a tenth of 256 sampled
+  cells hold (26 of 256 compared as integers; 0 where fewer hold one), on `STREAM_GENES_READ`,
+  null unless the run reads genes. A cell's genes are grouped by the class set each computes
+  (copies of one set are one group, silent genes are in none), and a group is essential when
+  it computes a class no other group of the tape computes: a duplicate counts once, a
+  diverged copy that adds a class counts again, a gene whose classes the other groups compute
+  between them counts nothing (the study's §10.1, read there over all 16 384 cells; here over
+  the 256 sampled, as every other tenth-held reading).
+
+  **The pilots, labelled pilot** (throwaway engine copies at `b30196a`, one seed per lane, two
+  worlds, 4381 and 4428, nothing paid): genes alone (pilot 5, cap 512, §10) held 2–3
+  essential genes by a tenth from 4 500–8 000 epochs, then stood while tapes filled the cap
+  with 15–16 genes, about 12 of them silent; with the cap out of reach (pilot 8, cap 4 096,
+  with staged fidelity, §13) every count lane was still making new maxima in the final
+  quarter of 30 000–35 000 epochs: classes held by a tenth 84–182, essential genes held 21–30,
+  longest tapes 1 900–2 500 bytes, drift holding one class. Pilot numbers, not findings; the
+  pilot-8 lanes ran the fidelity this slice leaves out.
+
+  **Judgement calls.** `meta_len` is the initial length (no separate `meta_init_len`). The
+  genes assay and the channel need no predation rule and no `isa` draw, so a drift-genes arm
+  reads the same assay; genes need only an unpaid topless ladder. Tapes sit in slots as wide
+  as the cap, as replicating tapes do: 128 MiB of slots a 128×128 world at a cap of 8 192.
+  `genes_essential_held` samples 256 cells rather than the pilots' whole world.
+
+  **Verified.**
+  - Every existing pin and digest is unmoved; at the defaults, and at a cap equal to
+    `meta_len`, a run is byte-, snapshot- and reading-identical to the run without the
+    settings and writes the container it always wrote; one gene the length of the tape reads
+    the tape.
+  - A resume harness: snapshots written by `origin/main`'s engine (versions 6–11: plain,
+    ragged, stocked, paid and unpaid logic, metabolism tapes on every payload shape) and by
+    #303's (its three predation relations) restore in this engine to the same bytes,
+    re-encode byte for byte, and continue for 200 epochs with the same hash, transitions and
+    readings every 10 epochs, the new readings null.
+  - Determinism with a mid-run resume under `count`, `subset_class` and `off`, with and
+    without genes, on a channel that grows; a grown world resumes reading for reading and blob
+    for blob, and refuses a blob of another cap or of the fixed channel.
+  - Growth and shrink stay within the floor and cap over thousands of variations, the bytes
+    past a tape stay zero; a duplicate is a copy of the tape's own segment; deletions stop at
+    the floor; descent carries what a channel holds.
+  - A later gene cannot change an earlier gene's classes, whatever follows it; the union
+    holds more classes than one credit has slots for; the essential count on the study's
+    §10.1 checks (two copies of a loop: one; a loop beside its tandem variant: two).
+  - `count` moves energy exactly when the actor computes strictly more: ties are not prey,
+    kin or strangers, and the empty set is prey.
+  - Pins of a genes, count and growable world (and its drift twin) and their readings.
+  - **Cost**, on this Mac under a load average of 11–17, each world descended from the
+    study's stored world of 4381 or 4428 at epoch 20 000 under the slice's bundle (`count`,
+    G = 32, cap 8 192, 16 slots), its tapes set to a length, wall time per epoch over 16
+    epochs: tiled from each cell's own 32 bytes (genes shared, as in a lineage) 45–52 ms at
+    32 bytes, 48–53 at 512, 54–64 at 2 048; random `isa` bytes (every gene distinct, the
+    worst case) 38–50, 109–127 and 310–321 ms. A sample's readings cost 72–104 ms at 32
+    bytes and 74–348 at 2 048. Peak memory 335 MB. The pilot (pilot 8, loaded Mac, its own
+    fidelity included) measured 51–62 CPU-ms an epoch averaged over 35 000 epochs and about
+    67 at 1 500–2 100 bytes, within this range.
+- 2026-10-04 — **Genes, engine slice B: heritable staged fidelity with a scale-free cost.**
+  This is engine slice B of "Genes", the staged costly fidelity the design study's pilots 7
+  and 8 ran on top of slice A's machine (`docs/studies/unassisted.md` §12–§13, recommended in
+  §12.8 and §13.11). It adds a DESIGN §1.1 paragraph ("Fidelity") and three §1.2 readings. No
+  sweep is pre-registered here, it imports no objective, and nothing is relocked.
+
+  **Why.** Pilot 6 found the plateau of held code is Eigen's threshold: at any fixed rate the
+  load per generation reaches ln σ and code stops there (§11). Pilot 7 let lineages carry and
+  mutate their own copying fidelity, and held code rose past every fixed rate until the
+  channel's cap bound; pilot 8's late climb at an unreached cap ran on that machine. This
+  slice puts the fidelity knob into the engine so a sweep can test it.
+
+  **The import: heritable fidelity with a scale-free cost.** Each cell's metabolism tape
+  carries a heritable integer level f from 0, the base machine, to `meta_fid_max` (at most
+  16). The tape's substitution rate is `meta_rate` × 2^(−f/2), a factor of √2 a level. The
+  level rides the tape: it is inherited whenever the tape is, under the same near-copy rule,
+  and at each inheritance it moves ±1 on a fair coin with probability `meta_fid_rate`,
+  clamped to the range, on a new stream `STREAM_META | 2` in the order the epoch's
+  inheritances happen. Under the initiator economy with `meta_fid_alpha` = α > 0, a cell
+  initiates only when its stock holds P(f) = `max_steps` × 2^(α·f/2) = `max_steps` ×
+  (rate(0)/rate(f))^α, and is debited P(f); the step budget stays `max_steps`, as in the
+  pilot. The power law is the one family with no preferred rate (kinetic proofreading with
+  discard: each stage multiplies accuracy by a constant and the cost of a completed copy by a
+  constant), so it imports an exchange rate α between fidelity and reproduction and no
+  target rate. The level reads no tape and names no function, class or depth: relabelling
+  the functions leaves the rate and the price untouched, and in a monoculture of any set at
+  any level every cell pays the same. It imports a machine, not an objective.
+
+  **Why staged.** On a range symmetric about the base machine (§12.1's first arms, f from −16
+  to 16), levels below 0 are cheaper than the base by the same law, and a lineage that gives
+  up its code saves more by sloppiness (2^(8α): 1.74 times the births at α = 0.1, 8 at
+  α = 0.4) than computing pays (σ ≈ 1.3–1.5). Every costly arm on that range collapsed within
+  500–1 000 epochs, at both α, with or without a 5 000-epoch burn-in, and so did drift at
+  α = 0.1: the refuge is a property of the cost's range, not its slope (§12.5). The staged
+  range counts proofreading stages above the base machine, which is the sloppiest and
+  cheapest level, so there is no refuge. Free fidelity is a setting (α = 0), not the
+  recommended arm: it runs to the floor and a near-monoculture (§12.4).
+
+  **Determinism.** Neither law uses a float transcendental. The rate is `meta_rate` scaled by
+  a power of two and, at an odd level, by the constant 1/√2, one rounded product. The price
+  is integer fixed-point arithmetic: α is read to 2^−32, α·f/2 split into its whole and
+  fractional parts, 2^fraction the product, in Q62, of the roots 2^(2^−k) its bits name, each
+  root the integer square root of the one before, then rounded to the nearest integer (a half
+  up). At 8 192 steps and α = 0.03 the table over f = 0…16 is 8192, 8278, 8364, 8452, 8540,
+  8629, 8719, 8810, 8903, 8996, 9090, 9185, 9281, 9378, 9476, 9575, 9675, pinned in a test
+  beside the α = 0.1 and 0.01 tables. Mutation finds each cell's hits by `rng::Gaps` at its
+  own level's rate; where the level changes from one cell to the next, the pending gap is
+  dropped and one drawn afresh at the new rate (a gap is memoryless, so the law is each
+  byte's own chance), and a world of one level everywhere draws exactly what a world without
+  levels draws.
+
+  **State.** The levels are hashed after the metabolism lengths and carried by snapshot
+  versions 15–17 (versions 12–14 with one level byte per cell after the lengths). A resume
+  refuses a blob that disagrees with its params about levels, as it refuses a stock or a
+  tape; a descendant carries its parent's levels with its tapes, clamped to its range, and
+  starts every cell at 0 where the parent carried none or its tapes are switched on afresh.
+
+  **The readings** (live-only, null when off, on `STREAM_FIDELITY_READ`, pinned in their own
+  digest): `fidelity_p10`, `fidelity_p50` and `fidelity_p90`, the nearest-rank percentiles of
+  the levels of 256 sampled cells.
+
+  **The pilots, labelled pilot** (throwaway engine copies at `b30196a`, one seed per arm, two
+  worlds, 4381 and 4428, out-count, genes, cap 512 in pilot 7 and 4 096 in pilot 8): free
+  fidelity moved the median rate from ×8 to ×0.044 in 12 500 epochs in both worlds while
+  drift wandered (×4–×90), and held code doubled past fixed ×2 until the cap bound (§12.4).
+  Staged, the top solver's substitution load settled at the cost exponent: 0.02–0.045 a
+  generation at α = 0.03, 0.06–0.20 at α = 0.1, and at α = 0.4 the level never left 0 (§12.5).
+  α = 0.03 held the most repertoire of any arm, 40 and 80 classes by a tenth at 12 000 and
+  15 000 epochs against free fidelity's 32–34 and 54, by keeping the rate off the floor and
+  the population diverse. In pilot 8 the top lineage's load at α = 0.03 stayed near α
+  (median 0.036) while its code doubled, and its tape reached f = 16 at 21 500–28 000 epochs
+  (α = 0.01: 6 000–10 000) (§13.10). Pilot numbers, not findings.
+
+  **Judgement calls.**
+  - Fidelity is refused on a channel that cannot grow. The pilots ran it only there (§12.8
+    recommends exactly that), and the fixed channel's mutation and snapshot shapes would need
+    a second set of versions for a combination nothing has read.
+  - The price needs the initiator economy; free fidelity (α = 0) needs none, so a drift or
+    pair-economy arm can carry levels.
+  - `meta_fid_max` is capped at 16 (1/256 of the base rate), the study's range; α at 1.
+  - A price above every stock is not clamped to the stock cap + 1, as the pilot clamped it: no
+    stock ever exceeds the cap, so a cell that cannot pay is passed over either way and the
+    dynamics are the pilot's. At `max_steps` 8 192 and `energy_stock_cap` 65 536 a level f is
+    unpayable once α·f/2 > 3, so every level is payable up to α = 0.375; at α = 0.03 the top
+    price is 9 675.
+  - No burn-in (`--fid-start`) and no per-level rate counters: the pilots' instruments, not
+    the machine. The optional `top_fidelity` reading is left out.
+  - The level's move draws its coin only when it moves (`chance`, then `below(2)`), as the
+    pilot did.
+
+  **Differences from the pilot.** The pilot read the rate and the price with `powf` and found
+  hits by a logarithm's cumulative hazard; the engine's laws are exact and its gaps
+  multiplication-only, so the draws differ and the laws do not. The pilot's levels were an
+  `i8` that a symmetric range could take below 0; the engine's are staged only. The pilot
+  reported the rate's distribution over every cell; the engine reports the level's over 256
+  sampled cells.
+
+  **Verified.**
+  - Every existing pin and digest is unmoved; at the defaults the run is byte-, snapshot- and
+    reading-identical to the run without the settings, and a world whose levels never leave
+    0 is the run without levels at every cell, tape, stock and reading, at α 0, 0.03 and 0.4.
+  - A resume harness: snapshots written by `origin/main`'s engine (versions 6–11), by #303's
+    (its three relations) and by #307's (versions 13–14: count, drift, a growing channel read
+    whole and a ragged one) restore in this engine, re-encode byte for byte, and continue for
+    200 epochs with the same hash, transitions and readings every 10 epochs, the new readings
+    null.
+  - Determinism with a mid-run resume under `count` and `off`, at α 0, 0.03 and 0.4; a world
+    carrying levels resumes reading for reading and blob for blob and refuses params that
+    drop, mint or narrow its levels; descent carries, clamps or zeroes them.
+  - The rate law exactly, and in the world: levels 1 and 4 take √2 and 4 times fewer hits
+    than level 0 on the same live bytes. The price tables; α = 0 costs `max_steps` at every
+    level; a cell holding the base price but not its level's is passed over as initiator and
+    keeps its stock, while a base-level cell pays.
+  - Moves and the clamp: every level steps ±1 at rate 1, never past 0 or the top, at 0.05 per
+    inheritance about 5% move, evenly up and down; a level rides the tape it is inherited
+    with.
+  - A sanity check, not a result: on four planted 16×16 out-count worlds over 200 epochs,
+    free fidelity's mean level climbs to 4.8 against 2.4 for the same walk where tapes do not
+    mutate (the levels doing nothing), and α = 0.4 holds it at 0.75.
+  - Pins of a genes, count, growable and fidelity world (and its drift twin) and their
+    readings.
+  - **Cost**, on this Mac under a load average of 24–27, the slice's bundle descended from
+    the study's 4381 and 4428 worlds at epoch 20 000, tapes tiled to a length, levels spread
+    over the whole range (so the mutation redraws a gap at almost every cell, the worst case):
+    the tapes' mutation itself costs about 1.2–4.7 ms an epoch more at 32 bytes and nothing
+    measurable at 512 and 2 048, against epochs of 35–170 ms whose spread is the load's and
+    the price's (a costly world initiates less).
+- 2026-10-04 — **Genes rise: does held code keep rising late, at a cap the run does not
+  reach, with nothing paid?** Pre-registration of §1.3 item 20 and a §1.4 paragraph (DESIGN
+  edited), on the machine of the two genes engine entries above. Nothing here is a finding;
+  every number under "The choice" and "Predictions" is pilot (`docs/studies/unassisted.md`
+  §7–§13). Every constant below lives in `Lab::GenesRiseReading`.
+
+  **The choice, and the chain of evidence** (all pilot: two worlds, 4381 and 4428, one seed a
+  cell but one, 9 000–60 000 epochs a lane).
+  - **Room alone does not help** (§7, pilot 2). A growable channel under out-compute grows
+    junk: one stack-NAND loop spends the whole emit budget, a changed loop swaps its classes
+    rather than adding to them, and the climb stops within 10 000–15 000 epochs.
+  - **Out-count, with an emit budget that grows with the channel** (§8, pilot 3), lifts the
+    plateau (54–63 classes held by a tenth against 11–28) and passes both honesty checks of
+    §5.1 clause 2, but stops at the channel's cap: length buys emits.
+  - **Genes** (§10, pilot 5): run apart, a tape's pieces compose side by side, two or three
+    load-bearing genes of distinct bodies, then stop; about the same 18–33 bytes of held code
+    on every out-count machine.
+  - **The error threshold** (§11, pilot 6): that plateau is a mutation–selection balance, held
+    code near ln σ / (rate · T_gen); a lower rate lifts the level, not the lateness.
+  - **Fidelity** (§12, pilot 7): a heritable, priced level evolves to keep the top lineage's
+    substitution load near the price α; at α 0.03 it holds the most classes, depth and minimum
+    of any arm, and held code keeps rising until the channel's cap.
+  - **The cap** (§12–§13): doubling the cap lifted everything again; at a cap reached, the
+    climb flattens within a few thousand epochs.
+  - **The late climb at an unreached cap** (§13, pilot 8): at cap 4 096, every one of six count
+    lanes (two worlds, α 0.01 and 0.03, two seeds) still made persistent new maxima in the
+    final quarter of 30 000–35 000 epochs in classes held by a tenth, essential genes held by
+    a tenth, the top solver's count-bearing bytes and load-bearing genes and the minimum's
+    classes, 33–89% above the bar, while drift held one class. Forked at 1 024 the same runs
+    flattened, and still passed the rise rule and the maxima by 2–14% over the bar: hence the
+    magnitude below.
+  - So this sweep asks whether pilot 8's late climb is general across parents, against
+    controls that remove the drive (drift), the room (capped) and the selection (shadow).
+
+  **What it imports.** The label is out-compute's, **imports a machine, not an objective**,
+  on every arm. The machine, named: the stack NAND and its semantics, the metabolism tape and
+  its copy with each cell, the emit op and the 16-emit cap, the input bytes and the
+  four-input assay; the out-count relation (strict: a cell takes from a partner computing
+  strictly fewer classes); the **gene length** 32, boundaries the organisms do not place,
+  **independence by construction** (each gene on its own buffer) and the **union phenotype**;
+  the **growable channel** and its duplication and deletion of 1–16-byte segments; and the
+  **staged fidelity menu** (levels 0–16, each two a halving of the rate) and its **price**
+  (the initiator's cost × 2^(αf/2)). None names a function, a class or a depth, or pays one.
+  - **The drift arm is labelled too, not pooled as plain Soup.** #303's reviewer read a
+    reward-0 arm whose channel nothing reads into its dynamics as plain Soup, and DESIGN §1.4
+    pools such arms. Here the channel's mutation rate is a heritable level, and the initiator
+    pays for it: a cell's energy flow depends on a state it inherits, so selection acts on the
+    imported menu whether or not predation runs (pilot 8's drift lanes held the base level,
+    where the price keeps it). The rule, `Lab::GenesRiseReading.priced_fidelity_run?` and
+    `Run.priced_fidelity` in SQL: `meta_fid_max` and `meta_fid_alpha` both positive numbers.
+    `Run.machine` is predatory or priced; `Run.labelled` and `Run.fitness_free` read it, so a
+    priced run is never in a fitness-free count, and its sweep page carries the badge. A level
+    with no price changes only the inert channel and pools as before.
+
+  **What it tests.** §5.1 clause 4 of the study's "life exists" bar, sustained and late, on
+  both sides of the map: the function side (classes held by a tenth) and the program side
+  (essential genes held by a tenth), against controls of clause 5. **What it cannot meet**:
+  - **clause 6**: 60 000 epochs are about 4 500 generations at T_gen 12–14, against 10⁶ epochs;
+    the climb runs on length (about 60 bytes a thousand epochs) and cost grows with length, so
+    no affordable horizon on this machine reaches it (a 10⁶-epoch tape would be ~60 000 bytes);
+  - **clause 1**: genes, the channel, the fidelity menu, the stack NAND and the emit op exist
+    only in descendants; no emergence has been shown on this physics.
+  The sweep can show "sustained to 60 000 epochs at an unreached cap", not open-endedness.
+
+  **The sweep** (`Lab::SWEEPS["genes_rise"]`, slug `genes-rise`, `lab:sweep[genes_rise]`).
+  - **Parents, held out from every pilot and from out-compute.** Out-compute's rule
+    (reach-cap128 founding runs at radius 4, emerged, terminal `replicator_share` at least
+    0.5 on `oriented_census/1`: 108 runs), with the 54 lowest run ids set aside
+    (`skip_first: 54`, a new key of the parent rule read by
+    `Experiments::DescendantParentsService`: the m qualifying candidates with the lowest ids
+    are skipped as "among the qualifying parents the rule sets aside" before `first` counts),
+    then the **30 lowest of the rest** (`first: 30`), each from its terminal world at epoch
+    20 000. Checked read-only on production (SELECT, 2026-10-04): the rule qualifies exactly the
+    108 that out-compute's validation listed; the 54 set aside run 4306–4430 and hold the pilot
+    worlds 4381 (33rd) and 4428 (52nd); the 30 taken are 4431, 4437, 4439, 4440, 4441, 4443,
+    4447, 4449, 4452, 4453, 4457, 4459, 4463, 4464, 4468, 4469, 4472, 4478, 4481, 4483, 4484,
+    4487, 4490, 4492, 4494, 4500, 4503, 4507, 4509 and 4512: neither pilot world, none of
+    out-compute's 54, none with a child yet. Evaluated on one pool, the two rules can only
+    draw disjoint parents.
+  - **The bundle**, merged over each parent's params: `energy_payer: initiator`,
+    `energy_influx: 1024`, `energy_stock_cap: 65536`, `steal_amount: 0`; `tasks: logic4`,
+    `task_reward: 0`, `logic_nand: stack`, `task_max_outputs: 16`; `meta_len: 32`,
+    `meta_min_len: 8`, `meta_dup: 0.05`, `meta_del: 0.05`, `meta_seg_max: 16`;
+    `meta_rate: 8/8192`, `meta_draw: isa`, `meta_seed: own_tape`, `meta_genes: 32`;
+    `meta_fid_max: 16`, `meta_fid_rate: 0.05`, `meta_fid_alpha: 0.03`;
+    `predation_transfer: 8192`, `predation_loss: 0.5`, `predation_every: 8`,
+    `predation_shadow_p: 0.33`; `sample_every: 100`, `snapshot_every: 500`.
+  - **The arms**, which differ in the relation and the cap alone:
+    - **count**: `predation: count`, `meta_max_len: 4096`;
+    - **capped**: `predation: count`, `meta_max_len: 1024`, the paired room control. Same
+      parent and seed, so it is the count child until a tape needs room past 1 024 (pilot 8's
+      forks; checked below at 1 000 epochs, where the two are identical reading for reading);
+    - **shadow**: `predation: shadow`, the same transfers between the same pairs decided by a
+      coin at `predation_shadow_p`, reading no assay, `meta_max_len: 4096`;
+    - **drift**: `predation: off`, the same channel, genes and fidelity, `meta_max_len: 4096`.
+  - **Seed 6201**, one per parent, which no stored run uses (SELECT, 2026-10-04) and no other
+    sweep names; **60 000 epochs** past the parent; **priority 40**: **120 children**.
+  - **The cap, 4 096, checked against the pilot.** Pilot 8's longest tapes grew 56–65 bytes a
+    thousand epochs over the final quarter (the mean length 54–65, a few per cent below the
+    longest), and stood at 1 942–2 483 bytes at 30 000–35 000. Projected linearly to 60 000
+    the longest tape reaches 3 690–3 860 bytes at α 0.03 (4381, 4428 and its second seed),
+    3 450 and 4 110 at α 0.01. So at the sweep's α the cap stays unreached in both pilot
+    worlds, by 6–10%, and a faster parent may reach it in the last few thousand epochs. That
+    risk is taken, for two reasons. A late-reached cap biases H-rise, H-shadow and H-room
+    toward *not shown* or *refuted*, never toward shown (it slows the count child alone; the
+    shadow and drift tapes stay short); and the next step, 8 192, is the one #307's reviewer
+    flagged: about 340 MB a slot at 2 KB tapes, twelve slots near the runner's 5 GiB claim
+    guard and 6 GiB limit beside the other sweeps' children. At 4 096 the runner measured here
+    (the count bundle on a fresh 128×128 world, peak resident memory) took 83 MB at 32-byte
+    tapes, 255 MB at 2 048 and 346 MB at 3 800, so even twelve count children at their
+    projected last length stay near 4.1 GB, under the claim guard. A child whose last-decile
+    median mean length is at least 0.9 of its cap is counted **near the cap**, per arm, and
+    printed; it decides nothing (every capped child will be).
+  - **The shadow coin, 0.33.** `predation_relation_rate` is the study pilot's eat rate
+    (DESIGN §1.2). Over pilot 8's three α 0.03 count lanes (4381, 4428 and its second seed,
+    500-epoch census) its pooled lower median is 0.350 over the whole settled run (194 rows),
+    **0.333 over the second half** (15 000–35 000, 110 rows) and 0.309 over the last 10 000;
+    lane medians 0.304, 0.366 and 0.368, 5 000-epoch blocks 0.247–0.386, falling late. The
+    coin is the second-half median, the study's 0.33: a 60 000-epoch child spends most of its
+    run past the pilot's first half. In the validation below a coin of 0.33 read
+    0.318–0.326 at 1 000 epochs.
+  - **The sampling cadence, 100** (a judgement call, not in the study's bundle). The runner's
+    default samples every 10 epochs. The pilot's census was every 500, and its two
+    calibrations depend on it: §5.4's persistence of five samples (2 500 epochs) and H-room's
+    windows of five samples. At 10, five samples are 50 epochs, a new maximum held for four
+    generations, and "the first five samples of the final quarter" 50 epochs. At 100 the
+    persistence run is 500 epochs and H-room's windows are set to 25 samples, 2 500 epochs,
+    the pilot's five rows. The persistence run stays topless-rise's five samples, so it spans
+    a fifth of the pilot's 2 500 epochs: shorter excursions count as held, which raises the
+    bar (the magnitude is harder) and adds maxima (clause 4 is easier). Re-read with one
+    500-epoch row as the run, the nearest the pilot's census comes, the bar rises by 0–19
+    classes; five of the six count lanes still rise late on classes held (4428 at α 0.03 reads
+    1.18 times its bar at 35 000) and all six on essential genes, and no capped fork rises
+    late on classes. It also cuts the samples stored per child from 6 000 to 600, and the
+    sampling cost: one sample of these worlds took 155–410 ms here (all the observables; Mac
+    load 23–36), so sampling every 10 epochs would add 15–40 ms an epoch to children whose
+    step costs 21–78. `sample_every` is not a run parameter (`Lab::Schema::NON_RUN_PARAMS`);
+    on the grid it enters every child's params the same way, as `snapshot_every` does. The
+    settling window (1 000 epochs) keeps ten samples out; a 60 000-epoch child's deciles hold
+    59 samples each, far above the 10 a median needs.
+  - **The stored worlds**, every 500 epochs and pruned to one in 10 (`KEEP_FACTOR`), so the
+    offline readings' fifth-decile and last worlds are within 5 000 epochs of the boundaries
+    and a restart redoes up to 500 epochs, as out-compute's.
+  - **Validated in the engine.** Each bundle merged over the params of 4431 and of 4512 (the
+    first and last parents) and descended from their stored terminal worlds with
+    `World::descend` at seed 6201 (validation, the structure check and the paid-or-predatory
+    refusal): all eight accepted and run 1 000 epochs. At 1 000: count held 9–10 classes by a
+    tenth, depth 4, 2 essential genes, mean length 77–84, fidelity p10–p90 0–3, relation rate
+    0.37–0.43, share 0.84–0.85; capped identical to count at every reading (no tape near
+    1 024); shadow 1 class, length 35–36, 89–91% silent, relation 0.318; drift 0–1 class,
+    length 38–40, its predation readings null.
+  - **Cost, recomputed from §13.** A count lane cost about 40 Mac-ms an epoch at short tapes
+    and 67 at 1 500–2 100 bytes (§13.3), so about 40 + 15 ms per kilobyte of mean length. The
+    mean length climbs at about 60 bytes a thousand epochs (pilot 8's α 0.03 lanes:
+    1 816–1 856 at 30 000), so it averages about 1.9 KB over a 60 000-epoch child: about **68
+    Mac-ms** a count epoch averaged, 53 for capped (1 KB from about 16 000 epochs), about 30
+    for shadow and 20 for drift (§13.11), sampling at 100 adding 2–4. At the study's 2.5–3.7
+    times on a mini-pc slot: count 2.8–4.2 h a child, capped 2.2–3.3, shadow 1.3–1.9, drift
+    0.8–1.2, **7.1–10.6 h a parent, 215–320 run-hours, 18–27 h of the 12 slots**, against the
+    study's 16–24 h, which extrapolated to 3 000 bytes. **The timing rule, locked:** when the
+    first count child passes 10 000 epochs, its wall time from claim to its 10 000th epoch
+    (SELECT on its samples' `created_at`) is reported with the total rescaled from it. It
+    decides nothing about the sweep; it tells the lab what to expect.
+
+  **The readings, per child.** Topless-rise's machinery (`Lab::ToplessRiseReading`), unchanged:
+  the settling window of 1 000 epochs; deciles cut by index over all settled samples with
+  lower-middle medians, a decile unread under 10 numbers; **extinct** where the last-decile
+  median `replicator_share` is below 0.1, and the settled relapse as before; the bar the
+  largest of the fifth-decile median, the value at descent and every value held under the
+  persistence rule (**k = 5**) up to the fifth decile's end; no ceiling.
+  - **The keys**: `logic_depth_classes` (classes held by a tenth) and `genes_essential_held`
+    (essential genes held by a tenth), both live; and **the minimum**, offline (below).
+  - **A late rise** on a key needs all three:
+    - **the rise rule**: the last-decile median at least the bar + 1;
+    - **§5.1 clause 4**: at least **3 persistent new maxima**, the last in the **final
+      quarter**. A persistent new maximum is a value above the one at descent first held for
+      five samples running, counted once per distinct first epoch (the first sample of the
+      run), so a jump that takes several values at once is one maximum; the final quarter is
+      the settled samples from index ⌊3n/4⌋ on, cut as the deciles are. (The pilot dated a
+      maximum by the run's completion, up to four samples later: the rule here is the stricter
+      by at most 400 epochs.);
+    - **the magnitude**: the last-decile median at least **1.2 times the bar**.
+    The rule and the maxima alone pass a creep: pilot 8's capped forks passed both by 2–14%
+    over their bar (the one capped after its bar was set, by 36%), against 33–89% unreached.
+  - **H-room's final-quarter gain** in classes held: the lower median of the final quarter's
+    last 25 samples minus that of its first 25 (2 500 epochs each), each unread under 10
+    numbers.
+  - **The minimum, offline, and why.** The study's minimum is classes per computing cell at
+    the 10th percentile. No live observable records it, and adding one is an engine change
+    this pre-registration should not carry, so it is read **offline on two stored worlds**:
+    the last stored world at or before the fifth decile's end and the last stored world. A
+    late rise on it is the rise step and the magnitude from the first to the second: the last
+    at least the fifth + 1 and at least 1.2 times the fifth. Two worlds carry no persistence
+    run, so §5.1 clause 4's maxima are not read on it: H-driven is the weakest of the five
+    keys, and says so. The tool slice below hands it to `lab:genes_rise_report` as a CSV
+    (`MINIMA=path`, columns `run_id,fifth_minimum,last_minimum`); until then H-driven reads no
+    measured pairs and the report says it awaits the offline minimum. The method:
+    - **the cells**: all 16 384 of the world, each metabolism tape at its live length cut at
+      0, 32, 64…, the last gene zero-padded, each gene run alone as the engine runs it (a
+      64-byte buffer, 16 emits, the step budget), under the child's own ISA and stack NAND;
+    - **the cases**: topless-rise's six fixed four-input case sets; a class is credited to a
+      gene where all six credit it, and a cell's classes are the union over its genes;
+    - **computing**: a cell credited at least one class; **the percentile**: the computing
+      cells' class counts sorted ascending, the value at index ⌊(n − 1) × 0.1⌋ from 0 (the
+      pilot's rule); unread where no cell computes; the share not computing printed beside it.
+
+  **The tests.** One-sided sign tests over the discordant pairs at p < 0.05, Logic's machinery
+  and outcome rules: **shown** at p < 0.05; **refuted** where the pairs favouring the control
+  are at least as many as those favouring count, ties included; **not shown** otherwise;
+  **no measured pairs** where none is measured on both sides. A pair is the count child and
+  the control child of the same parent. Each test carries the per-parent agreement and the
+  leave-one-or-two-parents-out rule, and the **extinct-kept** re-reading, which decides no
+  outcome. No parent was piloted, so there is no unpiloted re-reading.
+  - **H-rise** (count against drift): a late rise on classes held by a tenth; a pair favours
+    the side that rises late alone.
+  - **H-rise-genes** (count against drift): the same on essential genes held by a tenth.
+  - **H-room** (count against capped, paired by parent): the final-quarter gain in classes
+    held; a pair favours the larger gain, equal gains tie.
+  - **H-shadow** (count against shadow): a late rise on classes held, as H-rise.
+  - **H-driven** (count against drift): a late rise on the offline minimum.
+
+  **Predictions and power.** Against a control that never rises, a rise test is shown at 5
+  discordant pairs (p = 1/32) and survives leaving out any two parents at 7. Power over 30
+  measured pairs: at a late-rise rate r per count child and q per control child, 0.75 at
+  r = 0.2, 0.97 at 0.3, ≈1 at 0.5 with q = 0; 0.74 at r = 0.3 and 0.99 at r = 0.5 with q = 0.05.
+  H-room, with 75% of pairs favouring count and 25% capped, is shown with probability 0.89; at
+  60% against 20%, 0.76.
+  - **H-rise: shown.** Pilot 8: 6 of 6 count lanes rose late on classes held, by the rule, the
+    maxima and the magnitude (33–89% above the bar at 30 000–35 000), drift 0 of 2. The
+    magnitude is the condition at risk here: the child's bar is set near 30 000 and the
+    function side slows (classes per 1 000 bytes fell by a third; the final quarter's slope
+    was below the second's in all six lanes). Projecting the final-quarter slopes (+1.2 to
+    +2.7 classes a thousand epochs) over the second half puts the high-repertoire worlds (4428,
+    170–180 classes) near 1.2 times the bar, and the low ones (4381, 70–80) well above it.
+  - **H-rise-genes: shown.** 6 of 6 against 0 of 2; essential genes kept their pace (0.4–1.2 a
+    thousand epochs in both quarters), 1.5–1.8 times the bar at the pilot's horizon.
+  - **H-room: shown.** 3 of 4 forks at 30 000 (the fourth, 4428 at α 0.01, paused from 23 000
+    and climbed again by 35 000).
+  - **H-shadow: shown, unpiloted.** The one key resting on argument alone (study §4): the
+    shadow moves the same energy by a coin, so it selects nothing on computation. The
+    validation above saw it hold one class.
+  - **H-driven: shown.** The minimum's classes rose with the rest in every count lane (44 → 72
+    to 90 → 149, 1.6–2.1 times), drift 1 → 1; on two worlds rather than a series.
+
+  **Descriptive** (tested nowhere), per child in `lab:genes_rise_report`:
+  - **length**: the last-decile median `meta_len_mean`, and the near-cap count;
+  - **the fidelity distribution**: the last-decile medians of `fidelity_p10`, `_p50` and
+    `_p90`;
+  - **classes per 1 000 bytes** at the fifth and the last decile (classes held over mean
+    length), the diminishing-returns check: predicted falling;
+  - **essential genes per gene**, the last-decile essential genes held over the mean length in
+    genes of 32 bytes;
+  - `logic_depth_max` (predicted 10–12, not a key: four-input depth ends at 13),
+    `repertoire_mean`, `silent_share`, `predation_rate`, `predation_relation_rate` and
+    `replicator_share`, as last-decile medians;
+  - **offline**, by the tool slice below, on the fifth-decile and last worlds of every count
+    child that rises late and its twins: **load-bearing genes** of the top solver, its
+    count-bearing bytes, and **`sub` and U** (U_sub, U_frame), the load, predicted near α
+    until the level reaches 16, then rising.
+
+  **The offline tool slice, which lands before the reading.** `research/landscape` assays a
+  tape whole, on a fixed 32-byte channel and four output slots. A genes-aware slice must read,
+  on a child's stored world and its params:
+  - **the gene-wise census**: each cell's tape at its live length cut into G-byte genes (G =
+    `meta_genes`), each assayed alone as above, on the six fixed four-input sets, over
+    `task_max_outputs` slots; per world the classes held by a tenth, each cell's class count
+    and its essential genes (`topless::essential_genes`, the engine's rule);
+  - **the minimum**: the percentile above, on the two worlds, written as the
+    `run_id,fifth_minimum,last_minimum` CSV the report reads;
+  - **the top solver**: the commonest tape among the cells computing at least the computing
+    cells' 90th percentile of classes (the pilot's "top-repertoire solver");
+  - **its count-bearing bytes**: a byte bears count where at least 7 of the 13 other symbols
+    written there leave the tape fewer classes on all six sets, the gene re-assayed and the
+    other genes' classes kept; **its load-bearing genes**: the genes holding a count-bearing
+    byte, and their distinct cores (first to last bearing byte), so a copy counts once;
+  - **`sub` and U**: `sub`, the expected number of class-losing hits per `isa` draw on every
+    byte (the sum over positions of the losing symbols, over 14); U_sub = the rate at the top
+    tape's own cells' median level × `sub` × T_gen (the epochs per inheritance per cell over
+    the 2 000 epochs before the world; no stored world or sample holds it exactly, so it is
+    given to the tool per world, and U_sub is unread without it); U_frame = `meta_del` × the
+    share of the engine's deletions (1 to `meta_seg_max` bytes at a uniform start, up to 64
+    evenly spaced starts a length) that lose a class, plus the same for duplications ×
+    `meta_dup`.
+  It is built and reviewed before the sweep is read; the methods are locked here.
+
+  **What each outcome means.**
+  - **All five shown.** On a machine that imports no objective, held code and repertoire keep
+    climbing late at an unreached cap, driven by selection on what tapes compute (not the
+    shadow's energy flow), on the room (not the capped twin's), with the minimum rising too (a
+    driven trend, not a passive spread from a wall). That is §5.1 clause 4 met on both sides
+    of the map to 60 000 epochs. It is still **sustained accumulation, not open-ended
+    composition**, unless the descriptive readings say otherwise: the pilot's climb rides on
+    length (classes per 1 000 bytes falling, load-bearing genes equal to distinct bodies:
+    genes side by side). If they hold here, the finding says "sustained accumulation riding
+    on length with no composition", not "open-ended".
+  - **H-rise shown, H-shadow not shown.** The energy flow alone makes the climb: passive.
+  - **H-rise shown, H-driven not shown.** The top climbs and the bulk does not: a passive trend
+    in McShea's sense, or one the two-world reading cannot see.
+  - **H-rise shown, H-room not shown or refuted.** The climb does not run on room within
+    60 000 epochs: the capped twin gains as much late, so the late rise is a creep any child
+    makes.
+  - **H-rise-genes shown, H-rise not.** Code keeps accumulating while function saturates: the
+    program side rises with nothing new computed, which §5.1 clause 3 counts as half.
+  - **H-rise not shown or refuted.** Pilot 8's late climb was not general across parents, or
+    it slows to a stand between 35 000 and 60 000 epochs (the magnitude fails first). The
+    slowing (each new gene adding fewer classes) is then the ceiling, on this machine.
+  - **Every outcome**, by the study's §5 bar: the sweep addresses clause 2 (no objective: out-count
+    and every piece above pass both checks), clause 3 in part (repertoire live; the program
+    side live as essential genes and offline as load-bearing genes; depth not a key, since it
+    has a near top), clause 4 (its question), and clause 5 in part (drift, shadow, the room
+    control and McShea's minimum; no-ratchet is out-compute's H-ratchet, not run here). It
+    cannot meet clause 1 or clause 6 (above).
+
+  **Seeding rule.** `lab:sweep[genes_rise]` is run only after the predation slice (#303), the
+  out-compute entry (#304), the genes engine slices (#307, #308) and this entry are deployed,
+  and **after the out-compute sweep is seeded** (itself after the topless-rise sweep has
+  finished). It should create **120 runs**. **Order and priority**: both sweeps at 40, out-compute
+  seeded first, so its 216 children (25–36 h of the slots) are claimed first (`Runs::ClaimService`
+  claims the highest priority, oldest run first) and genes-rise's 120 follow as they drain.
+  Neither reading depends on the other, and out-compute is the earlier pre-registration: a
+  higher priority here would hold its children back once both are queued, for no gain in what
+  either can show.
+
+  **When it is read.** `lab:genes_rise_report` (text, or CSV with `FORMAT=csv`; `MINIMA=path`
+  for the offline minimum) and the sweep's page read it, cached as out-compute's reading is.
+  It is labelled **interim** until the parent pool is terminal and every child of every
+  qualifying parent has finished (`Experiments::DescendantSweepSettledService`), then
+  **final**. The page reads no minimum, so H-driven reads no measured pairs there; its outcome
+  is the report's with `MINIMA`.

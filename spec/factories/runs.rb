@@ -50,6 +50,12 @@ FactoryBot.define do
       params { Lab::Schema.run_defaults.merge(Lab::MetabolismReading::REWARD_BUNDLE) }
     end
 
+    # A run whose predation pass runs: it imports a machine, not an objective (DESIGN.md
+    # §1.4), and is never pooled with a fitness-free one either.
+    trait :predatory do
+      params { Lab::Schema.run_defaults.merge(Lab::OutComputeReading::OUT_COMPUTE_BUNDLE) }
+    end
+
     trait :stale do
       claimed
       heartbeat_at { 10.minutes.ago }

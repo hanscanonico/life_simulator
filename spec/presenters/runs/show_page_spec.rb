@@ -33,11 +33,15 @@ RSpec.describe Runs::ShowPage do
                   dominant_logic_task_count logic_share_echo logic_share_not logic_share_nand
                   logic_share_and logic_share_orn logic_share_or logic_share_andn logic_share_nor
                   logic_share_xor logic_share_equ meta_inherit_rate meta_diversity
-                  logic_capability_replicating logic_depth_max logic_depth_classes])
+                  logic_capability_replicating logic_depth_max logic_depth_classes predation_rate
+                  predation_relation_rate repertoire_mean silent_share meta_len_mean
+                  genes_essential_held fidelity_p10 fidelity_p50 fidelity_p90])
       expect(described_class::METRICS.keys).to match_array(Sample::PLOTTABLE)
       create(:sample, run: run, epoch: 100,
                       values: { "task_capability" => 0, "logic_capability" => 0, "meta_diversity" => 1,
-                                "logic_depth_max" => -1 })
+                                "logic_depth_max" => -1, "silent_share" => 1.0, "meta_len_mean" => 32.0,
+                                "genes_essential_held" => 0, "fidelity_p10" => 0, "fidelity_p50" => 0,
+                                "fidelity_p90" => 0 })
       expect(page.charts.map(&:title))
         .to eq(described_class::METRICS.values +
                [described_class::COMPRESSIBILITY_TITLE, described_class::TURNOVER_TITLE])
@@ -53,9 +57,11 @@ RSpec.describe Runs::ShowPage do
     end
 
     context "with samples of a run assayed on neither task ladder" do
-      it "draws no chart of either ladder, nor of the metabolism tape or the topless ladder" do
+      it "draws no chart of either ladder, nor of the metabolism tape, the topless ladder, predation, genes or fidelity" do
         create(:sample, run: run, epoch: 100, values: { "copy_cost" => 1_794, "task_capability" => nil })
-        gated = described_class::LADDERS.flatten + described_class::METABOLISM + described_class::DEPTH
+        gated = described_class::LADDERS.flatten + described_class::METABOLISM + described_class::DEPTH +
+                described_class::PREDATION + described_class::GROWTH + described_class::GENES +
+                described_class::FIDELITY
 
         expect(page.charts.size).to eq(described_class::METRICS.size - gated.size + 2)
         expect(gated.map { |metric| chart_for(metric) }).to all(be_nil)
@@ -84,6 +90,56 @@ RSpec.describe Runs::ShowPage do
         expect(described_class::DEPTH.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
         expect(described_class::LADDERS.last.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
         expect(described_class::METABOLISM.map { |metric| chart_for(metric) }).to all(be_nil)
+        expect(described_class::PREDATION.map { |metric| chart_for(metric) }).to all(be_nil)
+      end
+    end
+
+    context "with samples of a run whose predation pass runs" do
+      it "draws the predation charts beside the depth ones" do
+        create(:sample, run: run, epoch: 100,
+                        values: { "logic_depth_max" => 5, "predation_rate" => 0.29, "predation_relation_rate" => 0.32,
+                                  "repertoire_mean" => 5.2, "silent_share" => 0.07 })
+
+        expect(described_class::PREDATION).to eq(%w[predation_rate predation_relation_rate repertoire_mean silent_share])
+        expect(described_class::PREDATION.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
+        expect(described_class::DEPTH.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
+        expect(chart_for("meta_len_mean")).to be_nil
+        expect(chart_for("genes_essential_held")).to be_nil
+      end
+    end
+
+    context "with samples of a run whose metabolism tapes grow and are read as genes" do
+      it "draws the length and essential-genes charts beside the predation ones" do
+        create(:sample, run: run, epoch: 100,
+                        values: { "logic_depth_max" => 8, "predation_rate" => 0.26, "repertoire_mean" => 15.4,
+                                  "meta_len_mean" => 59.9, "genes_essential_held" => 2 })
+
+        expect(described_class::GROWTH + described_class::GENES).to eq(%w[meta_len_mean genes_essential_held])
+        expect(chart_for("meta_len_mean")).to be_a(Charts::LineChart)
+        expect(chart_for("genes_essential_held")).to be_a(Charts::LineChart)
+        expect(described_class::PREDATION.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
+        expect(described_class::FIDELITY.map { |metric| chart_for(metric) }).to all(be_nil)
+      end
+    end
+
+    context "with samples of a run whose metabolism tapes carry fidelity levels" do
+      it "draws the three fidelity charts beside the genes ones" do
+        create(:sample, run: run, epoch: 100,
+                        values: { "meta_len_mean" => 61.2, "genes_essential_held" => 2, "fidelity_p10" => 0,
+                                  "fidelity_p50" => 3, "fidelity_p90" => 7 })
+
+        expect(described_class::FIDELITY).to eq(%w[fidelity_p10 fidelity_p50 fidelity_p90])
+        expect(described_class::FIDELITY.map { |metric| chart_for(metric) }).to all(be_a(Charts::LineChart))
+        expect(chart_for("genes_essential_held")).to be_a(Charts::LineChart)
+      end
+    end
+
+    context "with samples of a run whose channel grows, read whole" do
+      it "draws the length chart and no essential-genes chart" do
+        create(:sample, run: run, epoch: 100, values: { "meta_len_mean" => 40.5, "genes_essential_held" => nil })
+
+        expect(chart_for("meta_len_mean")).to be_a(Charts::LineChart)
+        expect(chart_for("genes_essential_held")).to be_nil
       end
     end
 
