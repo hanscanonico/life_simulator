@@ -418,6 +418,50 @@ mod tests {
         }
     }
 
+    type Command = fn(&Args) -> Result<String, String>;
+
+    /// Every way `mcshea` and `loadbearing` read a stored genes world meets the refusal, not
+    /// only the scorer they share.
+    #[test]
+    fn each_world_reading_of_mcshea_and_loadbearing_refuses_a_stored_genes_world() {
+        let params = logic4(32);
+        let dir = std::env::temp_dir().join(format!("landscape-refusal-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let world = dir.join("world.lsnp");
+        let json = dir.join("params.json");
+        std::fs::write(
+            &world,
+            life_engine::World::new(&params, 1).unwrap().snapshot(),
+        )
+        .unwrap();
+        std::fs::write(&json, serde_json::to_string(&params).unwrap()).unwrap();
+        let (world, json) = (world.to_str().unwrap(), json.to_str().unwrap());
+        let read = |command: Command, raw: &[&str]| {
+            let raw = raw
+                .iter()
+                .map(|arg| arg.to_string())
+                .chain(["--params".to_string(), json.to_string()]);
+            command(&Args::parse(raw).unwrap()).err()
+        };
+        let readings: [(&str, Command, &[&str]); 5] = [
+            ("mcshea", mcshea, &["--snapshot", world]),
+            ("mcshea", mcshea, &["--fifth", world, "--last", world]),
+            ("loadbearing", loadbearing, &["--snapshot", world]),
+            (
+                "loadbearing",
+                loadbearing,
+                &["--fifth", world, "--last", world],
+            ),
+            ("loadbearing", loadbearing, &["hex:3c3c7b"]),
+        ];
+        for (name, command, raw) in readings {
+            let refusal = read(command, raw).unwrap_or_else(|| panic!("{name} {raw:?} read"));
+            assert!(refusal.starts_with(name), "{refusal}");
+            assert!(refusal.contains("`genes` reads"), "{refusal}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn a_logic4_run_without_genes_is_read_over_its_own_slots() {
         let scorer = depth_scorer(&logic4(0), "mcshea").unwrap();
