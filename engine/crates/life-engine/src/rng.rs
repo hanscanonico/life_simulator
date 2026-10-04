@@ -50,6 +50,44 @@ pub fn byte(rng: &mut Rng) -> u8 {
     (rng.next_u64() >> 56) as u8
 }
 
+/// How many bits of gap `Gaps` resolves: gaps up to 2^48 − 1 trials, past any world.
+const GAP_BITS: usize = 48;
+
+/// The gaps between the hits of a chance at `p` per trial: the law of one `chance` per
+/// trial, P(gap ≥ k) = (1 − p)^k, at one draw a hit. The gap is read off a uniform draw by
+/// bisection on the powers (1 − p)^(2^j), which are built by multiplication alone: IEEE 754
+/// rounds a product the same on every platform, where a logarithm's last bit is the
+/// platform's own, so the gaps are the same on native and on wasm.
+pub struct Gaps {
+    powers: [f64; GAP_BITS],
+}
+
+impl Gaps {
+    pub fn new(p: f64) -> Self {
+        let mut powers = [1.0 - p; GAP_BITS];
+        for bit in 1..GAP_BITS {
+            powers[bit] = powers[bit - 1] * powers[bit - 1];
+        }
+        Self { powers }
+    }
+
+    /// The trials before the next hit: the largest k with (1 − p)^k at least a draw
+    /// uniform on (0, 1].
+    pub fn draw(&self, rng: &mut Rng) -> u64 {
+        const SCALE: f64 = 1.0 / (1u64 << 53) as f64;
+        let uniform = ((rng.next_u64() >> 11) + 1) as f64 * SCALE;
+        let (mut gap, mut survives) = (0u64, 1.0f64);
+        for bit in (0..GAP_BITS).rev() {
+            let further = survives * self.powers[bit];
+            if further >= uniform {
+                survives = further;
+                gap |= 1 << bit;
+            }
+        }
+        gap
+    }
+}
+
 /// Fisher–Yates, drawing from `rng` only.
 pub fn shuffle<T>(items: &mut [T], rng: &mut Rng) {
     for i in (1..items.len()).rev() {
@@ -90,6 +128,33 @@ mod tests {
         assert!(chance(&mut rng, 1.0));
         let hits = (0..10_000).filter(|_| chance(&mut rng, 0.25)).count();
         assert!((2100..2900).contains(&hits), "{hits}");
+    }
+
+    /// The gaps keep a chance's law: their mean is (1 − p)/p, a certain hit leaves none,
+    /// and the same stream draws the same gaps.
+    #[test]
+    fn gaps_keep_the_law_of_one_chance_per_trial() {
+        for p in [0.5, 1.0 / 64.0, 8.0 / 8192.0] {
+            let gaps = Gaps::new(p);
+            let mut rng = seeded(4, 0, 0);
+            let draws = 20_000;
+            let mean = (0..draws).map(|_| gaps.draw(&mut rng)).sum::<u64>() as f64 / draws as f64;
+            let expected = (1.0 - p) / p;
+            assert!(
+                (mean - expected).abs() < 0.05 * expected + 0.05,
+                "{p}: {mean}"
+            );
+        }
+        let mut rng = seeded(5, 0, 0);
+        assert!((0..100).all(|_| Gaps::new(1.0).draw(&mut rng) == 0));
+        let drawn = |seed| {
+            let mut rng = seeded(seed, 0, 0);
+            (0..8)
+                .map(|_| Gaps::new(0.01).draw(&mut rng))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(drawn(6), drawn(6));
+        assert_ne!(drawn(6), drawn(7));
     }
 
     #[test]

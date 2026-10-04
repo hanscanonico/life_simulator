@@ -20,8 +20,11 @@ module Experiments
     SKIP_REASONS = {
       unfinished: "not finished",
       no_terminal_world: "no stored world at the last epoch",
+      not_emerged: "not emerged",
       no_reading: "no reading of the last world",
-      below_share: "share below the minimum"
+      below_share: "share below the minimum",
+      before_skip: "among the qualifying parents the rule sets aside",
+      past_first: "past the rule's first qualifying parents"
     }.freeze
 
     Report = Data.define(:parents, :created, :skipped) do

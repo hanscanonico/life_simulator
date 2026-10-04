@@ -8,6 +8,7 @@
   <p class="finding-meta text-sm text-muted">
     <span class="badge <%= @show.finding.badge_class %>"><%= @show.finding.status_label %></span>
     <% if @show.finding.imports_objective? %><%= render "findings/objective_badge" %><% end %>
+    <% if @show.finding.imports_machine? %><%= render "findings/machine_badge" %><% end %>
     <time datetime="<%= @show.finding.date.iso8601 %>"><%= l @show.finding.date, format: :long %></time>
   </p>
 
@@ -18,6 +19,13 @@
     <p class="text-sm text-muted" id="objective-note">
       <%= Findings::Finding::OBJECTIVE_MEANING %>
       <%= link_to "What that means", how_it_works_path(anchor: "imports-an-objective") %>.
+    </p>
+  <% end %>
+
+  <% if @show.finding.imports_machine? %>
+    <p class="text-sm text-muted" id="machine-note">
+      <%= Findings::Finding::MACHINE_MEANING %>
+      <%= link_to "What that means", how_it_works_path(anchor: "imports-a-machine") %>.
     </p>
   <% end %>
 

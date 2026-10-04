@@ -420,6 +420,64 @@
       ladder.
     </dd>
 
+    <dt class="mono">predation_rate</dt>
+    <dd>
+      Under <span class="mono">predation</span>, the share of the last epoch's encounters,
+      a cell meeting a partner, that moved energy from the partner to the cell. Null on
+      every run without predation, and on a run's first sample after a resume.
+    </dd>
+
+    <dt class="mono">predation_relation_rate</dt>
+    <dd>
+      Under <span class="mono">predation</span>, the share of the same encounters whose
+      relation held (under <span class="mono">shadow</span>, whose coin came up), whether
+      or not the partner had energy to give: the rate
+      <span class="mono">predation_shadow_p</span> is set against. Null exactly where
+      <span class="mono">predation_rate</span> is.
+    </dd>
+
+    <dt class="mono">repertoire_mean</dt>
+    <dd>
+      Under <span class="mono">predation</span>, how many distinct rungs a cell's
+      metabolism tape computes, a rung being a function up to a reordering of its inputs,
+      averaged over 256 sampled cells and read over every output the run's assay allows.
+      Null on every run without predation.
+    </dd>
+
+    <dt class="mono">silent_share</dt>
+    <dd>
+      Under <span class="mono">predation</span>, the share of those sampled cells whose
+      metabolism tape computes no rung at all: the cells every neighbour may eat. Null on
+      every run without predation.
+    </dd>
+
+    <dt class="mono">meta_len_mean</dt>
+    <dd>
+      On a run whose metabolism tapes can grow (<span class="mono">meta_max_len</span>
+      above <span class="mono">meta_len</span>), the mean length of those tapes over every
+      cell, in bytes. Null on every run whose tapes keep one length.
+    </dd>
+
+    <dt class="mono">genes_essential_held</dt>
+    <dd>
+      Under <span class="mono">meta_genes</span>, the most essential genes at least a tenth
+      of 256 sampled cells hold. A cell's genes are grouped by the rungs they compute,
+      copies computing the same set being one group, and a group is essential when it
+      computes a rung no other group of the tape computes: a duplicate counts once, and a
+      gene whose rungs the others already compute counts nothing. Null on every run read
+      without genes.
+    </dd>
+
+    <dt class="mono">fidelity_p10</dt>
+    <dt class="mono">fidelity_p50</dt>
+    <dt class="mono">fidelity_p90</dt>
+    <dd>
+      Under <span class="mono">meta_fid_max</span>, the 10th, 50th and 90th percentiles of
+      the fidelity levels of 256 sampled cells. Level 0 is the base machine; each level
+      above it halves the metabolism tape's error rate every two steps. Null on every run
+      whose tapes carry no level.
+    </dd>
+
     <dt class="mono">transition_epoch</dt>
     <dd>
       Recorded once per run: the first sampled epoch at which
@@ -485,6 +543,55 @@
       never pooled with the fitness-free ones in any count on this site, its findings carry
       this badge, and whatever it reads, rung 4 on Soup stays "not shown". See
       <a href="https://github.com/hanscanonico/life_simulator/blob/main/docs/DESIGN.md#14-metabolism-a-second-labelled-substrate-that-imports-an-objective">DESIGN §1.4</a>.
+    </dd>
+
+    <dt>predation</dt>
+    <dd>
+      A rule under which a cell takes energy from a neighbour whose every computed rung it
+      computes too, so a cell that computes nothing is anyone's food and a cell computing
+      the same as its neighbour is food for it as well. It names no function and pays for
+      none: it imports a machine to compute with, not an objective. Its runs are unpaid,
+      and whatever they read, rung 4 on Soup stays "not shown". Under
+      <span class="mono">count</span> a cell takes from a neighbour that computes strictly
+      fewer rungs than it does, whichever they are, so a tie, kin or stranger, is no food.
+    </dd>
+
+    <dt>gene</dt>
+    <dd>
+      Under <span class="mono">meta_genes</span>, a fixed-length piece of a metabolism tape
+      that the assay runs alone, on a buffer of its own, so no piece can read or undo
+      another's result; the tape computes every rung any of its genes computes. The gene
+      length, the independence and the union are a machine the engine imposes, not
+      anything the organisms evolved, and they name no function: they import a machine,
+      not an objective.
+    </dd>
+
+    <dt>fidelity</dt>
+    <dd>
+      Under <span class="mono">meta_fid_max</span>, a heritable level each cell's metabolism
+      tape carries, from 0, the base machine, up to that top: each level divides the tape's
+      error rate by √2. It is inherited with the tape and moves one step up or down now and
+      then. Under <span class="mono">meta_fid_alpha</span> it has a price: a copy attempt
+      costs <span class="mono">max_steps</span> × 2<sup>α·f/2</sup>, so each halving of the
+      error rate costs the same share of a copy wherever a lineage sits. The base machine
+      is the cheapest level, so no lineage can buy sloppiness below it. It reads no tape and
+      names no function: it imports a machine, not an objective.
+    </dd>
+
+    <dt id="imports-a-machine">imports a machine, not an objective</dt>
+    <dd>
+      Said of the runs under <span class="mono">predation</span>, and of those whose metabolism
+      tape carries a heritable fidelity level that costs energy to hold. Nothing pays a cell for
+      computing any one thing, so no objective is imported, but the world they run in was
+      handed what they compute with: the NAND byte and the way it stacks its results, the
+      metabolism tape the world copies on with each cell, the output byte and how many
+      outputs a tape may emit, the input bytes, and the predation rule itself, or the fidelity
+      menu and its price. A cell's energy moves by what its tape computes or by the level it
+      inherits, so these runs are not plain Soup either: they
+      are never pooled with the fitness-free ones in any count on this site, their findings
+      carry this badge, and whatever they read, rung 4 on Soup stays "not shown". The
+      unpaid arm without predation or a priced fidelity is plain Soup with a tape nothing
+      reads, and is pooled.
     </dd>
 
     <dt>arm</dt>

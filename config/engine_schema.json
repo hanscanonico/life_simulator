@@ -180,6 +180,59 @@
       "type": "integer"
     },
     {
+      "default": 4,
+      "doc": "How many outputs a case of the logic3 or logic4 assay may emit before it stops, and so how many output slots are read for rungs: by the predation pass, the depth readings and the logic readings. The first four read what they always read, so a wider assay only adds rungs. Anything above 4 needs tasks logic3 or logic4 and a task_reward of 0: no paid run reads it.",
+      "max": 16,
+      "min": 4,
+      "name": "task_max_outputs",
+      "type": "integer"
+    },
+    {
+      "default": "off",
+      "doc": "An interaction rule that reads what metabolism tapes compute and names no computation. Every epoch, before the influx, each cell acts with probability 1 in predation_every, in an order of its own, and picks a partner by the soup's own neighbour rule; where the relation holds it takes up to predation_transfer of the partner's stock, predation_loss of what moves destroyed, never past energy_stock_cap. subset_class: every input-permutation class the partner's metabolism tape computes on the logic3 or logic4 assay, over task_max_outputs slots, is one the actor's computes too, so a tape computing nothing is everyone's prey and two tapes computing the same are each other's. equal: the two sets are the same. shadow: a coin at predation_shadow_p, reading nothing. count: the partner computes strictly fewer classes than the actor, whichever they are, so silence is prey and two tapes computing as many are not. Under meta_genes every relation reads the union of the genes' classes. The cases are drawn on the pass's own stream every predation_every epochs. off runs no pass, which is the substrate of DESIGN 1.1. Anything but off needs a metabolism tape, an energy_influx, energy_payer initiator, tasks logic3 or logic4, and a task_reward of 0.",
+      "name": "predation",
+      "type": "enum",
+      "values": [
+        "off",
+        "subset_class",
+        "equal",
+        "shadow",
+        "count"
+      ]
+    },
+    {
+      "default": 0,
+      "doc": "The most stock one predation takes out of its partner: what the partner holds when that is less. 0 moves nothing and runs no pass. Read only once predation is set.",
+      "max": 1048576,
+      "min": 0,
+      "name": "predation_transfer",
+      "type": "integer"
+    },
+    {
+      "default": 0.5,
+      "doc": "The share of what a predation moves that is destroyed in transit: the actor receives the rest, rounded down, as a steal op's thief does. Read only once predation is set.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "predation_loss",
+      "type": "float"
+    },
+    {
+      "default": 8,
+      "doc": "The predation pass's period: each cell acts with probability 1 in this every epoch, so stocks are met at every phase of the initiation cycle, and the cases computations are read on are redrawn every this many epochs. Read only once predation is set.",
+      "max": 1000000,
+      "min": 1,
+      "name": "predation_every",
+      "type": "integer"
+    },
+    {
+      "default": 0.3,
+      "doc": "The probability an encounter moves energy under predation shadow, a coin that reads no computation. Read only under predation shadow.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "predation_shadow_p",
+      "type": "float"
+    },
+    {
       "default": "<>{}+-.,[]",
       "doc": "The BFF instructions this run executes, as a string of distinct op bytes. A byte whose op is left out is a no-op, like any non-instruction byte.",
       "name": "ops",
@@ -247,7 +300,7 @@
     {
       "default": 0,
       "doc": "Bytes of each soup cell's metabolism tape: a second tape the soup never executes, which the logic assay reads instead of the replicating tape. It is copied whole from the initiator onto its partner whenever an interaction leaves the partner's tape a near copy of the initiator's, at least 90% of its bytes in either orientation, and mutates on its own at meta_rate. 0 turns it off, which is the substrate of DESIGN 1.1; any length needs tasks logic, logic3 or logic4.",
-      "max": 1024,
+      "max": 8192,
       "min": 0,
       "name": "meta_len",
       "type": "integer"
@@ -279,6 +332,78 @@
         "zeros",
         "own_tape"
       ]
+    },
+    {
+      "default": 0,
+      "doc": "The longest a metabolism tape may grow to. Every tape starts at meta_len bytes; at each inheritance, the inherited copy has a duplicate of one of its segments appended with probability meta_dup, never past this length, then loses one of its segments with probability meta_del, never below meta_min_len. 0 keeps the channel fixed at meta_len, and so does meta_len itself; below meta_len it is refused. Read only once meta_len is set.",
+      "max": 8192,
+      "min": 0,
+      "name": "meta_max_len",
+      "type": "integer"
+    },
+    {
+      "default": 8,
+      "doc": "The shortest a deletion may leave a metabolism tape, at most meta_len. Read only on a channel that grows (meta_max_len above meta_len).",
+      "max": 8192,
+      "min": 1,
+      "name": "meta_min_len",
+      "type": "integer"
+    },
+    {
+      "default": 0.0,
+      "doc": "The probability, per inheritance, that the inherited metabolism tape has a copy of one of its segments, 1 to meta_seg_max bytes from a random place, appended at its end, cut at meta_max_len. Drawn on a stream of its own. Read only on a channel that grows.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "meta_dup",
+      "type": "float"
+    },
+    {
+      "default": 0.0,
+      "doc": "The probability, per inheritance and after any duplication, that the inherited metabolism tape loses a segment of 1 to meta_seg_max bytes from a random place, never below meta_min_len. Read only on a channel that grows.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "meta_del",
+      "type": "float"
+    },
+    {
+      "default": 16,
+      "doc": "The longest segment a duplication or deletion of a metabolism tape moves. Read only on a channel that grows.",
+      "max": 8192,
+      "min": 1,
+      "name": "meta_seg_max",
+      "type": "integer"
+    },
+    {
+      "default": 0,
+      "doc": "The gene length G of the topless assay of a metabolism tape: the tape is cut at offsets 0, G, 2G and so on, the last piece zero-padded to G, and each gene is run alone on a buffer of 2G bytes with the inputs at its end, under the assay's own emit and step budgets; the tape computes the union of its genes' classes. No gene can read or undo another's result. It applies wherever a metabolism tape is assayed, the predation pass and the readings, and needs tasks logic3 or logic4 and a task_reward of 0, so it is never paid. 0 runs the tape whole.",
+      "max": 8192,
+      "min": 0,
+      "name": "meta_genes",
+      "type": "integer"
+    },
+    {
+      "default": 0,
+      "doc": "The top fidelity level of a metabolism tape. Each cell carries a heritable level f from 0, the base machine every cell starts at, to this; its tape mutates at meta_rate × 2^(−f/2), so each level is a factor of √2. The level is inherited with the tape and moves at meta_fid_rate. 0 carries no level. Needs a channel that grows (meta_max_len above meta_len).",
+      "max": 16,
+      "min": 0,
+      "name": "meta_fid_max",
+      "type": "integer"
+    },
+    {
+      "default": 0.0,
+      "doc": "The probability, per inheritance of a metabolism tape, that the inherited level moves one step, up or down with equal odds, never past 0 or meta_fid_max. Drawn on a stream of its own. Read only once meta_fid_max is set.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "meta_fid_rate",
+      "type": "float"
+    },
+    {
+      "default": 0.0,
+      "doc": "The cost exponent α of fidelity: a cell at level f initiates only when its stock holds max_steps × 2^(α·f/2), and is debited that, so each halving of its tape's error rate multiplies the price of a copy attempt by 2^α. The interaction's step budget stays max_steps. 0 makes fidelity free. Needs the initiator economy (an energy_influx and energy_payer initiator). Read only once meta_fid_max is set.",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "meta_fid_alpha",
+      "type": "float"
     },
     {
       "default": "random",

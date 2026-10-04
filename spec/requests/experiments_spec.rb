@@ -753,6 +753,107 @@ RSpec.describe "Experiments", type: :request do
       end
     end
 
+    context "with the out-compute sweep seeded from reach-cap128" do
+      let(:experiment) { out_compute_experiment }
+
+      before do
+        out_compute_parents
+        Experiments::SweepBuilderService.call(experiment)
+      end
+
+      it "labels the sweep as importing a machine, and not an objective" do
+        get experiment_path(experiment)
+
+        substrate = response.parsed_body.css(".facts dd").first
+        expect(substrate.at_css("a.machine-badge")["href"]).to eq(how_it_works_path(anchor: "imports-a-machine"))
+        expect(substrate.at_css("a.machine-badge").text).to eq("imports a machine, not an objective")
+        expect(substrate.at_css(".objective-badge")).to be_nil
+        expect(response.parsed_body.at_css("#descendant-reading, #heldout-reading, #topless-rise-reading")).to be_nil
+      end
+
+      context "with no child sampled yet" do
+        it "reads the sweep as pre-registered, interim, under the badge" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#out-compute-reading")
+          expect(section.at_css("h2").text.squish)
+            .to eq("The pre-registered reading interim imports a machine, not an objective")
+          expect(section.text.squish).to include("H-endogenous", "H-ratchet", "H-driven", "H-rise-unassisted",
+                                                 "H-repertoire", "no measured pairs", "rung 4 on Soup stays not shown")
+        end
+      end
+
+      context "with every child finished and the out-compute child alone deep and rising" do
+        before do
+          out_compute_children(experiment, :out_compute).each { |run| out_compute_sample(run, fifth: 5, last: 6) }
+          experiment.runs.each { |run| out_compute_sample(run, fifth: 0) if run.samples.none? }
+        end
+
+        it "prints the arms and the tests beside their sensitivity readings" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#out-compute-reading")
+          arms = section.css("#out-compute-arms ~ .table-scroll tbody tr").map { |row| row.css("td").map(&:text) }
+          expect(arms).to eq([%w[out-compute 1 1 0 0 1 1 0 0 0 6], %w[equal 1 1 0 0 1 0 0 0 0 0],
+                              %w[shadow 1 1 0 0 1 0 0 0 0 0], %w[none 1 1 0 0 1 0 0 0 0 0]])
+          expect(section.text.squish).to include("The pre-registered reading final", "H-driven, out-compute against shadow",
+                                                 "1 pair measured on both sides: 1 favour out-compute",
+                                                 "With the extinct pairs kept", "Without the piloted parents",
+                                                 "runs 4381 and 4428", "Per-parent agreement")
+        end
+      end
+    end
+
+    context "with the genes-rise sweep seeded from reach-cap128" do
+      let(:experiment) { genes_rise_experiment }
+
+      before do
+        genes_rise_parents
+        Experiments::SweepBuilderService.call(experiment)
+      end
+
+      it "labels the sweep as importing a machine, and not an objective" do
+        get experiment_path(experiment)
+
+        substrate = response.parsed_body.css(".facts dd").first
+        expect(substrate.at_css("a.machine-badge").text).to eq("imports a machine, not an objective")
+        expect(substrate.at_css(".objective-badge")).to be_nil
+        expect(response.parsed_body.at_css("#descendant-reading, #out-compute-reading")).to be_nil
+      end
+
+      context "with no child sampled yet" do
+        it "reads the sweep as pre-registered, interim, under the badge" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#genes-rise-reading")
+          expect(section.at_css("h2").text.squish)
+            .to eq("The pre-registered reading interim imports a machine, not an objective")
+          expect(section.text.squish).to include("H-rise", "H-rise-genes", "H-room", "H-shadow", "H-driven",
+                                                 "no measured pairs", "at least 1.2 times",
+                                                 "rung 4 on Soup stays not shown")
+        end
+      end
+
+      context "with every child finished and the count child alone climbing late" do
+        before do
+          genes_rise_children(experiment, :count).each { |run| genes_rise_sample(run, classes: genes_rise_ramp) }
+          experiment.runs.each { |run| genes_rise_sample(run, length: 900.0) if run.samples.none? }
+        end
+
+        it "prints the arms and the tests beside their extinct-kept readings" do
+          get experiment_path(experiment)
+
+          section = response.parsed_body.at_css("#genes-rise-reading")
+          arms = section.css("#genes-rise-arms ~ .table-scroll tbody tr").map { |row| row.css("td").map(&:text) }
+          expect(arms).to eq([%w[count 1 1 0 0 1 1 1 1 0 0 29], %w[capped 1 1 0 0 1 0 0 1 0 0 1],
+                              %w[shadow 1 1 0 0 1 0 0 1 0 0 1], %w[drift 1 1 0 0 1 0 0 1 0 0 1]])
+          expect(section.text.squish).to include("The pre-registered reading final", "H-room, count against capped",
+                                                 "1 pair measured on both sides: 1 favour count",
+                                                 "With the extinct pairs kept", "Per-parent agreement")
+        end
+      end
+    end
+
     context "with a descendant sweep seeded from an emerged world" do
       let(:experiment) do
         create(:experiment, name: "From an emerged world", slug: "from-emerged",
