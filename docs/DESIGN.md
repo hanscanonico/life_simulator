@@ -229,7 +229,37 @@ substrate and make it spatial, so it looks and behaves like a cellular automaton
   any relabelling of the functions, and in a world where every cell computes the same set,
   whatever that set, every cell's payoff is the same. The machine (the NAND, the emit op,
   the inputs, the metabolism tape) and the rule itself are imported, so rung 4 on Soup stays
-  "not shown" whatever a predation run reads.
+  "not shown" whatever a predation run reads. Under `count` (out-count, docs/design_record.md
+  2026-10-04, Genes slice A) the actor takes from a partner that computes **strictly fewer**
+  classes than it does, whichever they are: silence is prey to every computing cell, and a
+  tie, kin or stranger, is no prey. It reads only the two counts, so it is blind to any
+  relabelling, and transitive.
+- **Genes and a growable metabolism channel** (`meta_max_len`, default `0` = fixed;
+  `meta_min_len`, default `8`; `meta_dup` and `meta_del`, default `0`; `meta_seg_max`,
+  default `16`; `meta_genes`, default `0` = off; docs/design_record.md 2026-10-04, Genes
+  slice A; `docs/studies/unassisted.md` §7–§13). With a cap above `meta_len`, every
+  metabolism tape starts at `meta_len` bytes and changes length at inheritance only: the
+  inherited copy has, with probability `meta_dup`, a copy of a random segment of 1 to
+  `meta_seg_max` bytes appended at its end, cut at the cap, and then, with probability
+  `meta_del`, a random segment of 1 to `meta_seg_max` bytes cut out, never below
+  `meta_min_len`; both draw on a stream of their own (`STREAM_META | 1`) in the order the
+  epoch's inheritances happen. Mutation offers each **live** byte one draw at `meta_rate`, the
+  hits found by the gaps between them on the tapes' own stream (the same law, computed by
+  multiplication alone so it is the same on every platform). The lengths are state: hashed
+  after the tapes and carried in the snapshot container's versions 12–14, the live bytes and
+  one length per cell. With `meta_genes` = G the topless assay of a metabolism tape cuts it
+  at offsets 0, G, 2G and so on, the last piece zero-padded to G, and runs each **gene**
+  alone on a buffer of 2G bytes with the inputs at its end, under the assay's own emit and
+  step budgets; the tape computes the **union** of its genes' classes, each distinct gene
+  assayed once per reading. It applies wherever a metabolism tape is assayed: the predation
+  pass under every relation, the depth, logic and repertoire readings. It is refused away
+  from an unpaid topless ladder, so it never touches pay. A cap at or below `meta_len`'s
+  value reads the fixed channel, the variation settings are refused where the channel
+  cannot grow, and at the defaults the run is the run without them, byte for byte. Genes
+  and the channel **import a machine, not an objective**: the gene length G, independence
+  by construction (no gene reads or undoes another's result), the union as the phenotype
+  (additions are free to keep), and the channel's variation operators are the engine's,
+  not the organisms'; none names a function or grades one.
 - **Room to grow** (`max_tape_len`, default `0` = off): with a cap set above `tape_len`,
   a head that steps right off the end of the concatenation claims a fresh zero byte and
   moves onto it instead of wrapping, while the second tape is shorter than the cap. The
@@ -607,6 +637,20 @@ claim rests on it.
   They only read, so they move no byte, stock or other reading. Null on every run whose
   predation pass does not run, on the life substrate and on every earlier sample;
   **live-only**. The run page draws them only for a run that has a reading of them.
+  Under `meta_genes` they, `logic_depth_max`, `logic_depth_classes` and the logic readings of
+  the metabolism tapes read the union of the genes' classes.
+- `meta_len_mean` / `genes_essential_held`: the **genes readings** (docs/design_record.md
+  2026-10-04, Genes slice A). `meta_len_mean` is the mean live length of the metabolism
+  tapes over every cell, drawing nothing; null unless the channel grows.
+  `genes_essential_held` is the most essential genes at least a tenth of 256 sampled cells
+  hold (26 of 256, compared as integers; 0 where fewer hold one), on cells and cases of a
+  stream of its own: a cell's genes are grouped by the set of classes each computes, copies
+  computing one set being one group, and a group is **essential** when it computes a class
+  no other group of the tape computes, so a duplicate counts once, a diverged copy that
+  adds a class counts again, and a gene whose classes the other groups compute between
+  them, or that computes none, counts nothing (the study's §10.1). Null unless the run reads
+  genes. Both only read; **live-only**; the run page draws each only for a run that has a
+  reading of it.
 - `transition_epoch` (per run, once): first sampled epoch at which a *qualifying* sample
   appears and the next 3 samples all qualify. A sample qualifies when `compress_ratio <
   0.6` **and** `op_density <= 0.9` **and** `alphabet_size >= 16` — the last two guard

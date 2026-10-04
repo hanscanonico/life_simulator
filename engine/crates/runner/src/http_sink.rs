@@ -213,6 +213,8 @@ mod tests {
             predation_relation_rate: None,
             repertoire_mean: None,
             silent_share: None,
+            meta_len_mean: None,
+            genes_essential_held: None,
         }
     }
 

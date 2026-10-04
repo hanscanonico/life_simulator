@@ -27,7 +27,7 @@ RSpec.describe Lab::Schema do
     expect(described_class.values_for("task_floor"))
       .to eq(%w[echo inc dec add sub not double mul nand and orn or andn nor xor equ])
     expect(described_class.values_for("logic_nand")).to eq(%w[in_place stack])
-    expect(described_class.values_for("predation")).to eq(%w[off subset_class equal shadow])
+    expect(described_class.values_for("predation")).to eq(%w[off subset_class equal shadow count])
   end
 
   it "reads the task ladder in the engine's order, the bit order of dominant_tasks" do
@@ -53,7 +53,8 @@ RSpec.describe Lab::Schema do
                 logic_nand task_depth_cap task_max_outputs predation predation_transfer predation_loss
                 predation_every predation_shadow_p ops
                 mutation_rate structure structure_amplitude
-                interaction lineage_rule meta_len meta_rate meta_draw meta_seed init top_k])
+                interaction lineage_rule meta_len meta_rate meta_draw meta_seed meta_max_len meta_min_len
+                meta_dup meta_del meta_seg_max meta_genes init top_k])
   end
 
   # Pinned by value rather than derived from the schema: an engine default moving under
@@ -68,7 +69,8 @@ RSpec.describe Lab::Schema do
       "predation_shadow_p" => 0.3, "ops" => "<>{}+-.,[]", "mutation_rate" => 1.0 / 4096,
       "structure" => "uniform", "structure_amplitude" => 0.5, "interaction" => "concat",
       "lineage_rule" => "aligned", "meta_len" => 0, "meta_rate" => 32.0 / 8192, "meta_draw" => "uniform",
-      "meta_seed" => "zeros", "init" => "random", "top_k" => 16
+      "meta_seed" => "zeros", "meta_max_len" => 0, "meta_min_len" => 8, "meta_dup" => 0.0, "meta_del" => 0.0,
+      "meta_seg_max" => 16, "meta_genes" => 0, "init" => "random", "top_k" => 16
     )
   end
 

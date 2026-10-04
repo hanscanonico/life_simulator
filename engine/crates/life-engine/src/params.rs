@@ -126,9 +126,14 @@ impl Tasks {
 /// `meta_rate`'s default, the design study's 32 × the replicating tape's 1/8192 of the
 /// Logic sweep (`docs/design_record.md`, 2026-10-02, Meta-stack slice B).
 const META_RATE_DEFAULT: f64 = 32.0 / 8192.0;
-/// The longest metabolism tape a run may carry, which also bounds what a snapshot may
-/// claim to hold.
-pub const META_LEN_MAX: u32 = 1024;
+/// The longest metabolism tape a run may carry, at the start or grown, which also bounds
+/// what a snapshot may claim to hold. Room the design study's pilot 8 did not reach
+/// (`docs/design_record.md`, 2026-10-04, Genes slice A).
+pub const META_LEN_MAX: u32 = 8192;
+/// `meta_min_len`'s default, the floor the design study's growable channel deleted to.
+const META_MIN_LEN_DEFAULT: u32 = 8;
+/// `meta_seg_max`'s default, the study's 1..=16-byte duplicated and deleted segments.
+const META_SEG_MAX_DEFAULT: u32 = 16;
 
 /// What the NAND byte `~` writes inside the logic assay (`docs/DESIGN.md` §1.1; the
 /// 2026-10-02 design-record entry on the stack NAND). `InPlace` is the default and the NAND
@@ -158,8 +163,9 @@ impl LogicNand {
 /// picks a partner by the soup's own rule and, where the relation holds, takes up to
 /// `predation_transfer` of its stock: `SubsetClass` when every input-permutation class the
 /// partner's metabolism tape computes is one the actor's computes too, `Equal` when the two
-/// sets are the same, and `Shadow` on a coin at `predation_shadow_p` that reads no
-/// computation at all.
+/// sets are the same, `Shadow` on a coin at `predation_shadow_p` that reads no
+/// computation at all, and `Count` when the partner computes strictly fewer classes than
+/// the actor, whichever they are (out-count, 2026-10-04).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Predation {
@@ -167,6 +173,7 @@ pub enum Predation {
     SubsetClass,
     Equal,
     Shadow,
+    Count,
 }
 
 /// Every name `task_floor` may take, the arithmetic ladder's rungs then the logic ladder's
@@ -321,6 +328,24 @@ pub struct Params {
     /// What a metabolism tape holds when it is switched on. Read only once `meta_len` is
     /// set.
     pub meta_seed: MetaSeed,
+    /// The longest a metabolism tape may grow to, from `meta_len`; `0` (the default) and
+    /// `meta_len` itself keep every tape `meta_len` bytes for the whole run.
+    pub meta_max_len: u32,
+    /// The shortest a deletion may leave a metabolism tape. Read only on a channel that
+    /// grows.
+    pub meta_min_len: u32,
+    /// The probability an inherited metabolism tape has a duplicate of one of its segments
+    /// appended. Read only on a channel that grows.
+    pub meta_dup: f64,
+    /// The probability an inherited metabolism tape loses one of its segments, after any
+    /// duplication. Read only on a channel that grows.
+    pub meta_del: f64,
+    /// The longest segment a duplication or deletion moves. Read only on a channel that
+    /// grows.
+    pub meta_seg_max: u32,
+    /// The gene length the topless assay splits a metabolism tape into, each gene run alone
+    /// and the tape credited the union; `0` (the default) runs the tape whole.
+    pub meta_genes: u32,
     pub init: Init,
     pub sample_every: u32,
     pub top_k: u32,
@@ -365,6 +390,12 @@ impl Default for Params {
             meta_rate: META_RATE_DEFAULT,
             meta_draw: MetaDraw::Uniform,
             meta_seed: MetaSeed::Zeros,
+            meta_max_len: 0,
+            meta_min_len: META_MIN_LEN_DEFAULT,
+            meta_dup: 0.0,
+            meta_del: 0.0,
+            meta_seg_max: META_SEG_MAX_DEFAULT,
+            meta_genes: 0,
             init: Init::Random,
             sample_every: 10,
             top_k: 16,
@@ -610,7 +641,7 @@ const FIELDS: &[Field] = &[
     },
     Field {
         name: "predation",
-        kind: Kind::Choice(&["off", "subset_class", "equal", "shadow"]),
+        kind: Kind::Choice(&["off", "subset_class", "equal", "shadow", "count"]),
         doc: "An interaction rule that reads what metabolism tapes compute and names no \
               computation. Every epoch, before the influx, each cell acts with probability \
               1 in predation_every, in an order of its own, and picks a partner by the soup's \
@@ -621,7 +652,9 @@ const FIELDS: &[Field] = &[
               slots, is one the actor's computes too, so a tape computing nothing is \
               everyone's prey and two tapes computing the same are each other's. equal: the \
               two sets are the same. shadow: a coin at predation_shadow_p, reading nothing. \
-              The cases are drawn on the pass's own stream every predation_every epochs. \
+              count: the partner computes strictly fewer classes than the actor, whichever \
+              they are, so silence is prey and two tapes computing as many are not. Under \
+              meta_genes every relation reads the union of the genes' classes. The cases are drawn on the pass's own stream every predation_every epochs. \
               off runs no pass, which is the substrate of DESIGN 1.1. Anything but off needs \
               a metabolism tape, an energy_influx, energy_payer initiator, tasks logic3 or \
               logic4, and a task_reward of 0.",
@@ -741,6 +774,67 @@ const FIELDS: &[Field] = &[
               epoch 0 or at descent from a parent that carried none: zeros, or the first \
               meta_len bytes of the cell's own replicating tape. Read only once meta_len \
               is set.",
+    },
+    Field {
+        name: "meta_max_len",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: META_LEN_MAX as f64,
+        },
+        doc: "The longest a metabolism tape may grow to. Every tape starts at meta_len \
+              bytes; at each inheritance, the inherited copy has a duplicate of one of its \
+              segments appended with probability meta_dup, never past this length, then \
+              loses one of its segments with probability meta_del, never below meta_min_len. \
+              0 keeps the channel fixed at meta_len, and so does meta_len itself; below \
+              meta_len it is refused. Read only once meta_len is set.",
+    },
+    Field {
+        name: "meta_min_len",
+        kind: Kind::Integer {
+            min: 1.0,
+            max: META_LEN_MAX as f64,
+        },
+        doc: "The shortest a deletion may leave a metabolism tape, at most meta_len. Read \
+              only on a channel that grows (meta_max_len above meta_len).",
+    },
+    Field {
+        name: "meta_dup",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The probability, per inheritance, that the inherited metabolism tape has a \
+              copy of one of its segments, 1 to meta_seg_max bytes from a random place, \
+              appended at its end, cut at meta_max_len. Drawn on a stream of its own. Read \
+              only on a channel that grows.",
+    },
+    Field {
+        name: "meta_del",
+        kind: Kind::Float { min: 0.0, max: 1.0 },
+        doc: "The probability, per inheritance and after any duplication, that the \
+              inherited metabolism tape loses a segment of 1 to meta_seg_max bytes from a \
+              random place, never below meta_min_len. Read only on a channel that grows.",
+    },
+    Field {
+        name: "meta_seg_max",
+        kind: Kind::Integer {
+            min: 1.0,
+            max: META_LEN_MAX as f64,
+        },
+        doc: "The longest segment a duplication or deletion of a metabolism tape moves. \
+              Read only on a channel that grows.",
+    },
+    Field {
+        name: "meta_genes",
+        kind: Kind::Integer {
+            min: 0.0,
+            max: META_LEN_MAX as f64,
+        },
+        doc: "The gene length G of the topless assay of a metabolism tape: the tape is cut \
+              at offsets 0, G, 2G and so on, the last piece zero-padded to G, and each gene \
+              is run alone on a buffer of 2G bytes with the inputs at its end, under the \
+              assay's own emit and step budgets; the tape computes the union of its genes' \
+              classes. No gene can read or undo another's result. It applies wherever a \
+              metabolism tape is assayed, the predation pass and the readings, and needs \
+              tasks logic3 or logic4 and a task_reward of 0, so it is never paid. 0 runs \
+              the tape whole.",
     },
     Field {
         name: "init",
@@ -878,6 +972,21 @@ pub enum ParamError {
     WideAssayOutsideUnpaidTopless {
         task_max_outputs: u32,
     },
+    /// A metabolism channel whose cap sits below the length every tape starts at, or whose
+    /// floor sits above it, is not a channel the engine can build.
+    MetaBounds {
+        meta_len: u32,
+        meta_min_len: u32,
+        meta_max_len: u32,
+    },
+    /// A variation operator of a channel that cannot grow is silently inert.
+    MetaGrowthWithoutRoom {
+        field: &'static str,
+    },
+    /// Genes split what the topless assay reads, and must never change what is paid.
+    GenesNeeds {
+        needs: &'static str,
+    },
 }
 
 impl fmt::Display for ParamError {
@@ -1011,6 +1120,26 @@ impl fmt::Display for ParamError {
                 f,
                 "task_max_outputs is {task_max_outputs}: above {TASK_MAX_OUTPUTS} it needs \
                  tasks logic3 or logic4 and a task_reward of 0"
+            ),
+            Self::MetaBounds {
+                meta_len,
+                meta_min_len,
+                meta_max_len,
+            } => write!(
+                f,
+                "meta_len is {meta_len} with meta_min_len {meta_min_len} and meta_max_len \
+                 {meta_max_len}: a tape starts at meta_len, so the cap may not sit below it \
+                 (0 keeps the channel fixed) nor, on a channel that grows, the floor above it"
+            ),
+            Self::MetaGrowthWithoutRoom { field } => write!(
+                f,
+                "{field} is set on a metabolism channel that cannot grow: meta_max_len must \
+                 be above meta_len for it to be read"
+            ),
+            Self::GenesNeeds { needs } => write!(
+                f,
+                "meta_genes is set without {needs}: genes split the logic3 or logic4 assay \
+                 of an unpaid run's metabolism tapes"
             ),
         }
     }
@@ -1173,16 +1302,65 @@ impl Params {
                     tasks: self.tasks,
                 });
             }
-            return Ok(());
+            self.validate_meta_channel()?;
+            return self.validate_genes();
         }
         let defaults = Params::default();
         let stray = [
             ("meta_rate", self.meta_rate != defaults.meta_rate),
             ("meta_draw", self.meta_draw != defaults.meta_draw),
             ("meta_seed", self.meta_seed != defaults.meta_seed),
+            ("meta_max_len", self.meta_max_len != defaults.meta_max_len),
+            ("meta_min_len", self.meta_min_len != defaults.meta_min_len),
+            ("meta_dup", self.meta_dup != defaults.meta_dup),
+            ("meta_del", self.meta_del != defaults.meta_del),
+            ("meta_seg_max", self.meta_seg_max != defaults.meta_seg_max),
+            ("meta_genes", self.meta_genes != defaults.meta_genes),
         ];
         match stray.into_iter().find(|(_, set)| *set) {
             Some((field, _)) => Err(ParamError::MetaParamWithoutTape { field }),
+            None => Ok(()),
+        }
+    }
+
+    fn validate_meta_channel(&self) -> Result<(), ParamError> {
+        let below_len = self.meta_max_len != 0 && self.meta_max_len < self.meta_len;
+        if below_len || (self.meta_grows() && self.meta_min_len > self.meta_len) {
+            return Err(ParamError::MetaBounds {
+                meta_len: self.meta_len,
+                meta_min_len: self.meta_min_len,
+                meta_max_len: self.meta_max_len,
+            });
+        }
+        if self.meta_grows() {
+            return Ok(());
+        }
+        let defaults = Params::default();
+        let inert = [
+            ("meta_min_len", self.meta_min_len != defaults.meta_min_len),
+            ("meta_dup", self.meta_dup != defaults.meta_dup),
+            ("meta_del", self.meta_del != defaults.meta_del),
+            ("meta_seg_max", self.meta_seg_max != defaults.meta_seg_max),
+        ];
+        match inert.into_iter().find(|(_, set)| *set) {
+            Some((field, _)) => Err(ParamError::MetaGrowthWithoutRoom { field }),
+            None => Ok(()),
+        }
+    }
+
+    fn validate_genes(&self) -> Result<(), ParamError> {
+        if self.meta_genes == 0 {
+            return Ok(());
+        }
+        let missing = [
+            (
+                self.tasks.depth_inputs().is_none(),
+                "a topless ladder (tasks logic3 or logic4)",
+            ),
+            (self.task_reward > 0, "an unpaid run (task_reward 0)"),
+        ];
+        match missing.into_iter().find(|(missing, _)| *missing) {
+            Some((_, needs)) => Err(ParamError::GenesNeeds { needs }),
             None => Ok(()),
         }
     }
@@ -1342,6 +1520,27 @@ impl Params {
     /// at 0 none is allocated, drawn, inherited or snapshotted.
     pub fn carries_meta(&self) -> bool {
         self.substrate == Substrate::Soup && self.meta_len > 0
+    }
+
+    /// The longest a metabolism tape of this run may be: `meta_max_len` where it is set,
+    /// and the length every tape starts and stays at where it is not.
+    pub fn meta_cap(&self) -> u32 {
+        match self.meta_max_len {
+            0 => self.meta_len,
+            cap => cap,
+        }
+    }
+
+    /// Whether this run's metabolism tapes may change length at all. A cap equal to
+    /// `meta_len` is the fixed channel, exactly as `meta_max_len` 0 is.
+    pub fn meta_grows(&self) -> bool {
+        self.carries_meta() && self.meta_cap() > self.meta_len
+    }
+
+    /// The gene length the topless assay splits a metabolism tape into, `None` where it
+    /// runs the tape whole.
+    pub fn gene_len(&self) -> Option<usize> {
+        (self.carries_meta() && self.meta_genes > 0).then_some(self.meta_genes as usize)
     }
 
     /// Whether this run's predation pass runs at all: a relation chosen and a transfer to
@@ -1793,7 +1992,7 @@ mod tests {
     fn schema_describes_every_field_with_its_default() {
         let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
         let fields = schema["fields"].as_array().unwrap();
-        assert_eq!(fields.len(), 39);
+        assert_eq!(fields.len(), 45);
 
         let width = fields.iter().find(|f| f["name"] == "width").unwrap();
         assert_eq!(width["type"], "integer");
@@ -2613,6 +2812,7 @@ mod tests {
             ("subset_class", Predation::SubsetClass),
             ("equal", Predation::Equal),
             ("shadow", Predation::Shadow),
+            ("count", Predation::Count),
         ] {
             let read =
                 serde_json::from_str::<Params>(&format!(r#"{{"predation": "{name}"}}"#)).unwrap();
@@ -2627,7 +2827,7 @@ mod tests {
         assert_eq!(params.validate(), Ok(()));
         assert!(params.predates());
         assert_eq!(params.assay_slots(), 16);
-        for predation in [Predation::Equal, Predation::Shadow] {
+        for predation in [Predation::Equal, Predation::Shadow, Predation::Count] {
             assert_eq!(
                 Params {
                     predation,
@@ -2771,7 +2971,7 @@ mod tests {
         let field = |name: &str| fields.iter().find(|f| f["name"] == name).unwrap().clone();
         assert_eq!(
             field("predation")["values"],
-            serde_json::json!(["off", "subset_class", "equal", "shadow"])
+            serde_json::json!(["off", "subset_class", "equal", "shadow", "count"])
         );
         assert_eq!(field("predation")["default"], "off");
         assert_eq!(field("predation_transfer")["default"], 0);
@@ -2785,6 +2985,260 @@ mod tests {
                 field("task_max_outputs")["max"].as_i64()
             ),
             (Some(4), Some(4), Some(16))
+        );
+    }
+
+    /// The design study's §13.11 bundle, slice A: strict out-count on the union of 32-byte
+    /// genes, a channel growing from 32 bytes to 8 192 by duplication and deletion.
+    fn genes_params() -> Params {
+        Params {
+            predation: Predation::Count,
+            meta_max_len: 8192,
+            meta_dup: 0.05,
+            meta_del: 0.05,
+            meta_genes: 32,
+            ..predatory_params()
+        }
+    }
+
+    /// Every new field is off by default, so a stored run reads as the run it was: a fixed
+    /// channel of `meta_len` bytes, read whole.
+    #[test]
+    fn the_growable_channel_and_genes_are_off_by_default() {
+        let params = Params::default();
+        assert_eq!(
+            (
+                params.meta_max_len,
+                params.meta_min_len,
+                params.meta_dup,
+                params.meta_del,
+                params.meta_seg_max,
+                params.meta_genes,
+            ),
+            (0, 8, 0.0, 0.0, 16, 0)
+        );
+        let stored: Params =
+            serde_json::from_str(r#"{"tasks": "logic4", "meta_len": 32}"#).unwrap();
+        assert_eq!(stored.validate(), Ok(()));
+        assert_eq!(stored.meta_cap(), 32);
+        assert!(!stored.meta_grows());
+        assert_eq!(stored.gene_len(), None);
+        let fixed = Params {
+            meta_max_len: 32,
+            ..predatory_params()
+        };
+        assert_eq!(fixed.validate(), Ok(()));
+        assert!(
+            !fixed.meta_grows(),
+            "a cap of meta_len is the fixed channel"
+        );
+    }
+
+    #[test]
+    fn the_genes_bundle_validates_and_grows() {
+        let params = genes_params();
+        assert_eq!(params.validate(), Ok(()));
+        assert!(params.meta_grows());
+        assert_eq!(params.meta_cap(), 8192);
+        assert_eq!(params.gene_len(), Some(32));
+        assert!(params.predates());
+        let drift = Params {
+            predation: Predation::Off,
+            ..genes_params()
+        };
+        assert_eq!(drift.validate(), Ok(()), "drift reads genes without a pass");
+        assert_eq!(
+            Params {
+                meta_genes: 0,
+                ..genes_params()
+            }
+            .validate(),
+            Ok(())
+        );
+        assert!(matches!(
+            Params {
+                meta_max_len: META_LEN_MAX + 1,
+                ..genes_params()
+            }
+            .validate(),
+            Err(ParamError::OutOfRange {
+                field: "meta_max_len",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_channel_is_refused_bounds_it_cannot_start_inside() {
+        let bounds = |meta_min_len, meta_max_len| {
+            Params {
+                meta_min_len,
+                meta_max_len,
+                ..genes_params()
+            }
+            .validate()
+        };
+        assert_eq!(
+            bounds(8, 16),
+            Err(ParamError::MetaBounds {
+                meta_len: 32,
+                meta_min_len: 8,
+                meta_max_len: 16
+            })
+        );
+        assert_eq!(
+            bounds(33, 64),
+            Err(ParamError::MetaBounds {
+                meta_len: 32,
+                meta_min_len: 33,
+                meta_max_len: 64
+            })
+        );
+        assert_eq!(bounds(32, 64), Ok(()));
+        assert_eq!(
+            bounds(8, 16).unwrap_err().to_string(),
+            "meta_len is 32 with meta_min_len 8 and meta_max_len 16: a tape starts at \
+             meta_len, so the cap may not sit below it (0 keeps the channel fixed) nor, on a \
+             channel that grows, the floor above it"
+        );
+    }
+
+    /// A variation operator of a channel that cannot grow would be silently inert, and a
+    /// channel setting with no tape at all more so.
+    #[test]
+    fn growth_settings_are_refused_where_they_would_be_inert() {
+        let fixed = |params: Params| Params {
+            meta_max_len: 0,
+            ..params
+        };
+        for (params, field) in [
+            (
+                Params {
+                    meta_min_len: 4,
+                    ..fixed(genes_params())
+                },
+                "meta_min_len",
+            ),
+            (fixed(genes_params()), "meta_dup"),
+            (
+                Params {
+                    meta_dup: 0.0,
+                    ..fixed(genes_params())
+                },
+                "meta_del",
+            ),
+            (
+                Params {
+                    meta_dup: 0.0,
+                    meta_del: 0.0,
+                    meta_seg_max: 4,
+                    ..fixed(genes_params())
+                },
+                "meta_seg_max",
+            ),
+        ] {
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::MetaGrowthWithoutRoom { field })
+            );
+        }
+        let untaped = Params {
+            meta_len: 0,
+            meta_draw: MetaDraw::Uniform,
+            meta_seed: MetaSeed::Zeros,
+            predation: Predation::Off,
+            ..Params::default()
+        };
+        for (params, field) in [
+            (
+                Params {
+                    meta_max_len: 64,
+                    ..untaped.clone()
+                },
+                "meta_max_len",
+            ),
+            (
+                Params {
+                    meta_genes: 32,
+                    ..untaped.clone()
+                },
+                "meta_genes",
+            ),
+            (
+                Params {
+                    meta_del: 0.1,
+                    ..untaped.clone()
+                },
+                "meta_del",
+            ),
+        ] {
+            assert_eq!(
+                params.validate(),
+                Err(ParamError::MetaParamWithoutTape { field })
+            );
+        }
+    }
+
+    /// Genes split the topless assay of an unpaid run alone, so they never touch pay.
+    #[test]
+    fn genes_are_refused_off_an_unpaid_topless_ladder() {
+        let two_input = Params {
+            tasks: Tasks::Logic,
+            task_max_outputs: 4,
+            predation: Predation::Off,
+            ..genes_params()
+        };
+        assert_eq!(
+            two_input.validate(),
+            Err(ParamError::GenesNeeds {
+                needs: "a topless ladder (tasks logic3 or logic4)"
+            })
+        );
+        let paid = Params {
+            predation: Predation::Off,
+            task_max_outputs: 4,
+            task_reward: 1024,
+            ..genes_params()
+        };
+        assert_eq!(
+            paid.validate(),
+            Err(ParamError::GenesNeeds {
+                needs: "an unpaid run (task_reward 0)"
+            })
+        );
+        assert_eq!(
+            paid.validate().unwrap_err().to_string(),
+            "meta_genes is set without an unpaid run (task_reward 0): genes split the logic3 \
+             or logic4 assay of an unpaid run's metabolism tapes"
+        );
+    }
+
+    #[test]
+    fn schema_carries_the_growable_channel_and_genes() {
+        let schema: serde_json::Value = serde_json::from_str(&Params::schema_json()).unwrap();
+        let fields = schema["fields"].as_array().unwrap();
+        let field = |name: &str| fields.iter().find(|f| f["name"] == name).unwrap().clone();
+        assert_eq!(field("meta_len")["max"], 8192);
+        assert_eq!(field("meta_max_len")["default"], 0);
+        assert_eq!(field("meta_max_len")["max"], 8192);
+        assert_eq!(field("meta_min_len")["default"], 8);
+        assert_eq!(field("meta_min_len")["min"], 1);
+        assert_eq!(field("meta_dup")["default"], 0.0);
+        assert_eq!(field("meta_del")["type"], "float");
+        assert_eq!(field("meta_seg_max")["default"], 16);
+        assert_eq!(field("meta_genes")["default"], 0);
+        let names: Vec<&str> = fields.iter().map(|f| f["name"].as_str().unwrap()).collect();
+        let at = names.iter().position(|name| *name == "meta_seed").unwrap();
+        assert_eq!(
+            names[at + 1..at + 7],
+            [
+                "meta_max_len",
+                "meta_min_len",
+                "meta_dup",
+                "meta_del",
+                "meta_seg_max",
+                "meta_genes"
+            ]
         );
     }
 }

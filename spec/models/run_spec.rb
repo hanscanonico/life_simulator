@@ -234,6 +234,16 @@ RSpec.describe Run, type: :model do
                                                     "predation_shadow_p" => 0.3))).to be_valid
     end
 
+    it "accepts a child under out-count whose metabolism tape grows and is read as genes" do
+      expect(descendant(params: parent.params.merge("energy_influx" => 2**10, "energy_stock_cap" => 2**16,
+                                                    "energy_payer" => "initiator", "tasks" => "logic4",
+                                                    "logic_nand" => "stack", "meta_len" => 32,
+                                                    "meta_seed" => "own_tape", "task_max_outputs" => 16,
+                                                    "predation" => "count", "predation_transfer" => 2**13,
+                                                    "meta_max_len" => 2**13, "meta_dup" => 0.05, "meta_del" => 0.05,
+                                                    "meta_genes" => 32))).to be_valid
+    end
+
     it "accepts the parent's params and seed, the exact continuation" do
       expect(descendant(params: parent.params, seed: parent.seed)).to be_valid
     end

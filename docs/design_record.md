@@ -4933,3 +4933,122 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     Meta-stack child 4845's world the rise arm 34.1 ms and `subset_class` 29.5. An
     out-compute child costs about what a topless-rise rise child costs on the same world,
     and about 1.5 times a none child.
+- 2026-10-04 — **Genes, engine slice A: a growable metabolism channel, the genes assay and the
+  out-count relation.** This is engine slice A of "Genes", the machine the design study's
+  pilots 3–8 assembled (`docs/studies/unassisted.md` §8–§13, recommended in §13.11); staged
+  fidelity is a separate slice B. It adds a DESIGN §1.1 paragraph, a fourth predation
+  relation and two §1.2 readings. No sweep is pre-registered here, it imports no objective,
+  and nothing is relocked.
+
+  **Why.** Out-compute's climb stopped within ~10 000 epochs (study §4.3). The pilots that
+  followed traced the stop to the machine and the channel: one stack-NAND loop spends the
+  whole emit budget and a changed loop swaps its classes rather than adding to them (§7.3), so
+  room alone does not help; under out-count the program side composes only when the tape's
+  pieces are run apart (§10, two or three load-bearing genes held); and with the cap out of
+  reach the climb goes on late in every count lane (§13). This slice puts that machine,
+  minus fidelity, into the engine so a sweep can test it.
+
+  **The machine** (DESIGN §1.1, "Genes and a growable metabolism channel"; all dynamics,
+  every one off by default):
+  - The **growable channel**: `meta_max_len` (0 = the fixed channel, and so is `meta_len`
+    itself; `META_LEN_MAX` lifted from 1 024 to 8 192), `meta_min_len` (8), `meta_dup` and
+    `meta_del` (0, per inheritance) and `meta_seg_max` (16). At each inheritance the copy has,
+    with probability `meta_dup`, a duplicate of a random segment of 1 to `meta_seg_max` bytes
+    appended, cut at the cap, then with probability `meta_del` a random segment of 1 to
+    `meta_seg_max` bytes cut out, never below `meta_min_len`; a tape at its cap draws no
+    duplicate and one at its floor no deletion (the study's operator, §7–§8). The draws are on
+    a new stream, `STREAM_META | 1`, seeded per epoch and read in the order the epoch's
+    inheritances happen. Every tape starts at `meta_len`; the floor must not exceed it and the
+    cap must not sit below it; the variation settings are refused on a channel that cannot
+    grow. Mutation offers each live byte one draw at `meta_rate` on `STREAM_META` as before,
+    but finds the hits by the gaps between them: one draw a hit, not a byte, read off powers
+    of (1 − rate) built by multiplication alone, so the law is a per-byte chance's and the
+    draws are the same on every platform (the pilots used a logarithm, whose last bit is the
+    platform's). Lengths are state: hashed after the tapes, and carried by snapshot versions
+    12–14 (the live bytes end to end and one length per cell). A descendant carries its
+    parent's tapes where its channel holds them (each `meta_len` long on a fixed channel, each
+    within the cap on one that grows) and switches its own on otherwise.
+  - The **genes assay**, `meta_genes` = G (0 = off): the metabolism tape is cut at offsets 0,
+    G, 2G…, the last piece zero-padded to G; each gene runs alone as a G-byte tape on a fresh
+    2G-byte buffer with the inputs at its end, `task_max_outputs` emits and the assay's step
+    budget; the tape's classes are the union over its genes, each distinct gene assayed once
+    per reading (and once per predation period). It applies wherever a metabolism tape is
+    assayed: the predation pass under every relation, `logic_depth_max`,
+    `logic_depth_classes`, `repertoire_mean`, `silent_share` and the logic readings of the
+    metabolism tapes. It is refused off an unpaid topless ladder, so it never touches pay.
+  - **Out-count**, `predation: count` (strict): a cell takes from a partner computing strictly
+    fewer input-permutation classes, counted on the union under genes. Ties are not prey, kin
+    or stranger; the empty set is prey to every computing cell, and two silent cells leave
+    each other alone (study §8.2: the faithful kin rule is built in the pilot but not run, and
+    ties-as-prey moved 50% more energy for no consistent gain). `subset_class`, `equal`,
+    `shadow` and `off` are unchanged.
+
+  **The label.** Genes and the channel **import a machine, not an objective**, as predation
+  does. Named: the **gene length G**, boundaries the organisms do not place; **independence
+  by construction**, each gene on its own buffer, so no gene reads or undoes another's result
+  (which also forbids composition between genes); the **union phenotype**, a tape computes
+  whatever any gene computes, so additions are free to keep, a choice that favours
+  accumulation without saying which additions; and the **growable channel and its variation
+  operators**, duplication and deletion of segments, which the world performs at
+  inheritance. Out-count reads two sizes: it is unchanged under any relabelling of the
+  functions, even one applied differently to each cell, and in a world where every cell
+  computes a set of one size no encounter moves energy. None of these names a function, a
+  class or a depth, or pays one.
+
+  **The readings** (live-only, null when off, each on a stream of its own, pinned in their own
+  digest): `meta_len_mean`, the mean live length over every cell, null unless the channel
+  grows; `genes_essential_held`, the most essential genes at least a tenth of 256 sampled
+  cells hold (26 of 256 compared as integers; 0 where fewer hold one), on `STREAM_GENES_READ`,
+  null unless the run reads genes. A cell's genes are grouped by the class set each computes
+  (copies of one set are one group, silent genes are in none), and a group is essential when
+  it computes a class no other group of the tape computes: a duplicate counts once, a
+  diverged copy that adds a class counts again, a gene whose classes the other groups compute
+  between them counts nothing (the study's §10.1, read there over all 16 384 cells; here over
+  the 256 sampled, as every other tenth-held reading).
+
+  **The pilots, labelled pilot** (throwaway engine copies at `b30196a`, one seed per lane, two
+  worlds, 4381 and 4428, nothing paid): genes alone (pilot 5, cap 512, §10) held 2–3
+  essential genes by a tenth from 4 500–8 000 epochs, then stood while tapes filled the cap
+  with 15–16 genes, about 12 of them silent; with the cap out of reach (pilot 8, cap 4 096,
+  with staged fidelity, §13) every count lane was still making new maxima in the final
+  quarter of 30 000–35 000 epochs: classes held by a tenth 84–182, essential genes held 21–30,
+  longest tapes 1 900–2 500 bytes, drift holding one class. Pilot numbers, not findings; the
+  pilot-8 lanes ran the fidelity this slice leaves out.
+
+  **Judgement calls.** `meta_len` is the initial length (no separate `meta_init_len`). The
+  genes assay and the channel need no predation rule and no `isa` draw, so a drift-genes arm
+  reads the same assay; genes need only an unpaid topless ladder. Tapes sit in slots as wide
+  as the cap, as replicating tapes do: 128 MiB of slots a 128×128 world at a cap of 8 192.
+  `genes_essential_held` samples 256 cells rather than the pilots' whole world.
+
+  **Verified.**
+  - Every existing pin and digest is unmoved; at the defaults, and at a cap equal to
+    `meta_len`, a run is byte-, snapshot- and reading-identical to the run without the
+    settings and writes the container it always wrote; one gene the length of the tape reads
+    the tape.
+  - A resume harness: snapshots written by `origin/main`'s engine (versions 6–11: plain,
+    ragged, stocked, paid and unpaid logic, metabolism tapes on every payload shape) and by
+    #303's (its three predation relations) restore in this engine to the same bytes,
+    re-encode byte for byte, and continue for 200 epochs with the same hash, transitions and
+    readings every 10 epochs, the new readings null.
+  - Determinism with a mid-run resume under `count`, `subset_class` and `off`, with and
+    without genes, on a channel that grows; a grown world resumes reading for reading and blob
+    for blob, and refuses a blob of another cap or of the fixed channel.
+  - Growth and shrink stay within the floor and cap over thousands of variations, the bytes
+    past a tape stay zero; a duplicate is a copy of the tape's own segment; deletions stop at
+    the floor; descent carries what a channel holds.
+  - A later gene cannot change an earlier gene's classes, whatever follows it; the union
+    holds more classes than one credit has slots for; the essential count on the study's
+    §10.1 checks (two copies of a loop: one; a loop beside its tandem variant: two).
+  - `count` moves energy exactly when the actor computes strictly more: ties are not prey,
+    kin or strangers, and the empty set is prey.
+  - Pins of a genes, count and growable world (and its drift twin) and their readings.
+  - **Cost**, on this Mac under a load average of 11–17, each world descended from the
+    study's stored world of 4381 or 4428 at epoch 20 000 under the slice's bundle (`count`,
+    G = 32, cap 8 192, 16 slots), its tapes set to a length, wall time per epoch over 16
+    epochs: tiled from each cell's own 32 bytes (genes shared, as in a lineage) 45–52 ms at
+    32 bytes, 48–53 at 512, 54–64 at 2 048; random `isa` bytes (every gene distinct, the
+    worst case) 38–50, 109–127 and 310–321 ms. A sample's readings cost 72–104 ms at 32
+    bytes and 74–348 at 2 048. Peak memory 335 MB. The pilot (pilot 8, loaded Mac, its own
+    fidelity included) measured 51–62 CPU-ms an epoch averaged over 35 000 epochs and about
+    67 at 1 500–2 100 bytes, within this range.

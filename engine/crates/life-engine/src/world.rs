@@ -66,6 +66,13 @@ const STREAM_LOGIC_DEPTH: u64 = STREAM_TASK | 6;
 /// above, so the tapes' mutation moves no draw the run, the assay or any observable makes
 /// (`docs/design_record.md`, 2026-10-02, Meta-stack slice B).
 const STREAM_META: u64 = 0x4d45_5441_0000_0000;
+/// The stream a growing metabolism channel's duplications and deletions draw on, once per
+/// epoch, in the order the epoch's inheritances happen: beside the tapes' mutation, so a
+/// channel that grows moves no draw of the run, the assay, the pass or any observable
+/// (`docs/design_record.md`, 2026-10-04, Genes slice A).
+const STREAM_META_GROW: u64 = STREAM_META | 1;
+/// `genes_essential_held`'s own cells and cases.
+const STREAM_GENES_READ: u64 = 0x4745_4e45_0000_0000;
 /// The stream the predation pass draws on, once per epoch: the cases first, at an epoch
 /// that redraws them, then the order cells act in, whether each acts, its partner and,
 /// under `shadow`, its coin. Its own, far from every id above, so the pass moves no draw
@@ -135,6 +142,10 @@ pub struct World {
     /// on a near copy and mutated on `STREAM_META`. State of the world, so it is hashed,
     /// snapshotted and restored. Empty — and never read — unless the run carries one.
     meta: Vec<u8>,
+    /// The live length of each cell's metabolism tape, whose slot in `meta` is `meta_cap`
+    /// bytes wide. Empty — and every tape fills its slot — unless the channel grows, so a
+    /// fixed channel is read, hashed and snapshotted exactly as it was before lengths.
+    meta_lens: Vec<u32>,
     /// The `predation_rate` of the last pass: `None` until a pass has met a partner, and
     /// again after one that met none.
     predation_rate: Option<f64>,
@@ -165,6 +176,7 @@ impl World {
             lens: fresh_lens(params),
             stock: fresh_stock(params),
             meta: Vec::new(),
+            meta_lens: Vec::new(),
             predation_rate: None,
             predation_relation_rate: None,
             predation_memo: PredationMemo::default(),
@@ -180,7 +192,7 @@ impl World {
                 }
             }
         }
-        world.meta = world.switched_on_meta();
+        (world.meta, world.meta_lens) = world.switched_on_meta();
         Ok(world)
     }
 
@@ -223,16 +235,30 @@ impl World {
             .then(|| self.meta_of(self.index(x, y)))
     }
 
-    /// Panics unless `bytes` fits one metabolism tape of a world that carries them.
+    /// Panics unless `bytes` fits one metabolism tape of a world that carries them:
+    /// exactly `meta_len` bytes on a fixed channel, and one byte up to the cap on one that
+    /// grows.
     pub fn set_metabolism(&mut self, x: u32, y: u32, bytes: &[u8]) {
-        let len = self.params.meta_len as usize;
         assert!(
             self.params.carries_meta(),
             "this world carries no metabolism tapes"
         );
-        assert_eq!(bytes.len(), len, "a metabolism tape holds {len} bytes");
-        let at = self.index(x, y) * len;
-        self.meta[at..at + len].copy_from_slice(bytes);
+        let slot = self.params.meta_cap() as usize;
+        if self.meta_lens.is_empty() {
+            assert_eq!(bytes.len(), slot, "a metabolism tape holds {slot} bytes");
+        } else {
+            assert!(
+                (1..=slot).contains(&bytes.len()),
+                "a metabolism tape holds 1 to {slot} bytes"
+            );
+        }
+        let cell = self.index(x, y);
+        let at = cell * slot;
+        self.meta[at..at + slot].fill(0);
+        self.meta[at..at + bytes.len()].copy_from_slice(bytes);
+        if let Some(len) = self.meta_lens.get_mut(cell) {
+            *len = bytes.len() as u32;
+        }
     }
 
     /// Panics unless `bytes` fits one cell: exactly the slot on a world whose tapes cannot
@@ -294,7 +320,7 @@ impl World {
                 &self.lineages,
                 &self.lens,
                 &self.stock,
-                &self.meta,
+                self.meta_tapes(),
             ),
         )
     }
@@ -314,17 +340,19 @@ impl World {
     /// tapes can grow, the lengths, and where cells hold energy, the stocks: the same bytes
     /// under two different sets of lengths, or two different stocks, are two different
     /// worlds. A world with neither hashes the bytes alone, as it always did. Where cells
-    /// carry metabolism tapes, those follow last.
+    /// carry metabolism tapes, those follow, and where those can grow, their lengths last.
     pub fn world_hash(&self) -> u64 {
         if self.meta.is_empty() {
             return self.soup_hash();
         }
         let (lens, stock) = (words(&self.lens), words(&self.stock));
+        let meta_lens = words(&self.meta_lens);
         fnv1a64_of([
             self.cells.as_slice(),
             lens.as_slice(),
             stock.as_slice(),
             self.meta.as_slice(),
+            meta_lens.as_slice(),
         ])
     }
 
@@ -345,8 +373,17 @@ impl World {
             &self.lineages,
             &self.lens,
             &self.stock,
-            &self.meta,
+            self.meta_tapes(),
         )
+    }
+
+    /// The metabolism tapes as the snapshot writes them.
+    fn meta_tapes(&self) -> snapshot::MetaTapes<'_> {
+        snapshot::MetaTapes {
+            slots: &self.meta,
+            slot: self.params.meta_cap() as usize,
+            lens: &self.meta_lens,
+        }
     }
 
     /// The world's cells read as tapes: the flat array of slots, and the live lengths
@@ -361,8 +398,9 @@ impl World {
     }
 
     fn meta_of(&self, cell: usize) -> &[u8] {
-        let len = self.params.meta_len as usize;
-        &self.meta[cell * len..cell * len + len]
+        let slot = self.params.meta_cap() as usize;
+        let live = self.meta_lens.get(cell).map_or(slot, |len| *len as usize);
+        &self.meta[cell * slot..cell * slot + live]
     }
 
     /// The tape the logic assay reads for one cell: its metabolism tape where the run
@@ -377,21 +415,30 @@ impl World {
     /// The metabolism tapes a world holds the moment they are switched on — at epoch 0 of
     /// a founding run, or at descent from a parent that carried none — read off the
     /// cells' tapes as they stand: zeros, or each cell's first `meta_len` bytes, zero
-    /// padded past a shorter tape. Empty on a world that carries none.
-    fn switched_on_meta(&self) -> Vec<u8> {
+    /// padded past a shorter tape. Every tape is `meta_len` bytes long, in a slot as wide
+    /// as the channel's cap, and on a channel that grows its length is held beside it.
+    /// Empty on a world that carries none.
+    fn switched_on_meta(&self) -> (Vec<u8>, Vec<u32>) {
         if !self.params.carries_meta() {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         }
-        let len = self.params.meta_len as usize;
-        let mut meta = vec![0; self.params.cell_count() * len];
+        let (len, slot) = (
+            self.params.meta_len as usize,
+            self.params.meta_cap() as usize,
+        );
+        let mut meta = vec![0; self.params.cell_count() * slot];
         if self.params.meta_seed == MetaSeed::OwnTape {
-            for (cell, slot) in meta.chunks_mut(len).enumerate() {
+            for (cell, slot) in meta.chunks_mut(slot).enumerate() {
                 let tape = self.tape(cell);
                 let seeded = tape.len().min(len);
                 slot[..seeded].copy_from_slice(&tape[..seeded]);
             }
         }
-        meta
+        let lens = match self.params.meta_grows() {
+            true => vec![self.params.meta_len; self.params.cell_count()],
+            false => Vec::new(),
+        };
+        (meta, lens)
     }
 
     fn live_len(&self, cell: usize) -> usize {
@@ -418,7 +465,7 @@ impl World {
     /// lineage observables read a world younger than it is.
     pub fn from_snapshot(params: &Params, seed: u64, bytes: &[u8]) -> Result<Self, SnapshotError> {
         let restored = snapshot::decode(params, bytes)?;
-        let meta = restored_meta(params, restored.meta)?;
+        let (meta, meta_lens) = restored_meta(params, restored.meta)?;
         Ok(Self {
             params: params.clone(),
             seed,
@@ -434,6 +481,7 @@ impl World {
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: restored_stock(params, restored.stock)?,
             meta,
+            meta_lens,
             predation_rate: None,
             predation_relation_rate: None,
             predation_memo: PredationMemo::default(),
@@ -454,9 +502,11 @@ impl World {
     /// Under the parent's own params and seed the descendant is the parent continued,
     /// byte for byte: the RNG is keyed by seed, stream and epoch and holds no state.
     ///
-    /// A parent's metabolism tapes carry over to a child whose tapes have their length;
-    /// otherwise a child that carries them switches them on here, seeded off the parent's
-    /// tapes as `switched_on_meta` reads them, and a child that carries none drops them.
+    /// A parent's metabolism tapes carry over to a child whose channel holds them: on a
+    /// fixed channel every tape `meta_len` bytes long, and on one that grows every tape at
+    /// most its cap; otherwise a child that carries them switches them on here, seeded off
+    /// the parent's tapes as `switched_on_meta` reads them, and a child that carries none
+    /// drops them.
     ///
     /// A descendant is a new run, so its params are validated as `World::new` validates
     /// them. `from_snapshot` does not validate: it resumes a run already under way, which
@@ -483,12 +533,15 @@ impl World {
             lens: restored.lens.unwrap_or_else(|| fresh_lens(params)),
             stock: descended_stock(params, restored.stock)?,
             meta: Vec::new(),
+            meta_lens: Vec::new(),
             predation_rate: None,
             predation_relation_rate: None,
             predation_memo: PredationMemo::default(),
         };
-        world.meta = match restored.meta {
-            Some(meta) if params.carries_meta() && meta.len == params.meta_len => meta.tapes,
+        (world.meta, world.meta_lens) = match restored.meta {
+            Some(meta) if params.carries_meta() => {
+                carried_meta(params, meta).unwrap_or_else(|| world.switched_on_meta())
+            }
             _ => world.switched_on_meta(),
         };
         Ok(world)
@@ -547,6 +600,7 @@ impl World {
         let mut reversed_copies: u64 = 0;
         let mut thefts: u64 = 0;
         let mut inherits: u64 = 0;
+        let mut grow = MetaGrowth::of(&self.params, self.seed, self.epoch);
         for cell in &order {
             let a = *cell as usize;
             let b = self.pick_partner(a, rng);
@@ -611,6 +665,9 @@ impl World {
             }
             self.inherit_lineages(a, b, &pair, &before, live_a);
             let inherited = self.inherit_meta(a, b, &pair, &before, live_a);
+            if let Some(grow) = grow.as_mut().filter(|_| inherited) {
+                self.vary_meta(b, grow);
+            }
             if counting {
                 inherits += u64::from(inherited);
             }
@@ -668,11 +725,15 @@ impl World {
                 Predation::Off => false,
                 Predation::Shadow => rng::chance(&mut rng, self.params.predation_shadow_p),
                 Predation::SubsetClass => memo
-                    .credit(self.assayed_tape(a), &self.params)
-                    .covers(&memo.credit(self.assayed_tape(b), &self.params)),
+                    .repertoire(self.assayed_tape(a), &self.params)
+                    .covers(&memo.repertoire(self.assayed_tape(b), &self.params)),
                 Predation::Equal => {
-                    memo.credit(self.assayed_tape(a), &self.params)
-                        == memo.credit(self.assayed_tape(b), &self.params)
+                    memo.repertoire(self.assayed_tape(a), &self.params)
+                        == memo.repertoire(self.assayed_tape(b), &self.params)
+                }
+                Predation::Count => {
+                    memo.repertoire(self.assayed_tape(a), &self.params).count()
+                        > memo.repertoire(self.assayed_tape(b), &self.params).count()
                 }
             };
             let moved = match preys {
@@ -696,8 +757,9 @@ impl World {
 
     /// The predation readings' tally: `task::TASK_SAMPLE_CELLS` cells drawn uniformly with
     /// replacement on cases and cells of `STREAM_PREDATION_READ`'s own, each distinct
-    /// metabolism tape assayed once over `task_max_outputs` slots: the classes credited
-    /// per cell, summed, and how many cells were credited none. It writes nothing.
+    /// metabolism tape assayed once over `task_max_outputs` slots, each distinct gene under
+    /// `meta_genes`: the classes credited per cell, summed, and how many cells were
+    /// credited none. It writes nothing.
     fn repertoire(&self) -> Option<(u64, u64)> {
         let inputs = self
             .params
@@ -706,12 +768,12 @@ impl World {
             .filter(|_| self.params.predates())?;
         let mut rng = rng::seeded(self.seed, STREAM_PREDATION_READ, self.epoch);
         let cases = topless::Cases::draw(inputs, &mut rng);
-        let mut memo = self.topless_memo(cases);
+        let mut memo = self.meta_memo(cases);
         let cells = self.params.cell_count() as u64;
         let (mut classes, mut silent) = (0u64, 0u64);
         for _ in 0..task::TASK_SAMPLE_CELLS {
             let cell = rng::below(&mut rng, cells) as usize;
-            let count = memo.credit(self.assayed_tape(cell)).count();
+            let count = memo.repertoire(self.assayed_tape(cell)).count();
             classes += u64::from(count);
             silent += u64::from(count == 0);
         }
@@ -726,6 +788,44 @@ impl World {
             self.params.logic_nand,
             self.params.assay_slots(),
         )
+    }
+
+    /// The same memo reading the assayed tapes as the run's genes, where it has any. Never
+    /// what pays: `meta_genes` is refused on a paid run.
+    fn meta_memo<'a>(&self, cases: topless::Cases) -> topless::Memo<'a> {
+        self.topless_memo(cases).genes(self.params.gene_len())
+    }
+
+    /// `genes_essential_held`: `task::TASK_SAMPLE_CELLS` cells drawn uniformly with
+    /// replacement on cases and cells of `STREAM_GENES_READ`'s own, each distinct gene
+    /// assayed once, and the most essential genes (`topless::essential_genes`) at least a
+    /// tenth of them hold, 26 of 256 compared as integers: 0 where fewer than a tenth hold
+    /// one. `None` unless the run reads genes. It writes nothing.
+    fn genes_essential_held(&self) -> Option<u32> {
+        let inputs = self.params.tasks.depth_inputs();
+        let inputs = inputs.filter(|_| self.params.gene_len().is_some())?;
+        let mut rng = rng::seeded(self.seed, STREAM_GENES_READ, self.epoch);
+        let mut memo = self.meta_memo(topless::Cases::draw(inputs, &mut rng));
+        let cells = self.params.cell_count() as u64;
+        let mut held: Vec<u32> = (0..task::TASK_SAMPLE_CELLS)
+            .map(|_| {
+                let cell = rng::below(&mut rng, cells) as usize;
+                topless::essential_genes(&memo.gene_credits(self.assayed_tape(cell)))
+            })
+            .collect();
+        held.sort_unstable_by(|a, b| b.cmp(a));
+        let tenth = task::TASK_SAMPLE_CELLS.div_ceil(task::TASK_CAPABILITY_DENOMINATOR);
+        Some(held[tenth as usize - 1])
+    }
+
+    /// The mean live length of the metabolism tapes, over every cell: `None` unless the
+    /// channel grows. It draws nothing.
+    fn meta_len_mean(&self) -> Option<f64> {
+        if self.meta_lens.is_empty() {
+            return None;
+        }
+        let total: u64 = self.meta_lens.iter().map(|len| u64::from(*len)).sum();
+        Some(total as f64 / self.meta_lens.len() as f64)
     }
 
     /// Whether this epoch opens with a task assay: a run that pays for tasks, at a multiple
@@ -813,24 +913,84 @@ impl World {
         if self.meta.is_empty() || !near_copy(&pair[split..], &before[..split], &before[split..]) {
             return false;
         }
-        let len = self.params.meta_len as usize;
-        self.meta.copy_within(a * len..a * len + len, b * len);
+        let slot = self.params.meta_cap() as usize;
+        if self.meta_lens.is_empty() {
+            self.meta.copy_within(a * slot..a * slot + slot, b * slot);
+            return true;
+        }
+        let (carried, held) = (self.meta_lens[a] as usize, self.meta_lens[b] as usize);
+        self.meta
+            .copy_within(a * slot..a * slot + carried, b * slot);
+        if held > carried {
+            self.meta[b * slot + carried..b * slot + held].fill(0);
+        }
+        self.meta_lens[b] = carried as u32;
         true
+    }
+
+    /// The variation of an inherited metabolism tape on a channel that grows, the design
+    /// study's (§7–§8): with probability `meta_dup` a copy of a random segment of 1 to
+    /// `meta_seg_max` bytes is appended at its end, cut at the cap; then with probability
+    /// `meta_del` a random segment of 1 to `meta_seg_max` bytes is cut out, never below
+    /// `meta_min_len`. A tape at its cap draws no duplicate, one at its floor no deletion.
+    /// Every byte past the live length stays zero.
+    fn vary_meta(&mut self, cell: usize, grow: &mut MetaGrowth) {
+        let slot = self.params.meta_cap() as usize;
+        let mut live = self.meta_lens[cell] as usize;
+        let tape = &mut self.meta[cell * slot..cell * slot + slot];
+        let rng = &mut grow.rng;
+        if rng::chance(rng, grow.dup) && live < slot {
+            let len = 1 + rng::below(rng, grow.seg_max.min(live) as u64) as usize;
+            let from = rng::below(rng, (live - len + 1) as u64) as usize;
+            let appended = len.min(slot - live);
+            tape.copy_within(from..from + appended, live);
+            live += appended;
+        }
+        if rng::chance(rng, grow.del) && live > grow.min {
+            let len = 1 + rng::below(rng, grow.seg_max.min(live - grow.min) as u64) as usize;
+            let from = rng::below(rng, (live - len + 1) as u64) as usize;
+            tape.copy_within(from + len..live, from);
+            tape[live - len..live].fill(0);
+            live -= len;
+        }
+        self.meta_lens[cell] = live as u32;
     }
 
     /// Every metabolism-tape byte offered one draw at `meta_rate`, in cell order, on
     /// `STREAM_META` at this epoch, and redrawn by `meta_draw` where it hits. No other
     /// stream is touched, so the tapes' mutation moves no byte, stock or draw of the soup.
+    /// On a channel that grows only the live bytes are offered, and the hits are found by
+    /// the gaps between them (`rng::Gaps`), the same law at one draw a hit rather than one
+    /// a byte: a slot of thousands of bytes a cell would otherwise cost an epoch thousands
+    /// of draws a cell.
     fn mutate_meta(&mut self) {
         if self.meta.is_empty() || self.params.meta_rate <= 0.0 {
             return;
         }
         let mut rng = rng::seeded(self.seed, STREAM_META, self.epoch);
         let (rate, draw) = (self.params.meta_rate, self.params.meta_draw);
+        if !self.meta_lens.is_empty() {
+            return self.mutate_live_meta(&mut rng, rate, draw);
+        }
         for byte in &mut self.meta {
             if rng::chance(&mut rng, rate) {
                 *byte = draw_meta_byte(&mut rng, draw);
             }
+        }
+    }
+
+    fn mutate_live_meta(&mut self, rng: &mut Rng, rate: f64, draw: MetaDraw) {
+        let slot = self.params.meta_cap() as usize;
+        let gaps = rng::Gaps::new(rate);
+        let mut at = gaps.draw(rng);
+        let mut start = 0u64;
+        for (cell, len) in self.meta_lens.iter().enumerate() {
+            let end = start + u64::from(*len);
+            while at < end {
+                self.meta[cell * slot + (at - start) as usize] = draw_meta_byte(rng, draw);
+                at = at.saturating_add(1).saturating_add(gaps.draw(rng));
+            }
+            start = end;
         }
     }
 
@@ -1045,6 +1205,8 @@ impl World {
                 .filter(|_| self.params.predates()),
             repertoire_mean: repertoire.map(|(classes, _)| per_sampled(classes)),
             silent_share: repertoire.map(|(_, silent)| per_sampled(silent)),
+            meta_len_mean: self.meta_len_mean(),
+            genes_essential_held: self.genes_essential_held(),
         }
     }
 
@@ -1093,12 +1255,12 @@ impl World {
             .depth_inputs()
             .filter(|_| self.params.substrate == Substrate::Soup)?;
         let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DEPTH, self.epoch);
-        let mut memo = self.topless_memo(topless::Cases::draw(inputs, &mut rng));
+        let mut memo = self.meta_memo(topless::Cases::draw(inputs, &mut rng));
         let cells = self.params.cell_count() as u64;
         let mut tally = topless::DepthTally::new(inputs);
         for _ in 0..task::TASK_SAMPLE_CELLS {
             let cell = rng::below(&mut rng, cells) as usize;
-            tally.add(&memo.credit(self.assayed_tape(cell)));
+            tally.add(memo.repertoire(self.assayed_tape(cell)).classes());
         }
         Some(tally)
     }
@@ -1110,7 +1272,11 @@ impl World {
         if !self.reads_logic() {
             return None;
         }
-        Some(self.logic_tally_on(STREAM_LOGIC_SHARE, |cell| self.assayed_tape(cell)))
+        Some(
+            self.logic_tally_on(STREAM_LOGIC_SHARE, self.params.gene_len(), |cell| {
+                self.assayed_tape(cell)
+            }),
+        )
     }
 
     /// The same tally of the replicating tapes, where the assay reads the metabolism tapes
@@ -1120,16 +1286,19 @@ impl World {
         if !self.reads_logic() || self.meta.is_empty() {
             return None;
         }
-        Some(self.logic_tally_on(STREAM_LOGIC_REPLICATING, |cell| self.tape(cell)))
+        Some(self.logic_tally_on(STREAM_LOGIC_REPLICATING, None, |cell| self.tape(cell)))
     }
 
+    /// One logic tally on `stream`, reading `tape` of each sampled cell, as genes of
+    /// `gene_len` bytes where it is set.
     fn logic_tally_on<'a>(
         &'a self,
         stream: u64,
+        gene_len: Option<usize>,
         tape: impl Fn(usize) -> &'a [u8],
     ) -> logic::LogicTally {
         let mut rng = rng::seeded(self.seed, stream, self.epoch);
-        let mut memo = LogicReader::draw(&self.params, &mut rng);
+        let mut memo = LogicReader::draw(&self.params, &mut rng, gene_len);
         let cells = self.params.cell_count() as u64;
         let mut tally = logic::LogicTally::default();
         for _ in 0..task::TASK_SAMPLE_CELLS {
@@ -1145,9 +1314,10 @@ impl World {
         if self.meta.is_empty() {
             return Vec::new();
         }
-        metrics::ranked_tapes(metrics::Tapes::uniform(
+        metrics::ranked_tapes(metrics::Tapes::ragged(
             &self.meta,
-            self.params.meta_len as usize,
+            self.params.meta_cap() as usize,
+            &self.meta_lens,
         ))
     }
 
@@ -1157,7 +1327,7 @@ impl World {
     fn dominant_logic_credit(&self, tape: Option<&[u8]>) -> Option<logic::Credit> {
         let tape = tape.filter(|_| self.reads_logic())?;
         let mut rng = rng::seeded(self.seed, STREAM_LOGIC_DOMINANT, self.epoch);
-        Some(LogicReader::draw(&self.params, &mut rng).credit(tape))
+        Some(LogicReader::draw(&self.params, &mut rng, self.params.gene_len()).credit(tape))
     }
 
     /// The orientation-aware companion of the census: `SELF_REP_SAMPLE_CELLS` cells drawn
@@ -1637,11 +1807,67 @@ fn near_copy(result: &[u8], source: &[u8], arrived: &[u8]) -> bool {
 fn restored_meta(
     params: &Params,
     meta: Option<snapshot::Metabolism>,
-) -> Result<Vec<u8>, SnapshotError> {
+) -> Result<(Vec<u8>, Vec<u32>), SnapshotError> {
     match (meta, params.carries_meta()) {
-        (None, false) => Ok(Vec::new()),
-        (Some(meta), true) if meta.len == params.meta_len => Ok(meta.tapes),
+        (None, false) => Ok((Vec::new(), Vec::new())),
+        (Some(meta), true) => match (meta.lens, params.meta_grows()) {
+            (None, false) if meta.len == params.meta_len => Ok((meta.tapes, Vec::new())),
+            (Some(lens), true) if meta.len == params.meta_cap() => Ok((meta.tapes, lens)),
+            _ => Err(SnapshotError::Mismatch { field: "meta_len" }),
+        },
         _ => Err(SnapshotError::Mismatch { field: "meta_len" }),
+    }
+}
+
+/// A parent's metabolism tapes as a descendant's channel holds them, `None` where it
+/// cannot: on a fixed channel each tape must be `meta_len` bytes long, and on one that
+/// grows at most its cap, laid into slots as wide as that cap.
+fn carried_meta(params: &Params, meta: snapshot::Metabolism) -> Option<(Vec<u8>, Vec<u32>)> {
+    let slot = params.meta_cap() as usize;
+    let lens = meta
+        .lens
+        .unwrap_or_else(|| vec![meta.len; params.cell_count()]);
+    let fits = |len: &u32| match params.meta_grows() {
+        true => *len as usize <= slot,
+        false => *len == params.meta_len,
+    };
+    if !lens.iter().all(fits) {
+        return None;
+    }
+    let from = meta.len as usize;
+    let mut tapes = vec![0; params.cell_count() * slot];
+    for (cell, len) in lens.iter().enumerate() {
+        let len = *len as usize;
+        tapes[cell * slot..cell * slot + len]
+            .copy_from_slice(&meta.tapes[cell * from..cell * from + len]);
+    }
+    let lens = match params.meta_grows() {
+        true => lens,
+        false => Vec::new(),
+    };
+    Some((tapes, lens))
+}
+
+/// A growing metabolism channel's variation operators for one epoch, drawing on
+/// `STREAM_META_GROW` at that epoch in the order the epoch's inheritances happen.
+struct MetaGrowth {
+    rng: Rng,
+    dup: f64,
+    del: f64,
+    seg_max: usize,
+    min: usize,
+}
+
+impl MetaGrowth {
+    /// `None` on a channel that cannot grow, which draws nothing.
+    fn of(params: &Params, seed: u64, epoch: u64) -> Option<Self> {
+        params.meta_grows().then(|| Self {
+            rng: rng::seeded(seed, STREAM_META_GROW, epoch),
+            dup: params.meta_dup,
+            del: params.meta_del,
+            seg_max: params.meta_seg_max as usize,
+            min: params.meta_min_len as usize,
+        })
     }
 }
 
@@ -1672,6 +1898,20 @@ impl PredationMemo {
         };
         self.drawn = Some((drawn_at, cases));
         self.seen.clear();
+    }
+
+    /// The classes `tape` computes on the period's cases: its credit, or under `meta_genes`
+    /// the union of its genes', each distinct gene assayed once a period.
+    fn repertoire(&mut self, tape: &[u8], params: &Params) -> topless::Repertoire {
+        match params.gene_len() {
+            None => topless::Repertoire::union([&self.credit(tape, params)]),
+            Some(gene_len) => {
+                let credits: Vec<topless::Credit> = topless::genes(tape, gene_len)
+                    .map(|gene| self.credit(&gene, params))
+                    .collect();
+                topless::Repertoire::union(&credits)
+            }
+        }
     }
 
     /// The classes `tape` computes on the period's cases, over the run's
@@ -1708,8 +1948,8 @@ enum LogicReader<'a> {
 
 impl<'a> LogicReader<'a> {
     /// The reader of `params`' ladder, its cases drawn off `rng` as that ladder's payment
-    /// draws them.
-    fn draw(params: &Params, rng: &mut Rng) -> Self {
+    /// draws them, reading a tape as genes of `gene_len` bytes where it is set.
+    fn draw(params: &Params, rng: &mut Rng, gene_len: Option<usize>) -> Self {
         let (ops, nand) = (params.op_set(), params.logic_nand);
         match params.tasks.depth_inputs() {
             None => Self::Two(logic::Memo::new(logic::Cases::draw(rng), ops, nand)),
@@ -1719,7 +1959,8 @@ impl<'a> LogicReader<'a> {
                     ops,
                     nand,
                     params.assay_slots(),
-                ),
+                )
+                .genes(gene_len),
                 inputs.two_input_rungs(),
             ),
         }
@@ -1728,7 +1969,7 @@ impl<'a> LogicReader<'a> {
     fn credit(&mut self, tape: &'a [u8]) -> logic::Credit {
         match self {
             Self::Two(memo) => memo.credit(tape),
-            Self::Topless(memo, rungs) => memo.credit(tape).two_input(rungs),
+            Self::Topless(memo, rungs) => memo.repertoire(tape).two_input(rungs),
         }
     }
 }
@@ -8376,6 +8617,529 @@ mod tests {
             }
             let per_epoch = started.elapsed().as_secs_f64() * 1000.0 / 40.0;
             println!("{predation:?}: {per_epoch:.2} ms an epoch");
+        }
+    }
+
+    /// Under `count` an actor takes from a partner exactly when the partner computes
+    /// strictly fewer classes: silence is prey to every computing cell, a tie is no prey
+    /// whether kin or strangers, and two silent cells leave each other alone.
+    #[test]
+    fn count_moves_energy_only_to_the_cell_computing_more_classes() {
+        let mut world = prey_world(Predation::Count, mixed_kind);
+        let kind = |cell: usize| mixed_kind(cell as u32 % 8, cell as u32 / 8);
+        let encounters = preyed(&mut world, 4);
+        let params = world.params.clone();
+        let counts =
+            prey_tapes().map(|tape| world.predation_memo.repertoire(&tape, &params).count());
+        assert_eq!(counts, [0, 1, 1, 2]);
+        assert!(encounters.len() > 200);
+        for (a, b, preys, moved) in &encounters {
+            assert_eq!(*preys, counts[kind(*a)] > counts[kind(*b)], "{a} on {b}");
+            assert_eq!(*moved, if *preys { 100 } else { 0 });
+        }
+        let seen = |a: usize, b: usize, preys: bool| {
+            encounters
+                .iter()
+                .any(|(x, y, p, _)| kind(*x) == a && kind(*y) == b && *p == preys)
+        };
+        assert!(
+            seen(1, 0, true) && seen(2, 0, true) && seen(3, 0, true),
+            "silence is prey"
+        );
+        assert!(seen(0, 0, false), "two silent cells tie");
+        assert!(seen(1, 1, false) && seen(3, 3, false), "kin tie");
+        assert!(
+            seen(1, 2, false) && seen(2, 1, false),
+            "equal-count strangers tie"
+        );
+        assert!(seen(3, 1, true) && seen(3, 2, true) && seen(1, 3, false));
+    }
+
+    /// The genes bundle on `predation_params`' economy: strict out-count on the union of
+    /// 32-byte genes, the channel growing from 32 bytes to 256 by duplication and deletion
+    /// at the study's rate.
+    fn genes_params() -> Params {
+        Params {
+            meta_max_len: 256,
+            meta_dup: 0.05,
+            meta_del: 0.05,
+            meta_genes: 32,
+            ..predation_params(Predation::Count)
+        }
+    }
+
+    fn without_genes(params: &Params) -> Params {
+        let defaults = Params::default();
+        Params {
+            meta_max_len: defaults.meta_max_len,
+            meta_min_len: defaults.meta_min_len,
+            meta_dup: defaults.meta_dup,
+            meta_del: defaults.meta_del,
+            meta_seg_max: defaults.meta_seg_max,
+            meta_genes: defaults.meta_genes,
+            ..params.clone()
+        }
+    }
+
+    fn genes_digest(measured: &Metrics) -> String {
+        format!(
+            "meta_len_mean={:?} genes_essential_held={:?}",
+            measured.meta_len_mean, measured.genes_essential_held
+        )
+    }
+
+    /// A cap equal to `meta_len` is the fixed channel, and growth settings at their
+    /// defaults change nothing: the run is the run without them, byte for byte and reading
+    /// for reading, and it writes the snapshot it always wrote.
+    #[test]
+    fn a_fixed_channel_read_whole_is_the_run_without_the_new_settings() {
+        let plain = predation_params(Predation::SubsetClass);
+        let capped = Params {
+            meta_max_len: plain.meta_len,
+            ..plain.clone()
+        };
+        let mut run = World::new(&capped, 42).unwrap();
+        let mut twin = World::new(&plain, 42).unwrap();
+        for _ in 0..3 {
+            for _ in 0..5 {
+                run.step();
+                twin.step();
+            }
+            let measured = run.metrics();
+            assert_eq!(
+                genes_digest(&measured),
+                "meta_len_mean=None genes_essential_held=None"
+            );
+            assert_eq!(measured, twin.metrics());
+        }
+        assert_eq!(run.world_hash(), twin.world_hash());
+        assert_eq!(run.snapshot(), twin.snapshot());
+        assert_eq!(run.snapshot()[4], snapshot::VERSION_META_STOCKED);
+        assert!(run.meta_lens.is_empty());
+    }
+
+    /// Genes at a gene length the whole tape fits in read what the whole tape reads: one
+    /// gene of 32 bytes on a buffer of 64 is the tape itself.
+    #[test]
+    fn one_gene_the_length_of_the_tape_reads_the_tape() {
+        let whole = predation_params(Predation::Count);
+        let one = Params {
+            meta_genes: 32,
+            ..whole.clone()
+        };
+        let mut run = stepped_world(World::new(&one, 42).unwrap(), 12);
+        let mut twin = stepped_world(World::new(&whole, 42).unwrap(), 12);
+        assert_eq!(run.world_hash(), twin.world_hash());
+        let (read, plain) = (run.metrics(), twin.metrics());
+        assert_eq!(predation_digest(&read), predation_digest(&plain));
+        assert_eq!(depth_digest(&read), depth_digest(&plain));
+        assert_eq!(read.genes_essential_held, Some(0));
+        assert_eq!(plain.genes_essential_held, None);
+    }
+
+    /// A growing world: an 8×8 soup on a channel from 32 bytes to 64 read as genes.
+    fn growing_world(dup: f64, del: f64) -> World {
+        let params = Params {
+            tasks: Tasks::Logic4,
+            meta_len: 32,
+            meta_rate: 1.0 / 64.0,
+            meta_max_len: 64,
+            meta_min_len: 12,
+            meta_dup: dup,
+            meta_del: del,
+            meta_seg_max: 16,
+            meta_genes: 32,
+            ..colony_params()
+        };
+        World::new(&params, 5).unwrap()
+    }
+
+    /// Over thousands of variations every tape stays within its floor and cap, every byte
+    /// past a tape's live length stays zero, and lengths move both ways.
+    #[test]
+    fn a_growing_channel_keeps_every_tape_within_its_floor_and_cap() {
+        let mut world = growing_world(0.5, 0.5);
+        let mut grow = MetaGrowth::of(&world.params, 5, 0).unwrap();
+        let (mut longer, mut shorter) = (false, false);
+        for round in 0..40 {
+            for cell in 0..64 {
+                if (cell + round) % 3 > 0 {
+                    world.vary_meta(cell, &mut grow);
+                }
+            }
+            assert_eq!(world.meta_lens.len(), 64);
+            for (cell, len) in world.meta_lens.iter().enumerate() {
+                assert!((12..=64).contains(len), "{len}");
+                let slot = &world.meta[cell * 64..cell * 64 + 64];
+                assert!(slot[*len as usize..].iter().all(|byte| *byte == 0));
+                longer |= *len > 32;
+                shorter |= *len < 32;
+            }
+        }
+        assert!(longer && shorter);
+        let mean = world.metrics().meta_len_mean.unwrap();
+        let total: u32 = world.meta_lens.iter().sum();
+        assert_eq!(mean, f64::from(total) / 64.0);
+    }
+
+    /// A duplication appends a copy of a segment of the tape at its end, cut at the cap;
+    /// a deletion cuts a segment out and never goes below the floor.
+    #[test]
+    fn the_variation_operators_append_a_copy_and_cut_a_segment() {
+        let mut world = growing_world(1.0, 0.0);
+        let tape: Vec<u8> = (1..=40).collect();
+        world.set_metabolism(0, 0, &tape);
+        let mut grow = MetaGrowth::of(&world.params, 5, 0).unwrap();
+        world.vary_meta(0, &mut grow);
+        let grown = world.metabolism(0, 0).unwrap().to_vec();
+        assert!(grown.len() > 40 && grown.len() <= 56, "{}", grown.len());
+        assert_eq!(grown[..40], tape[..]);
+        assert!(tape.windows(grown.len() - 40).any(|w| w == &grown[40..]));
+        for _ in 0..8 {
+            world.vary_meta(0, &mut grow);
+        }
+        assert_eq!(world.metabolism(0, 0).unwrap().len(), 64, "cut at the cap");
+
+        let mut world = growing_world(0.0, 1.0);
+        world.set_metabolism(0, 0, &tape);
+        let mut grow = MetaGrowth::of(&world.params, 5, 0).unwrap();
+        world.vary_meta(0, &mut grow);
+        let cut = world.metabolism(0, 0).unwrap().to_vec();
+        let gone = 40 - cut.len();
+        assert!((1..=16).contains(&gone));
+        let from = cut.iter().zip(&tape).take_while(|(a, b)| a == b).count();
+        assert_eq!(cut[from..], tape[from + gone..]);
+        for _ in 0..8 {
+            world.vary_meta(0, &mut grow);
+        }
+        assert_eq!(
+            world.metabolism(0, 0).unwrap().len(),
+            12,
+            "never below the floor"
+        );
+        assert!(world.meta[12..64].iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn determinism_holds_on_a_growing_channel_read_as_genes() {
+        for (seed, predation) in [
+            (7, Predation::Count),
+            (8, Predation::SubsetClass),
+            (9, Predation::Off),
+        ] {
+            for meta_genes in [0, 16] {
+                assert_deterministic(
+                    &Params {
+                        width: 16,
+                        height: 16,
+                        meta_max_len: 96,
+                        meta_dup: 0.3,
+                        meta_del: 0.3,
+                        meta_genes,
+                        meta_rate: 1.0 / 64.0,
+                        predation,
+                        ..genes_params()
+                    },
+                    seed,
+                );
+            }
+        }
+    }
+
+    /// A grown world's snapshot carries its lengths, and the run it resumes reads and
+    /// writes what the uninterrupted one does, reading for reading and blob for blob.
+    #[test]
+    fn a_grown_world_resumes_byte_for_byte() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            meta_dup: 0.5,
+            meta_del: 0.3,
+            ..genes_params()
+        };
+        let mut whole = stepped_world(World::new(&params, 42).unwrap(), 13);
+        let blob = whole.snapshot();
+        assert_eq!(blob[4], snapshot::VERSION_META_GROWN_STOCKED);
+        let mut restored = World::from_snapshot(&params, 42, &blob).unwrap();
+        assert_eq!(restored.snapshot(), blob);
+        assert_eq!(
+            (&restored.meta, &restored.meta_lens),
+            (&whole.meta, &whole.meta_lens)
+        );
+        for _ in 0..11 {
+            whole.step();
+            restored.step();
+        }
+        let (read, resumed) = (whole.metrics(), restored.metrics());
+        assert_eq!(genes_digest(&read), genes_digest(&resumed));
+        assert_eq!(depth_digest(&read), depth_digest(&resumed));
+        assert_eq!(read.repertoire_mean, resumed.repertoire_mean);
+        assert_eq!(whole.snapshot(), restored.snapshot());
+        let fixed = without_genes(&params);
+        assert!(matches!(
+            World::from_snapshot(&fixed, 42, &blob),
+            Err(SnapshotError::Mismatch { field: "meta_len" })
+        ));
+        let other_cap = Params {
+            meta_max_len: 128,
+            ..params.clone()
+        };
+        assert!(matches!(
+            World::from_snapshot(&other_cap, 42, &blob),
+            Err(SnapshotError::Mismatch { field: "meta_len" })
+        ));
+        let fixed_blob = stepped(&fixed, 42, 3).snapshot();
+        assert!(matches!(
+            World::from_snapshot(&params, 42, &fixed_blob),
+            Err(SnapshotError::Mismatch { field: "meta_len" })
+        ));
+    }
+
+    /// A child carries its parent's metabolism tapes where its channel holds them: a fixed
+    /// parent's into a channel that grows from that length, a grown parent's into a wide
+    /// enough cap; otherwise it switches its own on.
+    #[test]
+    fn a_descendant_carries_the_tapes_its_channel_holds() {
+        let fixed = Params {
+            width: 16,
+            height: 16,
+            ..predation_params(Predation::Count)
+        };
+        let grows = Params {
+            meta_max_len: 256,
+            meta_dup: 1.0,
+            meta_del: 0.0,
+            meta_genes: 32,
+            ..fixed.clone()
+        };
+        let parent = stepped(&fixed, 42, 1_001);
+        let child = World::descend(&grows, 9, &parent.snapshot()).unwrap();
+        assert_eq!(child.meta_lens, vec![32; 256]);
+        for cell in 0..256 {
+            assert_eq!(child.meta_of(cell), parent.meta_of(cell));
+        }
+        let mut grown = World::descend(&grows, 9, &parent.snapshot()).unwrap();
+        grown.set_metabolism(3, 0, &[7; 200]);
+        grown.set_metabolism(4, 0, &[9; 20]);
+        let blob = grown.snapshot();
+        let wide = World::descend(&grows, 9, &blob).unwrap();
+        assert_eq!(
+            (&wide.meta, &wide.meta_lens),
+            (&grown.meta, &grown.meta_lens)
+        );
+        let narrow = Params {
+            meta_max_len: 33,
+            ..grows.clone()
+        };
+        let switched = World::descend(&narrow, 9, &blob).unwrap();
+        assert_eq!(switched.meta_lens, vec![32; 256], "switched on afresh");
+        let back = World::descend(&fixed, 9, &blob).unwrap();
+        assert!(back.meta_lens.is_empty());
+        assert_eq!(back.meta.len(), 256 * 32);
+    }
+
+    /// `genes_essential_held` reads the most essential genes a tenth of the sampled cells
+    /// hold, and the depth and repertoire readings read the union.
+    #[test]
+    fn the_genes_readings_read_the_union_and_the_essential_genes() {
+        let mut world = prey_world(Predation::Count, |_, _| 0);
+        world.params.meta_genes = 128;
+        let tapes = prey_tapes();
+        let echo_xor = [&tapes[1][..128], &tapes[2][..128]].concat();
+        for y in 0..8 {
+            for x in 0..8 {
+                let tape = match (x + y) % 4 {
+                    0 => echo_xor.to_vec(),
+                    1 => tapes[1].clone(),
+                    _ => tapes[0].clone(),
+                };
+                world.set_metabolism(x, y, &tape);
+            }
+        }
+        let measured = world.metrics();
+        assert_eq!(measured.genes_essential_held, Some(2));
+        assert_eq!(
+            depth_digest(&measured),
+            "logic_depth_max=Some(12) logic_depth_classes=Some(2)"
+        );
+        let mut whole = prey_world(Predation::Count, |_, _| 0);
+        whole.params.meta_genes = 0;
+        whole.meta.clone_from(&world.meta);
+        assert_eq!(whole.metrics().genes_essential_held, None);
+        for y in 0..8 {
+            for x in 0..8 {
+                world.set_metabolism(x, y, &tapes[1]);
+            }
+        }
+        let echo = world.metrics();
+        assert_eq!(echo.genes_essential_held, Some(1));
+        assert_eq!(echo.repertoire_mean, Some(1.0));
+    }
+
+    /// The genes readings only read, each on a stream of its own, and the growth draws on
+    /// one no other draw shares.
+    #[test]
+    fn the_genes_readings_move_nothing_and_the_streams_are_their_own() {
+        let params = Params {
+            width: 16,
+            height: 16,
+            ..genes_params()
+        };
+        let mut read = World::new(&params, 42).unwrap();
+        let mut unread = World::new(&params, 42).unwrap();
+        for _ in 0..3 {
+            assert!(read.metrics().meta_len_mean.is_some());
+            for _ in 0..5 {
+                read.step();
+                unread.step();
+            }
+        }
+        assert_eq!(read.world_hash(), unread.world_hash());
+        let first = read.metrics();
+        assert_eq!(read.metrics(), first);
+
+        let streams = [
+            STREAM_INIT,
+            STREAM_STEP,
+            STREAM_REPLICATOR,
+            STREAM_SELF_REP,
+            STREAM_SELF_REP_DOMINANT,
+            STREAM_COPY_LATENCY,
+            STREAM_TASK,
+            STREAM_TASK_SHARE,
+            STREAM_TASK_DOMINANT,
+            STREAM_LOGIC_SHARE,
+            STREAM_LOGIC_DOMINANT,
+            STREAM_LOGIC_REPLICATING,
+            STREAM_LOGIC_DEPTH,
+            STREAM_META,
+            STREAM_PREDATION,
+            STREAM_PREDATION_READ,
+        ];
+        let draws: Vec<u64> = (1..CENSUS_DRAWS).map(census_stream).collect();
+        for stream in [STREAM_META_GROW, STREAM_GENES_READ] {
+            assert!(!streams.contains(&stream) && !draws.contains(&stream));
+        }
+        assert_ne!(STREAM_META_GROW, STREAM_GENES_READ);
+    }
+
+    /// The genes runs' own pins: `genes_params` on a 32×32 random soup whose top quarter
+    /// holds the handwritten replicator carrying a two-gene metabolism tape, seed 42, after
+    /// 40 epochs, under out-count and without a pass, and their readings, apart from every
+    /// digest above.
+    const PINNED_GENES_HASHES: [u64; 2] = [0x9897_6cd5_0fee_2dc1, 0x52b0_b1ad_9b0a_f85e];
+    const PINNED_GENES_READINGS: [&str; 2] = [
+        "meta_len_mean=Some(59.869140625) genes_essential_held=Some(2) \
+         predation_rate=Some(0.2619047619047619) predation_relation_rate=Some(0.2857142857142857) \
+         repertoire_mean=Some(15.3515625) silent_share=Some(0.1875) logic_depth_max=Some(8) \
+         logic_depth_classes=Some(26)",
+        "meta_len_mean=Some(57.111328125) genes_essential_held=Some(2) predation_rate=None \
+         predation_relation_rate=None repertoire_mean=None silent_share=None \
+         logic_depth_max=Some(8) logic_depth_classes=Some(26)",
+    ];
+
+    #[test]
+    fn the_genes_runs_are_pinned() {
+        for (predation, (hash, readings)) in [Predation::Count, Predation::Off]
+            .into_iter()
+            .zip(PINNED_GENES_HASHES.into_iter().zip(PINNED_GENES_READINGS))
+        {
+            let params = Params {
+                predation,
+                tape_len: replicator::handwritten_replicator().len() as u32,
+                ..genes_params()
+            };
+            let mut run = World::new(&params, 42).unwrap();
+            let tape = replicator::handwritten_replicator();
+            let genes = topless::tests::laid(&[topless::tests::LOOP, topless::tests::TANDEM], 32);
+            for y in 0..params.height / 4 {
+                for x in 0..params.width {
+                    run.set_cell(x, y, &tape);
+                    run.set_metabolism(x, y, &genes);
+                }
+            }
+            let mut run = stepped_world(run, 40);
+            let measured = run.metrics();
+            let read = format!(
+                "{} {} {}",
+                genes_digest(&measured),
+                predation_digest(&measured),
+                depth_digest(&measured)
+            );
+            assert_eq!(run.world_hash(), hash, "{predation:?}");
+            assert_eq!(read, readings, "{predation:?}");
+            assert!(
+                run.meta_lens.iter().any(|len| *len != 32),
+                "the channel never moved"
+            );
+        }
+    }
+
+    /// The cost of an epoch of the genes bundle on a restored world of the study, at three
+    /// tape lengths, on demand: `LIFE_GENES_WORLD=<lsnp> LIFE_GENES_PARAMS=<json> cargo test
+    /// --release -p life-engine --lib -- --ignored the_genes_cost --nocapture`.
+    #[test]
+    #[ignore]
+    fn the_genes_cost() {
+        let (Ok(world), Ok(params)) = (
+            std::env::var("LIFE_GENES_WORLD"),
+            std::env::var("LIFE_GENES_PARAMS"),
+        ) else {
+            return;
+        };
+        let parent: Params =
+            serde_json::from_str(&std::fs::read_to_string(params).unwrap()).unwrap();
+        let blob = std::fs::read(world).unwrap();
+        for (len, fill) in [32u32, 512, 2048]
+            .into_iter()
+            .flat_map(|len| [(len, "tiled"), (len, "random")])
+        {
+            let params = Params {
+                energy_payer: EnergyPayer::Initiator,
+                energy_influx: parent.energy_influx.max(1024),
+                energy_stock_cap: parent.energy_stock_cap.max(65_536),
+                tasks: Tasks::Logic4,
+                task_reward: 0,
+                logic_nand: LogicNand::Stack,
+                meta_len: 32,
+                meta_rate: 8.0 / 8192.0,
+                meta_draw: MetaDraw::Isa,
+                meta_seed: MetaSeed::OwnTape,
+                task_max_outputs: 16,
+                predation: Predation::Count,
+                predation_transfer: 8192,
+                meta_max_len: 8192,
+                meta_dup: 0.05,
+                meta_del: 0.05,
+                meta_genes: 32,
+                ..parent.clone()
+            };
+            let mut world = World::descend(&params, 6201, &blob).unwrap();
+            let mut rng = rng::seeded(1, 0, 0);
+            for cell in 0..params.cell_count() {
+                let own = world.meta_of(cell).to_vec();
+                let tape: Vec<u8> = match fill {
+                    "tiled" => own.iter().copied().cycle().take(len as usize).collect(),
+                    _ => (0..len)
+                        .map(|_| draw_meta_byte(&mut rng, MetaDraw::Isa))
+                        .collect(),
+                };
+                let (x, y) = (cell as u32 % params.width, cell as u32 / params.width);
+                world.set_metabolism(x, y, &tape);
+            }
+            world.step();
+            let started = std::time::Instant::now();
+            for _ in 0..16 {
+                world.step();
+            }
+            let per_epoch = started.elapsed().as_secs_f64() * 1000.0 / 16.0;
+            let started = std::time::Instant::now();
+            let measured = world.metrics();
+            let sample = started.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "length {len} {fill}: {per_epoch:.1} ms an epoch, {sample:.0} ms a sample, {}",
+                genes_digest(&measured)
+            );
         }
     }
 }
