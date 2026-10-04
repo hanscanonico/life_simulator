@@ -22,8 +22,8 @@ RSpec.describe Findings::Registry do
   it "leads a shared date with the strongest current result" do
     slugs = described_class.all.map(&:slug)
 
-    expect(slugs.first(13))
-      .to eq(%w[reach-4-carries-to-growable-tapes paid-parts-assemble-deep-logic-on-a-stack-nand
+    expect(slugs.first(14))
+      .to eq(%w[paid-depth-jumps-once-and-stands reach-4-carries-to-growable-tapes paid-parts-assemble-deep-logic-on-a-stack-nand
                 paid-computation-stops-at-one-step-tasks paid-logic-climbs-only-read-once-tasks
                 emergence-peaks-at-intermediate-reach copying-gets-faster-under-an-economy
                 complexity-from-an-emerged-start lineages-after-emergence complexity-under-contest
@@ -31,7 +31,8 @@ RSpec.describe Findings::Registry do
                 replicator-complexity-plateau])
   end
 
-  it "labels every finding resting on the Metabolism, Logic or Meta-stack sweep as importing an objective" do
+  it "labels every finding resting on the Metabolism, Logic, Meta-stack or topless-rise sweep as importing an " \
+     "objective" do
     paid = described_class.all.select { |finding| objective_sweeps.any? { |slug| finding.rests_on?(slug) } }
 
     expect(paid).to all(be_imports_objective)
@@ -62,6 +63,17 @@ RSpec.describe Findings::Registry do
     expect(finding.summary).to include("9 pairs to 0 with 45 ties (p = 0.00195)", "is shown too, 9 to 0",
                                        "read 8 to 0 and rest on two parents", "In 14 of 15 plantings",
                                        "a hereditary channel", "stays not shown")
+  end
+
+  it "reads the topless-rise finding as negative on its rung-4 question, labelled as importing an objective" do
+    finding = described_class.find("paid-depth-jumps-once-and-stands")
+
+    expect(finding).to have_attributes(experiment_slug: "topless-rise", status: :negative, imports_objective?: true,
+                                       related_finding_slugs: %w[paid-parts-assemble-deep-logic-on-a-stack-nand])
+    expect(finding.title).to eq("Paid for depth, the soup jumps once and stands: no late rise on a ladder " \
+                                "without a near top")
+    expect(finding.summary).to include("1 to 0 with 53 ties (p = 0.5)", "it is refuted, 1 to 13",
+                                       "grew by 2 bytes, barely above drift", "a ladder", "stays not shown")
   end
 
   it "reads the reach-cap128 finding as published on fitness-free Soup" do
@@ -299,7 +311,7 @@ RSpec.describe Findings::Registry do
   end
 
   # The sweeps whose rewarded runs are Metabolism runs (DESIGN.md §1.4).
-  def objective_sweeps = %w[metabolism logic meta_stack].map { |sweep| Lab.slug_for(sweep) }
+  def objective_sweeps = %w[metabolism logic meta_stack topless_rise].map { |sweep| Lab.slug_for(sweep) }
 
   def finding(slug, experiment_slug, date)
     Findings::Finding.new(slug: slug, title: slug, date: date, experiment_slug: experiment_slug,

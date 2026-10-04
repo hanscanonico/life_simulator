@@ -42,8 +42,8 @@ RSpec.describe "The reach-cap128 finding", type: :system do
   context "on the findings index" do
     before { visit findings_path }
 
-    it "lists the finding first, without an objective badge" do
-      card = first(".finding-card")
+    it "lists the finding without an objective badge" do
+      card = find(".finding-card", text: "On growable tapes, a reach of 4 emerges")
 
       expect(card).to have_text("On growable tapes, a reach of 4 emerges more than ten times as often as radius 1")
       expect(card).to have_css(".badge", text: "published")

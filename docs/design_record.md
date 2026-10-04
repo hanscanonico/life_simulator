@@ -5864,3 +5864,76 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   qualifying parent has finished (`Experiments::DescendantSweepSettledService`), then
   **final**. The page reads no minimum, so H-driven reads no measured pairs there; its outcome
   is the report's with `MINIMA`.
+
+- 2026-10-04 — **The topless-rise finding states its claim: paid for depth, the soup jumps once
+  and stands, no late rise on a ladder without a near top.** Sweep 18 (`topless-rise`, entry of
+  2026-10-02) finished 162 of 162 children. Read under the pre-registered rule
+  (`lab:topless_rise_report` on the lab, 2026-10-04, "final"):
+
+  | arm | children | finished | settled relapses | extinct | measured | rise late | ceilinged | reached the floor |
+  |---|---|---|---|---|---|---|---|---|
+  | rise | 54 | 54 | 2 | 0 | 54 | 1 | 0 | 0 |
+  | capped | 54 | 54 | 0 | 0 | 54 | 13 | 0 | 0 |
+  | none | 54 | 54 | 6 | 0 | 54 | 0 | 0 | 0 |
+
+  - **H-rise** (rise against none), the rung-4 question: **not shown**, 1 pair to 0 with 53
+    ties, p = 0.5.
+  - **H-rise-paid** (rise against capped): **refuted**, 1 to 13 with 40 ties.
+  - **Extinct kept**: the same outcomes, no child being extinct. **Deep subgroup** (the 9
+    deep parents' children): H-rise refuted, 9 ties; H-rise-paid refuted, 0 to 2 with 7 ties.
+    No leave-out applies: no test is shown.
+  - Not mostly ceilinged: no child's bar reached 13, and no child held 13 in any sample, so
+    the tests are read as an answer.
+
+  **H-rise-code**, the locked descriptive reading, made on 2026-10-04 with
+  `research/landscape/` at `3a10d32` on the stored worlds, read through SELECTs, every world
+  checked against `md5(snapshots.blob)`. Its summary is kept in `docs/readings/topless-rise/`
+  (`summary.txt`, and `summary.csv`, one row per child), with the scripts as run in `method/`;
+  the 289 MB of worlds are not. Every child resolves to the same three worlds, 62 000,
+  110 000 and 160 000.
+  - **The locked set**: 5137 (rise, parent 4971), depth / load-bearing bytes 0/2, 7/13, 10/15:
+    **new code** by the rule's minimum margin, +2 bytes for +3 rungs. Its twins 5138 (capped)
+    and 5139 (none) read no rise in depth.
+  - **Every child, descriptively**: rise 3 new code, 0 co-option, 1 neither, 50 no rise in
+    depth; capped 6, 7, 0, 41; none 45 no rise in depth and 9 unread (unpaid, ECHO at most).
+  - 5137 is a **re-climb**: it relapsed (settled relapse at 67 470) and climbed back to depth
+    10, the rise arm's common plateau. 38 of 54 rise children end at 10, and 36 were already
+    at 10 in the fifth-decile world; its last solver carries the loop core of their depth-10
+    solvers.
+  - The **capped** late risers end at 7 or 8, which the cap pays as 5. The nine that end at 8
+    carry one recurring 10-byte loop, `{,~[{~>~!]` or a near variant; seven of them step from 7.
+    Counting only steps from depth 4 or more: 4 new code (each +2), 7 co-option. The parents
+    are correlated, so the recurring loop may be shared ancestry.
+  - **Drift baseline**: of 91 children whose fifth and last worlds hold the same depth above
+    ECHO, only 2 gain +2 bytes or more. +2 is barely above drift. Across all 486 worlds the
+    median count rises with depth (10 at 7, 12 at 8, 14 at 10), but depth gained late does not
+    come with sustained code growth.
+
+  **The claim**, finding `paid-depth-jumps-once-and-stands`, "Paid for depth, the soup jumps
+  once and stands: no late rise on a ladder without a near top", is the entry's third outcome,
+  "H-rise refuted or not shown": **the climb stops**. The soup takes the jumps a reorganisation
+  offers early and then plateaus; paid parts buy a deeper feature, not a climb. That is the
+  open-endedness answer for this machine, a negative one. The capped arm's late creep, 13
+  children against the rise arm's 1, is mostly a one-rung step onto a recurring loop, not a
+  climb either.
+
+  **Registry status `negative`**: the reading is final, the rung-4 question is not shown and
+  H-rise-paid is refuted. It carries `imports_objective: true`, and the registry spec now holds
+  every finding on the topless-rise sweep to that label. The page names the five imports: an
+  objective, a primitive, a hereditary channel, the primitive's semantics and a ladder.
+
+  **What it does not say.** Rung 4 on Soup stays "not shown". It is one substrate, one
+  reward, one seed a parent and 100 000 epochs past the parent, on 54 correlated parents. It
+  does not say four inputs are a ceiling: no child reached the ladder's floor.
+
+  **What comes next** is the unassisted line, already pre-registered: out-compute (§1.3 item
+  19) and genes-rise (§1.3 item 20, entry of 2026-10-04). The design study's pilots
+  (`docs/studies/unassisted.md` §8–§13) found a late climb only once the channel's length was
+  out of reach, and a capped twin flattened: room to grow, not pay for depth.
+
+  **The page** renders both tests, their re-readings, the late risers per arm, the relapses,
+  extinctions and ceilinged count at render time, through `Findings::ToplessRise` over
+  `Experiments::ToplessRiseReadingService`'s report, the reading the sweep page draws and
+  caches, and includes that page's section. The H-rise-code tables are hand-typed from
+  `docs/readings/topless-rise/summary.csv`, which it links. DESIGN §1.3 item 18 gains a result
+  line. Nothing about the engine, the rules or any observable moves.

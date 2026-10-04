@@ -1766,6 +1766,89 @@ RSpec.describe "Findings", type: :request do
       end
     end
 
+    context "with the topless-rise write-up" do
+      let(:topless) { Findings::Registry.find("paid-depth-jumps-once-and-stands") }
+
+      it "badges it as negative and importing an objective" do
+        get finding_path(topless)
+
+        meta = response.parsed_body.at_css(".finding-meta")
+        expect(meta.at_css(".badge").text).to eq("negative")
+        expect(meta.at_css(".objective-badge").text.squish).to eq("imports an objective")
+      end
+
+      it "cites the pre-registration, names the five imports and states what it means" do
+        get finding_path(topless)
+
+        expect(response.body.squish)
+          .to include("DESIGN §1.3 item 18", "<strong>an objective</strong>", "<strong>a primitive</strong>",
+                      "<strong>a hereditary channel</strong>", "<strong>the primitive's semantics</strong>",
+                      "<strong>a ladder</strong>", "The climb stops.", "Paid parts bought a deeper feature, not a climb.",
+                      "rung 4 on Soup stays \"not shown\"", "a late climb appeared only once the channel's length " \
+                                                            "was out of reach")
+      end
+
+      it "types the H-rise-code labels from their committed summary" do
+        get finding_path(topless)
+
+        rows = response.parsed_body.css("#topless-rise-finding-code ~ .table-scroll tbody tr")
+        expect(rows.map { |row| row.css("td").map(&:text) })
+          .to eq([%w[rise 3 0 1 50 0], %w[capped 6 7 0 41 0], %w[none 0 0 0 45 9]])
+        locked = response.parsed_body.css("#topless-rise-finding-locked ~ .table-scroll tbody tr")
+        expect(locked.first.css("td").map(&:text)).to eq(["5137", "rise", "0 / 2", "7 / 13", "10 / 15", "new code"])
+        expect(response.body.squish).to include("only 2 gain 2 or more load-bearing bytes",
+                                                "38 of the 54 rise children end at 10")
+      end
+
+      it "links the studies it cites and the offline reading's sources" do
+        get finding_path(topless)
+
+        hrefs = response.parsed_body.css("a").pluck("href")
+        expect(hrefs).to include(end_with("docs/studies/topless.md"), end_with("docs/studies/unassisted.md"),
+                                 end_with("docs/readings/topless-rise/summary.txt"),
+                                 end_with("docs/readings/topless-rise/summary.csv"),
+                                 end_with("docs/readings/topless-rise/README.md"))
+        %w[summary.txt summary.csv README.md].each do |file|
+          expect(Rails.root.join("docs/readings/topless-rise", file)).to exist
+        end
+      end
+
+      context "with none of its children in this database" do
+        it "says so instead of reading" do
+          get finding_path(topless)
+
+          expect(response.parsed_body.text.squish).to include("No child of the sweep is in this database")
+        end
+      end
+
+      context "with its children read" do
+        before do
+          experiment = topless_rise_experiment
+          topless_rise_parents
+          Experiments::DescendantSweepBuilderService.call(experiment)
+          topless_rise_children(experiment, :rise).each_with_index do |run, index|
+            topless_rise_sample(run, fifth: 9, last: index.zero? ? 10 : 9)
+          end
+          topless_rise_children(experiment, :capped).each { |run| topless_rise_sample(run, fifth: 7, last: 8) }
+          topless_rise_children(experiment, :none).each { |run| topless_rise_sample(run, fifth: 0) }
+        end
+
+        it "states each test from the sweep's reading and draws the sweep's section" do
+          get finding_path(topless)
+
+          tests = response.parsed_body.at_css("#topless-rise-finding-tests").text.squish
+          expect(tests).to include("H-rise, rise against none: 1 pairs favour rise, 0 none and 2 tie, of 3 " \
+                                   "measured, p = 0.5, not shown.")
+          expect(tests).to include("H-rise-paid, rise against capped: 0 pairs favour rise, 2 capped and 1 tie, " \
+                                   "of 3 measured, p = 1, refuted.")
+          expect(response.parsed_body.at_css("#topless-rise-finding-risers").text.squish)
+            .to include("1 rise child of 3 rose late", "against 3 capped and 0 none")
+          expect(response.parsed_body.text).to include("Paid for depth, the soup did not keep climbing.")
+          expect(response.parsed_body.at_css("#topless-rise-reading")).to be_present
+        end
+      end
+    end
+
     context "with an unknown slug" do
       it "is a 404" do
         get "/findings/nope"

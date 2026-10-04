@@ -138,6 +138,15 @@ module Findings
       @meta_stack = report && MetaStack.build(report)
     end
 
+    # Sweep 18 read under its own pre-registered rule, from the report its sweep page draws
+    # and caches. Nil where the sweep is not in the lab.
+    def topless_rise
+      return @topless_rise if defined?(@topless_rise)
+
+      report = evidence&.topless_rise_reading
+      @topless_rise = report && ToplessRise.build(report)
+    end
+
     # Whether a sweep a finding names as its next step is in this database yet, so the page
     # links it only once that link resolves.
     def sweep_seeded?(key) = Experiment.exists?(slug: Lab.slug_for(key))
