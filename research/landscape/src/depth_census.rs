@@ -50,7 +50,7 @@ pub struct DepthCensus {
 }
 
 /// Whether `credited` cells are a tenth of `cells` or more: 1 639 of 16 384.
-fn a_tenth(credited: u64, cells: u64) -> bool {
+pub(crate) fn a_tenth(credited: u64, cells: u64) -> bool {
     credited * 10 >= cells
 }
 
@@ -298,5 +298,28 @@ mod tests {
         assert!(census.held.is_empty());
         assert_eq!(census.deepest, None);
         assert!(census.render().contains("no deepest solver"));
+    }
+
+    /// A fixed-channel world is no genes world, and `census` reads it as it read before the
+    /// genes machine was taught: this text was printed by the reading that predates it,
+    /// with the slots out-compute's reading added to the header.
+    #[test]
+    fn a_fixed_channel_world_reads_as_before_genes() {
+        let params = logic4_params();
+        assert!(crate::genes::GeneScorer::for_params(&params).is_none());
+        let scorer = DepthScorer::for_params(&params).unwrap();
+        let solver = "<<{~~{{>>~{~!0000000000000000000  \
+                      hex:3c3c7b7e7e7b7b3e3e7e7b7e2100000000000000000000000000000000000000";
+        let expected = format!(
+            "epoch 0 cells 64 ladder logic4 slots 4 distinct metabolism tapes 4\n\n\
+             per depth, metabolism tapes credited a rung that deep on all 6 fixed sets:\n   \
+             5      4 cells; commonest n=4 <<{{~~{{{{>>~{{~~!000000000000000000  \
+             hex:3c3c7b7e7e7b7b3e3e7e7b7e7e21000000000000000000000000000000000000\n   \
+             4      8 cells (a tenth); commonest n=4 {solver}\n\n\
+             rungs held by a tenth: 0x0ff0@4 n=8\n\n\
+             deepest solid rung: depth 4\n\
+             dominant deepest solver: n=4 {solver}\n"
+        );
+        assert_eq!(census(&planted(), &scorer).render(), expected);
     }
 }
