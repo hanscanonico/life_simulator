@@ -2,12 +2,12 @@
 
 The offline readings the Meta-stack sweep locks to be measured after it reads
 (`docs/design_record.md`, 2026-10-02, "Meta-stack: … pre-registered", "Reported with each deep
-child"), the topless-rise sweep's H-rise-code and the genes-rise sweep's gene-wise readings
-(below), on the lab's stored worlds. Ported
+child"), the topless-rise sweep's H-rise-code, the out-compute sweep's McShea's minimum and
+H-code and the genes-rise sweep's gene-wise readings (below), on the lab's stored worlds. Ported
 from the design study's pilot tools (`docs/studies/meta-stack.md`, `dscape`;
 `docs/studies/logic.md`, `scape`; `docs/studies/topless.md`, `bearing`) onto the merged
 engine: the metabolism tape, `logic_nand`, the logic assay (`logic::assay_on`, `Cases`) and
-the topless assay (`topless::assay`).
+the topless assay (`topless::assay_upto`, over the run's `task_max_outputs` slots).
 Every rule is the engine's — the assay, the NAND, the detector, the world — but for the
 traced stepper, which a test holds to the engine's interpreter on 20 000 random tapes.
 
@@ -34,7 +34,9 @@ runs.
 | `plant --snapshot END --params P --deep T --rung R [--source W \| --replicating T]` | (c) heritability by planting with its unplanted control, the entry's rule exactly |
 | `loadbearing T --params P [--depth D]` | the topless ladder's load-bearing bytes of a tape against a depth, its own by default (H-rise-code below) |
 | `loadbearing --snapshot W --params P` | the same for a stored world's dominant deepest solver against its deepest solid rung |
-| `loadbearing --first W1 --fifth W5 --last W10 --params P` | a topless-rise child's three worlds, each as above, and the H-rise-code label from the fifth-decile world to the last |
+| `loadbearing [--first W1] --fifth W5 --last W10 --params P` | a child's worlds, each as above, and the H-rise-code label from the fifth-decile world to the last; topless-rise reads all three, out-compute's H-code the last two |
+| `mcshea --snapshot W --params P` | McShea's minimum of a stored world: per-cell max depth among the computing cells at p10 (the minimum), p25, p50 and p90, and its max; the computing count, the silent share and the repertoire |
+| `mcshea --fifth W5 --last W10 --params P` | the same for a child's fifth-decile and last worlds, side by side |
 | `genes --snapshot W --params P [--tgen T]` | a genes world's gene-wise census and its top solver's program side and load (the genes machine, below) |
 | `genes --fifth W5 --last W10 --params P [--tgen-fifth T --tgen-last T]` | a genes-rise child's fifth-decile and last worlds, each as above, then key by key |
 | `genes --fifth W5 --last W10 --params P --minima RUN` | the child's offline-minimum row, `RUN,fifth,last`, for `lab:genes_rise_report MINIMA=` |
@@ -50,7 +52,9 @@ The params file is the run's `runs.params`, the JSON the runner is handed.
 credited on all six; paid units are counted from the run's `task_floor`.
 
 **On a `logic3` or `logic4` run** (the topless ladder), `census` reads the topless assay
-(`topless::assay`) under the run's own instruction set and NAND, a rung credited where all six
+(`topless::assay_upto`) under the run's own instruction set and NAND over the run's own
+`task_max_outputs` output slots (16 on an out-compute child, the engine's 4 on every earlier
+run; the census header prints them), a rung credited where all six
 of the ladder's fixed sets credit it, and ignores `--top`. It prints, per depth, the cells
 credited a rung that deep and the commonest tape so credited; the rungs held by a tenth of the
 world; the world's deepest solid rung; and its dominant deepest solver. The four-input sets
@@ -58,8 +62,10 @@ are the topless-rise entry's (`topless::Cases::draw(Inputs::Four, ·)` six times
 `rng::seeded(0xdee9, 4, 0)`), the three-input ones the same rule off
 `rng::seeded(0xdee9, 3, 0)`, all frozen in `src/depth.rs`. `distance`, `paths`, `plant` and
 `trace` read the two-input ladder only. On a run that reads its metabolism tapes as genes
-(`meta_genes`), `census` prints `genes --snapshot`'s reading and `loadbearing` refuses: it
-reads a tape whole, which is not that run's machine. Every other run reads exactly as it did.
+(`meta_genes`), `census` prints `genes --snapshot`'s reading and `loadbearing` and `mcshea`
+refuse: they read a tape whole, which is not that run's machine, and the minimum the
+genes-rise entry reads is classes p10 over genes, which `genes` prints. Every other run reads
+exactly as it did.
 
 ## Getting a stored world out of the lab
 
@@ -191,6 +197,62 @@ It prints each world's deepest solid rung, its dominant solver with the position
 it and how many of the 13 substitutes lose the depth at each, and the label. `census` on any
 of the three shows the tally behind it. Run it on every rise child that rises late and on
 its twins in the other arms.
+
+## McShea's minimum and H-code, per out-compute child (descriptive)
+
+The out-compute entry (`docs/design_record.md`, "Out-compute: … pre-registered", "Descriptive
+and offline") locks the method; this tool applies it exactly:
+- **the worlds**: the last stored world at or before the fifth decile's end, and the last
+  stored world, the deciles cut as for H-rise-code above (settled samples above
+  `parent_epoch` + 1 000; out-compute children store a world every 500 epochs);
+- **the cells**: all 16 384, each metabolism tape assayed under the child's own instruction
+  set and NAND, over its 16 slots (`task_max_outputs`), on the six fixed four-input sets;
+- **computing**: a cell credited at least one class on all six sets; its **max depth** is the
+  deepest class so credited. A tape credited classes on some sets but none on all six is
+  silent;
+- **the percentile**: the computing cells' max depths sorted ascending, the value at index
+  ⌊(n − 1) × p / 100⌋ counting from 0; **McShea's minimum** is p = 10. Each reads
+  **unread** where no cell computes. Printed beside it: p25, p50, p90 and the max, the
+  computing count, the **silent share** (cells not computing over all cells) and the
+  **repertoire** (classes credited on all six sets, per cell, over all cells);
+- **H-code**: topless-rise's method above, unchanged but for the 16 slots: the load-bearing
+  bytes of each world's dominant deepest solver, and the label from the fifth-decile world to
+  the last. Run it on every out-compute child that rises late and on its twins in the other
+  arms.
+
+SELECTs only. For a child run `$RUN`:
+
+```sh
+psql "$LAB_DATABASE_URL" -At -c "SELECT params FROM runs WHERE id = $RUN" > child.json
+# the two worlds: FIFTH, the last stored at or before the fifth decile's end; LAST, the last
+# stored
+read FIFTH LAST < <(psql "$LAB_DATABASE_URL" -At -F ' ' -c "
+  WITH r AS (SELECT id, parent_epoch FROM runs WHERE id = $RUN),
+  settled AS (
+    SELECT s.epoch, ROW_NUMBER() OVER (ORDER BY s.epoch) AS i, COUNT(*) OVER () AS n
+    FROM samples s JOIN r ON s.run_id = r.id WHERE s.epoch > r.parent_epoch + 1000),
+  bounds AS (SELECT MAX(epoch) FILTER (WHERE i <= 5 * n / 10) AS fifth_end FROM settled),
+  stored AS (
+    SELECT sn.epoch FROM snapshots sn JOIN r ON sn.run_id = r.id WHERE sn.blob IS NOT NULL)
+  SELECT (SELECT MAX(epoch) FROM stored, bounds WHERE epoch <= fifth_end),
+         (SELECT MAX(epoch) FROM stored)")
+for EPOCH in $FIFTH $LAST; do
+  psql "$LAB_DATABASE_URL" -At -c \
+    "SELECT encode(blob, 'hex') FROM snapshots WHERE run_id = $RUN AND epoch = $EPOCH" \
+    | xxd -r -p > e$EPOCH.lsnp
+done
+# McShea's minimum, both worlds side by side
+./target/release/landscape mcshea --fifth e$FIFTH.lsnp --last e$LAST.lsnp --params child.json
+# H-code, on a child that rises late and on its twins
+./target/release/landscape loadbearing --fifth e$FIFTH.lsnp --last e$LAST.lsnp \
+  --params child.json
+```
+
+`mcshea` reads every child, the none arm's included, where the engine records no
+`silent_share`. Its silent share and repertoire are not the engine's `silent_share` and
+`repertoire_mean`: those credit 256 sampled cells on one set of cases drawn that epoch, these
+credit every cell on all six fixed sets. Compare them across arms with each other, never with
+the engine's.
 
 ## The genes machine, per genes-rise child
 

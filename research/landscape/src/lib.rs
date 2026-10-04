@@ -9,6 +9,7 @@ pub mod census;
 pub mod depth;
 pub mod depth_census;
 pub mod genes;
+pub mod mcshea;
 pub mod paths;
 pub mod plant;
 pub mod score;

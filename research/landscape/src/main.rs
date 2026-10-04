@@ -4,7 +4,7 @@ use landscape::depth_census::{self, DepthCensus};
 use landscape::genes::{self, GeneCensus, GeneScorer, Solver};
 use landscape::score::{assayed_len, rung_index, Rungs, Scorer, DEEP};
 use landscape::stored::{read_params, Stored};
-use landscape::{census, paths, plant, tape, trace};
+use landscape::{census, mcshea, paths, plant, tape, trace};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -13,7 +13,9 @@ const USAGE: &str = "\
 landscape census   --snapshot WORLD.lsnp --params PARAMS.json [--top 8]
 landscape loadbearing TAPE --params PARAMS.json [--depth D]
 landscape loadbearing --snapshot WORLD.lsnp --params PARAMS.json
-landscape loadbearing --first W.lsnp --fifth W.lsnp --last W.lsnp --params PARAMS.json
+landscape loadbearing [--first W.lsnp] --fifth W.lsnp --last W.lsnp --params PARAMS.json
+landscape mcshea   --snapshot WORLD.lsnp --params PARAMS.json
+landscape mcshea   --fifth W.lsnp --last W.lsnp --params PARAMS.json
 landscape distance A B --params PARAMS.json
 landscape genes    --snapshot WORLD.lsnp --params PARAMS.json [--tgen T]
 landscape genes    --fifth W.lsnp --last W.lsnp --params PARAMS.json
@@ -27,7 +29,8 @@ landscape trace    TAPE --params PARAMS.json --rung xor|equ [--lines 60]
 
 On a logic3 or logic4 run, `census` reads the topless ladder and ignores --top; on one
 that reads genes (meta_genes), it reads them as `genes --snapshot` does.
-`loadbearing` reads logic3 and logic4 runs without genes only; `genes` those with genes.
+`loadbearing` and `mcshea` read logic3 and logic4 runs without genes only, over the run's
+own task_max_outputs output slots; `genes` reads those with genes.
 
 A TAPE is `hex:` and two digits a byte, or the shown form (ops, `!`, `~`, `0` for a zero,
 `·` or `_` for a no-op), padded with zeros to the run's assayed length.";
@@ -92,6 +95,7 @@ fn main() -> ExitCode {
         "distance" => distance(&args),
         "genes" => genes(&args),
         "loadbearing" => loadbearing(&args),
+        "mcshea" => mcshea(&args),
         "paths" => paths(&args),
         "plant" => plant(&args),
         "trace" => trace(&args),
@@ -122,43 +126,78 @@ fn census(args: &Args) -> Result<String, String> {
     Ok(census::census(&world, &scorer, args.number("top", 8)?).render())
 }
 
-fn depth_scorer(params: &life_engine::Params) -> Result<DepthScorer, String> {
+fn depth_scorer(params: &life_engine::Params, command: &str) -> Result<DepthScorer, String> {
     if params.gene_len().is_some() {
-        return Err(
-            "loadbearing reads a tape whole: the run reads genes, which `genes` reads".into(),
-        );
+        return Err(format!(
+            "{command} reads a tape whole: the run reads genes, which `genes` reads"
+        ));
     }
-    DepthScorer::for_params(params).ok_or(
-        "loadbearing reads the topless ladder: the run's tasks are not logic3 or logic4".into(),
-    )
+    DepthScorer::for_params(params).ok_or(format!(
+        "{command} reads the topless ladder: the run's tasks are not logic3 or logic4"
+    ))
+}
+
+/// McShea's minimum of one stored world, or of a child's fifth-decile and last worlds side
+/// by side.
+fn mcshea(args: &Args) -> Result<String, String> {
+    let names: &[&str] = if args.flags.contains_key("snapshot") {
+        &["snapshot"]
+    } else {
+        &["fifth", "last"]
+    };
+    let params = args.path("params")?;
+    let mut minima = Vec::new();
+    for name in names {
+        let stored = Stored::load(&args.path(name)?, &params)?;
+        let scorer = depth_scorer(&stored.params, "mcshea")?;
+        minima.push(mcshea::minimum(&stored.world(0)?, &scorer));
+    }
+    let columns: Vec<(&str, &mcshea::Minimum)> = names
+        .iter()
+        .map(|name| if *name == "snapshot" { "world" } else { name })
+        .zip(&minima)
+        .collect();
+    Ok(mcshea::render(&columns))
 }
 
 /// For a tape, its load-bearing bytes against `--depth`, its own depth by default. For a
 /// stored world, those of its dominant deepest solver against the world's deepest solid
-/// rung. For a child's three worlds (`--first`, `--fifth`, `--last`), each in turn and the
-/// entry's label, judged from the fifth-decile world to the last.
+/// rung. For a child's worlds (`--fifth` and `--last`, and `--first` if given), each in turn
+/// and the entry's label, judged from the fifth-decile world to the last.
 fn loadbearing(args: &Args) -> Result<String, String> {
-    let worlds = ["first", "fifth", "last"];
-    if worlds.iter().any(|world| args.flags.contains_key(*world)) {
+    let worlds = [
+        ("first", "first settled world"),
+        ("fifth", "fifth-decile world"),
+        ("last", "last world"),
+    ];
+    if worlds
+        .iter()
+        .any(|(world, _)| args.flags.contains_key(*world))
+    {
         let params = args.path("params")?;
-        let mut reports = Vec::new();
-        for world in worlds {
+        let mut out = String::new();
+        let mut read = HashMap::new();
+        for (world, title) in worlds {
+            if world == "first" && !args.flags.contains_key(world) {
+                continue;
+            }
             let stored = Stored::load(&args.path(world)?, &params)?;
-            reports.push(world_bearing(&stored)?);
+            let (reading, report) = world_bearing(&stored)?;
+            out.push_str(&format!("{title}\n{report}\n"));
+            read.insert(world, reading);
         }
-        let label = rise_code(reports[1].0, reports[2].0);
-        return Ok(format!(
-            "first settled world\n{}\nfifth-decile world\n{}\nlast world\n{}\n\
-             H-rise-code, fifth-decile world to last: {label}\n",
-            reports[0].1, reports[1].1, reports[2].1
+        let label = rise_code(read["fifth"], read["last"]);
+        out.push_str(&format!(
+            "H-rise-code, fifth-decile world to last: {label}\n"
         ));
+        return Ok(out);
     }
     if args.flags.contains_key("snapshot") {
         let stored = Stored::load(&args.path("snapshot")?, &args.path("params")?)?;
         return Ok(world_bearing(&stored)?.1);
     }
     let params = read_params(&args.path("params")?)?;
-    let scorer = depth_scorer(&params)?;
+    let scorer = depth_scorer(&params, "loadbearing")?;
     let tape = tape::parse(args.arg(0, "the tape")?, assayed_len(&params))?;
     let own = scorer
         .solid(&tape)
@@ -176,7 +215,7 @@ fn loadbearing(args: &Args) -> Result<String, String> {
 /// A stored world's deepest solid rung and its dominant solver's load-bearing count, if it
 /// holds one, and its report.
 fn world_bearing(stored: &Stored) -> Result<(Option<(u32, usize)>, String), String> {
-    let scorer = depth_scorer(&stored.params)?;
+    let scorer = depth_scorer(&stored.params, "loadbearing")?;
     let census: DepthCensus = depth_census::census(&stored.world(0)?, &scorer);
     let Some(deepest) = &census.deepest else {
         return Ok((
@@ -346,4 +385,48 @@ fn trace(args: &Args) -> Result<String, String> {
     let rung = rung_index(args.get("rung")?)?;
     let reading = trace::reading(&tape, &Scorer::for_params(&params), rung);
     Ok(reading.render(args.number("lines", 60)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use life_engine::params::{LogicNand, Tasks};
+    use life_engine::Params;
+
+    fn logic4(meta_genes: u32) -> Params {
+        Params {
+            tasks: Tasks::Logic4,
+            task_max_outputs: 16,
+            logic_nand: LogicNand::Stack,
+            meta_len: 32,
+            meta_max_len: 256,
+            meta_genes,
+            ..Params::default()
+        }
+    }
+
+    /// The genes-rise entry reads its minimum as classes per computing cell over genes, the
+    /// `genes` reading; McShea's whole-tape max depth is not it, so `mcshea` refuses.
+    #[test]
+    fn a_genes_run_is_refused_by_mcshea_and_loadbearing_with_a_pointer_to_genes() {
+        let genes = logic4(32);
+        assert_eq!(genes.gene_len(), Some(32));
+        for command in ["mcshea", "loadbearing"] {
+            let refusal = depth_scorer(&genes, command).err().unwrap();
+            assert!(refusal.starts_with(command), "{refusal}");
+            assert!(refusal.contains("`genes` reads"), "{refusal}");
+        }
+    }
+
+    #[test]
+    fn a_logic4_run_without_genes_is_read_over_its_own_slots() {
+        let scorer = depth_scorer(&logic4(0), "mcshea").unwrap();
+        assert_eq!(scorer.slots(), 16);
+    }
+
+    #[test]
+    fn a_run_off_the_topless_ladder_is_refused() {
+        let refusal = depth_scorer(&Params::default(), "mcshea").err().unwrap();
+        assert!(refusal.contains("not logic3 or logic4"), "{refusal}");
+    }
 }
