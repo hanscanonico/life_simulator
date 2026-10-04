@@ -56,7 +56,7 @@ RSpec.describe "Pages", type: :request do
          logic_share_xor logic_share_equ logic_capability logic_capability_deep dominant_logic_tasks
          dominant_logic_task_count meta_inherit_rate meta_diversity logic_capability_replicating
          logic_depth_max logic_depth_classes predation_rate predation_relation_rate repertoire_mean silent_share
-         transition_epoch]
+         meta_len_mean genes_essential_held fidelity_p10 fidelity_p50 fidelity_p90 transition_epoch]
     end
 
     it "defines the substrate and links to the sweeps" do

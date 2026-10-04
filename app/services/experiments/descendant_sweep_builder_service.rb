@@ -23,6 +23,7 @@ module Experiments
       not_emerged: "not emerged",
       no_reading: "no reading of the last world",
       below_share: "share below the minimum",
+      before_skip: "among the qualifying parents the rule sets aside",
       past_first: "past the rule's first qualifying parents"
     }.freeze
 

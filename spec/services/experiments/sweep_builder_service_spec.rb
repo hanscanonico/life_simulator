@@ -77,7 +77,9 @@ RSpec.describe Experiments::SweepBuilderService do
     it "recognises them instead of re-creating the whole sweep" do
       build_sweep
       grown = %w[ops top_k lineage_rule energy_payer tasks task_every task_reward task_floor logic_nand task_depth_cap
-                 task_max_outputs predation predation_transfer predation_loss predation_every predation_shadow_p]
+                 task_max_outputs predation predation_transfer predation_loss predation_every predation_shadow_p
+                 meta_max_len meta_min_len meta_dup meta_del meta_seg_max meta_genes meta_fid_max meta_fid_rate
+                 meta_fid_alpha]
       experiment.runs.each { |run| run.update!(params: run.params.except(*grown)) }
 
       expect { described_class.call(experiment.reload) }.not_to change(Run, :count)

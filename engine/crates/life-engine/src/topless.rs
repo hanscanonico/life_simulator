@@ -19,6 +19,7 @@ use crate::rng::{self, Rng};
 use crate::task::{
     self, TASK_CAPABILITY_DENOMINATOR, TASK_MAX_OUTPUTS, TASK_MAX_OUTPUTS_LIMIT, TASK_SAMPLE_CELLS,
 };
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
@@ -499,13 +500,100 @@ pub fn assay_upto(tape: &[u8], cases: &Cases, ops: OpSet, nand: LogicNand, slots
     credit
 }
 
-/// The topless assay of many tapes on one epoch's cases, each distinct tape run once.
+/// A metabolism tape's genes under `meta_genes` (`docs/DESIGN.md` §1.1, "Genes"): its
+/// bytes cut at offsets 0, G, 2G and so on, each gene `gene_len` bytes, the last
+/// zero-padded to `gene_len`. A gene is assayed as a tape of its own, so it runs alone on a
+/// buffer of 2G bytes with the inputs at its end, and no gene reads another's bytes.
+pub fn genes(tape: &[u8], gene_len: usize) -> impl Iterator<Item = Cow<'_, [u8]>> {
+    tape.chunks(gene_len.max(1)).map(move |gene| {
+        if gene.len() == gene_len {
+            return Cow::Borrowed(gene);
+        }
+        let mut padded = gene.to_vec();
+        padded.resize(gene_len, 0);
+        Cow::Owned(padded)
+    })
+}
+
+/// The classes a tape computes: one credit's, or under genes the union of its genes'
+/// credits, which may hold more classes than one credit has slots for. Two repertoires
+/// are equal exactly when they hold the same set.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Repertoire {
+    /// Ascending, each class once.
+    classes: Vec<u16>,
+}
+
+impl Repertoire {
+    /// The union of `credits`' classes.
+    pub fn union<'c>(credits: impl IntoIterator<Item = &'c Credit>) -> Self {
+        let mut classes: Vec<u16> = credits.into_iter().flat_map(Credit::classes).collect();
+        classes.sort_unstable();
+        classes.dedup();
+        Self { classes }
+    }
+
+    pub fn classes(&self) -> impl Iterator<Item = u16> + '_ {
+        self.classes.iter().copied()
+    }
+
+    pub fn count(&self) -> u32 {
+        self.classes.len() as u32
+    }
+
+    /// `Credit::covers` on the union: every class `other` holds is one this holds too.
+    pub fn covers(&self, other: &Self) -> bool {
+        other
+            .classes
+            .iter()
+            .all(|class| self.classes.binary_search(class).is_ok())
+    }
+
+    /// `Credit::two_input` on the union.
+    pub fn two_input(&self, rungs: &[u16; LOGIC_TASKS.len()]) -> logic::Credit {
+        let bits = rungs
+            .iter()
+            .enumerate()
+            .filter(|(_, rung)| self.classes.binary_search(rung).is_ok())
+            .fold(0u16, |bits, (index, _)| bits | 1 << index);
+        logic::Credit::from_bits(bits)
+    }
+}
+
+/// How many of a tape's genes are essential, read off its genes' credits (the design
+/// study's §10.1): the genes grouped by the set of classes they compute, copies computing
+/// the same set being one group, and a group counted when it computes a class no other
+/// group computes. A duplicate counts once, a diverged copy that adds a class counts
+/// again, and a gene whose classes other genes compute between them, or that computes
+/// none, counts nothing.
+pub fn essential_genes(credits: &[Credit]) -> u32 {
+    let mut groups: Vec<&Credit> = Vec::new();
+    for credit in credits.iter().filter(|credit| credit.count() > 0) {
+        if !groups.contains(&credit) {
+            groups.push(credit);
+        }
+    }
+    let mut computed: Vec<u16> = groups.iter().flat_map(|group| group.classes()).collect();
+    computed.sort_unstable();
+    let alone = |class: u16| {
+        let from = computed.partition_point(|held| *held < class);
+        computed.get(from + 1) != Some(&class)
+    };
+    groups
+        .iter()
+        .filter(|group| group.classes().any(alone))
+        .count() as u32
+}
+
+/// The topless assay of many tapes on one epoch's cases, each distinct tape run once, and
+/// under genes each distinct gene.
 pub struct Memo<'a> {
     cases: Cases,
     ops: OpSet,
     nand: LogicNand,
     slots: usize,
-    seen: HashMap<&'a [u8], Credit>,
+    gene_len: Option<usize>,
+    seen: HashMap<Cow<'a, [u8]>, Credit>,
 }
 
 impl<'a> Memo<'a> {
@@ -520,19 +608,47 @@ impl<'a> Memo<'a> {
             ops,
             nand,
             slots,
+            gene_len: None,
             seen: HashMap::new(),
         }
     }
 
+    /// The same memo reading a tape as genes of `gene_len` bytes where it is set: what
+    /// `repertoire` and `gene_credits` read. `credit` still runs a tape whole.
+    pub fn genes(self, gene_len: Option<usize>) -> Self {
+        Self { gene_len, ..self }
+    }
+
     pub fn credit(&mut self, tape: &'a [u8]) -> Credit {
+        self.credit_of(Cow::Borrowed(tape))
+    }
+
+    fn credit_of(&mut self, tape: Cow<'a, [u8]>) -> Credit {
         if !tape.contains(&crate::bff::EMIT) {
             return Credit::none(self.cases.inputs);
         }
-        let (cases, ops, nand, slots) = (&self.cases, self.ops, self.nand, self.slots);
-        *self
-            .seen
-            .entry(tape)
-            .or_insert_with(|| assay_upto(tape, cases, ops, nand, slots))
+        if let Some(credit) = self.seen.get(tape.as_ref()) {
+            return *credit;
+        }
+        let credit = assay_upto(&tape, &self.cases, self.ops, self.nand, self.slots);
+        self.seen.insert(tape, credit);
+        credit
+    }
+
+    /// The credit of each of `tape`'s genes in order, or of the whole tape where the memo
+    /// reads no genes.
+    pub fn gene_credits(&mut self, tape: &'a [u8]) -> Vec<Credit> {
+        match self.gene_len {
+            None => vec![self.credit(tape)],
+            Some(gene_len) => genes(tape, gene_len)
+                .map(|gene| self.credit_of(gene))
+                .collect(),
+        }
+    }
+
+    /// The classes `tape` computes: its credit, or the union of its genes'.
+    pub fn repertoire(&mut self, tape: &'a [u8]) -> Repertoire {
+        Repertoire::union(&self.gene_credits(tape))
     }
 }
 
@@ -552,8 +668,9 @@ impl DepthTally {
         }
     }
 
-    pub fn add(&mut self, credit: &Credit) {
-        for class in credit.classes() {
+    /// Counts one sampled cell's classes, each once.
+    pub fn add(&mut self, classes: impl IntoIterator<Item = u16>) {
+        for class in classes {
             *self.credited.entry(class).or_default() += 1;
         }
     }
@@ -1211,12 +1328,12 @@ pub(crate) mod tests {
         let mut tally = DepthTally::new(inputs);
         assert_eq!((tally.depth_max(), tally.classes()), (-1, 0));
         for _ in 0..25 {
-            tally.add(&credit(&[0xf0, 0x96]));
+            tally.add(credit(&[0xf0, 0x96]).classes());
         }
         assert_eq!((tally.depth_max(), tally.classes()), (-1, 0));
-        tally.add(&credit(&[0xf0]));
+        tally.add(credit(&[0xf0]).classes());
         assert_eq!((tally.depth_max(), tally.classes()), (0, 1));
-        tally.add(&credit(&[0xaa, 0x96]));
+        tally.add(credit(&[0xaa, 0x96]).classes());
         assert_eq!((tally.depth_max(), tally.classes()), (8, 2));
     }
 
@@ -1347,5 +1464,171 @@ pub(crate) mod tests {
                 );
             }
         }
+    }
+
+    /// The genes of the design study's §10.1 checks: two stack-NAND loops, a tandem variant
+    /// of the first, and an emit of x, each run alone in 32 bytes.
+    pub(crate) const LOOP: &[u8] = b"<<<<[!{~!~]";
+    pub(crate) const TANDEM: &[u8] = b"<<<<[!{~!{~!~]";
+    const ECHO: &[u8] = b"<!";
+
+    fn gene_memo<'a>(gene_len: usize) -> Memo<'a> {
+        let cases = Cases::draw(Inputs::Four, &mut rng::seeded(1, 2, 3));
+        Memo::upto(cases, OpSet::ALL, LogicNand::Stack, 16).genes(Some(gene_len))
+    }
+
+    /// `pieces` laid at offsets 0, `gene_len`, `2 * gene_len` and so on, zero between them.
+    pub(crate) fn laid(pieces: &[&[u8]], gene_len: usize) -> Vec<u8> {
+        let mut tape = Vec::new();
+        for piece in pieces {
+            let mut gene = piece.to_vec();
+            gene.resize(gene_len, 0);
+            tape.extend(gene);
+        }
+        tape
+    }
+
+    #[test]
+    fn genes_cut_at_fixed_offsets_and_pad_the_last() {
+        let cut: Vec<Cow<'_, [u8]>> = genes(b"abcdefghij", 4).collect();
+        assert_eq!(cut, [&b"abcd"[..], b"efgh", b"ij\0\0"]);
+        assert!(matches!(cut[0], Cow::Borrowed(_)));
+        assert!(matches!(cut[2], Cow::Owned(_)));
+        assert_eq!(genes(b"abcd", 4).count(), 1);
+        assert_eq!(genes(b"", 4).count(), 0);
+    }
+
+    /// A gene is read alone: whatever follows it, a gene's credit is its own run on a
+    /// buffer of twice its length, so a later gene can add classes to the tape and never
+    /// change or remove an earlier gene's. The echo falls through into whatever follows it
+    /// when the tape is run whole, so a gene that read past its own bytes would show here.
+    #[test]
+    fn a_later_gene_cannot_change_an_earlier_genes_classes() {
+        let mut rng = rng::seeded(9, 0, 0);
+        let mut tails: Vec<Vec<u8>> = (0..64)
+            .map(|_| {
+                let len = 1 + rng::below(&mut rng, 96) as usize;
+                (0..len).map(|_| rng::byte(&mut rng)).collect()
+            })
+            .collect();
+        tails.push(laid(&[TANDEM, ECHO], 32));
+        tails.push(b"]]]][[[[".to_vec());
+        tails.push(b"{<~!".to_vec());
+        for first in [LOOP, ECHO] {
+            let alone = laid(&[first], 32);
+            let tapes: Vec<Vec<u8>> = tails
+                .iter()
+                .map(|tail| [alone.clone(), tail.clone()].concat())
+                .collect();
+            let mut memo = gene_memo(32);
+            let own = assay_upto(&alone, &memo.cases, OpSet::ALL, LogicNand::Stack, 16);
+            assert!(own.count() > 0);
+            let mut read_whole_otherwise = false;
+            for tape in &tapes {
+                let whole = assay_upto(tape, &memo.cases, OpSet::ALL, LogicNand::Stack, 16);
+                read_whole_otherwise |= whole != own;
+                let credits = memo.gene_credits(tape);
+                assert_eq!(credits[0], own);
+                assert!(memo.repertoire(tape).covers(&Repertoire::union([&own])));
+            }
+            assert_eq!(read_whole_otherwise, first == ECHO);
+        }
+    }
+
+    /// The tape computes the union of its genes' classes, which may hold more than one
+    /// credit has slots for; a whole run of the same bytes reads one orbit.
+    #[test]
+    fn a_tape_computes_the_union_of_its_genes() {
+        let pair = laid(&[LOOP, TANDEM, ECHO], 32);
+        let mut memo = gene_memo(32);
+        let credits = memo.gene_credits(&pair);
+        assert_eq!(credits.len(), 3);
+        let expected: std::collections::BTreeSet<u16> =
+            credits.iter().flat_map(Credit::classes).collect();
+        let union = memo.repertoire(&pair);
+        assert_eq!(
+            union.classes().collect::<Vec<_>>(),
+            Vec::from_iter(expected)
+        );
+        assert!(union.count() > credits[0].count().max(credits[1].count()));
+        assert!(union.count() > TASK_MAX_OUTPUTS_LIMIT as u32);
+        for credit in &credits {
+            assert!(union.covers(&Repertoire::union([credit])));
+        }
+        let whole = Memo::upto(memo.cases, OpSet::ALL, LogicNand::Stack, 16).repertoire(&pair);
+        assert!(whole.count() <= TASK_MAX_OUTPUTS_LIMIT as u32);
+        assert_ne!(whole, union);
+    }
+
+    /// Essential genes, the study's §10.1: copies computing one set count once, a gene
+    /// another covers or that computes nothing counts nothing, a diverged copy that adds a
+    /// class counts again.
+    #[test]
+    fn essential_genes_count_the_groups_that_compute_a_class_alone() {
+        let inputs = Inputs::Four;
+        let credit = |classes: &[u16]| {
+            let mut credit = Credit::none(inputs);
+            for class in classes {
+                credit.insert(*class);
+            }
+            credit
+        };
+        let (a, b, c) = (credit(&[3, 5]), credit(&[5, 7]), credit(&[3, 7]));
+        let silent = Credit::none(inputs);
+        assert_eq!(essential_genes(&[]), 0);
+        assert_eq!(essential_genes(&[silent, silent]), 0);
+        assert_eq!(essential_genes(&[a]), 1);
+        assert_eq!(
+            essential_genes(&[a, a, silent, a]),
+            1,
+            "copies are one group"
+        );
+        assert_eq!(
+            essential_genes(&[a, credit(&[3, 5, 9])]),
+            1,
+            "a covered gene adds none"
+        );
+        assert_eq!(essential_genes(&[a, credit(&[9])]), 2);
+        assert_eq!(
+            essential_genes(&[a, b, c]),
+            0,
+            "each class is computed by two groups"
+        );
+        assert_eq!(essential_genes(&[a, b, c, credit(&[11])]), 1);
+        let read = |pieces: &[&[u8]]| {
+            let tape = laid(pieces, 32);
+            let mut memo = gene_memo(32);
+            essential_genes(&memo.gene_credits(&tape))
+        };
+        assert_eq!(read(&[LOOP, LOOP]), 1);
+        assert_eq!(read(&[LOOP, TANDEM]), 2);
+        assert_eq!(
+            read(&[LOOP, &[], ECHO, LOOP]),
+            1,
+            "the loop emits x too, so the ECHO gene adds no class of its own"
+        );
+        assert_eq!(read(&[TANDEM, LOOP, ECHO]), 2);
+    }
+
+    /// Repertoires relate as credits do, on sets of any size.
+    #[test]
+    fn repertoires_cover_count_and_compare_as_sets() {
+        let inputs = Inputs::Four;
+        let credit = |classes: &[u16]| {
+            let mut credit = Credit::none(inputs);
+            for class in classes {
+                credit.insert(*class);
+            }
+            credit
+        };
+        let (a, b) = (credit(&[3, 5]), credit(&[5, 7]));
+        let both = Repertoire::union([&a, &b]);
+        assert_eq!(both.count(), 3);
+        assert_eq!(both, Repertoire::union([&b, &a, &a]));
+        assert!(both.covers(&Repertoire::union([&a])));
+        assert!(!Repertoire::union([&a]).covers(&both));
+        assert!(Repertoire::default().count() == 0 && both.covers(&Repertoire::default()));
+        assert_eq!(Repertoire::union([&a]).count(), a.count());
+        assert!(Repertoire::union([&a]).covers(&Repertoire::union([&a])));
     }
 }

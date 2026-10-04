@@ -54,11 +54,22 @@ class Run < ApplicationRecord
                   "AND #{PREDATION_SQL} <> '\"#{Lab::OutComputeReading::OFF}\"'::jsonb " \
                   "AND CASE jsonb_typeof(#{TRANSFER_SQL}) WHEN 'number' THEN (#{TRANSFER_SQL})::numeric ELSE 0 END > 0"
                   .freeze
+  # A run whose fidelity level is priced pays for a heritable machine state, predation or
+  # not: it imports a machine too. Keep in step with Lab::GenesRiseReading.priced_fidelity_run?.
+  FIDELITY_MAX_SQL = "runs.params -> '#{Lab::GenesRiseReading::FIDELITY_MAX_KEY}'".freeze
+  FIDELITY_ALPHA_SQL = "runs.params -> '#{Lab::GenesRiseReading::FIDELITY_ALPHA_KEY}'".freeze
+  PRICED_FIDELITY_SQL = "CASE jsonb_typeof(#{FIDELITY_MAX_SQL}) WHEN 'number' THEN (#{FIDELITY_MAX_SQL})::numeric " \
+                        "ELSE 0 END > 0 AND CASE jsonb_typeof(#{FIDELITY_ALPHA_SQL}) WHEN 'number' " \
+                        "THEN (#{FIDELITY_ALPHA_SQL})::numeric ELSE 0 END > 0".freeze
+  MACHINE_SQL = "(#{PREDATORY_SQL}) OR (#{PRICED_FIDELITY_SQL})".freeze
   scope :metabolism, -> { where("#{REWARD_SQL} > 0") }
   scope :predatory, -> { where(PREDATORY_SQL) }
+  scope :priced_fidelity, -> { where(PRICED_FIDELITY_SQL) }
+  # The runs that import a machine, not an objective (DESIGN.md §1.4).
+  scope :machine, -> { where(MACHINE_SQL) }
   # The runs that carry a label, an objective or a machine: never pooled with plain Soup.
-  scope :labelled, -> { metabolism.or(predatory) }
-  scope :fitness_free, -> { where("#{REWARD_SQL} <= 0").where.not(PREDATORY_SQL) }
+  scope :labelled, -> { metabolism.or(machine) }
+  scope :fitness_free, -> { where("#{REWARD_SQL} <= 0").where.not(MACHINE_SQL) }
 
   # A run started from `parent`'s stored world at `epoch` — by default the latest one the
   # parent kept — for `budget` more epochs, under `params` that may change the parent's

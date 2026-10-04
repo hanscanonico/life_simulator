@@ -615,12 +615,15 @@ fn report(event: &str, url: &str, since: Instant, attempts: u32, failure: &str) 
 }
 
 /// What a snapshot answer of a world described by `params` is allowed to weigh: the
-/// uncompressed world, its metabolism tapes included, twice over plus slack. A compressed
-/// blob is always well under it, and a runner resuming twelve slots at once can afford
-/// this where a flat limit of hundreds of megabytes per slot is what exhausted the
+/// uncompressed world, its metabolism tapes included at their cap with their lengths where
+/// they grow and their levels where they carry fidelity, twice over plus slack. A
+/// compressed blob is always well under it, and a runner resuming twelve slots at once can
+/// afford this where a flat limit of hundreds of megabytes per slot is what exhausted the
 /// mini-pc's swap.
 fn snapshot_body_limit(params: &Params) -> u64 {
-    let per_cell = params.stride() as u64 + u64::from(params.meta_len);
+    let meta_lens = if params.meta_grows() { 4 } else { 0 };
+    let levels = u64::from(params.carries_fidelity());
+    let per_cell = params.stride() as u64 + u64::from(params.meta_cap()) + meta_lens + levels;
     (params.cell_count() as u64) * per_cell * 2 + SNAPSHOT_SLACK
 }
 
@@ -1187,6 +1190,48 @@ mod tests {
             snapshot.len() as u64 <= bound,
             "a {}-byte snapshot against a {bound}-byte bound",
             snapshot.len()
+        );
+    }
+
+    /// A growing metabolism channel is world up to its cap: a world whose tapes have grown
+    /// into noise must still come back.
+    #[test]
+    fn the_bound_admits_a_world_of_grown_incompressible_metabolism_tapes() {
+        let params = Params {
+            width: 32,
+            height: 32,
+            tape_len: 8,
+            tasks: life_engine::params::Tasks::Logic,
+            meta_len: 64,
+            meta_max_len: 512,
+            meta_rate: 1.0,
+            meta_dup: 1.0,
+            meta_seg_max: 512,
+            ..Params::default()
+        };
+        let mut world = life_engine::World::new(&params, 7).unwrap();
+        for x in 0..32 {
+            for y in 0..32 {
+                world.set_metabolism(x, y, &vec![1; 512]);
+            }
+        }
+        world.step();
+        let snapshot = world.snapshot();
+        let bound = snapshot_body_limit(&params);
+
+        assert!(
+            snapshot.len() as u64 <= bound,
+            "a {}-byte snapshot against a {bound}-byte bound",
+            snapshot.len()
+        );
+        assert!(
+            bound
+                > snapshot_body_limit(&Params {
+                    meta_max_len: 0,
+                    meta_dup: 0.0,
+                    meta_seg_max: 16,
+                    ..params
+                })
         );
     }
 

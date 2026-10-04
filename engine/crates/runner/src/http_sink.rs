@@ -213,6 +213,11 @@ mod tests {
             predation_relation_rate: None,
             repertoire_mean: None,
             silent_share: None,
+            meta_len_mean: None,
+            genes_essential_held: None,
+            fidelity_p10: None,
+            fidelity_p50: None,
+            fidelity_p90: None,
         }
     }
 
