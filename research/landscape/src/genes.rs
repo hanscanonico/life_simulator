@@ -147,18 +147,18 @@ pub fn substitution_rate(params: &Params, level: Option<u32>) -> f64 {
     fidelity::rate(params.meta_rate, level.unwrap_or(0))
 }
 
-/// The ⌈n·p/100⌉-th smallest, the nearest rank the engine reads its fidelity percentiles
-/// at (`fidelity_p10` and the rest).
-fn nearest_rank<T: Copy>(sorted: &[T], percent: usize) -> Option<T> {
-    (!sorted.is_empty()).then(|| sorted[(sorted.len() * percent).div_ceil(100).max(1) - 1])
+/// The value at index ⌊(n − 1)·p/100⌋ from 0 of `sorted`, ascending: the pilots' rule, which
+/// the genes-rise entry locks for the minimum and which every percentile here follows.
+fn percentile<T: Copy>(sorted: &[T], percent: usize) -> Option<T> {
+    (!sorted.is_empty()).then(|| sorted[(sorted.len() - 1) * percent / 100])
 }
 
 fn percentiles<T: Copy + Ord>(mut values: Vec<T>) -> Option<[T; 4]> {
     values.sort_unstable();
     Some([
-        nearest_rank(&values, 10)?,
-        nearest_rank(&values, 50)?,
-        nearest_rank(&values, 90)?,
+        percentile(&values, 10)?,
+        percentile(&values, 50)?,
+        percentile(&values, 90)?,
         *values.last()?,
     ])
 }
@@ -174,21 +174,131 @@ pub struct Solver {
     /// Per byte, how many of the 13 other symbols of the 14-symbol alphabet leave the tape
     /// fewer classes.
     pub losses: Vec<usize>,
-    /// The fidelity level of the cells carrying it, their median at the nearest rank;
+    /// The fidelity level of the cells carrying it, their median (`percentile`'s p50);
     /// `None` on a world that carries no levels.
     pub level: Option<u32>,
     pub rate: f64,
+    pub frame: Frame,
+    /// The epochs per inheritance per cell before the world, where given: no stored world
+    /// holds it.
+    pub tgen: Option<f64>,
+}
+
+/// The frameshift side of the load (§11.1, U_frame): the shares of the channel's deletions
+/// and duplications, as the engine draws them (`World::vary_meta`), that leave the tape
+/// fewer classes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Frame {
+    /// Over each deletion length 1 to `meta_seg_max` (never past the floor), the share of
+    /// its starts that lose a class, averaged over the lengths; 0 at the floor.
+    pub del_lose: f64,
+    /// The same for a duplicate of 1 to `meta_seg_max` bytes appended at the end, cut at
+    /// the cap; 0 at the cap.
+    pub dup_lose: f64,
+    pub del: f64,
+    pub dup: f64,
+}
+
+/// The most starts read a length, evenly spaced (the entry's 64).
+const FRAME_STARTS: usize = 64;
+
+/// The starts read of `count`: all of them, or `FRAME_STARTS` evenly spaced.
+fn frame_starts(count: usize) -> Vec<usize> {
+    if count <= FRAME_STARTS {
+        return (0..count).collect();
+    }
+    (0..FRAME_STARTS)
+        .map(|at| at * count / FRAME_STARTS)
+        .collect()
+}
+
+impl Frame {
+    fn read(tape: &[u8], genes: &Genes, scorer: &GeneScorer, params: &Params) -> Self {
+        let live = tape.len();
+        let seg_max = params.meta_seg_max as usize;
+        let floor = params.meta_min_len as usize;
+        let cap = params.meta_cap() as usize;
+        let total = genes.union().len();
+        let mut mutants: Vec<(bool, usize, usize)> = Vec::new();
+        if live > floor {
+            for len in 1..=seg_max.min(live - floor) {
+                for start in frame_starts(live - len + 1) {
+                    mutants.push((true, len, start));
+                }
+            }
+        }
+        if live < cap {
+            for len in 1..=seg_max.min(live) {
+                for start in frame_starts(live - len + 1) {
+                    mutants.push((false, len, start));
+                }
+            }
+        }
+        let losses = par_map(&mutants, |(deletes, len, start)| {
+            let (mutant, unchanged) = if *deletes {
+                (
+                    [&tape[..*start], &tape[start + len..]].concat(),
+                    start / scorer.gene_len,
+                )
+            } else {
+                let appended = (*len).min(cap - live);
+                let mut grown = tape.to_vec();
+                grown.extend_from_slice(&tape[*start..start + appended]);
+                (grown, live / scorer.gene_len)
+            };
+            let mut union: Vec<u16> = genes.0[..unchanged].iter().flatten().copied().collect();
+            for gene in scorer.genes(&mutant).iter().skip(unchanged) {
+                union.extend(scorer.gene_classes(gene));
+            }
+            union.sort_unstable();
+            union.dedup();
+            union.len() < total
+        });
+        let share = |deletes: bool| {
+            let mut by_len: BTreeMap<usize, (usize, usize)> = BTreeMap::new();
+            for ((kind, len, _), lost) in mutants.iter().zip(&losses) {
+                if *kind == deletes {
+                    let (lose, read) = by_len.entry(*len).or_default();
+                    *lose += usize::from(*lost);
+                    *read += 1;
+                }
+            }
+            match by_len.len() {
+                0 => 0.0,
+                lens => {
+                    by_len
+                        .values()
+                        .map(|(lose, read)| *lose as f64 / *read as f64)
+                        .sum::<f64>()
+                        / lens as f64
+                }
+            }
+        };
+        Self {
+            del_lose: share(true),
+            dup_lose: share(false),
+            del: params.meta_del,
+            dup: params.meta_dup,
+        }
+    }
+
+    /// U_frame: `meta_del` × the deletions' share plus `meta_dup` × the duplications'.
+    pub fn load(&self) -> f64 {
+        self.del * self.del_lose + self.dup * self.dup_lose
+    }
 }
 
 impl Solver {
     /// Reads `tape` under `scorer`: every byte substituted with each of the 13 other
-    /// symbols, the mutant gene re-assayed alone and the tape's union re-taken.
+    /// symbols, the mutant gene re-assayed alone and the tape's union re-taken; and the
+    /// channel's deletions and duplications, the genes from the first one moved re-assayed.
     pub fn read(
         tape: &[u8],
         cells: u64,
         scorer: &GeneScorer,
         params: &Params,
         level: Option<u32>,
+        tgen: Option<f64>,
     ) -> Self {
         let genes = scorer.read(tape);
         let union = genes.union();
@@ -218,6 +328,7 @@ impl Solver {
                 .count()
         });
         Self {
+            frame: Frame::read(tape, &genes, scorer, params),
             tape: tape.to_vec(),
             cells,
             gene_len: scorer.gene_len,
@@ -226,6 +337,7 @@ impl Solver {
             losses,
             level,
             rate: substitution_rate(params, level),
+            tgen,
         }
     }
 
@@ -274,10 +386,19 @@ impl Solver {
         self.losses.iter().sum::<usize>() as f64 / 14.0
     }
 
-    /// The substitution load per epoch, rate × `sub`, at the solver's own rate; §11.1's
-    /// U_sub per generation is this times the generation time T_gen.
+    /// The substitution load per epoch, rate × `sub`, at the solver's own rate.
     pub fn load(&self) -> f64 {
         self.rate * self.sub()
+    }
+
+    /// §11.1's U_sub, rate × `sub` × T_gen, where T_gen is given.
+    pub fn u_sub(&self) -> Option<f64> {
+        self.tgen.map(|tgen| self.load() * tgen)
+    }
+
+    /// §11.1's U = U_sub + U_frame a generation, where T_gen is given.
+    pub fn u(&self) -> Option<f64> {
+        self.u_sub().map(|u_sub| u_sub + self.frame.load())
     }
 
     pub fn render(&self) -> String {
@@ -308,12 +429,25 @@ impl Solver {
         );
         let _ = writeln!(
             out,
-            "  sub {:.2}; fidelity level {level}, rate {:.6e}; U_sub = rate x sub {:.6} per epoch \
-             (x T_gen for a generation)",
+            "  sub {:.2}; fidelity level {level}, rate {:.6e}; rate x sub {:.6} per epoch",
             self.sub(),
             self.rate,
             self.load()
         );
+        let _ = writeln!(
+            out,
+            "  del_lose {:.4} dup_lose {:.4}; U_frame {:.4}",
+            self.frame.del_lose,
+            self.frame.dup_lose,
+            self.frame.load()
+        );
+        let _ = match (self.tgen, self.u_sub(), self.u()) {
+            (Some(tgen), Some(u_sub), Some(u)) => writeln!(
+                out,
+                "  T_gen {tgen:.2}: U_sub {u_sub:.4} U {u:.4} a generation"
+            ),
+            _ => writeln!(out, "  T_gen not given (--tgen): U_sub and U unread"),
+        };
         let computing = self.genes.genes_computing();
         let bearing = self.count_bearing();
         for (gene, classes) in self.genes.0.iter().enumerate() {
@@ -346,7 +480,7 @@ impl Solver {
 pub struct Levels {
     pub cells: BTreeMap<u32, u64>,
     pub mean: f64,
-    /// p10, p50, p90 at the nearest rank, and the highest.
+    /// p10, p50, p90 (`percentile`), and the highest.
     pub percentiles: [u32; 4],
 }
 
@@ -383,7 +517,8 @@ pub struct GeneCensus {
 }
 
 impl GeneCensus {
-    pub fn read(world: &World, scorer: &GeneScorer) -> Self {
+    /// The census of `world`, its top solver's U read at `tgen` where given.
+    pub fn read(world: &World, scorer: &GeneScorer, tgen: Option<f64>) -> Self {
         let params = world.params();
         let cell_count = params.cell_count() as u64;
         let ranked = ranked(cells(world).map(|(x, y)| assayed(world, x, y)));
@@ -467,7 +602,7 @@ impl GeneCensus {
                 .filter_map(|(x, y)| world.fidelity(x, y).map(u32::from))
                 .collect();
             own.sort_unstable();
-            Solver::read(tape, count, scorer, params, nearest_rank(&own, 50))
+            Solver::read(tape, count, scorer, params, percentile(&own, 50), tgen)
         });
 
         Self {
@@ -654,8 +789,19 @@ fn keys(census: &GeneCensus) -> Vec<(&'static str, Option<f64>)> {
             "top: fidelity level",
             top.and_then(|top| top.level.map(f64::from)),
         ),
-        ("top: U_sub per epoch", top.map(Solver::load)),
+        ("top: rate x sub per epoch", top.map(Solver::load)),
+        ("top: U_frame", top.map(|top| top.frame.load())),
+        ("top: U_sub", top.and_then(Solver::u_sub)),
+        ("top: U", top.and_then(Solver::u)),
     ]
+}
+
+/// The genes-rise entry's offline minimum of one child, as the row `lab:genes_rise_report`
+/// reads (`run_id,fifth_minimum,last_minimum`): classes per computing cell p10 on each
+/// world, empty where no cell computes.
+pub fn minima_row(run: u64, fifth: &GeneCensus, last: &GeneCensus) -> String {
+    let minimum = |census: &GeneCensus| census.classes.map_or(String::new(), |c| c[0].to_string());
+    format!("{run},{},{}\n", minimum(fifth), minimum(last))
 }
 
 /// The fifth-decile world against the last, each read in full, then key by key.
@@ -877,13 +1023,16 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_nearest_rank_is_the_engines() {
-        let levels: Vec<u32> = (1..=256).collect();
-        assert_eq!(nearest_rank(&levels, 10), Some(26));
-        assert_eq!(nearest_rank(&levels, 50), Some(128));
-        assert_eq!(nearest_rank(&levels, 90), Some(231));
-        assert_eq!(nearest_rank(&[7u32], 10), Some(7));
-        assert_eq!(nearest_rank::<u32>(&[], 50), None);
+    fn the_percentile_is_the_pilots_floor_of_n_minus_one() {
+        let values: Vec<u32> = (1..=256).collect();
+        assert_eq!(percentile(&values, 10), Some(26), "index 25");
+        assert_eq!(percentile(&values, 50), Some(128), "index 127");
+        assert_eq!(percentile(&values, 90), Some(230), "index 229");
+        let few: Vec<u32> = (0..11).collect();
+        assert_eq!(percentile(&few, 10), Some(1));
+        assert_eq!(percentile(&few[..10], 10), Some(0), "index ⌊9 × 0.1⌋ = 0");
+        assert_eq!(percentile(&[7u32], 10), Some(7));
+        assert_eq!(percentile::<u32>(&[], 50), None);
     }
 
     /// The fast reading of a substitution (the mutant gene re-assayed, the other genes'
@@ -913,7 +1062,7 @@ pub(crate) mod tests {
         let params = genes_params();
         let read = |pieces: &[&str]| {
             let tape = laid(pieces);
-            let solver = Solver::read(&tape, 1, &scorer, &params, Some(2));
+            let solver = Solver::read(&tape, 1, &scorer, &params, Some(2), Some(10.0));
             assert_eq!(
                 solver.losses,
                 losses_by_rereading(&tape, &scorer),
@@ -992,7 +1141,7 @@ pub(crate) mod tests {
     fn the_census_reads_a_planted_world_and_its_top_solver() {
         let scorer = scorer();
         let world = planted();
-        let census = GeneCensus::read(&world, &scorer);
+        let census = GeneCensus::read(&world, &scorer, None);
         let pair = scorer.read(&laid(&[LOOP, TANDEM])).union().len();
         assert_eq!((census.cells, census.silent), (64, 32));
         assert_eq!(census.distinct_tapes, 4);
@@ -1038,8 +1187,8 @@ pub(crate) mod tests {
         };
         let back = stored.world(0).unwrap();
         assert_eq!(
-            GeneCensus::read(&back, &scorer),
-            GeneCensus::read(&world, &scorer)
+            GeneCensus::read(&back, &scorer, None),
+            GeneCensus::read(&world, &scorer, None)
         );
     }
 
@@ -1063,7 +1212,7 @@ pub(crate) mod tests {
             params: params.clone(),
             blob: world.snapshot(),
         };
-        let census = GeneCensus::read(&stored.world(0).unwrap(), &scorer);
+        let census = GeneCensus::read(&stored.world(0).unwrap(), &scorer, None);
         assert_eq!(census.levels, None);
         let top = census.top.as_ref().unwrap();
         assert_eq!((top.level, top.rate), (None, params.meta_rate));
@@ -1073,12 +1222,12 @@ pub(crate) mod tests {
     #[test]
     fn two_worlds_compare_key_by_key() {
         let scorer = scorer();
-        let last = GeneCensus::read(&planted(), &scorer);
+        let last = GeneCensus::read(&planted(), &scorer, Some(12.0));
         let mut early = planted();
         for x in 0..8 {
             early.set_metabolism(x, 0, &laid(&[LOOP]));
         }
-        let fifth = GeneCensus::read(&early, &scorer);
+        let fifth = GeneCensus::read(&early, &scorer, Some(12.0));
         let report = compare(&fifth, &last);
         assert!(report.starts_with("fifth-decile world\n"));
         let row = report
@@ -1087,5 +1236,134 @@ pub(crate) mod tests {
             .unwrap();
         assert!(row.contains("1 ->") && row.ends_with("change +1"), "{row}");
         assert!(report.contains("top: load-bearing genes"));
+    }
+
+    /// The frame reading against the whole mutant re-read: every deletion and duplication
+    /// the reading draws, enumerated again here.
+    fn frame_by_rereading(tape: &[u8], scorer: &GeneScorer, params: &Params) -> (f64, f64) {
+        let total = scorer.read(tape).union().len();
+        let live = tape.len();
+        let loses = |mutant: Vec<u8>| scorer.read(&mutant).union().len() < total;
+        let mean = |shares: Vec<f64>| match shares.len() {
+            0 => 0.0,
+            lens => shares.iter().sum::<f64>() / lens as f64,
+        };
+        let floor = params.meta_min_len as usize;
+        let cap = params.meta_cap() as usize;
+        let seg = params.meta_seg_max as usize;
+        let deletions: Vec<f64> = (1..=if live > floor {
+            seg.min(live - floor)
+        } else {
+            0
+        })
+            .map(|len| {
+                let starts = frame_starts(live - len + 1);
+                let lost = starts
+                    .iter()
+                    .filter(|start| loses([&tape[..**start], &tape[**start + len..]].concat()))
+                    .count();
+                lost as f64 / starts.len() as f64
+            })
+            .collect();
+        let duplications: Vec<f64> = (1..=if live < cap { seg.min(live) } else { 0 })
+            .map(|len| {
+                let starts = frame_starts(live - len + 1);
+                let lost = starts
+                    .iter()
+                    .filter(|start| {
+                        let mut grown = tape.to_vec();
+                        grown.extend_from_slice(&tape[**start..**start + len.min(cap - live)]);
+                        loses(grown)
+                    })
+                    .count();
+                lost as f64 / starts.len() as f64
+            })
+            .collect();
+        (mean(deletions), mean(duplications))
+    }
+
+    /// U_frame (§11.1): deletions shift every later gene's frame and lose what they cut;
+    /// a duplicate appended at the end of a whole-gene tape starts a gene of its own and
+    /// never loses a class; a tape at the floor draws no deletion and one at the cap no
+    /// duplicate.
+    #[test]
+    fn the_frame_reads_the_channels_deletions_and_duplications() {
+        let scorer = scorer();
+        let params = genes_params();
+        let mut echo_tail = laid(&[LOOP]);
+        echo_tail.extend(b"<!");
+        for tape in [
+            laid(&[LOOP]),
+            laid(&[LOOP, TANDEM]),
+            echo_tail,
+            laid(&[ECHO, LOOP]),
+        ] {
+            let frame = Frame::read(&tape, &scorer.read(&tape), &scorer, &params);
+            assert_eq!(
+                (frame.del_lose, frame.dup_lose),
+                frame_by_rereading(&tape, &scorer, &params),
+                "{}",
+                show(&tape)
+            );
+            assert!(
+                frame.del_lose > 0.0 && frame.del_lose < 1.0,
+                "{}",
+                show(&tape)
+            );
+            assert_eq!(frame.load(), 0.05 * frame.del_lose + 0.05 * frame.dup_lose);
+        }
+        let whole = laid(&[LOOP, TANDEM]);
+        assert_eq!(
+            Frame::read(&whole, &scorer.read(&whole), &scorer, &params).dup_lose,
+            0.0
+        );
+
+        let bounded = Params {
+            meta_min_len: 64,
+            meta_max_len: 64,
+            ..params.clone()
+        };
+        let frame = Frame::read(&whole, &scorer.read(&whole), &scorer, &bounded);
+        assert_eq!((frame.del_lose, frame.dup_lose), (0.0, 0.0));
+
+        let mut long = laid(&[ECHO; 3]);
+        long.extend(laid(&[LOOP]));
+        assert_eq!(frame_starts(10), (0..10).collect::<Vec<_>>());
+        assert_eq!(
+            frame_starts(128),
+            (0..64).map(|at| 2 * at).collect::<Vec<_>>()
+        );
+        let frame = Frame::read(&long, &scorer.read(&long), &scorer, &params);
+        assert!(
+            frame.del_lose > 0.0,
+            "a deletion before the loop shifts its frame"
+        );
+    }
+
+    #[test]
+    fn the_load_needs_t_gen_and_the_minima_row_is_the_reports() {
+        let scorer = scorer();
+        let params = genes_params();
+        let tape = laid(&[LOOP, TANDEM]);
+        let unread = Solver::read(&tape, 1, &scorer, &params, Some(4), None);
+        assert_eq!((unread.u_sub(), unread.u()), (None, None));
+        assert!(unread.render().contains("T_gen not given"));
+        let read = Solver::read(&tape, 1, &scorer, &params, Some(4), Some(12.5));
+        let u_sub = params.meta_rate / 4.0 * (321.0 / 14.0) * 12.5;
+        assert_eq!(read.u_sub(), Some(u_sub));
+        assert_eq!(read.u(), Some(u_sub + read.frame.load()));
+
+        let world = planted();
+        let census = GeneCensus::read(&world, &scorer, None);
+        let mut silent = World::new(&params, 3).unwrap();
+        for y in 0..8 {
+            for x in 0..8 {
+                silent.set_metabolism(x, y, &[0u8; 32]);
+            }
+        }
+        let none = GeneCensus::read(&silent, &scorer, None);
+        assert_eq!(none.classes, None);
+        assert_eq!(minima_row(4381, &census, &census), "4381,1,1\n");
+        assert_eq!(minima_row(4428, &none, &census), "4428,,1\n");
     }
 }

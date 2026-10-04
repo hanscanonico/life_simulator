@@ -15,9 +15,10 @@ landscape loadbearing TAPE --params PARAMS.json [--depth D]
 landscape loadbearing --snapshot WORLD.lsnp --params PARAMS.json
 landscape loadbearing --first W.lsnp --fifth W.lsnp --last W.lsnp --params PARAMS.json
 landscape distance A B --params PARAMS.json
-landscape genes    --snapshot WORLD.lsnp --params PARAMS.json
+landscape genes    --snapshot WORLD.lsnp --params PARAMS.json [--tgen T]
 landscape genes    --fifth W.lsnp --last W.lsnp --params PARAMS.json
-landscape genes    TAPE --params PARAMS.json [--level F]
+                   [--tgen-fifth T --tgen-last T | --minima RUN]
+landscape genes    TAPE --params PARAMS.json [--level F] [--tgen T]
 landscape paths    START --params PARAMS.json [--k 3] [--window LEN] [--rungs xor,equ] [--examples 4]
 landscape plant    --snapshot END.lsnp --params PARAMS.json --deep TAPE --rung xor|equ
                    [--source WORLD.lsnp | --replicating TAPE] [--seeds 2001,2002,2003]
@@ -112,7 +113,7 @@ fn census(args: &Args) -> Result<String, String> {
     let stored = Stored::load(&args.path("snapshot")?, &args.path("params")?)?;
     let world = stored.world(0)?;
     if let Some(scorer) = GeneScorer::for_params(&stored.params) {
-        return Ok(GeneCensus::read(&world, &scorer).render());
+        return Ok(GeneCensus::read(&world, &scorer, None).render());
     }
     if let Some(scorer) = DepthScorer::for_params(&stored.params) {
         return Ok(depth_census::census(&world, &scorer).render());
@@ -199,25 +200,39 @@ fn gene_scorer(params: &life_engine::Params) -> Result<GeneScorer, String> {
         .ok_or("genes reads a logic3 or logic4 run whose metabolism tapes are read as genes".into())
 }
 
-fn gene_census(stored: &Stored) -> Result<GeneCensus, String> {
+fn gene_census(stored: &Stored, tgen: Option<f64>) -> Result<GeneCensus, String> {
     Ok(GeneCensus::read(
         &stored.world(0)?,
         &gene_scorer(&stored.params)?,
+        tgen,
     ))
 }
 
 /// For a stored world, its gene-wise census and top solver; for a genes-rise child's
-/// fifth-decile and last worlds (`--fifth`, `--last`), each in turn and then key by key; for
-/// a tape, its solver reading at `--level`, the base rate's level 0 by default.
+/// fifth-decile and last worlds (`--fifth`, `--last`), each in turn and then key by key, or
+/// with `--minima RUN` only the child's offline-minimum CSV row; for a tape, its solver
+/// reading at `--level`, the base rate's level 0 by default. T_gen, which no stored world
+/// holds, is given per world.
 fn genes(args: &Args) -> Result<String, String> {
     let params = args.path("params")?;
     if args.flags.contains_key("fifth") || args.flags.contains_key("last") {
-        let fifth = gene_census(&Stored::load(&args.path("fifth")?, &params)?)?;
-        let last = gene_census(&Stored::load(&args.path("last")?, &params)?)?;
+        let fifth = Stored::load(&args.path("fifth")?, &params)?;
+        let last = Stored::load(&args.path("last")?, &params)?;
+        if args.flags.contains_key("minima") {
+            let run = args.number("minima", 0u64)?;
+            return Ok(genes::minima_row(
+                run,
+                &gene_census(&fifth, None)?,
+                &gene_census(&last, None)?,
+            ));
+        }
+        let fifth = gene_census(&fifth, tgen(args, "tgen-fifth")?)?;
+        let last = gene_census(&last, tgen(args, "tgen-last")?)?;
         return Ok(genes::compare(&fifth, &last));
     }
     if args.flags.contains_key("snapshot") {
-        return Ok(gene_census(&Stored::load(&args.path("snapshot")?, &params)?)?.render());
+        let stored = Stored::load(&args.path("snapshot")?, &params)?;
+        return Ok(gene_census(&stored, tgen(args, "tgen")?)?.render());
     }
     let params = read_params(&params)?;
     let scorer = gene_scorer(&params)?;
@@ -235,7 +250,20 @@ fn genes(args: &Args) -> Result<String, String> {
             params.meta_fid_max
         ));
     }
-    Ok(Solver::read(&tape, 0, &scorer, &params, level).render())
+    Ok(Solver::read(&tape, 0, &scorer, &params, level, tgen(args, "tgen")?).render())
+}
+
+fn tgen(args: &Args, flag: &str) -> Result<Option<f64>, String> {
+    if !args.flags.contains_key(flag) {
+        return Ok(None);
+    }
+    let tgen: f64 = args.number(flag, 0.0)?;
+    if !(tgen.is_finite() && tgen > 0.0) {
+        return Err(format!(
+            "--{flag} is the epochs per inheritance per cell, above 0"
+        ));
+    }
+    Ok(Some(tgen))
 }
 
 fn distance(args: &Args) -> Result<String, String> {

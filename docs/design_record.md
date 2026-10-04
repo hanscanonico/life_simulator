@@ -5180,25 +5180,34 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
     measurable at 512 and 2 048, against epochs of 35–170 ms whose spread is the load's and
     the price's (a costly world initiates less).
 
-- 2026-10-04 — **`research/landscape` reads the genes machine: the gene-wise census and the
-  top solver's load (tooling only).** For the genes-rise sweep's offline keys. On a run that
-  reads its metabolism tapes as genes (`meta_genes`; snapshot versions 12–17, levels where
-  carried), a new `genes` subcommand reads a stored world's gene-wise census over all cells:
-  a gene's classes are those credited on all six fixed four-input sets, run alone under the
-  engine's split (`topless::genes`) and assay (`topless::assay_upto` at the run's slots), a
-  cell's the union of its genes' (study §10.1); classes and essential genes held by a tenth,
-  the latter the engine's grouping over every cell rather than 256 sampled; classes and max
-  depth per computing cell p10/p50/p90, p10 being the minimum (§13.4); live length; and the
-  fidelity levels. Its top solver (§9's top-repertoire solver) gets its count-bearing bytes
-  and load-bearing genes (§10.1), `sub` (§11.1) and the load per epoch, rate × `sub`, at the
-  median level of the cells carrying it under the engine's rate law (§12.1); T_gen is not in
-  a stored world, so §11.1's per-generation U is that times T_gen. `--fifth` and `--last`
-  read a child's two worlds and compare them key by key. Judgement calls: a class is
-  credited where all six sets credit it (the engine's credits hold classes; the pilots
-  intersected functions), percentiles are at the engine's nearest rank, and the essential
-  grouping is applied to six-set class sets here, held by a test to
-  `topless::essential_genes` on one set's credits. The study's §10.1 checks read as the
-  pilot read them (12 classes; 26 with the tandem variant, 11 and 14 count-bearing bytes).
-  On a fixed-channel world `census` and `loadbearing` read exactly as before; on a genes
-  world `census` prints the genes reading and `loadbearing` refuses. Nothing in the engine,
-  the lab or any sweep changes.
+- 2026-10-04 — **`research/landscape` reads the genes machine: the gene-wise census, the
+  offline minimum and the top solver's load (tooling only).** The tool slice the genes-rise
+  entry demands before its offline readings ("The offline tool slice"), its methods applied
+  as locked there. On a run that reads its metabolism tapes as genes (`meta_genes`; snapshot
+  versions 12–17, levels where carried), a new `genes` subcommand reads a stored world over
+  all cells: each gene cut and run alone by the engine (`topless::genes`,
+  `topless::assay_upto` at the run's slots), a class credited to a gene where all six fixed
+  four-input sets credit it, a cell's classes the union (study §10.1); classes and essential
+  genes held by a tenth; classes, max depth and essential genes per computing cell; live
+  length; the fidelity levels. Percentiles are the entry's ⌊(n − 1)·p⌋ rule, and the minimum
+  is classes p10 (§13.4), printed beside the share not computing; `--minima RUN` on a
+  child's fifth-decile and last worlds writes the `run_id,fifth_minimum,last_minimum` row
+  `lab:genes_rise_report` reads. The top solver (§9's top-repertoire solver) gets its
+  count-bearing bytes and load-bearing genes with their distinct cores (§10.1), `sub`
+  (§11.1), U_frame from the channel's own deletions and duplications at up to 64 starts a
+  length, and U_sub at the median level of its cells under the engine's rate law (§12.1).
+  `--fifth` and `--last` compare the two worlds key by key.
+  - **Judgement calls.** The essential grouping is the engine's rule applied to six-set class
+    sets, which no engine credit holds; a test holds it to `topless::essential_genes` on one
+    set's credits. The pilots intersected functions across the sets before taking classes;
+    the engine's credits hold classes, so here classes are intersected. T_gen is in no stored
+    world and no sample holds it exactly (`meta_inherit_rate` is a share of interactions, and
+    a cell passed over for its price has none), so it is given per world (`--tgen`), and
+    without it U_sub and U are unread and rate × `sub` per epoch is printed.
+  - **Verified.** The study's §10.1 checks read as the pilot read them: the loop 12 classes,
+    two copies one essential gene and no load-bearing one, beside its tandem variant 26
+    classes, two essential genes, 11 and 14 count-bearing bytes. The fast substitution and
+    frame readings equal whole-tape re-reads; a stored world with levels reads as the live
+    one. On a fixed-channel world `census` and `loadbearing` print exactly what they printed
+    before; on a genes world `census` prints the genes reading and `loadbearing` refuses.
+    Nothing in the engine, the lab or any sweep changes.
