@@ -375,6 +375,24 @@ RSpec.describe Findings::ShowPage do
     end
   end
 
+  context "with the topless-rise sweep" do
+    let(:finding) { Findings::Registry.find("paid-depth-jumps-once-and-stands") }
+
+    before { topless_rise_experiment }
+
+    it "reads it through the sweep's pre-registered report" do
+      expect(page.topless_rise.report).to be_a(Lab::ToplessRiseReading::Report)
+    end
+  end
+
+  context "with the topless-rise sweep missing" do
+    let(:finding) { Findings::Registry.find("paid-depth-jumps-once-and-stands") }
+
+    it "has no reading" do
+      expect(page.topless_rise).to be_nil
+    end
+  end
+
   describe "#sweep_seeded?" do
     let(:finding) { Findings::Registry.find("paid-logic-climbs-only-read-once-tasks") }
 

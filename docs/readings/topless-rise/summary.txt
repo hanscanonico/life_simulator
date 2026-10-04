@@ -1,0 +1,298 @@
+topless-rise (sweep slug topless-rise, DESIGN 1.3 item 18): H-rise-code, the locked descriptive offline reading
+Read 2026-10-04 on the Mac, with research/landscape at main 3a10d32, on the lab's stored worlds (SELECTs only).
+
+METHOD (the pre-registration, docs/design_record.md 2026-10-02 #297, and the tool lock of #298)
+- Worlds per child: FIRST = the earliest stored world at or past the first settled sample; FIFTH = the
+  last stored world at or before the fifth decile's end; LAST = the last stored world. All 162 children
+  have n = 9 900 settled samples (61 010..160 000). The first settled sample is 61 010, and the fifth
+  decile ends at 110 500. So every child reads the same three worlds: 62 000, 110 000 and 160 000.
+- For each world: the deepest solid rung (the deepest class credited on all 6 fixed four-input sets to
+  at least 1 639 of 16 384 cells); the dominant deepest solver; its load-bearing bytes (the positions
+  where at least 7 of 13 substitutes lose that depth on all 6 sets).
+- Label, from FIFTH to LAST: new code (depth rose, count +2 or more); co-option (depth rose, count did
+  not rise); neither (depth rose, count +1); no rise in depth; unread (FIFTH or LAST holds no rung by a
+  tenth).
+- The lock reads "every rise child that rises late and its twins". That is run 5137 (parent 4971) and
+  its twins 5138 (capped) and 5139 (none). All 162 children were read here, as asked. Every row outside
+  those three is a descriptive extension, not the locked set (summary.csv column locked_subset).
+- All 486 worlds were checked byte for byte against the lab: the md5 of each local file equals
+  md5(snapshots.blob) (db_md5.txt).
+
+THE LOCKED SET
+- 5137 rise, parent 4971 (the only rise child that rises late: bar 7, last-decile median 10).
+  FIRST 62000: depth 0, 2 bytes. FIFTH 110000: depth 7, 13 bytes. LAST 160000: depth 10, 15 bytes.
+  -> NEW CODE, by the rule's minimum margin (+2 bytes for +3 rungs).
+- 5138 capped twin: 0/4, 7/12, 7/12 -> no rise in depth.
+- 5139 none twin: 0/9, 0/2, 0/2 (ECHO only) -> no rise in depth.
+
+PER-ARM LABEL COUNTS (all 54 children of each arm)
+  arm     new code  co-option  neither  no rise in depth  unread
+  rise        3         0         1           50            0
+  capped      6         7         0           41            0
+  none        0         0         0           45            9
+Among the children the report says rise late:
+  rise   (1):  new code 1
+  capped (13): new code 6, co-option 7
+- Every capped late riser also rises from its FIFTH world to its LAST world. No capped child that does
+  not rise late shows a rise between those two worlds.
+- In the rise arm, three children rise in the worlds without rising late by the rule. 5008: 6/12 to
+  8/15, new code; it first held depth 8 at 155 770, too late to move its last-decile median. 5026:
+  8/11 to 10/12, neither; it first held 10 at 156 170. 5080: 0/1 to 4/9, new code; this is a re-climb
+  to its own bar of 4, the parent's depth at descent.
+- All 9 unread children are in the none arm, which is unpaid and holds ECHO at most.
+
+SUMMARY: DOES DEPTH GAINED LATE COME WITH NEW CODE OR WITH CO-OPTION?
+Neither answer holds across the board. The answer depends on the arm and on how the step is counted.
+- In the rise arm (where depth pays), the one late rise (5137, depth 7 to 10) comes with new code at the
+  minimum margin: 13 to 15 bytes. It is not a climb past the arm's plateau. 38 of 54 rise children end
+  at depth 10 in their last world, and 36 were already at 10 in their fifth-decile world. 5137 relapsed
+  early (settled relapse at 67 470) and re-climbed to the arm's common depth 10. Its last solver
+  `.-[{[,~{!~>~>,]` carries the same loop core, `,~{!~>~>`, as the other rise children's depth-10
+  solvers (exactly in 5017, 5104 and 5143; with `!{` swapped in 5005 and 5161).
+- In the capped arm (the late gains there are steps the cap does not pay for), the split is 6 new code
+  and 7 co-option. Two of the six new-code children climb from ECHO in their fifth-decile world: 5114
+  goes from 0/2 to 7/12 and 5117 from 0/7 to 7/12. Those are re-climbs after a collapse, not a step
+  from one deep rung to the next. Counting only steps from a deep base (fifth-world depth 4 or more)
+  leaves 4 new code (each +2 bytes) and 7 co-option (0 to -2 bytes). So the capped arm's late depth
+  leans to co-option.
+- What the bytes show, read off the printed solvers (descriptive, not part of the lock). In deep worlds
+  the load-bearing bytes are a contiguous prefix of the tape that ends at a loop's closing `]`.
+  - All nine capped late risers that end at depth 8 carry the same 10-byte loop, `{,~[{~>~!]`:
+    5018, 5096, 5099, 5132, 5147, 5162 and 5165 exactly, 5069 with an extra `[` (`{[,~[{~>~!]`), and
+    5150 reordered (`{,~{[~>~{!]`).
+  - The depth-7 loop is typically `{,[~{!~>]` or `{,[~!{~>]`, 9 bytes. Its symbols are a reordering of the depth-8
+    loop with one `~` fewer.
+  - Each child's count is the loop plus the bytes in front of it. The +2 / 0 / -2 swing that separates
+    new code from co-option in the 7-to-8 steps comes mostly from how many bearing bytes stand before
+    the loop. The loop itself grows by about one byte.
+  - The parents are correlated (three children each of 18 worlds), so this one loop recurring across
+    parents may be shared ancestry, not convergence.
+- Noise floor for the +2 threshold: of 91 children whose fifth and last worlds hold the same depth
+  (above ECHO), the count changes by 0 in 74, by +1 or -1 in 13, and by 2 or more in either direction
+  in 4 (+2 or more in 2). A +2 is beyond typical drift, but only just.
+- Across all 486 worlds, the load-bearing count rises with depth: median 10 at depth 7 (n 119), 12 at
+  depth 8 (n 50), 14 at depth 10 (n 83). Deeper solvers are longer code. But in the late one-rung steps
+  the loop gains about one byte every time, and whether the label reads new code or co-option turns on
+  the bytes in front of it.
+- In one line: late depth in the paid arm is a single re-climb to the arm's plateau with +2 bytes. Late
+  depth in the capped arm is mostly a one-rung step (7 to 8) onto one recurring 10-byte loop: about
+  half co-option, about half new code at the minimum margin. That does not support a sustained growth
+  of code with depth.
+
+CAVEATS
+- The dominant deepest solver is one exact tape held by only 4 to 25 cells (median 9) of 16 384.
+  Each world is a cloud of near-variants, and the count reads one member of it.
+- The world rule and the decile rule can disagree. For 5137 the fifth-decile median is 0 (the bar of 7
+  comes from first-half persistence), but its 110 000 world already holds 7. The label is judged on the
+  worlds, as locked.
+- Cross-check: at the same epoch, the tool's depth agrees with the engine's own logic_depth_max sample
+  in 433 of 486 worlds. 48 of the 53 disagreements are at the ECHO/nothing boundary (0 against -1),
+  mostly in the none arm. The other 5 are FIRST worlds during the re-climb (5009 1/0, 5063 2/1,
+  5068 2/3, 5074 2/1, 5144 5/7, 5152 6/2), where the engine draws its case sets at random. At every
+  FIFTH and LAST world holding depth 1 or more, the two agree.
+- One substrate, one seed per parent, correlated parents, and an imported objective, primitive,
+  channel, semantics and ladder (the entry's "not claimed"). This reading is descriptive, tested
+  nowhere, and moves no outcome.
+
+FILES (in this folder)
+- summary.csv: one row per child. run_id, parent, arm, deep_parent, rises_late, extinct, ceilinged,
+  rise_bar, the decile medians; then for FIRST, FIFTH and LAST: epoch, depth ("none" = no rung by a
+  tenth), the dominant solver's cells, its load-bearing count, the engine's logic_depth_max at that
+  epoch, the solver as hex: and its bearing positions; locked_subset; label.
+- out/<run>.txt: the tool's full output per child.
+- worlds/<run>/e{62000,110000,160000}.lsnp and params/<run>.json: the inputs (273 MB, kept; under the
+  500 MB limit).
+- worlds.sql, worlds.csv, db_md5.txt, sample_depths.csv, fetch.sh, read.sh, summarize.py.
+
+COMMANDS (reproducible)
+  O=/private/tmp/claude-501/-Users-hanscanonico-Projets-life-simulator/c9d6a783-0fbc-4081-91c6-abe534ecee0b/scratchpad/topless-rise/offline
+  DB='docker exec -i life-simulator-db-1 psql -U life_simulator -d life_simulator_production'
+  # 1. build (release; rust-objcopy's strip step fails with a warning, and the binary is fine)
+  export PATH="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$PATH"
+  cd ~/Projets/life_simulator/research/landscape && CARGO_TARGET_DIR=$O/target cargo build --release --locked
+  # 2. the three worlds per child: README's SELECT, generalised to all 162 children of experiment 20
+  ssh mini-pc-lan "$DB -At -F ," < $O/worlds.sql > $O/worlds.csv   # -> 62000,110000,160000 for every child
+  # 3. params
+  echo "SELECT id, params FROM runs WHERE experiment_id = 20 ORDER BY id;" | ssh mini-pc-lan "$DB -At -F '|'" > params.txt
+  #    split into params/<id>.json
+  # 4. worlds: fetch.sh RUN 62000 110000 160000 per child (xargs -P 4); per world:
+  #    SELECT epoch, encode(blob,'hex') FROM snapshots WHERE run_id=$RUN AND epoch IN (...) AND blob IS NOT NULL
+  #    | xxd -r -p > worlds/$RUN/e$EPOCH.lsnp
+  #    10 LAST worlds came back empty over parallel ssh; they were re-fetched one at a time.
+  #    Then every file was checked against the lab with
+  #    SELECT sn.run_id, sn.epoch, md5(sn.blob) FROM snapshots sn JOIN runs r ON r.id = sn.run_id
+  #      WHERE r.experiment_id = 20 AND sn.epoch IN (62000,110000,160000) AND sn.blob IS NOT NULL
+  #    486 of 486 match.
+  # 5. the locked reading, per child (read.sh; 162 children in 36 s at -P 4):
+  $O/target/release/landscape loadbearing --first worlds/$RUN/e62000.lsnp --fifth worlds/$RUN/e110000.lsnp \
+    --last worlds/$RUN/e160000.lsnp --params params/$RUN.json > out/$RUN.txt
+  # 6. cross-check against the engine's own reading at the same epochs
+  #    SELECT s.run_id, s.epoch, s.values->>'logic_depth_max' FROM samples s JOIN runs r ON r.id = s.run_id
+  #      WHERE r.experiment_id = 20 AND s.epoch IN (62000,110000,160000)
+  # 7. python3 summarize.py   (joins ../final-report.csv by header name, writes summary.csv)
+
+PER CHILD (depth/load-bearing bytes/solver cells, engine depth in brackets; rl = rises late per the report)
+ run parent arm    rl bar f5 l10 | FIRST 62000      | FIFTH 110000     | LAST 160000      | label
+5005   4843 rise   -   10 10  10 | 10/13/17 [10]    | 10/13/18 [10]    | 10/13/15 [10]    | no rise in depth
+5006   4843 capped -    7  7   7 | 7/10/11 [7]      | 7/10/11 [7]      | 7/10/9 [7]       | no rise in depth
+5007   4843 none   -    7  0   0 | 0/1/5 [0]        | 0/2/7 [0]        | none [-1]        | unread
+5008   4844 rise   -    6  6   6 | 6/13/10 [6]      | 6/12/12 [6]      | 8/15/15 [8]      | new code
+5009   4844 capped y    6  6   7 | 1/3/7 [0]        | 6/11/10 [6]      | 7/13/8 [7]       | new code
+5010   4844 none   -    4  0   0 | 0/2/5 [0]        | none [0]         | none [-1]        | unread
+5011   4845 rise   -    8  8   8 | 7/13/12 [7]      | 8/13/13 [8]      | 8/13/14 [8]      | no rise in depth
+5012   4845 capped -    8  8   8 | 1/5/7 [1]        | 8/13/10 [8]      | 8/13/15 [8]      | no rise in depth
+5013   4845 none   -    5  0   0 | 0/2/6 [0]        | none [-1]        | 0/2/7 [0]        | unread
+5014   4852 rise   -   10 10  10 | 0/2/5 [0]        | 10/13/16 [10]    | 10/12/14 [10]    | no rise in depth
+5015   4852 capped y    4  4   7 | 0/4/7 [0]        | 4/9/8 [4]        | 7/9/12 [7]       | co-option
+5016   4852 none   -    4  0   0 | 0/7/5 [0]        | 0/4/6 [0]        | 0/2/6 [-1]       | no rise in depth
+5017   4853 rise   -   10 10  10 | 10/14/15 [10]    | 10/15/18 [10]    | 10/13/16 [10]    | no rise in depth
+5018   4853 capped y    7  7   8 | 7/10/9 [7]       | 7/10/9 [7]       | 8/12/9 [8]       | new code
+5019   4853 none   -    7  0   0 | 0/2/6 [0]        | 0/0/6 [0]        | 0/1/6 [0]        | no rise in depth
+5020   4854 rise   -   10 10  10 | 0/2/7 [0]        | 10/12/17 [10]    | 10/13/16 [10]    | no rise in depth
+5021   4854 capped -    8  8   8 | 0/2/7 [0]        | 8/13/10 [8]      | 8/12/10 [8]      | no rise in depth
+5022   4854 none   -    4  0   0 | 0/3/5 [-1]       | 0/2/5 [-1]       | 0/3/5 [0]        | no rise in depth
+5023   4861 rise   -   10 10  10 | 10/15/19 [10]    | 10/15/16 [10]    | 10/15/15 [10]    | no rise in depth
+5024   4861 capped -    7  7   7 | 7/12/11 [7]      | 7/12/8 [7]       | 7/12/9 [7]       | no rise in depth
+5025   4861 none   -    7  0   0 | 0/2/5 [0]        | 0/5/4 [-1]       | 0/2/6 [0]        | no rise in depth
+5026   4862 rise   -    8  8   8 | 7/11/12 [7]      | 8/11/12 [8]      | 10/12/12 [10]    | neither
+5027   4862 capped -    8  8   8 | 7/11/9 [7]       | 8/11/11 [8]      | 8/11/16 [8]      | no rise in depth
+5028   4862 none   -    5  0   0 | none [-1]        | 0/1/6 [0]        | 0/1/4 [0]        | no rise in depth
+5029   4863 rise   -    9  9   9 | 9/12/12 [9]      | 9/12/17 [9]      | 9/12/10 [9]      | no rise in depth
+5030   4863 capped -    7  7   7 | 7/12/9 [7]       | 7/12/9 [7]       | 7/13/13 [7]      | no rise in depth
+5031   4863 none   -    5  0   0 | 0/5/7 [0]        | none [-1]        | 0/2/6 [-1]       | unread
+5032   4870 rise   -   10 10  10 | 10/14/16 [10]    | 10/13/18 [10]    | 10/13/21 [10]    | no rise in depth
+5033   4870 capped -    7  7   7 | 7/10/10 [7]      | 7/10/11 [7]      | 7/10/10 [7]      | no rise in depth
+5034   4870 none   -    7  0   0 | 0/2/7 [0]        | 0/2/4 [0]        | 0/2/5 [0]        | no rise in depth
+5035   4871 rise   -    8  8   8 | 1/3/7 [0]        | 8/10/14 [8]      | 8/10/12 [8]      | no rise in depth
+5036   4871 capped -    8  8   8 | 0/3/7 [0]        | 8/11/11 [8]      | 8/11/10 [8]      | no rise in depth
+5037   4871 none   -    5  0   0 | 0/5/5 [-1]       | 0/1/4 [-1]       | 0/4/6 [-1]       | no rise in depth
+5038   4872 rise   -   10 10  10 | 6/13/9 [6]       | 10/14/17 [10]    | 10/15/15 [10]    | no rise in depth
+5039   4872 capped -    8  8   8 | 6/13/7 [6]       | 8/10/9 [8]       | 8/11/11 [8]      | no rise in depth
+5040   4872 none   -    4  0   0 | 0/1/6 [0]        | 0/4/6 [0]        | 0/5/5 [-1]       | no rise in depth
+5041   4879 rise   -   10 10  10 | 7/13/10 [7]      | 10/16/14 [10]    | 10/18/14 [10]    | no rise in depth
+5042   4879 capped -    7  7   7 | 0/4/5 [0]        | 7/11/8 [7]       | 7/11/9 [7]       | no rise in depth
+5043   4879 none   -    4  0   0 | 0/0/5 [-1]       | 0/2/7 [0]        | 0/2/6 [0]        | no rise in depth
+5044   4880 rise   -   10 10  10 | 7/10/10 [7]      | 10/13/20 [10]    | 10/13/21 [10]    | no rise in depth
+5045   4880 capped -    8  8   8 | 7/10/9 [7]       | 8/12/9 [8]       | 8/12/14 [8]      | no rise in depth
+5046   4880 none   -    7  0   0 | 0/2/5 [0]        | 0/2/6 [0]        | 0/2/6 [0]        | no rise in depth
+5047   4881 rise   -   10 10  10 | 7/10/11 [7]      | 10/14/15 [10]    | 10/14/15 [10]    | no rise in depth
+5048   4881 capped -    7  7   7 | 7/10/9 [7]       | 7/10/8 [7]       | 7/10/14 [7]      | no rise in depth
+5049   4881 none   -    7  0   0 | 0/6/6 [0]        | 0/8/5 [-1]       | 0/2/5 [0]        | no rise in depth
+5050   4888 rise   -   10 10  10 | 10/13/16 [10]    | 10/13/21 [10]    | 10/12/15 [10]    | no rise in depth
+5051   4888 capped -    7  7   7 | 7/9/9 [7]        | 7/9/10 [7]       | 7/9/9 [7]        | no rise in depth
+5052   4888 none   -    7  0   0 | none [0]         | 0/4/5 [0]        | 0/1/5 [0]        | no rise in depth
+5053   4889 rise   -   10 10  10 | 4/10/7 [4]       | 10/14/17 [10]    | 10/14/17 [10]    | no rise in depth
+5054   4889 capped -    7  7   7 | 4/8/10 [4]       | 7/10/8 [7]       | 7/10/12 [7]      | no rise in depth
+5055   4889 none   -    3  0   0 | 0/3/5 [0]        | 0/6/5 [-1]       | 0/9/4 [0]        | no rise in depth
+5056   4890 rise   -   10 10  10 | 0/3/6 [0]        | 10/18/19 [10]    | 10/18/20 [10]    | no rise in depth
+5057   4890 capped -    8  8   8 | 0/2/5 [0]        | 8/13/10 [8]      | 8/13/9 [8]       | no rise in depth
+5058   4890 none   -    5  0   0 | 0/2/5 [-1]       | 0/0/6 [0]        | 0/3/5 [0]        | no rise in depth
+5059   4897 rise   -   10 10  10 | 7/10/10 [7]      | 10/13/15 [10]    | 10/13/16 [10]    | no rise in depth
+5060   4897 capped -    7  7   7 | 7/10/12 [7]      | 7/10/11 [7]      | 7/10/9 [7]       | no rise in depth
+5061   4897 none   -    7  0   0 | 0/3/6 [-1]       | 0/0/5 [0]        | 0/10/5 [-1]      | no rise in depth
+5062   4898 rise   -   10 10  10 | 2/8/7 [2]        | 10/14/18 [10]    | 10/14/14 [10]    | no rise in depth
+5063   4898 capped -    7  7   7 | 2/8/7 [1]        | 7/11/9 [7]       | 7/11/11 [7]      | no rise in depth
+5064   4898 none   -    4  0   0 | 0/1/7 [0]        | 0/1/6 [0]        | none [-1]        | unread
+5065   4899 rise   -    8  8   8 | 0/2/6 [0]        | 8/11/17 [8]      | 8/11/16 [8]      | no rise in depth
+5066   4899 capped -    7  7   7 | 0/2/7 [0]        | 7/11/11 [7]      | 7/11/9 [7]       | no rise in depth
+5067   4899 none   -    4  0   0 | 0/3/5 [0]        | none [-1]        | none [-1]        | unread
+5068   4906 rise   -   10 10  10 | 2/8/6 [3]        | 10/16/16 [10]    | 10/16/15 [10]    | no rise in depth
+5069   4906 capped y    7  7   8 | 2/9/6 [2]        | 7/13/11 [7]      | 8/15/11 [8]      | new code
+5070   4906 none   -    4  0   0 | 0/1/4 [-1]       | 0/4/6 [-1]       | 0/2/4 [0]        | no rise in depth
+5071   4907 rise   -    8  8   8 | 8/20/11 [8]      | 8/13/14 [8]      | 8/13/13 [8]      | no rise in depth
+5072   4907 capped -    8  8   8 | 4/9/8 [4]        | 8/12/9 [8]       | 8/12/13 [8]      | no rise in depth
+5073   4907 none   -    4  0   0 | 0/3/4 [0]        | 0/2/4 [-1]       | 0/5/4 [0]        | no rise in depth
+5074   4908 rise   -    8  8   8 | 2/7/7 [1]        | 8/11/12 [8]      | 8/11/15 [8]      | no rise in depth
+5075   4908 capped -    8  8   8 | 2/5/8 [2]        | 8/11/11 [8]      | 8/11/12 [8]      | no rise in depth
+5076   4908 none   -    3  0   0 | none [-1]        | 0/3/5 [0]        | 0/2/5 [-1]       | no rise in depth
+5077   4915 rise   -   10 10  10 | 7/11/11 [7]      | 10/14/16 [10]    | 10/14/21 [10]    | no rise in depth
+5078   4915 capped -    7  7   7 | 7/11/11 [7]      | 7/10/9 [7]       | 7/10/10 [7]      | no rise in depth
+5079   4915 none   -    4  0   0 | 0/1/6 [0]        | 0/3/5 [0]        | 0/4/4 [0]        | no rise in depth
+5080   4916 rise   -    4  0   4 | 0/1/7 [0]        | 0/1/5 [0]        | 4/9/8 [4]        | new code
+5081   4916 capped -    7  7   7 | 0/3/6 [0]        | 7/9/10 [7]       | 7/9/13 [7]       | no rise in depth
+5082   4916 none   -    4  0   0 | 0/9/5 [-1]       | 0/1/5 [-1]       | 0/1/5 [-1]       | no rise in depth
+5083   4917 rise   -   10 10  10 | 7/9/10 [7]       | 10/12/14 [10]    | 10/12/15 [10]    | no rise in depth
+5084   4917 capped -    7  7   7 | 7/10/11 [7]      | 7/9/14 [7]       | 7/9/9 [7]        | no rise in depth
+5085   4917 none   -    7  0   0 | none [0]         | 0/2/8 [0]        | 0/5/4 [0]        | no rise in depth
+5086   4924 rise   -   10 10  10 | 7/12/9 [7]       | 10/15/14 [10]    | 10/16/16 [10]    | no rise in depth
+5087   4924 capped -    7  7   7 | 7/12/9 [7]       | 7/12/8 [7]       | 7/12/10 [7]      | no rise in depth
+5088   4924 none   -    7  0   0 | 0/2/4 [0]        | 0/4/4 [0]        | 0/1/5 [0]        | no rise in depth
+5089   4925 rise   -   10 10  10 | 0/3/6 [0]        | 10/14/13 [10]    | 10/14/14 [10]    | no rise in depth
+5090   4925 capped -    7  7   7 | 0/0/6 [0]        | 7/11/10 [7]      | 7/11/10 [7]      | no rise in depth
+5091   4925 none   -    4  0   0 | none [-1]        | 0/0/5 [0]        | 0/1/6 [-1]       | no rise in depth
+5092   4926 rise   -   10 10  10 | 0/3/8 [0]        | 10/16/14 [10]    | 10/16/16 [10]    | no rise in depth
+5093   4926 capped -    8  8   8 | 0/1/6 [0]        | 8/13/11 [8]      | 8/14/10 [8]      | no rise in depth
+5094   4926 none   -    4  0   0 | 0/4/5 [-1]       | 0/2/4 [-1]       | 0/1/6 [0]        | no rise in depth
+5095   4933 rise   -   10 10  10 | 10/15/14 [10]    | 10/14/18 [10]    | 10/14/16 [10]    | no rise in depth
+5096   4933 capped y    7  7   8 | 7/10/10 [7]      | 7/10/12 [7]      | 8/10/12 [8]      | co-option
+5097   4933 none   -    4  0   0 | 0/5/8 [0]        | 0/1/5 [-1]       | 0/3/6 [0]        | no rise in depth
+5098   4934 rise   -   10 10  10 | 7/12/11 [7]      | 10/15/20 [10]    | 10/15/13 [10]    | no rise in depth
+5099   4934 capped y    7  7   8 | 0/2/7 [0]        | 7/11/8 [7]       | 8/13/9 [8]       | new code
+5100   4934 none   -    4  0   0 | 0/9/4 [-1]       | 0/2/5 [0]        | 0/2/5 [-1]       | no rise in depth
+5101   4935 rise   -    8  8   8 | 0/3/5 [0]        | 8/10/15 [8]      | 8/10/12 [8]      | no rise in depth
+5102   4935 capped -    4  4   4 | 0/2/7 [0]        | 4/8/11 [4]       | 4/8/9 [4]        | no rise in depth
+5103   4935 none   -    4  0   0 | none [-1]        | 0/2/7 [0]        | 0/2/5 [0]        | no rise in depth
+5104   4942 rise   -   10 10  10 | 7/11/14 [7]      | 10/14/16 [10]    | 10/17/19 [10]    | no rise in depth
+5105   4942 capped -    7  7   7 | 7/11/12 [7]      | 7/10/9 [7]       | 7/10/10 [7]      | no rise in depth
+5106   4942 none   -    7  0   0 | 0/2/5 [-1]       | 0/0/7 [-1]       | 0/9/5 [0]        | no rise in depth
+5107   4943 rise   -   10 10  10 | 7/13/13 [7]      | 10/14/19 [10]    | 10/14/15 [10]    | no rise in depth
+5108   4943 capped -    7  7   7 | 0/2/7 [0]        | 7/11/9 [7]       | 7/11/8 [7]       | no rise in depth
+5109   4943 none   -    4  0   0 | 0/0/4 [0]        | 0/7/6 [0]        | none [0]         | unread
+5110   4944 rise   -   10 10  10 | 6/11/10 [6]      | 10/18/15 [10]    | 10/15/15 [10]    | no rise in depth
+5111   4944 capped -    7  7   7 | 6/11/7 [6]       | 7/11/10 [7]      | 7/11/10 [7]      | no rise in depth
+5112   4944 none   -    4  0   0 | 0/4/5 [-1]       | 0/2/6 [0]        | 0/3/5 [0]        | no rise in depth
+5113   4951 rise   -    8  8   8 | 0/4/6 [0]        | 8/13/16 [8]      | 8/13/14 [8]      | no rise in depth
+5114   4951 capped y    4  0   7 | 0/2/6 [0]        | 0/2/6 [0]        | 7/12/10 [7]      | new code
+5115   4951 none   -    4  0   0 | 0/2/6 [0]        | 0/0/4 [0]        | 0/6/5 [0]        | no rise in depth
+5116   4952 rise   -    9  9   9 | 2/8/14 [2]       | 9/13/13 [9]      | 9/13/19 [9]      | no rise in depth
+5117   4952 capped y    5  0   7 | 0/2/7 [0]        | 0/7/6 [0]        | 7/12/8 [7]       | new code
+5118   4952 none   -    5  0   0 | 0/3/7 [0]        | 0/4/6 [0]        | 0/3/5 [0]        | no rise in depth
+5119   4953 rise   -    7  7   7 | 7/9/13 [7]       | 7/9/10 [7]       | 7/9/10 [7]       | no rise in depth
+5120   4953 capped -    7  7   7 | 7/9/11 [7]       | 7/9/11 [7]       | 7/9/10 [7]       | no rise in depth
+5121   4953 none   -    4  0   0 | 0/2/5 [0]        | 0/2/5 [0]        | 0/1/5 [0]        | no rise in depth
+5122   4960 rise   -   10 10  10 | 7/9/11 [7]       | 10/12/15 [10]    | 10/12/14 [10]    | no rise in depth
+5123   4960 capped -    7  7   7 | 7/9/9 [7]        | 7/9/9 [7]        | 7/10/8 [7]       | no rise in depth
+5124   4960 none   -    7  0   0 | 0/4/5 [-1]       | 0/7/4 [0]        | 0/4/5 [0]        | no rise in depth
+5125   4961 rise   -    9  9   9 | 9/13/11 [9]      | 9/13/16 [9]      | 9/13/12 [9]      | no rise in depth
+5126   4961 capped -    8  8   8 | 7/13/9 [7]       | 8/11/9 [8]       | 8/11/12 [8]      | no rise in depth
+5127   4961 none   -    5  0   0 | 0/15/6 [0]       | 0/3/6 [0]        | 0/2/5 [0]        | no rise in depth
+5128   4962 rise   -   10 10  10 | 7/9/9 [7]        | 10/12/14 [10]    | 10/12/16 [10]    | no rise in depth
+5129   4962 capped -    7  7   7 | 7/9/8 [7]        | 7/9/9 [7]        | 7/9/11 [7]       | no rise in depth
+5130   4962 none   -    7  0   0 | 0/3/5 [0]        | 0/3/5 [0]        | 0/18/6 [0]       | no rise in depth
+5131   4969 rise   -    7  7   7 | 7/12/10 [7]      | 7/11/11 [7]      | 7/11/13 [7]      | no rise in depth
+5132   4969 capped y    5  4   8 | 0/7/6 [0]        | 5/11/9 [5]       | 8/11/12 [8]      | co-option
+5133   4969 none   -    4  0   0 | 0/2/6 [-1]       | 0/2/5 [0]        | 0/3/4 [0]        | no rise in depth
+5134   4970 rise   -   10 10  10 | 7/10/13 [7]      | 10/13/16 [10]    | 10/14/14 [10]    | no rise in depth
+5135   4970 capped -    7  7   7 | 4/10/7 [4]       | 7/10/10 [7]      | 7/10/11 [7]      | no rise in depth
+5136   4970 none   -    4  0   0 | 0/3/5 [0]        | 0/0/5 [0]        | none [-1]        | unread
+5137*  4971 rise   y    7  0  10 | 0/2/7 [0]        | 7/13/8 [7]       | 10/15/15 [10]    | new code
+5138*  4971 capped -    7  7   7 | 0/4/5 [0]        | 7/12/8 [7]       | 7/12/8 [7]       | no rise in depth
+5139*  4971 none   -    3  0   0 | 0/9/4 [0]        | 0/2/5 [0]        | 0/2/5 [0]        | no rise in depth
+5140   4978 rise   -   10 10  10 | 10/12/18 [10]    | 10/12/17 [10]    | 10/12/13 [10]    | no rise in depth
+5141   4978 capped -    7  7   7 | 7/9/10 [7]       | 7/9/9 [7]        | 7/9/8 [7]        | no rise in depth
+5142   4978 none   -    7  0   0 | 0/2/6 [0]        | 0/1/5 [0]        | 0/0/5 [0]        | no rise in depth
+5143   4979 rise   -   10 10  10 | 7/12/9 [7]       | 10/16/16 [10]    | 10/15/25 [10]    | no rise in depth
+5144   4979 capped -    7  7   7 | 5/10/7 [7]       | 7/12/10 [7]      | 7/12/10 [7]      | no rise in depth
+5145   4979 none   -    5  0   0 | 0/2/6 [0]        | 0/2/6 [0]        | 0/0/8 [0]        | no rise in depth
+5146   4980 rise   -   10 10  10 | 0/2/7 [0]        | 10/13/15 [10]    | 10/14/14 [10]    | no rise in depth
+5147   4980 capped y    6  6   8 | 0/2/6 [0]        | 6/14/10 [6]      | 8/14/9 [8]       | co-option
+5148   4980 none   -    5  0   0 | 0/2/6 [0]        | 0/3/6 [0]        | 0/3/7 [0]        | no rise in depth
+5149   4987 rise   -   10 10  10 | 10/16/18 [10]    | 10/14/17 [10]    | 10/14/16 [10]    | no rise in depth
+5150   4987 capped y    7  7   8 | 7/11/9 [7]       | 7/11/11 [7]      | 8/11/9 [8]       | co-option
+5151   4987 none   -    7  0   0 | 0/2/5 [-1]       | 0/2/7 [-1]       | 0/1/4 [0]        | no rise in depth
+5152   4988 rise   -   10 10  10 | 6/11/7 [2]       | 10/14/15 [10]    | 10/14/24 [10]    | no rise in depth
+5153   4988 capped -    7  7   7 | 1/5/7 [1]        | 7/10/10 [7]      | 7/10/10 [7]      | no rise in depth
+5154   4988 none   -    3  0   0 | 0/5/6 [-1]       | 0/3/6 [0]        | 0/4/5 [0]        | no rise in depth
+5155   4989 rise   -   10 10  10 | 10/14/17 [10]    | 10/14/14 [10]    | 10/14/14 [10]    | no rise in depth
+5156   4989 capped -    7  7   7 | 7/11/10 [7]      | 7/11/8 [7]       | 7/11/10 [7]      | no rise in depth
+5157   4989 none   -    7  0   0 | 0/4/5 [0]        | 0/3/4 [0]        | 0/2/5 [-1]       | no rise in depth
+5158   4996 rise   -    7  7   7 | 7/9/11 [7]       | 7/9/14 [7]       | 7/9/12 [7]       | no rise in depth
+5159   4996 capped -    7  7   7 | 6/9/8 [6]        | 7/9/10 [7]       | 7/9/12 [7]       | no rise in depth
+5160   4996 none   -    4  0   0 | 0/1/5 [-1]       | 0/2/5 [0]        | 0/2/5 [-1]       | no rise in depth
+5161   4997 rise   -   10 10  10 | 7/12/11 [7]      | 10/15/16 [10]    | 10/15/17 [10]    | no rise in depth
+5162   4997 capped y    7  7   8 | 4/8/7 [4]        | 7/11/8 [7]       | 8/10/12 [8]      | co-option
+5163   4997 none   -    4  0   0 | none [0]         | 0/5/4 [-1]       | 0/4/4 [0]        | no rise in depth
+5164   4998 rise   -    9  8   8 | 7/11/12 [7]      | 8/12/13 [8]      | 8/12/13 [8]      | no rise in depth
+5165   4998 capped y    7  7   8 | 0/0/8 [0]        | 7/12/10 [7]      | 8/10/14 [8]      | co-option
+5166   4998 none   -    4  0   0 | 0/4/5 [0]        | none [-1]        | 0/2/4 [-1]       | unread
+(* = the locked set: the rise child that rises late and its twins)

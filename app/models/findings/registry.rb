@@ -7,6 +7,28 @@ module Findings
   module Registry
     ALL = [
       Finding.new(
+        slug: "paid-depth-jumps-once-and-stands",
+        title: "Paid for depth, the soup jumps once and stands: no late rise on a ladder without a near top",
+        date: Date.new(2026, 10, 4),
+        experiment_slug: "topless-rise",
+        related_finding_slugs: %w[paid-parts-assemble-deep-logic-on-a-stack-nand],
+        status: :negative,
+        imports_objective: true,
+        summary: "DESIGN §1.3 sweep 18 asked whether the deepest logic feature a soup holds keeps " \
+                 "getting deeper when depth is paid, on a ladder of every function of four inputs, " \
+                 "each paid by its minimal NAND count. The 54 meta-stack worlds ran another 100 000 " \
+                 "epochs under three rewards: depth paid, depth paid up to five NANDs, nothing paid. " \
+                 "All 162 children finished, none died out and none reached the ladder's floor. The " \
+                 "rung-4 question is not shown: one child of the paid arm rose late against none " \
+                 "unpaid, 1 to 0 with 53 ties (p = 0.5). Against the capped arm it is refuted, 1 to " \
+                 "13: the arm that pays nothing past depth five crept up a rung more often. The " \
+                 "re-readings agree. The one late rise is a re-climb to depth 10, where most paid " \
+                 "children sat from early on, and offline its code grew by 2 bytes, barely above " \
+                 "drift. The soup takes the jumps a reorganisation offers early, then stands. The " \
+                 "substrate imports an objective, a primitive, a hereditary channel, the " \
+                 "primitive's semantics and a ladder, so rung 4 on Soup stays not shown."
+      ),
+      Finding.new(
         slug: "reach-4-carries-to-growable-tapes",
         title: "On growable tapes, a reach of 4 emerges more than ten times as often as radius 1",
         date: Date.new(2026, 10, 3),

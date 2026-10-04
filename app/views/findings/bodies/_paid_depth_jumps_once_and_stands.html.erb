@@ -1,0 +1,280 @@
+<% sweep = Lab::SWEEPS.fetch("topless_rise") %>
+<% constants = Lab::ToplessRiseReading %>
+<% epochs = number_with_delimiter sweep.fetch(:epochs), delimiter: " " %>
+<% repo_url = "https://github.com/hanscanonico/life_simulator/blob/main" %>
+<% record_url = "#{repo_url}/docs/design_record.md" %>
+<% studies_url = "#{repo_url}/docs/studies" %>
+<% readings_url = "#{repo_url}/docs/readings/topless-rise" %>
+
+<h2>Question</h2>
+<p>
+  <%= link_to "With a stack NAND on a metabolism tape", finding_path("paid-parts-assemble-deep-logic-on-a-stack-nand") %>,
+  paid parts assembled XOR and EQU in a sixth of the worlds. That ladder tops out at EQU: a
+  world that holds it has nowhere further to be paid for. The
+  <%= link_to "topless study", "#{studies_url}/topless.md" %> replaces it by a ladder with no
+  near top, every function of four inputs, each paid by its minimal NAND count, its depth.
+  <strong>When depth is paid, does the deepest rung a soup holds keep rising late in a long
+  run?</strong> That is the open-endedness question on this machine.
+</p>
+
+<h2>Method</h2>
+<p>
+  The parents are every meta-stack-arm child of the
+  <%= link_to "Meta-stack sweep", experiment_path(constants::PARENTS.fetch("experiment")) %>,
+  54 worlds from 18, each continued from its last stored world for another <%= epochs %>
+  epochs, seed <%= sweep.fetch(:seeds).first %>, keeping its metabolism tape and stack NAND.
+  Three arms, every one on the four-input ladder:
+</p>
+<ul>
+  <li><strong>rise</strong>: every rung paid by its depth, at a reward of
+    <%= number_with_delimiter constants::REWARD, delimiter: " " %>, chosen so no single rung up
+    to the ladder's floor saturates a cell.</li>
+  <li><strong>capped</strong>: the same, but any rung deeper than
+    <%= constants::DEPTH_CAP %> NANDs is paid as one of depth <%= constants::DEPTH_CAP %>.
+    Depth past the cap buys nothing.</li>
+  <li><strong>none</strong>: nothing paid; the depth is still read.</li>
+</ul>
+<p>
+  The reading is <strong>pre-registered</strong>, with every number fixed before a child was
+  seeded: <%= link_to "docs/design_record.md", record_url %>, 2026-10-02, "Topless rise: does
+  the deepest rung held keep rising when depth is paid?", DESIGN §1.3 item 18. The rules are
+  Logic's: a settling window of
+  <%= number_with_delimiter constants::SETTLING_WINDOW, delimiter: " " %> epochs, decile
+  medians, and no pair with an extinct child in a test. A child <strong>rises late</strong>
+  where its last-decile median depth, the deepest rung held by a tenth of the world, is at
+  least <%= constants::RISE_STEP %> above the deepest its lineage reached before the second
+  half: its fifth-decile median, its parent's depth at descent, and every depth it held
+  <%= constants::PERSISTENCE_RUN %> samples running by then. Climbing back to where the
+  parent stood is no rise. Two one-sided sign tests at
+  p &lt; <%= constants::SIGN_TEST_LEVEL %>:
+</p>
+<ul>
+  <li><strong>H-rise</strong>, the rung-4 question (rise against none): the rise rule.</li>
+  <li><strong>H-rise-paid</strong> (rise against capped): the rise rule. Does the climb need
+    depth itself to pay?</li>
+</ul>
+<p>
+  Each test is also read with the extinct pairs kept, and on the children of Meta-stack's 9
+  deep children alone, a declared subgroup. Neither re-reading decides an outcome. The entry
+  also locks <strong>H-rise-code</strong>, descriptive and tested nowhere: whether a late rise
+  in depth comes with new code or with old code co-opted.
+</p>
+
+<% reading = @show.topless_rise %>
+<h2>Result</h2>
+<% if reading&.any? %>
+  <p>
+    <% reading.tests.each do |test| %>
+      <span class="badge <%= test.badge_class %>"><%= test.hypothesis %> <%= test.outcome_label %></span>
+    <% end %>
+    <% if reading.mostly_ceilinged? %>
+      <strong>Most rise children are ceilinged: the ladder had a near top after all, and the
+      tests are not read as an answer.</strong>
+    <% elsif reading.climb_stopped? %>
+      <strong>Paid for depth, the soup did not keep climbing.</strong>
+    <% else %>
+      <strong>Paid for depth, the deepest rung rose late: see the tests below.</strong>
+    <% end %>
+    <% if reading.interim? %>
+      Not every child of this sweep has finished, so this reading is interim.
+    <% end %>
+  </p>
+  <ul id="topless-rise-finding-tests">
+    <% reading.readings.each do |test, kept, deep| %>
+      <% comparison = test.comparison %>
+      <% treatment = test.treatment.name %>
+      <% control = test.control.name %>
+      <li class="mb-3">
+        <strong><%= test.hypothesis %></strong>, <%= treatment %> against <%= control %>:
+        <%= comparison.favouring %> pairs favour <%= treatment %>, <%= comparison.against %>
+        <%= control %> and <%= comparison.ties %> tie, of <%= comparison.measured_count %>
+        measured<% if comparison.p_value %>, p = <%= p_value_text(comparison.p_value) %><% end %>,
+        <span class="badge <%= test.badge_class %>"><%= test.outcome_label %></span>.
+        <% if comparison.agreement.any? %>
+          <%= pluralize(comparison.agreement.count { |row| row.treatment.positive? }, "parent") %>
+          of <%= comparison.agreement.size %> gave a pair favouring <%= treatment %>.
+        <% end %>
+        <% [["With the extinct pairs kept", kept], ["On the deep parents' children", deep]].each do |label, other| %>
+          <%= label %>: <%= other.comparison.favouring %> to <%= other.comparison.against %>
+          with <%= other.comparison.ties %> ties<% if other.comparison.p_value %>,
+          p = <%= p_value_text(other.comparison.p_value) %><% end %>,
+          <span class="badge <%= other.badge_class %>"><%= other.outcome_label %></span>.
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+  <% rise_risers = reading.late_risers(:rise) %>
+  <% capped_risers = reading.late_risers(:capped) %>
+  <p id="topless-rise-finding-risers">
+    <%= pluralize(rise_risers.size, "rise child", plural: "rise children") %> of
+    <%= reading.arm(:rise).children.size %> rose late<% if rise_risers.any? %>
+    (<%= safe_join(rise_risers.map { |child| link_to("run #{child.run_id}", run_path(child.run_id)) }, ", ") %>)<% end %>,
+    against <%= capped_risers.size %> capped and <%= reading.late_risers(:none).size %> none.
+    Settled relapses: <%= reading.relapse_count(:rise) %> rise,
+    <%= reading.relapse_count(:capped) %> capped and <%= reading.relapse_count(:none) %> none.
+    <%= pluralize(reading.extinct_count, "child", plural: "children") %> died out and
+    <%= reading.ceilinged_count %> reached the ladder's floor of
+    <%= constants::CEILING_DEPTH %> before the second half.
+  </p>
+  <p class="text-sm text-muted">
+    Every count above is read from the sweep's stored samples at render time, through the same
+    reading <%= link_to "the sweep page", experiment_path("topless-rise", anchor: "topless-rise-reading") %>
+    draws.
+  </p>
+
+  <%= render "experiments/topless_rise_reading", reading: reading.report %>
+<% else %>
+  <p class="text-muted">
+    No child of <%= link_to "the sweep", experiment_path("topless-rise") %> is in this database,
+    so there is nothing to read here. This page reads the children at render time and states
+    the claim from them.
+  </p>
+<% end %>
+
+<h2>H-rise-code, measured offline</h2>
+<p>
+  The pre-registration locks a descriptive reading of the code behind each late rise: on the
+  fifth-decile world and the last, the <strong>dominant deepest solver</strong>, the commonest
+  metabolism tape credited the world's deepest solid rung, and its
+  <strong>load-bearing bytes</strong>, the positions where at least
+  <%= constants::CODE_BEARING_SYMBOLS %> of the 13 other symbols lose that depth on
+  <%= constants::CODE_CASE_SETS %> fixed four-input case sets. Where the depth rose, the code is
+  <strong>new code</strong> if the count rose by <%= constants::CODE_NEW_BYTES %> or more,
+  <strong>co-option</strong> if it did not rise, and <strong>neither</strong> if it rose by 1.
+  It was made on 2026-10-04 with <span class="mono">research/landscape/</span> at main
+  <span class="mono">3a10d32</span> on the lab's stored worlds, read through SELECTs only, and
+  every world was checked byte for byte against the lab. It is an offline measurement, not this
+  page's code, so the table below is typed from its
+  <%= link_to "summary", "#{readings_url}/summary.txt" %>
+  (<%= link_to "one row per child", "#{readings_url}/summary.csv" %>), whose
+  <%= link_to "README", "#{readings_url}/README.md" %> gives the scripts as run. The lock covers
+  the one rise child that rose late and its twins; every other child was read too, as a
+  descriptive extension. Every child resolves to the same three stored worlds: 62&nbsp;000,
+  110&nbsp;000 and 160&nbsp;000.
+</p>
+<figure class="table-figure mt-4">
+  <figcaption class="table-caption text-sm text-muted" id="topless-rise-finding-code">
+    The label from the fifth-decile world to the last, all 54 children of each arm.
+  </figcaption>
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="topless-rise-finding-code">
+    <table class="data-table" aria-labelledby="topless-rise-finding-code">
+      <thead>
+        <tr>
+          <th>Arm</th>
+          <th class="numeric">New code</th>
+          <th class="numeric">Co-option</th>
+          <th class="numeric">Neither</th>
+          <th class="numeric">No rise in depth</th>
+          <th class="numeric">Unread</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>rise</td><td class="numeric">3</td><td class="numeric">0</td><td class="numeric">1</td><td class="numeric">50</td><td class="numeric">0</td></tr>
+        <tr><td>capped</td><td class="numeric">6</td><td class="numeric">7</td><td class="numeric">0</td><td class="numeric">41</td><td class="numeric">0</td></tr>
+        <tr><td>none</td><td class="numeric">0</td><td class="numeric">0</td><td class="numeric">0</td><td class="numeric">45</td><td class="numeric">9</td></tr>
+      </tbody>
+    </table>
+  </div>
+</figure>
+<figure class="table-figure mt-4">
+  <figcaption class="table-caption text-sm text-muted" id="topless-rise-finding-locked">
+    The locked set: depth, then load-bearing bytes, of the dominant deepest solver in each world.
+  </figcaption>
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="topless-rise-finding-locked">
+    <table class="data-table" aria-labelledby="topless-rise-finding-locked">
+      <thead>
+        <tr>
+          <th>Child</th>
+          <th>Arm</th>
+          <th class="numeric">62&nbsp;000</th>
+          <th class="numeric">110&nbsp;000</th>
+          <th class="numeric">160&nbsp;000</th>
+          <th>Label</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>5137</td><td>rise</td><td class="numeric">0 / 2</td><td class="numeric">7 / 13</td><td class="numeric">10 / 15</td><td>new code</td></tr>
+        <tr><td>5138</td><td>capped</td><td class="numeric">0 / 4</td><td class="numeric">7 / 12</td><td class="numeric">7 / 12</td><td>no rise in depth</td></tr>
+        <tr><td>5139</td><td>none</td><td class="numeric">0 / 9</td><td class="numeric">0 / 2</td><td class="numeric">0 / 2</td><td>no rise in depth</td></tr>
+      </tbody>
+    </table>
+  </div>
+</figure>
+<ul>
+  <li>
+    <strong>The one rise child that rose late is a re-climb, not a climb.</strong> 5137, of
+    parent 4971, relapsed early and climbed back to depth 10 with 2 more load-bearing bytes,
+    new code by the rule's minimum margin. Depth 10 is the arm's common plateau: 38 of the 54
+    rise children end at 10, and 36 of them were already at 10 in the fifth-decile world. 5137's
+    last solver carries the same loop core as other rise children's depth-10 solvers.
+  </li>
+  <li>
+    <strong>The capped arm creeps, mostly one rung.</strong> Its late risers end at depth 7 or
+    8, which the cap pays as depth <%= constants::DEPTH_CAP %>. The nine that end at 8, seven of
+    them one rung up from 7, all carry one recurring 10-byte loop,
+    <span class="mono">{,~[{~&gt;~!]</span> or a near variant of it. Counting only steps from
+    depth 4 or more, 4 are new code, each +2 bytes, and 7 co-option. The parents are
+    correlated, so the recurring loop may be shared ancestry rather than convergence.
+  </li>
+  <li>
+    <strong>+2 bytes is barely above drift.</strong> Of the 91 children whose fifth-decile and
+    last worlds hold the same depth above ECHO, only 2 gain 2 or more load-bearing bytes.
+  </li>
+  <li>
+    <strong>Deeper solvers are longer code, but the late steps barely grow it.</strong> Across
+    all 486 worlds the median count is 10 at depth 7, 12 at depth 8 and 14 at depth 10. Depth
+    gained late does not come with sustained code growth.
+  </li>
+</ul>
+
+<h2>What it means</h2>
+<p>
+  <strong>The climb stops.</strong> Paid for depth, on a ladder with no near top, the soup takes
+  the jumps a reorganisation offers early, to depth 10 in most rise children, and then stands
+  there for the rest of a <%= epochs %>-epoch run. The one late rise is a lineage climbing back
+  to that plateau. The capped arm, whose deeper rungs pay nothing extra, rose late more often
+  than the rise arm, mostly by one rung onto a loop it shares across parents. Paid parts bought a deeper feature, not a climb.
+  That is the open-endedness answer for this machine, and it is a negative one.
+</p>
+<p>
+  It holds on a machine built for it. The substrate imports five things: <strong>an
+  objective</strong>, the paid tasks; <strong>a primitive</strong>, the NAND byte;
+  <strong>a hereditary channel</strong>, the metabolism tape the world copies;
+  <strong>the primitive's semantics</strong>, the stack NAND; and <strong>a ladder</strong> of
+  growing input arity.
+</p>
+
+<h2>What is not claimed</h2>
+<ul>
+  <li>
+    <strong>Nothing about rung 4 on Soup.</strong> Whatever rose or did not here was paid for by
+    tasks the programme chose. It is never pooled with the fitness-free runs, and rung 4 on
+    Soup stays "not shown".
+  </li>
+  <li>
+    <strong>Not a ceiling of four inputs.</strong> No child held depth
+    <%= constants::CEILING_DEPTH %>, the ladder's floor, in any sample: the soup stopped well
+    below the deepest the reading can show.
+  </li>
+  <li>
+    <strong>Not every budget.</strong> It is one substrate, one reward, one seed a parent and
+    <%= epochs %> epochs, and the 54 parents are three correlated children of 18 worlds.
+  </li>
+</ul>
+
+<h2>What comes next</h2>
+<p>
+  The next line removes the imports rather than paying for more, the ablation ladder of the
+  <%= link_to "unassisted study", "#{studies_url}/unassisted.md" %>.
+  <%= link_to_if @show.sweep_seeded?("out_compute"), "Out-compute", experiment_path(Lab.slug_for("out_compute")) %>
+  (DESIGN §1.3 item 19) replaces the paid ladder by an endogenous rule, a cell taking energy
+  from a neighbour whose every computed function it computes too.
+  <%= link_to_if @show.sweep_seeded?("genes_rise"), "Genes rise", experiment_path(Lab.slug_for("genes_rise")) %>
+  (DESIGN §1.3 item 20, pre-registered in <%= link_to "docs/design_record.md", record_url %>,
+  2026-10-04, "Genes rise: does held code keep rising late, at a cap the run does not reach,
+  with nothing paid?") adds a growable metabolism channel run as independent genes, with a
+  priced, heritable fidelity. The study's pilots (§8–§13) are honest about what that took: a
+  late climb appeared only once the channel's length was out of reach, and a capped twin
+  flattened within a few thousand epochs. Room to grow, not pay for depth, is what they climbed
+  on.
+</p>
