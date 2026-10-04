@@ -4,7 +4,7 @@ namespace :lab do
   desc "Build a sweep experiment from DESIGN.md 1.3 " \
        "(mutation_rate, world_size, radius, max_steps, ops, energy_per_epoch, " \
        "environmental_structure, max_tape_len, host_parasite, asymmetric_execution, from_emerged, metabolism, logic, " \
-       "meta_stack, topless_rise)"
+       "meta_stack, topless_rise, out_compute, genes_rise)"
   task :sweep, [:sweep] => :environment do |_task, args|
     definition = Lab::SWEEPS[args[:sweep]]
     raise "Unknown sweep #{args[:sweep].inspect}. Known sweeps: #{Lab::SWEEPS.keys.join(', ')}" if definition.nil?
@@ -336,6 +336,32 @@ namespace :lab do
     print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
   end
 
+  desc "Read the out-compute sweep as pre-registered: every child, every arm, H-endogenous, H-ratchet, H-driven, " \
+       "H-rise-unassisted and H-repertoire with their extinct-kept and unpiloted readings (FORMAT=csv for CSV); " \
+       "labelled interim until every child of every qualifying parent is terminal"
+  task out_compute_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("out_compute"))
+    raise "The out-compute sweep is not seeded." if experiment.nil?
+
+    report = Experiments::OutComputeReadingService.call(experiment: experiment)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
+  desc "Read the genes-rise sweep as pre-registered: every child, every arm, H-rise, H-rise-genes, H-room, " \
+       "H-shadow and H-driven with their extinct-kept readings (FORMAT=csv for CSV; MINIMA=path for the offline " \
+       "minimum's CSV, run_id,fifth_minimum,last_minimum, without which H-driven reads no pairs); labelled interim " \
+       "until every child of every qualifying parent is terminal"
+  task genes_rise_report: :environment do
+    experiment = Experiment.find_by(slug: Lab.slug_for("genes_rise"))
+    raise "The genes-rise sweep is not seeded." if experiment.nil?
+
+    minima = ENV.fetch("MINIMA", nil)&.then { |path| Lab::GenesRiseReading::Minimum.parse(File.read(path)) }
+    report = Experiments::GenesRiseReadingService.call(experiment: experiment, minima: minima)
+
+    print ENV.fetch("FORMAT", nil) == "csv" ? report.to_csv : report.to_text
+  end
+
   desc "Read the lineage-diversity sweep as pre-registered: every run, every arm, the hypothesis " \
        "(FORMAT=csv for CSV)"
   task lineage_diversity_report: :environment do
@@ -374,6 +400,39 @@ namespace :lab do
     deleted = Run.terminal.find_each.sum { |run| Runs::PruneSnapshotsService.call(run: run) }
 
     puts "pruned #{deleted} snapshots"
+  end
+
+  desc "Delete the intermediate stored worlds of the founding runs that never crossed (#268): a dry run " \
+       "unless CONFIRM=yes; MAX_RUNS and TIME_LIMIT (seconds) bound one invocation, and the next resumes"
+  task thin_unemerged: :environment do
+    delete = ENV.fetch("CONFIRM", nil) == "yes" && ENV.fetch("DRY_RUN", "0").in?(["", "0"])
+    max_runs = ENV["MAX_RUNS"]&.then { |value| Integer(value, 10) }
+    time_limit = ENV["TIME_LIMIT"]&.then { |value| Float(value) }
+    raise "MAX_RUNS and TIME_LIMIT must be positive." if [max_runs, time_limit].compact.any? { |limit| limit <= 0 }
+
+    result = Runs::ThinUnemergedService.call(dry_run: !delete, max_runs: max_runs, time_limit: time_limit)
+    human = ActiveSupport::NumberHelper
+
+    result.by_experiment.each do |slug, tally|
+      puts "#{slug}: #{tally.runs} runs, #{tally.snapshots} snapshots, #{human.number_to_human_size(tally.bytes)}"
+    end
+    verb = delete ? "deleted" : "would delete"
+    total = result.total
+    puts "#{verb} #{total.snapshots} snapshots of #{total.runs} runs, " \
+         "#{human.number_to_human_size(total.bytes)} (#{total.bytes} bytes)"
+    puts "stopped at the batch limit: run it again to continue" unless result.complete
+    puts "dry run: CONFIRM=yes deletes" unless delete
+    if delete && total.snapshots.positive?
+      puts "then run lab:vacuum_snapshots (a plain VACUUM (ANALYZE) snapshots) so Postgres reuses the space"
+    end
+  end
+
+  desc "Run a plain VACUUM (ANALYZE) on snapshots, so the space a prune freed is reused. Never VACUUM FULL: " \
+       "it rewrites the table into a copy the disk has no room for, and locks it while the runners write"
+  task vacuum_snapshots: :environment do
+    ActiveRecord::Base.connection.execute("VACUUM (ANALYZE) snapshots")
+
+    puts "vacuumed snapshots"
   end
 
   desc "Print the size of the lab database and of its two heaviest tables"

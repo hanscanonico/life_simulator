@@ -1042,6 +1042,56 @@ sample.
     fifth decile and last, descriptive and offline. Pre-registered in `docs/design_record.md`, 2026-10-02, "Topless
     rise: does the deepest rung held keep rising when depth is paid?", whose numbers live in
     `Lab::ToplessRiseReading`; `lab:topless_rise_report` reads it.
+19. **Out-compute** — does computing climb, and keep climbing, when nothing pays for it? The
+    Out-compute variant of §1.4, step 1 of the ablation ladder in `docs/studies/unassisted.md`
+    §2: the paid ladder removed by substituting an endogenous rule, predation (§1.1). A
+    descendant sweep from **reach-cap128's first 54 eligible parents** (radius 4, emerged,
+    terminal `replicator_share` at least 0.5: 108 runs, the 54 lowest run ids), each from its
+    terminal world at epoch 20 000; fitness-free history, none ever paid. Seeded only once
+    the predation slice and this item are deployed and the topless-rise sweep has finished.
+    Four arms merged over each parent's params on one bundle (the `initiator` economy at
+    influx 1 024, cap 65 536, no theft; `tasks: logic4` at `task_reward` 0; the stack NAND on
+    a 32-byte metabolism tape at `meta_rate` 8/8192, `isa` draws, seeded from the cell's own
+    tape; `task_max_outputs` 16; `predation_transfer` 8 192, `predation_loss` 0.5,
+    `predation_every` 8, `predation_shadow_p` 0.3; a stored world every 500 epochs, for
+    disk): **out-compute** (`predation:
+    subset_class`), **equal**, **shadow** and **none** (`predation: off`). Seed 6001,
+    100 000 epochs past the parent, priority 40, 216 children. Read with topless-rise's
+    machinery unchanged, on `logic_depth_max` and on `logic_depth_classes`, both over 16
+    slots. Five one-sided sign tests at p < 0.05, each re-read with the extinct pairs kept
+    and without the two parents the pilot started from (4381 and 4428):
+    H-endogenous (out-compute against none), H-ratchet (against equal) and H-driven (against
+    shadow) on the last-decile median `logic_depth_max` as a level; H-rise-unassisted
+    (against none) on the rise rule, the rung-4 question; H-repertoire (against none) on the
+    rise rule over `logic_depth_classes`. McShea's minimum and the load-bearing bytes are
+    read offline and descriptively. Pre-registered in `docs/design_record.md`, 2026-10-03,
+    "Out-compute: does an endogenous rule make computing climb, and keep climbing, with
+    nothing paid?", whose numbers live in `Lab::OutComputeReading`; `lab:out_compute_report`
+    reads it.
+20. **Genes rise** — does held code keep rising late when nothing pays for it and the room to
+    grow is not used up? The machine the design study's pilots 3–8 assembled
+    (`docs/studies/unassisted.md` §8–§13): strict out-count (`predation: count`), the genes
+    assay (`meta_genes` 32), the growable metabolism channel and staged costly fidelity
+    (§1.1). A descendant sweep from **reach-cap128's eligible parents past out-compute's**
+    (the 54 lowest run ids set aside, `skip_first`, then the 30 lowest: none a pilot world),
+    each from its terminal world at epoch 20 000. Seeded only once the predation, genes and
+    fidelity engine slices, item 19's entry and this one are deployed, and after item 19's
+    sweep is seeded. Four arms over one bundle (out-compute's economy, ladder, NAND, 16
+    slots and pass; `meta_len` 32 growing by duplication and deletion of 1–16-byte segments
+    at 0.05 each, floor 8; `meta_rate` 8/8192; fidelity up to 16 at 0.05, price α 0.03;
+    `predation_shadow_p` 0.33; a sample every 100 epochs and a stored world every 500):
+    **count** (cap 4 096), **capped** (cap 1 024, the paired room control), **shadow** and
+    **drift** (`predation: off`), both at 4 096. Seed 6201, 60 000 epochs past the parent,
+    priority 40, 120 children. Read with topless-rise's machinery on
+    `logic_depth_classes` and `genes_essential_held`, a late rise needing the rise rule,
+    three persistent new maxima with the last in the final quarter, and a last-decile median
+    at least 1.2 times the bar. Five one-sided sign tests at p < 0.05, each re-read with the
+    extinct pairs kept: H-rise and H-rise-genes (count against drift), H-room (the
+    final-quarter gain, against capped), H-shadow (against shadow) and H-driven (the
+    offline minimum, against drift). Pre-registered in `docs/design_record.md`, 2026-10-04,
+    "Genes rise: does held code keep rising late, at a cap the run does not reach, with
+    nothing paid?", whose numbers live in `Lab::GenesRiseReading`; `lab:genes_rise_report`
+    reads it.
 
 An arm run to ten seeds — one seed-block — with nothing emerged in any of them reads as an
 arm that did not raise the plateau, not as an arm still to be tested: it holds no
@@ -1102,9 +1152,37 @@ Soup stays "not shown" whatever it reads. Its sweep is §1.3 item 18, pre-regist
 `docs/design_record.md`, 2026-10-02, "Topless rise: does the deepest rung held keep rising
 when depth is paid?".
 
-The design study behind each of the four is kept in `docs/studies/` (`metabolism.md`,
-`logic.md`, `meta-stack.md`, `topless.md`); every number in them is pilot unless the record
-says otherwise.
+**Out-compute** is the first variant that removes the objective rather than adding an import:
+Topless's machine (the stack NAND on a metabolism tape, the four-input assay) with nothing
+paid, and **predation** (§1.1) in its place, so a cell's energy moves by what its tape
+computes against what its neighbours' compute. The rule names no function and grades
+nothing absolutely, so it **imports a machine, not an objective**: the NAND and its stack
+semantics, the metabolism tape, the emit op and the emit cap, the input bytes and the
+predation rule itself. A predatory run (`predation` other than `off` with a positive
+`predation_transfer`) is unpaid, so it carries no "imports an objective" badge, but it is
+not plain Soup either: it is never pooled with fitness-free runs, its findings carry an
+"imports a machine, not an objective" badge, and rung 4 on Soup stays "not shown" whatever
+it reads, until the machine is the soup's own (the study's §2, step 4). An unpaid run with
+predation off is plain Soup carrying a tape nothing reads into its dynamics, as the reward-0
+arms of Meta-stack and Topless are, and pools as they do. Its sweep is §1.3 item 19,
+pre-registered in `docs/design_record.md`, 2026-10-03, "Out-compute: does an endogenous rule
+make computing climb, and keep climbing, with nothing paid?".
+
+**Genes rise** keeps Out-compute's terms and adds three pieces of machine: genes (the tape
+read as independent 32-byte pieces whose classes are united), a channel that grows and
+shrinks by duplication and deletion, and a heritable fidelity level whose initiator pays
+for it. None names a function or pays one, so the label is Out-compute's: **imports a
+machine, not an objective**. Its drift arm runs no predation and is still labelled: a
+priced fidelity level (`meta_fid_max` and `meta_fid_alpha` both positive) costs the
+initiator energy by a state the tape inherits, so selection acts on the imported menu, and
+the run is never pooled with plain Soup. An unpaid run with predation off and no priced
+level is plain Soup, as above, its channel and genes inert. Its sweep is §1.3 item 20,
+pre-registered in `docs/design_record.md`, 2026-10-04, "Genes rise: does held code keep
+rising late, at a cap the run does not reach, with nothing paid?".
+
+The design study behind each of the five is kept in `docs/studies/` (`metabolism.md`,
+`logic.md`, `meta-stack.md`, `topless.md`, `unassisted.md`); every number in them is pilot
+unless the record says otherwise.
 
 ## 2. Architecture
 
@@ -1198,5 +1276,10 @@ Copied from the `grid_commanders`/`stock_market` pattern on the mini-pc
   build cache is left alone, since `docker builder prune` cannot be scoped to one
   project and the sibling stacks share it.
 - `deploy/systemd/`: nightly `pg_dump` timer like the stock market one.
+- Stored-world retention: pruning at finish thins every terminal run (first, last, one per
+  10×`snapshot_every`, the transition, every descendant's start). The founding runs that
+  never crossed then lose their intermediate worlds too, once every instrument of their
+  experiment has read them (`lab:thin_unemerged`, design record 2026-10-03), and a plain
+  `lab:vacuum_snapshots` (never `VACUUM FULL`) lets Postgres reuse the space.
 - Cloudflare: one tunnel `life-simulator` in the existing account, public hostname
   `simulator-life.com` → `http://app:8080`.

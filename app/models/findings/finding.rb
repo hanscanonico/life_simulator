@@ -9,8 +9,12 @@ module Findings
   # paid for computing carries the "imports an objective" badge wherever its status does. It
   # is stated in the entry rather than derived from the runs, so the index reads no run for
   # it, and the registry spec holds every finding on a Metabolism sweep to it.
+  # `imports_machine` is the out-compute label, by the same rule: a finding read from runs
+  # whose energy moves by what their tapes compute carries the "imports a machine, not an
+  # objective" badge, and the registry spec holds every finding on the out-compute sweep to it.
   class Finding < Data.define(:slug, :title, :date, :experiment_slug, :status, :summary, :body_partial,
-                              :related_experiment_slugs, :related_finding_slugs, :imports_objective)
+                              :related_experiment_slugs, :related_finding_slugs, :imports_objective,
+                              :imports_machine)
     STATUSES = %i[open partial published negative].freeze
 
     BADGE_CLASSES = {
@@ -31,16 +35,24 @@ module Findings
                         "it imports an objective and is never pooled with the fitness-free runs. " \
                         "Rung 4 on Soup is unaffected by it."
 
+    MACHINE_MEANING = "Read from runs under predation, an interaction rule that moves energy by what the " \
+                      "tapes compute and names no computation, or carrying a priced, heritable fidelity: it " \
+                      "imports a machine to compute with, not an objective, and is never pooled with the " \
+                      "fitness-free runs. Rung 4 on Soup is unaffected by it."
+
+    # Neither label unless the entry states it.
+    LABELS = { imports_objective: false, imports_machine: false }.freeze
+
     # ERB partial names must be valid Ruby identifiers, so a slug's hyphens become
     # underscores on the way to the file name.
     def initialize(slug:, title:, date:, experiment_slug:, status:, summary:, body_partial: nil,
-                   related_experiment_slugs: [], related_finding_slugs: [], imports_objective: false)
+                   related_experiment_slugs: [], related_finding_slugs: [], **labels)
       raise ArgumentError, "unknown finding status #{status.inspect}" unless STATUSES.include?(status)
 
       super(slug: slug, title: title, date: date, experiment_slug: experiment_slug, status: status,
             summary: summary, body_partial: body_partial || "findings/bodies/#{slug.tr('-', '_')}",
             related_experiment_slugs: related_experiment_slugs.freeze,
-            related_finding_slugs: related_finding_slugs.freeze, imports_objective: imports_objective)
+            related_finding_slugs: related_finding_slugs.freeze, **LABELS.merge(labels))
     end
 
     def to_param = slug
@@ -63,6 +75,8 @@ module Findings
     def status_meaning = STATUS_MEANINGS.fetch(status)
 
     def imports_objective? = imports_objective
+
+    def imports_machine? = imports_machine
 
     def instrument_note = InstrumentNotes.for(slug)
 

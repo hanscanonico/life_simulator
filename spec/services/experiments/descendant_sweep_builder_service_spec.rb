@@ -425,6 +425,153 @@ RSpec.describe Experiments::DescendantSweepBuilderService do
     end
   end
 
+  describe "the out-compute sweep" do
+    let(:definition) { Lab::SWEEPS.fetch("out_compute") }
+    let(:experiment) do
+      create(:experiment, slug: "out-compute", **definition.slice(:parents, :param_grid, :seeds, :epochs, :priority))
+    end
+    let(:reach) { reach_cap128_experiment }
+    let!(:never_emerged) { reach_run(reach, shares: [0.0, 0.9, 0.9]) }
+    let!(:half_empty) { reach_run(reach, crossing: 500, shares: [0.0, 0.9, 0.4]) }
+    let!(:radius_one) { reach_run(reach, crossing: 500, shares: [0.0, 0.9, 0.9], params: { "radius" => 1 }) }
+    let!(:parents) { Array.new(3) { reach_run(reach, crossing: 500, shares: [0.0, 0.9, 0.9]) } }
+
+    it "starts from the emerged radius-4 runs whose terminal world is at least half replicators" do
+      expect(build_sweep).to have_attributes(parents: parents, created: 12,
+                                             skipped: { not_emerged: [never_emerged.id],
+                                                        below_share: [half_empty.id] })
+      expect(experiment.runs.pluck(:parent_run_id, :seed).tally).to eq(parents.map(&:id).product([6001]).index_with(4))
+      expect(build_sweep.to_s).to include("not emerged: 1 (runs #{never_emerged.id})")
+    end
+
+    context "with more qualifying parents than the rule takes" do
+      let(:limited) { definition.merge(parents: definition[:parents].merge("first" => 2)) }
+      let(:experiment) do
+        create(:experiment, slug: "out-compute", **limited.slice(:parents, :param_grid, :seeds, :epochs, :priority))
+      end
+
+      it "takes those with the lowest run ids and skips the rest as past the rule's first" do
+        expect(build_sweep).to have_attributes(parents: parents.first(2),
+                                               skipped: include(past_first: [parents.last.id]))
+        expect(build_sweep.to_s).to include("past the rule's first qualifying parents: 1 (runs #{parents.last.id})")
+      end
+    end
+
+    it "takes the first fifty-four qualifying parents" do
+      expect(definition[:parents]).to include("first" => 54, "emerged" => true, "experiment" => "reach-cap128")
+    end
+
+    it "merges the four bundles over each parent's params, every child unpaid on the four-input ladder" do
+      build_sweep
+
+      expect(experiment.runs.where(parent_run: parents.last).order(:id).pluck(:params))
+        .to eq(definition[:param_grid].fetch("treatment").map { |bundle| parents.last.params.merge(bundle) })
+      expect(experiment.runs.map { |run| run.params.values_at("predation", "task_reward", "tasks", "radius") }.tally)
+        .to eq(%w[subset_class equal shadow off].to_h { |relation| [[relation, 0, "logic4", 4], 3] })
+    end
+
+    it "runs every child a hundred thousand epochs past its parent's terminal epoch at priority 40" do
+      build_sweep
+
+      expect(experiment.runs.distinct.pluck(:parent_epoch, :epochs, :priority)).to eq([[2_000, 102_000, 40]])
+    end
+
+    it "adds nothing once built" do
+      build_sweep
+
+      expect { described_class.call(experiment.reload) }.not_to change(Run, :count)
+    end
+
+    it "gives every child of a parent its own canonical params" do
+      build_sweep
+
+      expect(experiment.runs.map { |run| [Lab::CanonicalParams.for(run.params), run.parent_run_id] }.uniq.size)
+        .to eq(12)
+    end
+
+    it "stores a world every 500 epochs, so a finished child keeps one every 5 000 after pruning" do
+      build_sweep
+      child = experiment.runs.order(:id).first
+      (child.parent_epoch + 500).step(child.epochs, 500) { |epoch| create(:snapshot, run: child, epoch: epoch) }
+      child.update!(status: "finished")
+
+      Runs::PruneSnapshotsService.call(run: child)
+
+      expect(child.snapshots.order(:epoch).pluck(:epoch))
+        .to eq([2_500, *(5_000..100_000).step(5_000), 102_000])
+    end
+
+    it "leaves the reach-cap128 runs as they were" do
+      before = reach.runs.order(:id).pluck(:id, :params, :seed, :status)
+
+      build_sweep
+
+      expect(reach.runs.order(:id).pluck(:id, :params, :seed, :status)).to eq(before)
+    end
+  end
+
+  describe "the genes-rise sweep" do
+    let(:definition) { Lab::SWEEPS.fetch("genes_rise") }
+    let(:experiment) { genes_rise_experiment(skip: 2) }
+    let(:reach) { reach_cap128_experiment }
+    let!(:out_compute_parents) { Array.new(2) { reach_run(reach, crossing: 500, shares: [0.0, 0.9, 0.9]) } }
+    let!(:never_emerged) { reach_run(reach, shares: [0.0, 0.9, 0.9]) }
+    let!(:parents) { Array.new(3) { reach_run(reach, crossing: 500, shares: [0.0, 0.9, 0.9]) } }
+
+    it "sets aside the qualifying parents out-compute takes, and starts from the next ones" do
+      expect(build_sweep).to have_attributes(parents: parents, created: 12,
+                                             skipped: { not_emerged: [never_emerged.id],
+                                                        before_skip: out_compute_parents.map(&:id) })
+      expect(experiment.runs.pluck(:parent_run_id, :seed).tally).to eq(parents.map(&:id).product([6201]).index_with(4))
+      expect(build_sweep.to_s)
+        .to include("among the qualifying parents the rule sets aside: 2 (runs #{out_compute_parents.map(&:id).join(', ')})")
+    end
+
+    it "draws no parent out-compute draws, on the same pool" do
+      out_compute = create(:experiment, slug: "out-compute",
+                                        **Lab::SWEEPS.fetch("out_compute").slice(:param_grid, :seeds, :epochs, :priority),
+                                        parents: Lab::OutComputeReading::PARENTS.merge("first" => 2))
+
+      expect(Experiments::DescendantParentsService.call(out_compute).qualifying).to eq(out_compute_parents)
+      expect(Experiments::DescendantParentsService.call(experiment).qualifying).to eq(parents)
+    end
+
+    context "with more qualifying parents than the rule takes" do
+      let(:experiment) do
+        genes_rise_experiment(skip: 2).tap { |sweep| sweep.update!(parents: sweep.parents.merge("first" => 2)) }
+      end
+
+      it "takes the first past the set-aside ones and skips the rest as past the rule's first" do
+        expect(build_sweep).to have_attributes(parents: parents.first(2),
+                                               skipped: include(before_skip: out_compute_parents.map(&:id),
+                                                                past_first: [parents.last.id]))
+      end
+    end
+
+    it "merges the four bundles over each parent's params, every child unpaid and its fidelity priced" do
+      build_sweep
+
+      expect(experiment.runs.where(parent_run: parents.last).order(:id).pluck(:params))
+        .to eq(definition[:param_grid].fetch("treatment").map { |bundle| parents.last.params.merge(bundle) })
+      expect(experiment.runs.map { |run| run.params.values_at("predation", "meta_max_len", "task_reward") }.tally)
+        .to eq([["count", 4096, 0], ["count", 1024, 0], ["shadow", 4096, 0], ["off", 4096, 0]].index_with(3))
+      expect(experiment.runs.machine.count).to eq(12)
+    end
+
+    it "runs every child sixty thousand epochs past its parent's terminal epoch at priority 40" do
+      build_sweep
+
+      expect(experiment.runs.distinct.pluck(:parent_epoch, :epochs, :priority)).to eq([[2_000, 62_000, 40]])
+    end
+
+    it "gives every child of a parent its own canonical params" do
+      build_sweep
+
+      expect(experiment.runs.map { |run| [Lab::CanonicalParams.for(run.params), run.parent_run_id] }.uniq.size)
+        .to eq(12)
+    end
+  end
+
   context "with no source experiment seeded" do
     it "builds nothing" do
       expect(build_sweep).to have_attributes(parents: [], created: 0, skipped: {})

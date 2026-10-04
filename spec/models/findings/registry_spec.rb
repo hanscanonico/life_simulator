@@ -81,6 +81,16 @@ RSpec.describe Findings::Registry do
       .to all(satisfy { |finding| objective_sweeps.any? { |slug| finding.rests_on?(slug) } })
   end
 
+  it "labels every finding resting on the out-compute sweep as importing a machine" do
+    predatory = described_class.all.select { |finding| finding.rests_on?("out-compute") }
+
+    expect(predatory).to all(be_imports_machine)
+  end
+
+  it "labels no finding on any other sweep as importing a machine" do
+    expect(described_class.all.select(&:imports_machine?)).to all(satisfy { |finding| finding.rests_on?("out-compute") })
+  end
+
   it "keeps the order of findings sharing a date fixed across calls" do
     same_date = %w[first second third].map do |slug|
       Findings::Finding.new(slug: slug, title: slug, date: Date.new(2026, 9, 11),

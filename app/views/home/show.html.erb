@@ -107,6 +107,7 @@
           <p class="finding-meta text-sm text-muted">
             <span class="badge <%= row.finding.badge_class %>" title="<%= row.finding.status_meaning %>"><%= row.finding.status_label %></span>
             <% if row.finding.imports_objective? %><%= render "findings/objective_badge" %><% end %>
+            <% if row.finding.imports_machine? %><%= render "findings/machine_badge" %><% end %>
             <% if row.experiment? %>
               <%= link_to row.experiment.name, experiment_path(row.experiment) %>
             <% end %>
