@@ -1174,6 +1174,49 @@ pub(crate) mod tests {
             "{rendered}"
         );
         assert!(rendered.contains("fidelity: mean"), "{rendered}");
+        assert!(
+            rendered.contains("the minimum: classes p10 1, max depth p10 0"),
+            "{rendered}"
+        );
+    }
+
+    /// A tenth of 64 cells is 7 (6.4 rounded up): the tandem's own classes and the second
+    /// essential gene are held on 7 cells and not on 6. The top tape's level is its cells'
+    /// lower median.
+    #[test]
+    fn a_tenth_is_counted_at_its_boundary_and_the_top_level_is_the_median() {
+        let scorer = scorer();
+        let (pair, alone) = (laid(&[LOOP, TANDEM]), laid(&[LOOP]));
+        let world = |carriers: u32| {
+            let mut world = planted();
+            for x in 0..8 {
+                let tape = if x < carriers { &pair } else { &alone };
+                world.set_metabolism(x, 0, tape);
+                world.set_fidelity(x, 0, x as u8);
+            }
+            world
+        };
+        let loop_classes = scorer.read(&alone).union().len();
+        let held = GeneCensus::read(&world(7), &scorer, None);
+        assert_eq!(held.classes_held, scorer.read(&pair).union().len());
+        assert_eq!(held.essential_held, 2);
+        assert_eq!(held.top.as_ref().unwrap().level, Some(3), "levels 0 to 6");
+        let short = GeneCensus::read(&world(6), &scorer, None);
+        assert_eq!(short.classes_held, loop_classes);
+        assert_eq!(short.essential_held, 1);
+        assert_eq!(short.top.as_ref().unwrap().level, Some(2), "levels 0 to 5");
+    }
+
+    /// Count-bearing is at least 7 of the 13 other symbols, 7 included.
+    #[test]
+    fn a_byte_bears_count_from_seven_losing_substitutes() {
+        let scorer = scorer();
+        let mut solver = Solver::read(&laid(&[LOOP]), 1, &scorer, &genes_params(), None, None);
+        solver.losses = vec![0; 32];
+        solver.losses[..4].copy_from_slice(&[6, 7, 13, 0]);
+        solver.losses[20] = 8;
+        assert_eq!(solver.count_bearing(), [1, 2, 20]);
+        assert_eq!(solver.sub(), 34.0 / 14.0);
     }
 
     #[test]
@@ -1325,6 +1368,29 @@ pub(crate) mod tests {
         };
         let frame = Frame::read(&whole, &scorer.read(&whole), &scorer, &bounded);
         assert_eq!((frame.del_lose, frame.dup_lose), (0.0, 0.0));
+
+        let one_above_the_floor = Params {
+            meta_min_len: whole.len() as u32 - 1,
+            ..params.clone()
+        };
+        let one_byte_segments = Params {
+            meta_seg_max: 1,
+            ..params.clone()
+        };
+        let floored = Frame::read(&whole, &scorer.read(&whole), &scorer, &one_above_the_floor);
+        let single = Frame::read(&whole, &scorer.read(&whole), &scorer, &one_byte_segments);
+        assert_eq!(
+            floored.del_lose, single.del_lose,
+            "the floor bounds the length"
+        );
+        assert!(floored.del_lose > 0.0);
+        let weighted = Frame {
+            del_lose: 0.5,
+            dup_lose: 0.25,
+            del: 0.05,
+            dup: 0.1,
+        };
+        assert_eq!(weighted.load(), 0.05 * 0.5 + 0.1 * 0.25);
 
         let mut long = laid(&[ECHO; 3]);
         long.extend(laid(&[LOOP]));

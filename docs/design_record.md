@@ -5200,10 +5200,14 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - **Judgement calls.** The essential grouping is the engine's rule applied to six-set class
     sets, which no engine credit holds; a test holds it to `topless::essential_genes` on one
     set's credits. The pilots intersected functions across the sets before taking classes;
-    the engine's credits hold classes, so here classes are intersected. T_gen is in no stored
-    world and no sample holds it exactly (`meta_inherit_rate` is a share of interactions, and
-    a cell passed over for its price has none), so it is given per world (`--tgen`), and
-    without it U_sub and U are unread and rate × `sub` per epoch is printed.
+    the engine's credits hold classes, so here classes are intersected, as the genes-rise
+    entry words it; the two differ on 6 of 140 270 computing genes probed, by one or two
+    classes. T_gen is in no stored world and no sample holds it exactly (`meta_inherit_rate`
+    is a share of interactions, and a cell passed over for its price has none), so it is
+    given per world (`--tgen`), and without it U_sub and U are unread and rate × `sub` per
+    epoch is printed. The README brackets it from the samples by the initiator's energy
+    budget (the influx, less what predation destroys, over the price at the median level),
+    a bracket an instrumented replay of a count child held in every window past descent.
   - **Verified.** The study's §10.1 checks read as the pilot read them: the loop 12 classes,
     two copies one essential gene and no load-bearing one, beside its tandem variant 26
     classes, two essential genes, 11 and 14 count-bearing bytes. The fast substitution and

@@ -20,6 +20,10 @@ cargo build --release          # then ./target/release/landscape …
 cargo clean                    # afterwards: the target dir is about 500 MB
 ```
 
+Where the toolchain's `rust-objcopy` cannot load `libLLVM.dylib` (rustup from Homebrew),
+the release build warns that stripping debug info failed; the binary is still built and
+runs.
+
 ## The subcommands
 
 | command | reading |
@@ -232,20 +236,28 @@ are read as genes and may carry fidelity levels (`meta_genes`, `meta_max_len`,
   in no stored world: give it with `--tgen` (`--tgen-fifth`, `--tgen-last`), or the tool
   prints rate × `sub` per epoch and U_frame, and leaves U_sub and U unread. No sample
   holds it exactly either: `meta_inherit_rate` is a share of the sampled epoch's
-  interactions, and a cell passed over for its price interacts with none.
+  interactions, and a cell passed over for its price interacts with none. The samples
+  bracket it (below, "T_gen from the samples").
 
 The pilots took a gene's six-set credit as the functions every set credits, then their
 classes; the engine's credits hold classes, so here a class is credited where every set
-credits it. On the study's §10.1 checks the two agree: the loop `<<<<[!{~!~]` reads 12
-classes alone; two copies read one essential gene and no load-bearing one; beside its tandem
-variant `<<<<[!{~!{~!~]` it reads 26 classes, two essential genes, two load-bearing genes of
-11 and 14 count-bearing bytes.
+credits it, as the genes-rise entry words it ("a class is credited to a gene where all six
+credit it") and as the topless-rise readings above read a whole tape. On the study's §10.1
+checks the two agree: the loop `<<<<[!{~!~]` reads 12 classes alone; two copies read one
+essential gene and no load-bearing one; beside its tandem variant `<<<<[!{~!{~!~]` it reads
+26 classes, two essential genes, two load-bearing genes of 11 and 14 count-bearing bytes.
+They differ only where one output slot computes different functions of one class on
+different sets, and the class reading then credits the class. Probed on 362 607 distinct
+32-byte genes (substitution mutants of the study's solver cores and uniform `isa` draws;
+140 270 computing), 6 genes differ, by one or two classes each, all mutants of a
+data-dependent loop.
 
 The worlds are the topless-rise entry's fifth-decile and last stored worlds (above): the
 settled samples are the child's above `parent_epoch` + 1 000, the fifth decile ends at the
-⌊n/2⌋-th, and the world read is the last stored at or before it. Under `snapshot_every` 500
-the cadence stores one every 500 epochs, so the fifth-decile world is within 500 epochs of
-the decile's end. SELECTs only. For a child run `$RUN`:
+⌊n/2⌋-th, and the world read is the last stored at or before it. A run posts one every
+`snapshot_every` (500) epochs, and a terminal run is pruned to one in ten
+(`Runs::PruneSnapshotsService::KEEP_FACTOR`), so the fifth-decile world is within 5 000
+epochs of the decile's end, as the entry says. SELECTs only. For a child run `$RUN`:
 
 ```sh
 psql "$LAB_DATABASE_URL" -At -c "SELECT params FROM runs WHERE id = $RUN" > child.json
@@ -278,8 +290,56 @@ echo run_id,fifth_minimum,last_minimum > minima.csv
 
 It prints each world's census and top solver (per gene: its classes, those no other gene
 computes, its count-bearing bytes and its bytes), then each key fifth-decile → last with the
-change; with `--tgen-fifth` and `--tgen-last`, U_sub and U too. `genes --snapshot e$EPOCH.lsnp --params child.json` reads one world;
-`genes $TAPE --params child.json --level 12` reads one tape at a level.
+change; with `--tgen-fifth` and `--tgen-last`, U_sub and U too. `genes --snapshot
+e$EPOCH.lsnp --params child.json` reads one world; `genes $TAPE --params child.json --level
+12` reads one tape at a level.
+
+### T_gen from the samples
+
+T_gen is 1 / (s · r) over the window: r the share of a cell's interactions that pass its
+tape on, s the share of cells that initiate an epoch. The samples hold r
+(`meta_inherit_rate`, exact for the epoch before each sample) but not s, so T_gen from
+stored data is an **estimate**. Under the initiator rule an initiation costs the initiator
+its price P(f) = `max_steps` · 2^(`meta_fid_alpha` · f/2) (`fidelity::price`), and what a
+cell spends is what it earns: the influx, less what predation destroys. Two readings follow,
+with r, f (`fidelity_p50`) and the predation rate the lower medians of the samples in the
+2 000 epochs up to the world:
+- **T_lo** = P(f) / (`energy_influx` · r), as if the whole influx paid for initiations;
+- **T_hi** = P(f) / ((`energy_influx` − ℓ) · r), ℓ = `predation_rate` · `predation_transfer`
+  · `predation_loss` / `predation_every`, as if every encounter that moved energy moved a
+  whole transfer.
+
+Checked against an exact count: the count bundle descended from 4431's epoch-20 000 world at
+the sweep's seed, run 6 000 epochs on a scratch copy of the engine that counted every
+interaction and inheritance. Per 1 000-epoch window from 1 000 epochs past descent the
+exact T_gen was 10.0–10.8, T_lo 8–10% under it and T_hi 11–13% over, every window; in the
+first window, while the parent's stocks were spent down, T_lo read 9.36 against 9.34. The
+sampled r was within 0.7% of each window's exact share. Influx spilled at the stock cap is
+not counted in either: it lowers s, so it can only push T_gen up, past T_hi where it is
+large. Read U_sub at both ends (it is rate × `sub` × T_gen, linear in T_gen) and report the
+range: U is descriptive. An exact T_gen needs the engine to record how many cells initiated
+in a sampled epoch, which no observable does yet.
+
+```sh
+read TLO THI < <(psql "$LAB_DATABASE_URL" -At -F ' ' -c "
+  WITH p AS (SELECT params FROM runs WHERE id = $RUN),
+  w AS (
+    SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY (values->>'meta_inherit_rate')::float) AS inherit,
+           percentile_disc(0.5) WITHIN GROUP (ORDER BY (values->>'fidelity_p50')::float) AS level,
+           percentile_disc(0.5) WITHIN GROUP (ORDER BY (values->>'predation_rate')::float) AS eaten
+    FROM samples WHERE run_id = $RUN AND epoch > $EPOCH - 2000 AND epoch <= $EPOCH),
+  e AS (
+    SELECT (params->>'max_steps')::float
+             * 2 ^ ((params->>'meta_fid_alpha')::float * COALESCE(level, 0) / 2) AS price,
+           (params->>'energy_influx')::float AS influx,
+           COALESCE(eaten, 0) * (params->>'predation_transfer')::float
+             * (params->>'predation_loss')::float / (params->>'predation_every')::float AS lost,
+           inherit
+    FROM p, w)
+  SELECT price / (influx * inherit), price / ((influx - lost) * inherit) FROM e")
+./target/release/landscape genes --snapshot e$EPOCH.lsnp --params child.json --tgen $TLO
+./target/release/landscape genes --snapshot e$EPOCH.lsnp --params child.json --tgen $THI
+```
 
 ## What was dropped from the pilot tools
 
