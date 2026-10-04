@@ -5419,8 +5419,11 @@ Dated entries that revise `docs/DESIGN.md`. Newest last.
   - The price needs the initiator economy; free fidelity (α = 0) needs none, so a drift or
     pair-economy arm can carry levels.
   - `meta_fid_max` is capped at 16 (1/256 of the base rate), the study's range; α at 1.
-  - A price above every stock is not clamped to the cap, as the pilot did: a cell that cannot
-    pay is passed over either way.
+  - A price above every stock is not clamped to the stock cap + 1, as the pilot clamped it: no
+    stock ever exceeds the cap, so a cell that cannot pay is passed over either way and the
+    dynamics are the pilot's. At `max_steps` 8 192 and `energy_stock_cap` 65 536 a level f is
+    unpayable once α·f/2 > 3, so every level is payable up to α = 0.375; at α = 0.03 the top
+    price is 9 675.
   - No burn-in (`--fid-start`) and no per-level rate counters: the pilots' instruments, not
     the machine. The optional `top_fidelity` reading is left out.
   - The level's move draws its coin only when it moves (`chance`, then `below(2)`), as the
