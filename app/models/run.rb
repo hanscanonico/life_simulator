@@ -45,8 +45,20 @@ class Run < ApplicationRecord
   # Keep in step with Lab::MetabolismReading.metabolism_run?, the same rule on a params hash.
   REWARD_SQL = "CASE jsonb_typeof(runs.params -> '#{Lab::MetabolismReading::REWARD_KEY}') WHEN 'number' " \
                "THEN (runs.params ->> '#{Lab::MetabolismReading::REWARD_KEY}')::numeric ELSE 0 END".freeze
+  # A run whose predation pass runs moves energy by what its tapes compute: it imports a
+  # machine, not an objective (DESIGN.md §1.4), and is never pooled with plain Soup either.
+  # Keep in step with Lab::OutComputeReading.predatory_run?, the same rule on a params hash.
+  PREDATION_SQL = "runs.params -> '#{Lab::OutComputeReading::PREDATION_KEY}'".freeze
+  TRANSFER_SQL = "runs.params -> '#{Lab::OutComputeReading::TRANSFER_KEY}'".freeze
+  PREDATORY_SQL = "jsonb_typeof(#{PREDATION_SQL}) = 'string' " \
+                  "AND #{PREDATION_SQL} <> '\"#{Lab::OutComputeReading::OFF}\"'::jsonb " \
+                  "AND CASE jsonb_typeof(#{TRANSFER_SQL}) WHEN 'number' THEN (#{TRANSFER_SQL})::numeric ELSE 0 END > 0"
+                  .freeze
   scope :metabolism, -> { where("#{REWARD_SQL} > 0") }
-  scope :fitness_free, -> { where("#{REWARD_SQL} <= 0") }
+  scope :predatory, -> { where(PREDATORY_SQL) }
+  # The runs that carry a label, an objective or a machine: never pooled with plain Soup.
+  scope :labelled, -> { metabolism.or(predatory) }
+  scope :fitness_free, -> { where("#{REWARD_SQL} <= 0").where.not(PREDATORY_SQL) }
 
   # A run started from `parent`'s stored world at `epoch` — by default the latest one the
   # parent kept — for `budget` more epochs, under `params` that may change the parent's

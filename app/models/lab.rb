@@ -492,6 +492,27 @@ module Lab
       epochs: ToplessRiseReading::EPOCHS,
       priority: ToplessRiseReading::PRIORITY
     },
+    "out_compute" => {
+      name: "Out-compute",
+      description: "Does computing climb, and keep climbing, when nothing pays for it? Each run continues an " \
+                   "emerged, never-paid world with a metabolism tape and the four-input logic machine, under a " \
+                   "rule by which a cell takes energy from a neighbour whose every computed function it " \
+                   "computes too. Three controls move the same energy with no ratchet, by a coin, or not at " \
+                   "all. A labelled substrate: it imports a machine, not an objective.",
+      # §1.3 item 19 and §1.4, pre-registered on 2026-10-03, "Out-compute: does an endogenous
+      # rule make computing climb, and keep climbing, with nothing paid?", whose numbers live in
+      # `Lab::OutComputeReading`. Seeded only once the predation engine slice and this entry are
+      # deployed and the topless-rise sweep has finished. The parents are reach-cap128 runs,
+      # founding runs whose own seeds are 1–270.
+      parents: OutComputeReading::PARENTS,
+      param_grid: {
+        "treatment" => [OutComputeReading::OUT_COMPUTE_BUNDLE, OutComputeReading::EQUAL_BUNDLE,
+                        OutComputeReading::SHADOW_BUNDLE, OutComputeReading::NONE_BUNDLE]
+      },
+      seeds: OutComputeReading::SEEDS,
+      epochs: OutComputeReading::EPOCHS,
+      priority: OutComputeReading::PRIORITY
+    },
     "bff_control" => {
       name: "BFF positive control",
       description: "Does the engine reproduce the published BFF emergence at all? A " \

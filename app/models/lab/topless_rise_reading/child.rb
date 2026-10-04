@@ -14,9 +14,13 @@ module Lab
     # half: the parent's depth at descent (the first own sample), every depth held under the
     # persistence rule up to the fifth decile's end, and the fifth-decile median. Re-climbing
     # to the parent's own depth after the switch to the four-input ladder is no rise.
+    #
+    # The rule reads `logic_depth_max` against CEILING_DEPTH unless given another `key` and
+    # `ceiling`: the out-compute reading (Lab::OutComputeReading) runs it unchanged on
+    # `logic_depth_classes`, which has no ceiling a reading can reach (`ceiling: nil`).
     class Child
       Reading = Data.define(:fifth_depth, :last_depth, :descent_depth, :first_half_held, :first_epochs,
-                            :late_epoch, :last_classes, :reached_floor) do
+                            :late_epoch, :last_classes, :reached_floor, :ceiling) do
         # Both deciles carry a median.
         def measured? = !fifth_depth.nil? && !last_depth.nil?
 
@@ -24,7 +28,7 @@ module Lab
 
         # The lineage already stood at the deepest depth a reading can show before the second
         # half: read as no rise.
-        def ceilinged? = measured? && bar >= CEILING_DEPTH
+        def ceilinged? = measured? && !ceiling.nil? && bar >= ceiling
 
         def rises? = measured? && !ceilinged? && last_depth >= bar + RISE_STEP
 
@@ -43,21 +47,24 @@ module Lab
         end
       end
 
-      def self.read(samples, parent_epoch:)
-        new(samples, parent_epoch: parent_epoch).reading
+      def self.read(samples, parent_epoch:, key: DEPTH_KEY, ceiling: CEILING_DEPTH)
+        new(samples, parent_epoch: parent_epoch, key: key, ceiling: ceiling).reading
       end
 
-      def initialize(samples, parent_epoch:)
+      def initialize(samples, parent_epoch:, key: DEPTH_KEY, ceiling: CEILING_DEPTH)
         @samples = samples
+        @key = key
+        @ceiling = ceiling
         @settled = samples.select { |epoch, _| epoch > parent_epoch + SETTLING_WINDOW }
       end
 
       def reading
-        Reading.new(fifth_depth: median(decile(RISE_DECILE), DEPTH_KEY), last_depth: median(decile(DECILES), DEPTH_KEY),
+        Reading.new(fifth_depth: median(decile(RISE_DECILE), @key), last_depth: median(decile(DECILES), @key),
                     descent_depth: descent_depth, first_half_held: first_epochs(first_half).keys.max,
                     first_epochs: first_epochs(@samples), late_epoch: late_epoch,
                     last_classes: median(decile(DECILES), CLASSES_KEY),
-                    reached_floor: depths(@samples).any? { |depth| depth >= CEILING_DEPTH })
+                    reached_floor: !@ceiling.nil? && depths(@samples).any? { |depth| depth >= @ceiling },
+                    ceiling: @ceiling)
       end
 
       private
@@ -65,7 +72,7 @@ module Lab
       def late_epoch = decile(RISE_DECILE + 1).first&.first
 
       def descent_depth
-        value = @samples.first&.last&.fetch(DEPTH_KEY, nil)
+        value = @samples.first&.last&.fetch(@key, nil)
         value if value.is_a?(Numeric)
       end
 
@@ -79,7 +86,7 @@ module Lab
 
       def numbers(samples, key) = samples.filter_map { |_, values| values[key] if values[key].is_a?(Numeric) }
 
-      def depths(samples) = numbers(samples, DEPTH_KEY)
+      def depths(samples) = numbers(samples, @key)
 
       def median(samples, key)
         values = numbers(samples, key)
@@ -99,7 +106,7 @@ module Lab
       def first_epoch_at(samples, depth)
         run = []
         samples.each do |epoch, values|
-          value = values[DEPTH_KEY]
+          value = values[@key]
           run = value.is_a?(Numeric) && value >= depth ? [*run, epoch] : []
           return run.first if run.size >= PERSISTENCE_RUN
         end

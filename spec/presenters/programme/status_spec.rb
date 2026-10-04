@@ -110,6 +110,31 @@ RSpec.describe Programme::Status do
       end
     end
 
+    context "with a predation run" do
+      let!(:predatory) do
+        create(:run, :predatory, status: "finished", epochs_done: 50, transition_epoch: 40).tap do |run|
+          create(:sample, run: run, epoch: 100, values: { "replicator_count" => 5_000 })
+        end
+      end
+
+      it "leaves its census and its transition out" do
+        expect([status.peak_replicator_count, status.seeds_transitioned]).to eq([867, 1])
+      end
+
+      it "still counts it among the runs finished and the epochs simulated" do
+        expect([status.runs_finished, status.epochs_simulated]).to eq([3, 1_007 + predatory.epochs_done])
+      end
+    end
+
+    context "with the unpaid run of a predation sweep's none arm" do
+      it "keeps its census: a tape nothing reads leaves it plain Soup" do
+        none = create(:run, params: Lab::Schema.run_defaults.merge(Lab::OutComputeReading::NONE_BUNDLE))
+        create(:sample, run: none, epoch: 100, values: { "replicator_count" => 1_000 })
+
+        expect(status.peak_replicator_count).to eq(1_000)
+      end
+    end
+
     context "with a run stored before the reward existed" do
       it "keeps its census" do
         predating = create(:run, params: Lab::Schema.run_defaults.except("task_reward"))

@@ -49,6 +49,20 @@ RSpec.describe Findings::Finding do
     end
   end
 
+  it "imports no machine unless its entry says so" do
+    expect(finding).not_to be_imports_machine
+  end
+
+  context "with the out-compute label" do
+    it "imports a machine, and keeps the flag through a copy" do
+      labelled = finding.with(imports_machine: true)
+
+      expect(labelled).to be_imports_machine
+      expect(labelled.with(status: :published)).to be_imports_machine
+      expect(labelled).not_to be_imports_objective
+    end
+  end
+
   it "colours the badge by status" do
     expect(finding.badge_class).to eq("badge-info")
   end

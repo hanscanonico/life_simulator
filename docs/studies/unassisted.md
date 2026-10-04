@@ -40,6 +40,14 @@ literature was read by a literature agent of this study against primary sources 
    at least three persistent new maxima with the last in the final quarter; drift, no-ratchet and shadow controls,
    plus McShea's rising minimum; many worlds, pre-registered, at least 10⁶ epochs (~10⁵ generations). Today the
    programme meets the first clause on plain Soup only, and the pilot meets the second and part of the fifth.
+7. **Pilot 2 (§7): room to grow does not keep the climb going.** A growable metabolism tape (32 → up to 256 bytes,
+   segment duplication and deletion at Lenski's 0.05 per divide) under out-compute, 60 000 epochs on both worlds:
+   one NAND deeper and one or two more classes per cell than the fixed channel, reached within 15 000 epochs, then
+   flat; neither growable run meets §5.4 (one fixed run does, by one NAND); the minimum stays at 1. The tapes grow to
+   ~210 bytes, but every load-bearing byte is in the first 16: one stack-NAND loop spends the emit budget, so
+   appended code is never read, and a changed loop replaces its classes rather than adding to them, so the subset
+   ratchet does not pay it. Not recommended as a sweep arm; the next lever is what a tape can add without losing a
+   class, not the channel's length.
 
 ## 1. Where the programme stands (read from the sources)
 
@@ -493,6 +501,9 @@ So the second mechanism is not a second objective but the channel's room to grow
 The two together are the bet the bar asks for. Neither was piloted here; both are small engine slices on the
 machinery the pilot already used.
 
+*Pilot 2 (§7) built the growable tape and found it does not climb late: the room fills with junk behind one
+stack-NAND loop whose orbit, not the channel's length, sets the top.*
+
 **Alternatives ranked lower**, from §3: *co-constructed probes* (MCC transplanted: some tapes write the inputs others
 must transform, a probe surviving only while someone solves it), endogenous but with an imposed criterion and a flat
 minimum in its only long run; *information-paid food* (Gerlee & Lundh: energy equal to the entropy change a tape makes
@@ -611,6 +622,237 @@ census row of every pilot run (with the three commonest metabolism tapes and the
 worlds of the ×8 runs and the two replays, the three copied worlds, the scripts behind §4.3's readings, the section
 drafts and the literature agent's extracted texts. The engine slice of §4.4 is the out-compute rule as the engine now
 carries it (`docs/design_record.md`, 2026-10-03, "Predation").
+
+## 7. Pilot 2: room to grow in the computing channel (§4.5)
+
+2026-10-03, all *pilot*: a throwaway copy of main's engine (`origin/main`, `b30196a`) in a session scratchpad, not kept, one
+seed (5002) per arm and world. A pilot, not a sample. Nothing in the repository or the lab was touched.
+
+### 7.1 What was built
+
+**The out-compute pass of §4.2**, re-implemented on the fresh copy: asynchronous (each cell acts with probability
+1/8 every epoch), subset over input-permutation classes, cases redrawn every 8 epochs on the rule's own stream and
+shared by every cell, emit cap 16, `meta_rate` 8/8192 (×8), `transfer` 8 192, `loss` 0.5. One change of
+implementation, not of rule: a cell's class set is read only when it acts or is picked (a pass moves energy only,
+so every set is what it was at the start of the pass).
+
+**The growable metabolism tape.**
+- Each cell's tape lives in a slot of `meta_max_len` **256** bytes with a live length of its own, **32** at descent:
+  each cell's own first 32 bytes (`own_tape`), the slot past them zeroed. Nothing that computes is planted: at
+  descent 100% of cells compute nothing on the six sets, as in §4.2.
+- **At every inheritance** (the world copying a metabolism tape onto a near copy's partner: the channel's divide)
+  the child's copy takes, with probability **0.05**, a **duplicate of a random segment** of 1–16 bytes **appended
+  at its end** (cut at the cap), then, with probability **0.05**, **loses a random segment** of 1–16 bytes from
+  anywhere, never below 8 bytes. Appending moves no existing offset, so a duplication never disturbs the code that
+  computes; the deletion lets length fall as well as rise.
+- Substitutions as before (`meta_draw: isa`, 8/8192 per live byte per epoch), drawn over live bytes only.
+- The **fixed** arm runs through the same code at `meta_max_len` 32 with neither duplication nor deletion, so the
+  two out-compute arms differ only in the channel.
+
+**The rate.** Lenski et al. (2003) ran 0.05 single-instruction insertions and 0.05 deletions per divide beside 0.0025
+point mutations per copied instruction (0.1–0.25 per divide). A metabolism tape here is inherited about every 10
+epochs per cell (1.7 million inheritances per 1 000 epochs on 16 384 cells), so the substitution draws give about
+0.3 substitutions per 32-byte tape per divide, and 0.05 duplications and 0.05 deletions per divide keep Lenski's
+order of indels against point mutations. A segment of up to 16 bytes holds a whole stack loop and its emit
+(`<<<<[!{~!~]` is 11 bytes), which a one-byte insertion cannot copy. The cap was raised from 128 to 256 after a
+1 000-epoch calibration at 128 already had a tenth of the out-compute tapes at 105 bytes or more.
+
+**The input window stayed at four inputs.** Five would need a 12-case designed draw and has no minimal-NAND table;
+it could not be scored honestly in the budget. Every depth below is the four-input minimal NAND count.
+
+**Arms**, on 4381 and 4428 (the §4.2 start worlds, fitness-free, `own_tape`), **60 000 epochs past descent**:
+**growable out-compute**, **fixed out-compute** (the replication of §4.3), **growable drift** (no predation). The
+census of §4.2 every 500 epochs on all 16 384 cells (six fixed four-input sets, every emit slot to 16), with the
+per-cell max-depth percentiles, the repertoire, the classes held by a tenth and by a hundredth, and the tape
+lengths. Every 10 000 epochs, the **load-bearing count of the dominant deepest solver**: `research/landscape`'s
+method (the commonest tape credited a deepest class held by a tenth; a position bears where at least 7 of the 13
+other alphabet symbols leave no class that deep on all six sets), ported, since the landscape crate reads four
+emit slots and fixed-length tapes.
+
+**Cost.** 2.7 CPU-hours for the six runs (growable out-compute 38 and 39 min, fixed 23 and 26, drift 16 and 19) at
+`nice 19`, plus about 0.35 for calibration, the offline tape readings and the tandem probe of §7.3: about 3.05 in
+all. The runs were stopped at 60 000 rather than 100 000 epochs past descent to stay inside the budget; at 40 000
+the growable arms had stood still for 25 000 epochs.
+
+### 7.2 Results
+
+Medians of 5 000-epoch blocks, epochs past descent: depth held by a tenth · classes per cell (mean over all cells) ·
+classes held by a tenth · mean tape length (growable). Drift's mean length in the last column.
+
+| k epochs | 4381 fixed | 4381 growable | 4428 fixed | 4428 growable | drift length 4381 / 4428 |
+|---|---|---|---|---|---|
+| 0–5 | 3 · 3.34 · 7 | 5 · 4.13 · 9 · 122 | 5 · 4.36 · 11 | 3 · 3.56 · 8 · 100 | 44 / 48 |
+| 5–10 | 3 · 3.73 · 8 | 5 · 5.33 · 13 · 179 | 5 · 5.42 · 13 | 7 · 6.34 · 15 · 146 | 74 / 84 |
+| 10–15 | 4 · 4.39 · 10 | 5 · 5.54 · 14 · 218 | 5 · 5.44 · 13 | 7 · 6.42 · 16 · 175 | 82 / 109 |
+| 15–20 | 4 · 4.56 · 11 | 4 · 5.45 · 13 · 222 | 4 · 5.24 · 12 | 7 · 6.45 · 16 · 191 | 92 / 121 |
+| 20–25 | 4 · 4.53 · 11 | 4 · 5.30 · 13 · 213 | 5 · 5.55 · 13 | 6 · 6.63 · 14 · 206 | 91 / 121 |
+| 25–30 | 4 · 4.70 · 11 | 5 · 5.65 · 13 · 221 | 5 · 5.56 · 13 | 6 · 6.54 · 14 · 211 | 82 / 102 |
+| 30–35 | 4 · 4.51 · 11 | 6 · 5.98 · 14 · 210 | 5 · 4.98 · 12 | 6 · 6.58 · 14 · 209 | 72 / 119 |
+| 35–40 | 4 · 4.50 · 11 | 5 · 6.00 · 14 · 211 | 5 · 4.78 · 11 | 6 · 6.56 · 15 · 206 | 103 / 124 |
+| 40–45 | 4 · 4.49 · 11 | 6 · 6.23 · 14 · 209 | 5 · 4.65 · 13 | 6 · 6.67 · 16 · 207 | 120 / 136 |
+| 45–50 | 4 · 4.52 · 11 | 6 · 6.44 · 14 · 206 | 5 · 4.66 · 12 | 6 · 6.63 · 16 · 206 | 109 / 150 |
+| 50–55 | 5 · 4.58 · 12 | 6 · 6.52 · 13 · 201 | 5 · 4.88 · 12 | 6 · 6.59 · 16 · 192 | 128 / 140 |
+| 55–60 | 5 · 4.56 · 12 | 6 · 6.59 · 13 · 210 | 6 · 5.71 · 14 | 6 · 6.66 · 16 · 214 | 151 / 145 |
+
+Both drift arms held depth 0 and one class by a tenth, with 86–89% of cells silent, from start to end.
+
+**The last census** (60 000 past descent); depth percentiles over computing cells:
+
+| world | arm | silent | per-cell max depth p10 / p25 / p50 / p75 / p90 / max | classes per cell p50 / p90 / max | depth held 10% / 1% | classes held 10% / 1% | length p10 / p50 / p90 | replicator share |
+|---|---|---|---|---|---|---|---|---|
+| 4381 | fixed | 0.11 | 1 / 2 / 3 / 5 / 5 / 8 | 4 / 10 / 12 | 5 / 8 | 12 / 28 | 32 | 0.66 |
+| 4381 | growable | 0.06 | 1 / 2 / 4 / 6 / 7 / 9 | 6 / 12 / 14 | 6 / 7 | 13 / 29 | 180 / 229 / 256 | 0.84 |
+| 4381 | drift | 0.89 | 0 / 0 / 0 / 0 / 1 / 2 | 0 / 1 / 3 | 0 / 1 | 1 / 2 | 26 / 141 / 242 | 0.83 |
+| 4428 | fixed | 0.06 | 1 / 2 / 4 / 5 / 6 / 8 | 5 / 12 / 14 | 6 / 7 | 14 / 30 | 32 | 0.76 |
+| 4428 | growable | 0.06 | 1 / 3 / 5 / 6 / 7 / 7 | 6 / 12 / 12 | 7 / 7 | 18 / 27 | 169 / 223 / 256 | 0.94 |
+| 4428 | drift | 0.86 | 0 / 0 / 0 / 0 / 0 / 2 | 0 / 1 / 4 | 0 / 1 | 1 / 2 | 17 / 120 / 241 | 0.92 |
+
+**The rise rule and §5's bar.** The topless-rise rule (settling window 1 000, deciles by index, lower medians; the
+bar is the fifth-decile median, the depth at descent or the deepest held five samples running before the end of the
+fifth decile, whichever is highest), and §5 clause 4 (at least three persistent new maxima, k = 5, the last in the
+final quarter, past 45 000). A persistent maximum is dated by the sample that completes its five.
+
+| world | arm | depth: bar → last decile | depth: persistent maxima (k epochs: depth) | §5.4 | repertoire held by a tenth: bar → last | its last persistent maximum | §5.4 |
+|---|---|---|---|---|---|---|---|
+| 4381 | fixed | 4 → 5, **rises** | 2.5: 1, 3: 2, 4: 3, 14: 4, 58.5: 5 | **passes**, by one NAND | 11 → 12, rises | 58.5: 12 | passes |
+| 4381 | growable | 5 → 6, **rises** | 2.5: 1, 3: 2, 3.5: 3, 4.5: 5, 33.5: 6 | fails (last at 33.5) | 13 → 13 | 33.5: 14 | fails |
+| 4428 | fixed | 5 → 5 | 2.5: 1, 3: 2, 4: 5 | fails | 13 → 14, rises | 11: 13 | fails |
+| 4428 | growable | 7 → 6 | 2.5: 1, 3: 2, 3.5: 3, 5: 4, 6.5: 5, 7.5: 7 | fails | 16 → 16 | 13.5: 16 | fails |
+| both | drift | 0 → 0 | 5.5–12.5: 0 | fails | 1 → 1 | 5.5–12.5: 1 | fails |
+
+**Length.** The out-compute tapes climbed to 205–220 bytes within 10 000–15 000 epochs and stood there (rise rule:
+4381 bar 221 → 209, 4428 bar 213 → 210). The drift tapes climbed more slowly to 142–151 at the end, and 4381's
+drift length passes both the rise rule (bar 92 → 150) and §5.4, its last new maximum at 58 500: a length that walks
+between a floor of 8 and a cap of 256 drifts toward the middle of its range. Out-compute holds tapes about 60–90
+bytes longer than drift does; §5.2 already counts length as no complexity, and the program side below says why.
+
+**The minimum.** The 10th percentile of per-cell max depth among computing cells is **1** in all four out-compute runs
+from 3 500–5 500 epochs to the end, in both channels. McShea's minimum does not rise.
+
+**The program side**: the dominant deepest solver every 10 000 epochs, as depth · load-bearing bytes (· tape length
+in the growable arms). The growable solvers are held by 4–7 cells each (their tails differ almost tape by tape),
+the fixed ones by 21–35.
+
+| world | arm | 10k | 20k | 30k | 40k | 50k | 60k |
+|---|---|---|---|---|---|---|---|
+| 4381 | fixed | 3 · 12 | 4 · 13 | 4 · 10 | 4 · 11 | 4 · 13 | 5 · 16 |
+| 4381 | growable | 5 · 13 · 240 | 4 · 12 · 98 | 5 · 13 · 245 | 5 · 11 · 202 | 6 · 11 · 155 | 6 · 12 · 149 |
+| 4428 | fixed | 5 · 13 | 4 · 9 | 4 · 8 | 5 · 16 | 5 · 12 | 6 · 16 |
+| 4428 | growable | 6 · 12 · 182 | 6 · 12 · 47 | 6 · 12 · 227 | 6 · 12 · 203 | 6 · 11 · 178 | 7 · 11 · 233 |
+
+Every load-bearing byte of every growable solver sits in its **first 16 positions**. Read offline (the pilot
+binary's tape reading): the final census's three commonest growable tapes in each world and both deepest solvers, cut to their first
+32 bytes, compute exactly the classes they compute whole, and none has a position past 12 whose substitution loses
+any of its classes. The 40–220 bytes past the core are neither depth- nor repertoire-bearing: junk, as the record's
+2026-09-16 entry found for the replicating tape. Read with topless-rise's H-code labels, 30 000 against 60 000 epochs
+past descent (single censuses on flickering series), both fixed arms' depth steps are *new code* (4381 4 · 10 → 5 ·
+16, 4428 4 · 8 → 6 · 16) and both growable arms' are *co-option* (4381 5 · 13 → 6 · 12, 4428 6 · 12 → 7 · 11).
+
+### 7.3 Why the channel does not help: the loop's orbit, and dead appendices
+
+Both channels converge on one motif, a stack-NAND loop whose laps emit successively deeper functions (`topless.md`
+§2.3): `<<<<[!{~!~]` in both growable worlds (the head moves vary: `<0<<<`, `<<.<<`), `[~_!~{!]` and `[{~!~}}!]` in
+the fixed ones. Read offline on the six sets:
+
+- The 11-byte `<<<<[!{~!~]` alone, padded with zeros or fillers to any length from 32 to 256, computes the **same 12
+  classes up to depth 6** (`bfff`). At 11 bytes (a 22-byte buffer) it computes 8. So a growable channel gives
+  this loop nothing past 32 bytes.
+- Its laps fill the 16-emit cap. With the cap at 32, 64 or 128 it computes **14 classes up to depth 7** (`0080`) and
+  then nothing more: the loop's orbit closes. Its depth 6–7 and its 12 classes are the growable worlds' depth held
+  and the top of their per-cell repertoire (p90 12).
+- **Appended copies are dead code.** The loop followed by a second copy of itself, with or without a head move
+  between (`<<<<[!{~!~]<<<<[!{~!~]`, `…]{[!{~!~]`, `…]+[!{~!~]`, `…]>>[!{~!~]`), computes the same 12 classes at the
+  16-emit cap and the same 14 at 64: the first loop spends the whole emit budget itself, so code appended after it
+  is never read. A duplication appended at the end cannot add a computation to a tape whose core is such a loop.
+- **Tandem copies are not.** The same loop with a segment of its own body duplicated in place reaches further:
+  `<<<<[!{~!{~!~]` (the `{~!` repeated) computes **16 classes up to depth 8** at the 16-emit cap and **28** at 64;
+  `<<<<[{~!~!{~!~]` 13 to depth 7; `<<<<[!{~!~{~!~]` 12 to depth 7. Insertion inside the loop changes its orbit;
+  appending after it does not.
+
+So the plateau of §4.3 and of this pilot is not the channel's length: it is the orbit of the commonest loop, which
+the 16-emit cap stops one NAND short (depth 6, not 7). An append-only growable channel cannot change that orbit;
+tandem duplication can, which is why it was probed.
+
+**A probe of tandem duplication** (*pilot*, exploratory, not a pre-planned arm): the same growable out-compute arm with
+the duplicate inserted right after its original segment instead of appended, 15 000 epochs past descent on both
+worlds, seed 5002.
+
+Over 15 000 epochs past descent, medians of 2 500-epoch blocks across 10 000–15 000 (the window in which every
+out-compute arm has made its climb), against the appended and fixed arms over the same window:
+
+| world | arm | depth held 10% | classes per cell | classes held 10% | depth held 1% | mean length |
+|---|---|---|---|---|---|---|
+| 4381 | fixed | 3–4 | 4.35–4.60 | 9–11 | 5–8 | 32 |
+| 4381 | appended | 5 | 5.38–5.60 | 14 | 6–7 | 209–223 |
+| 4381 | tandem | 4 | 4.36–4.49 | 12 | 5 | 194–199 |
+| 4428 | fixed | 5 | 5.44–5.47 | 12–13 | 6–7 | 32 |
+| 4428 | appended | 7 | 6.42–6.50 | 16 | 7 | 175–178 |
+| 4428 | tandem | 6 | 6.17–6.51 | 13 | 7 | 186–197 |
+
+Tandem duplication did no better than appending: depth 4 and 6, p10 of per-cell max depth 1, tapes grown to about
+200 bytes, and the dominant deepest solvers' 10–16 load-bearing bytes again within the first 18 positions. No tape
+like `<<<<[!{~!{~!~]` was held.
+
+**Why: the deep variants are not supersets.** `<<<<[!{~!{~!~]`'s 16 classes share only `0fff` and `aaaa` with the
+incumbent loop's 12; `<<<<[{~!~!{~!~]` gains `0080/7` and `8aaa/4` and loses `afff/4`; `<<<<[!{~~!~]` shares three.
+Changing a loop changes its whole orbit, so the variant replaces classes rather than adding them: under the subset
+rule it can eat none of its incumbent neighbours, they cannot eat it, and it gains nothing over them. The ratchet
+pays additions only, and on these tapes there are two kinds: a longer orbit of the same loop (bounded: 12 classes at
+the 16-emit cap, 14 without) or code that runs before the loop and leaves its laps intact (code after it is never
+read). Neither growth operator supplies either better than substitution does, and room in the channel supplies
+neither.
+
+### 7.4 What pilot 2 says
+
+1. **No late climb.** The growable channel under out-compute does not keep climbing late. In both worlds depth,
+   repertoire and length made their whole climb in the first 10 000–15 000 epochs and then stood. Neither growable
+   run meets §5.4 on depth or repertoire; 4381's depth steps once, to 6, at 33 500 epochs (the rise rule reads +1,
+   §5.4 fails), and 4428's fell back from the 7 it held at 7 500. The only §5.4 pass on depth or repertoire is
+   4381's **fixed** arm, one NAND (4 → 5) first held at 56 500–58 500 on a series that had flickered between 4 and 5:
+   the same single late step §4.3 read in 4428's fixed arm, here in the other world.
+2. **It raises the level a little.** One NAND deeper held by a tenth (6 against 5 at the end of each world's pair),
+   6.6 classes per cell against 4.6 and 5.7, and the replicators' detector share held at the drift arm's level
+   (0.83–0.94) where the fixed arm's fell to 0.66–0.76, as in §4.3. At the end the growable solvers' cores carry
+   11–12 load-bearing bytes against the fixed solvers' 16, which would make them cheaper to hold under the same
+   per-byte mutation; two worlds cannot separate that from chance.
+3. **The extra room is junk.** Out-compute grows the tapes to about 210 of 256 bytes, 60–90 above drift, and every
+   byte that carries their depth or any class is in the first 16.
+4. **The minimum does not rise**: the 10th percentile of per-cell max depth is 1 in all four out-compute runs,
+   throughout.
+5. **The fixed arm replicates §4.3 in shape**: depth 4–5 and 4.5–5.7 classes per cell reached within ~15 000 epochs,
+   then flat; its levels sit a little below §4.3's seed 5001 (depth 5 and 6, 5.3 and 6.3 classes at 40 000), within
+   what one seed per world can show.
+6. **The plateau is the loop's orbit**, at any channel length from 32 up, and appended duplication is dead code
+   behind it (§7.3).
+
+### 7.5 Recommendation
+
+**Do not include the growable-channel arm as built here** (segment duplication appended at the end) in the
+out-compute sweep of §4.4. It costs about 1.6 times the fixed arm (≈ 39 against 25 ms an epoch on this Mac), and the
+pilot predicts it ties the fixed arm on the rise rule and §5.4 and raises the level by about one NAND, which the
+sweep's H-endogenous key reads on the fixed arm already.
+
+**Nor with tandem duplication**: in its 15 000-epoch probe it did no better than appending. If a growable arm is
+run anyway, as a level contrast only: `meta_max_len` 128 (the room past 32 went to junk, and 256 doubled the cost),
+duplication 0.05 and deletion 0.05 per inheritance of a 1–16-byte segment, floor 8, with its own growable drift arm.
+
+**The pilot moves the bet of §4.5.** Room in the channel is not what stops the climb. Two properties of this machine
+under this rule are: (1) the commonest computing core is one loop whose laps spend the whole emit budget, so nothing
+a tape adds after it is ever read; (2) changing a loop changes its whole orbit, so the variant is not a superset and
+the subset ratchet does not pay it. A next pilot aimed at the plateau should change one of these, not the channel's
+length. For (1), an assay that reads code past a loop (an emit or step budget per loop exit rather than per tape) is
+a change to the machine and must keep §5 clause 2; for (2), the relation cannot change without giving up
+transitivity, so the variation has to make additions reachable (insertions before a loop that leave its laps
+intact). Both are hypotheses from offline reads of a handful of tapes from two worlds, not findings.
+
+Whatever the channel, the sweep should read every emit slot (§4.3, point 7) and pair any growable arm with its own
+**growable drift** arm: length alone passes the rise rule and §5.4 under drift. The widening input window of §4.5 was
+not piloted; on four inputs the loop's orbit, not the window, set the top here.
+
+**Files.** Pilot 2's material was pilot artefacts and was not kept either: the throwaway engine copy and its
+`pilot` binary (with the offline tape reading of §7.3 and its emit cap), every census row of every pilot-2 run (with
+the three commonest tapes at each census and the load-bearing readings at a tenth and a hundredth), and the scripts
+behind the rise rule, §5.4's persistent maxima and the block medians.
 
 ## Sources
 
