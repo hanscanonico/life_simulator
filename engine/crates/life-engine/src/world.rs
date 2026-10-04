@@ -895,11 +895,7 @@ impl World {
             .map(|_| u32::from(self.meta_fid[rng::below(&mut rng, cells) as usize]))
             .collect();
         levels.sort_unstable();
-        let at = |percent: u32| {
-            let rank = (task::TASK_SAMPLE_CELLS * percent).div_ceil(100);
-            levels[rank as usize - 1]
-        };
-        Some([at(10), at(50), at(90)])
+        Some([10, 50, 90].map(|percent| nearest_rank(&levels, percent)))
     }
 
     /// The mean live length of the metabolism tapes, over every cell: `None` unless the
@@ -1989,6 +1985,13 @@ impl MetaGrowth {
             min: params.meta_min_len as usize,
         })
     }
+}
+
+/// The `percent`th percentile of `sorted` by nearest rank: the value at rank
+/// ⌈`percent` × n / 100⌉, counted from 1.
+fn nearest_rank(sorted: &[u32], percent: u32) -> u32 {
+    let rank = (sorted.len() * percent as usize).div_ceil(100);
+    sorted[rank - 1]
 }
 
 /// The levels of a world that carries fidelity at its start: every cell at 0, the base
@@ -9590,6 +9593,11 @@ mod tests {
         assert!(energy.passed_over(0, 1, 16), "short of its level's price");
         assert!(!energy.passed_over(1, 0, 16));
         assert!(!energy.passed_over(0, 1, 15));
+        assert_eq!(
+            energy.budget(1, 0, 8192),
+            8192,
+            "the step budget stays max_steps"
+        );
         let mut energy = energy;
         energy.spend(1, 0, 3, 16);
         energy.spend(0, 1, 3, 0);
@@ -9608,7 +9616,7 @@ mod tests {
 
     /// A cell holding the base price but not its own level's is passed over as an
     /// initiator and keeps its stock, while a base-level cell holding the same initiates
-    /// and pays it; the interaction's step budget is `max_steps` either way.
+    /// and pays it; a cell holding its own level's price initiates and pays exactly that.
     #[test]
     fn a_poor_cell_at_a_high_level_is_passed_over_as_initiator() {
         let params = Params {
@@ -9649,6 +9657,26 @@ mod tests {
             world.stock.iter().all(|held| *held == 0),
             "free fidelity priced"
         );
+
+        let mut world = World::new(&params, 4).unwrap();
+        for cell in 0..params.cell_count() {
+            world.stock[cell] = 9675 - params.energy_influx;
+            world.meta_fid[cell] = if high(cell) { 16 } else { 0 };
+        }
+        world.step();
+        for (cell, held) in world.stock.iter().enumerate() {
+            match high(cell) {
+                true => assert_eq!(
+                    *held, 0,
+                    "high cell {cell} paid less than its level's price"
+                ),
+                false => assert_eq!(
+                    *held,
+                    9675 - 8192,
+                    "base cell {cell} paid past the base price"
+                ),
+            }
+        }
     }
 
     #[test]
@@ -9802,6 +9830,12 @@ mod tests {
         assert_eq!(
             (halves.fidelity_p10, halves.fidelity_p90),
             (Some(0), Some(1))
+        );
+        let ranks: Vec<u32> = (1..=256).collect();
+        assert_eq!(
+            [10, 50, 90].map(|percent| nearest_rank(&ranks, percent)),
+            [26, 128, 231],
+            "the 26th, 128th and 231st of 256"
         );
 
         let mut read = World::new(&params, 42).unwrap();
