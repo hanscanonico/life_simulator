@@ -1042,6 +1042,17 @@ sample.
     fifth decile and last, descriptive and offline. Pre-registered in `docs/design_record.md`, 2026-10-02, "Topless
     rise: does the deepest rung held keep rising when depth is paid?", whose numbers live in
     `Lab::ToplessRiseReading`; `lab:topless_rise_report` reads it.
+    **Result** (2026-10-04, final): all 162 children finished, none extinct, none ceilinged and
+    none reaching the floor; settled relapses 2 rise, 0 capped, 6 none. 1 rise child rose late
+    (5137), against 13 capped and 0 none. H-rise not shown, 1 to 0 with 53 ties (p = 0.5);
+    H-rise-paid refuted, 1 to 13 with 40 ties; the extinct-kept re-reading gives the same
+    outcomes, and the deep subgroup refutes both. H-rise-code, offline (`docs/readings/topless-rise/`):
+    5137 is new code by the minimum margin (+2 bytes), a re-climb to the rise arm's common depth
+    10, where 36 of its 54 children already stood at the fifth decile; the capped late risers
+    mostly step to depth 8 onto one recurring 10-byte loop (from depth 4 or more: 4 new code,
+    7 co-option); of 91 same-depth children only 2 gain +2 bytes. The climb stops. Finding
+    `paid-depth-jumps-once-and-stands`, `negative`, imports an objective, a primitive, a
+    hereditary channel, the primitive's semantics and a ladder.
 19. **Out-compute** — does computing climb, and keep climbing, when nothing pays for it? The
     Out-compute variant of §1.4, step 1 of the ablation ladder in `docs/studies/unassisted.md`
     §2: the paid ladder removed by substituting an endogenous rule, predation (§1.1). A
