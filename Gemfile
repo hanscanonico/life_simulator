@@ -65,7 +65,7 @@ group :development do
   # Use console on exceptions pages [https://github.com/rails/web-console]
   gem "web-console"
 end
-gem "pagy", "~> 43.6"
+gem "pagy", "~> 43.7"
 
 group :test do
   gem "capybara"
