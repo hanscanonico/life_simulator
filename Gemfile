@@ -20,7 +20,7 @@ gem "stimulus-rails"
 gem "jbuilder"
 # json 3.0 rejects positional parse options; Active Support passes them as
 # keywords from 8.1.4 on, so keep the two floors together.
-gem "json", "~> 3.0"
+gem "json", "~> 3.1"
 # The CSV exports; csv leaves the default gems in Ruby 3.4
 gem "csv"
 
